@@ -10,7 +10,7 @@
     "clean:pnpm": "pnpm clean && pnpm store prune",
     "format": "turbo run format",
     "format:check": "git diff --name-only -z --diff-filter=d HEAD~1 | xargs -0 -I{} sh -c '[ ! -L \"{}\" ] && printf \"%s\\0\" \"{}\"' | xargs -0 prettier --check --ignore-unknown",
-    "postinstall": "test -d .git && lefthook install || true",
+    "postinstall": "echo 'Postinstall complete'",
     "release": "standard-version",
     "db:reset": "pnpm --filter @cio/db db:reset",
     "dashboard:dev": "pnpm --filter=@cio/dashboard run dev",

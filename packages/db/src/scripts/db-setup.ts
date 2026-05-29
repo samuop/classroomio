@@ -10,7 +10,7 @@ const shouldSeed = process.argv.includes('--seed') || process.argv.includes('-s'
 const shouldSyncSchema = !process.argv.includes('--skip-schema-sync');
 const scriptPath = fileURLToPath(import.meta.url);
 const packageRoot = resolve(dirname(scriptPath), '../..');
-const pnpmBinary = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const pnpmBinary = 'pnpm';
 
 if (!connectionString) {
   console.error('DATABASE_URL or PRIVATE_DATABASE_URL environment variable is required');
@@ -22,7 +22,8 @@ async function runPnpmCommand(commandLabel: string, args: string[]) {
     const child = spawn(pnpmBinary, args, {
       cwd: packageRoot,
       env: process.env,
-      stdio: 'inherit'
+      stdio: 'inherit',
+      shell: process.platform === 'win32'
     });
 
     child.on('error', (error) => {
