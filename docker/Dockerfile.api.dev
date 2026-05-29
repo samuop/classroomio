@@ -1,0 +1,18 @@
+FROM node:20.19.3-slim
+
+WORKDIR /app
+
+ENV CI=true
+
+RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
+
+COPY . .
+
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
+
+# Skip build for now - run dev server directly
+EXPOSE 3081
+
+WORKDIR /app/apps/api
+
+CMD ["pnpm", "dev"]

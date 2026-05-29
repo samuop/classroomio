@@ -50,7 +50,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "rm -rf dist tsconfig.tsbuildinfo && tsc && tsc-alias",
+    "build": "rimraf dist tsconfig.tsbuildinfo && tsc && tsc-alias",
     "dev": "tsc --watch",
     "db": "drizzle-kit",
     "db:reset": "tsx src/scripts/db-reset.ts --skip-seed",
@@ -82,7 +82,7 @@
     "bcrypt": "6.0.0",
     "better-auth": "^1.4.18",
     "drizzle-kit": "^0.31.8",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "^0.45.2",
     "jose": "^6.1.3",
     "postgres": "^3.4.7"
   },

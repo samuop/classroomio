@@ -1,0 +1,213 @@
+
+#1 [internal] load local bake definitions
+#1 reading from stdin 508B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile.api
+#2 transferring dockerfile: 621B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:20.19.3-slim
+#3 DONE 0.7s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 2.21kB done
+#4 DONE 0.1s
+
+#5 [1/9] FROM docker.io/library/node:20.19.3-slim@sha256:fa43945ad45c5f8c50dbea0633d888ddeb739f7d4e06c7696a9d68b54054238a
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 305.51kB 0.3s done
+#6 DONE 0.3s
+
+#7 [2/9] WORKDIR /app
+#7 CACHED
+
+#8 [3/9] RUN corepack enable && corepack prepare pnpm@10.19.0 --activate
+#8 CACHED
+
+#9 [4/9] COPY . .
+#9 DONE 1.6s
+
+#10 [5/9] RUN pnpm install --no-frozen-lockfile --ignore-scripts --shamefully-hoist --filter @cio/api...
+#10 0.792 Scope: 10 of 23 workspace projects
+#10 0.890 .                                        | ÔÇëWARNÔÇë Ignoring not compatible lockfile at /app/pnpm-lock.yaml
+#10 1.671 Progress: resolved 1, reused 0, downloaded 0, added 0
+#10 2.672 Progress: resolved 34, reused 0, downloaded 0, added 0
+#10 3.758 Progress: resolved 62, reused 0, downloaded 0, added 0
+#10 4.767 Progress: resolved 110, reused 0, downloaded 0, added 0
+#10 5.113 packages/ui                              | ÔÇëWARNÔÇë deprecated @types/dompurify@3.2.0
+#10 5.798 Progress: resolved 173, reused 0, downloaded 0, added 0
+#10 6.053 apps/course-app                          | ÔÇëWARNÔÇë deprecated lucide-svelte@0.468.0
+#10 6.804 Progress: resolved 219, reused 0, downloaded 0, added 0
+#10 7.777 apps/dashboard                           | ÔÇëWARNÔÇë deprecated openai-edge@1.2.3
+#10 7.808 Progress: resolved 276, reused 0, downloaded 0, added 0
+#10 8.832 Progress: resolved 310, reused 0, downloaded 0, added 0
+#10 9.832 Progress: resolved 388, reused 0, downloaded 0, added 0
+#10 10.83 Progress: resolved 449, reused 0, downloaded 0, added 0
+#10 11.83 Progress: resolved 527, reused 0, downloaded 0, added 0
+#10 12.83 Progress: resolved 601, reused 0, downloaded 0, added 0
+#10 13.83 Progress: resolved 689, reused 0, downloaded 0, added 0
+#10 14.83 Progress: resolved 774, reused 0, downloaded 0, added 0
+#10 15.84 Progress: resolved 844, reused 0, downloaded 0, added 0
+#10 16.84 Progress: resolved 898, reused 0, downloaded 0, added 0
+#10 17.84 Progress: resolved 965, reused 0, downloaded 0, added 0
+#10 18.84 Progress: resolved 1059, reused 0, downloaded 0, added 0
+#10 19.84 Progress: resolved 1204, reused 0, downloaded 0, added 0
+#10 20.84 Progress: resolved 1290, reused 0, downloaded 0, added 0
+#10 21.84 Progress: resolved 1401, reused 0, downloaded 0, added 0
+#10 22.84 Progress: resolved 1492, reused 0, downloaded 0, added 0
+#10 23.84 Progress: resolved 1624, reused 0, downloaded 0, added 0
+#10 24.88 Progress: resolved 1697, reused 0, downloaded 0, added 0
+#10 25.88 Progress: resolved 1802, reused 0, downloaded 0, added 0
+#10 26.88 Progress: resolved 1894, reused 0, downloaded 0, added 0
+#10 27.88 Progress: resolved 2004, reused 0, downloaded 0, added 0
+#10 28.88 Progress: resolved 2108, reused 0, downloaded 0, added 0
+#10 29.88 Progress: resolved 2193, reused 0, downloaded 0, added 0
+#10 30.88 Progress: resolved 2299, reused 0, downloaded 0, added 0
+#10 31.88 Progress: resolved 2394, reused 0, downloaded 0, added 0
+#10 32.88 Progress: resolved 2478, reused 0, downloaded 0, added 0
+#10 33.78 ÔÇëWARNÔÇë 20 deprecated subdependencies found: @esbuild-kit/core-utils@3.3.2, @esbuild-kit/esm-loader@2.6.5, @humanwhocodes/config-array@0.9.5, @humanwhocodes/object-schema@1.2.1, are-we-there-yet@2.0.0, eslint@8.4.1, gauge@3.0.2, git-raw-commits@2.0.11, git-semver-tags@4.1.1, glob@7.2.3, glob@8.1.0, inflight@1.0.6, npmlog@5.0.1, q@1.5.1, rimraf@2.7.1, rimraf@3.0.2, stringify-package@1.0.1, tar@6.2.1, uuid@9.0.1, whatwg-encoding@3.1.1
+#10 33.98 Progress: resolved 2484, reused 0, downloaded 0, added 0
+#10 34.15 Progress: resolved 2484, reused 0, downloaded 0, added 0, done
+#10 34.16 ÔÇëWARNÔÇë Issues with peer dependencies found
+#10 34.16 apps/api
+#10 34.16 Ôö£ÔöÇÔö¼ @typescript-eslint/eslint-plugin 7.0.1
+#10 34.16 Ôöé Ôö£ÔöÇÔöÇ Ô£ò unmet peer eslint@^8.56.0: found 9.39.4
+#10 34.16 Ôöé Ôö£ÔöÇÔö¼ @typescript-eslint/utils 7.0.1
+#10 34.16 Ôöé Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer eslint@^8.56.0: found 9.39.4
+#10 34.16 Ôöé ÔööÔöÇÔö¼ @typescript-eslint/type-utils 7.0.1
+#10 34.16 Ôöé   ÔööÔöÇÔöÇ Ô£ò unmet peer eslint@^8.56.0: found 9.39.4
+#10 34.16 Ôö£ÔöÇÔö¼ @typescript-eslint/parser 7.0.1
+#10 34.16 Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer eslint@^8.56.0: found 9.39.4
+#10 34.16 Ôö£ÔöÇÔö¼ @hono/standard-validator 0.1.5
+#10 34.16 Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer @standard-schema/spec@1.0.0: found 1.1.0
+#10 34.16 Ôö£ÔöÇÔö¼ @standard-community/standard-json 0.3.5
+#10 34.16 Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer quansync@^0.2.11: found 1.0.0
+#10 34.16 Ôö£ÔöÇÔö¼ @standard-community/standard-openapi 0.2.9
+#10 34.16 Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer zod-openapi@^4: found 5.4.6
+#10 34.16 ÔööÔöÇÔö¼ hono-openapi 1.3.0
+#10 34.16   ÔööÔöÇÔöÇ Ô£ò unmet peer @hono/standard-validator@^0.2.0: found 0.1.5
+#10 34.16 
+#10 34.16 apps/dashboard
+#10 34.16 ÔööÔöÇÔö¼ @better-auth/sso 1.4.18
+#10 34.16   Ôö£ÔöÇÔöÇ Ô£ò unmet peer better-auth@1.4.18: found 1.6.11
+#10 34.16   ÔööÔöÇÔöÇ Ô£ò unmet peer @better-auth/utils@0.3.0: found 0.4.0
+#10 34.16 
+#10 34.16 apps/website
+#10 34.16 ÔööÔöÇÔö¼ svelte-meta-tags 3.1.4
+#10 34.16   ÔööÔöÇÔöÇ Ô£ò unmet peer svelte@"^3.55.0 || ^4.0.0": found 5.55.10
+#10 34.16 
+#10 34.16 packages/db
+#10 34.16 Ôö£ÔöÇÔö¼ better-auth 1.6.11
+#10 34.16 Ôöé Ôö£ÔöÇÔöÇ Ô£ò unmet peer drizzle-orm@^0.45.2: found 0.44.7
+#10 34.16 Ôöé ÔööÔöÇÔö¼ @better-auth/drizzle-adapter 1.6.11
+#10 34.16 Ôöé   ÔööÔöÇÔöÇ Ô£ò unmet peer drizzle-orm@^0.45.2: found 0.44.7
+#10 34.16 ÔööÔöÇÔö¼ @better-auth/sso 1.4.18
+#10 34.16   Ôö£ÔöÇÔöÇ Ô£ò unmet peer better-auth@1.4.18: found 1.6.11
+#10 34.16   ÔööÔöÇÔöÇ Ô£ò unmet peer @better-auth/utils@0.3.0: found 0.4.0
+#10 34.16 
+#10 34.16 packages/storybook
+#10 34.16 Ôö£ÔöÇÔö¼ @storybook/svelte-vite 10.4.1
+#10 34.16 Ôöé Ôö£ÔöÇÔöÇ Ô£ò unmet peer storybook@^10.4.1: found 8.6.18
+#10 34.16 Ôöé Ôö£ÔöÇÔö¼ @storybook/svelte 10.4.1
+#10 34.16 Ôöé Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer storybook@^10.4.1: found 8.6.18
+#10 34.16 Ôöé ÔööÔöÇÔö¼ @storybook/builder-vite 10.4.1
+#10 34.16 Ôöé   Ôö£ÔöÇÔöÇ Ô£ò unmet peer storybook@^10.4.1: found 8.6.18
+#10 34.16 Ôöé   ÔööÔöÇÔö¼ @storybook/csf-plugin 10.4.1
+#10 34.16 Ôöé     ÔööÔöÇÔöÇ Ô£ò unmet peer storybook@^10.4.1: found 8.6.18
+#10 34.16 ÔööÔöÇÔö¼ @storybook/sveltekit 8.6.18
+#10 34.16   Ôö£ÔöÇÔöÇ Ô£ò unmet peer vite@"^4.0.0 || ^5.0.0 || ^6.0.0": found 7.3.3
+#10 34.16   ÔööÔöÇÔö¼ @storybook/svelte-vite 8.6.18
+#10 34.16     Ôö£ÔöÇÔöÇ Ô£ò unmet peer vite@"^4.0.0 || ^5.0.0 || ^6.0.0": found 7.3.3
+#10 34.16     Ôö£ÔöÇÔöÇ Ô£ò unmet peer @sveltejs/vite-plugin-svelte@"^2.0.0 || ^3.0.0 || ^4.0.0 || ^5.0.0": found 6.2.4
+#10 34.16     ÔööÔöÇÔö¼ @storybook/builder-vite 8.6.18
+#10 34.16       ÔööÔöÇÔöÇ Ô£ò unmet peer vite@"^4.0.0 || ^5.0.0 || ^6.0.0": found 7.3.3
+#10 34.16 
+#10 34.16 packages/ui
+#10 34.16 Ôö£ÔöÇÔö¼ @tiptap/extension-floating-menu 2.27.2
+#10 34.16 Ôöé Ôö£ÔöÇÔöÇ Ô£ò unmet peer @tiptap/pm@^2.7.0: found 3.23.6
+#10 34.16 Ôöé ÔööÔöÇÔöÇ Ô£ò unmet peer @tiptap/core@^2.7.0: found 3.23.6
+#10 34.16 ÔööÔöÇÔö¼ svelte-tiptap 2.2.0
+#10 34.16   Ôö£ÔöÇÔöÇ Ô£ò unmet peer @tiptap/pm@^2.11.5: found 3.23.6
+#10 34.16   Ôö£ÔöÇÔöÇ Ô£ò unmet peer @tiptap/core@^2.11.5: found 3.23.6
+#10 34.16   ÔööÔöÇÔöÇ Ô£ò unmet peer @tiptap/extension-bubble-menu@^2.11.5: found 3.23.6
+#10 34.35 .                                        | +871 ++++++++++++++++++++++++++++++++
+#10 83.46 Done in 1m 23s using pnpm v10.19.0
+#10 DONE 87.4s
+
+#11 [6/9] RUN find . -name 'tsconfig.tsbuildinfo' -delete
+#11 DONE 0.8s
+
+#12 [7/9] RUN pnpm -r --filter @cio/api... build
+#12 1.194 Scope: 10 of 23 workspace projects
+#12 1.198 packages/question-types build$ tsc && tsc-alias
+#12 1.199 packages/certificates build$ tsc && tsc-alias
+#12 1.199 packages/jobs build$ rm -rf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+#12 2.696 packages/certificates build: Done
+#12 2.899 packages/question-types build: Done
+#12 3.040 packages/jobs build: Done
+#12 3.041 packages/ai-assistant build$ tsc && tsc-alias
+#12 3.042 packages/utils build$ tsc && tsc-alias
+#12 5.409 packages/ai-assistant build: Done
+#12 5.782 packages/utils build: Done
+#12 5.783 packages/email build$ tsc && tsc-alias
+#12 7.796 packages/email build: Done
+#12 7.797 packages/db build$ rm -rf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+#12 17.04 packages/db build: Done
+#12 17.04 packages/analytics build$ rm -rf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+#12 18.48 packages/analytics build: Done
+#12 18.48 apps/api build$ tsc && tsc-alias
+#12 35.64 apps/api build: src/app.ts(78,7): error TS2769: No overload matches this call.
+#12 35.65 apps/api build:   Overload 1 of 2, '(key: "user", value: { id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAnonymous: boolean | ... 1 more ... | undefined; } | null): void', gave the following error.
+#12 35.65 apps/api build:     Argument of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is not assignable to parameter of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...'.
+#12 35.65 apps/api build:       Type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is missing the following properties from type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...': banned, isAnonymous
+#12 35.65 apps/api build:   Overload 2 of 2, '(key: "secureHeadersNonce", value: string | undefined): void', gave the following error.
+#12 35.65 apps/api build:     Argument of type '"user"' is not assignable to parameter of type '"secureHeadersNonce"'.
+#12 35.71 apps/api build: Failed
+#12 35.72 /app/apps/api:
+#12 35.72 ÔÇëERR_PNPM_RECURSIVE_RUN_FIRST_FAILÔÇë @cio/api@0.0.1 build: `tsc && tsc-alias`
+#12 35.72 Exit status 2
+#12 ERROR: process "/bin/sh -c pnpm -r --filter @cio/api... build" did not complete successfully: exit code: 2
+------
+ > [7/9] RUN pnpm -r --filter @cio/api... build:
+35.64 apps/api build: src/app.ts(78,7): error TS2769: No overload matches this call.
+35.65 apps/api build:   Overload 1 of 2, '(key: "user", value: { id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAnonymous: boolean | ... 1 more ... | undefined; } | null): void', gave the following error.
+35.65 apps/api build:     Argument of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is not assignable to parameter of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...'.
+35.65 apps/api build:       Type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is missing the following properties from type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...': banned, isAnonymous
+35.65 apps/api build:   Overload 2 of 2, '(key: "secureHeadersNonce", value: string | undefined): void', gave the following error.
+35.65 apps/api build:     Argument of type '"user"' is not assignable to parameter of type '"secureHeadersNonce"'.
+35.71 apps/api build: Failed
+35.72 /app/apps/api:
+35.72 ÔÇëERR_PNPM_RECURSIVE_RUN_FIRST_FAILÔÇë @cio/api@0.0.1 build: `tsc && tsc-alias`
+35.72 Exit status 2
+------
+docker : Dockerfile.api:14
+En línea: 2 Carácter: 82
++ ...  -Value ""; docker compose --env-file .env.docker -f docker/docker-co ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Dockerfile.api:14:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+--------------------
+
+  12 |     RUN pnpm install --no-frozen-lockfile --ignore-scripts --shamefully-hoist --filter @cio/api...
+
+  13 |     RUN find . -name 'tsconfig.tsbuildinfo' -delete
+
+  14 | >>> RUN pnpm -r --filter @cio/api... build
+
+  15 |     
+
+  16 |     COPY docker/entrypoint-api.sh /app/entrypoint.sh
+
+--------------------
+
+failed to solve: process "/bin/sh -c pnpm -r --filter @cio/api... build" did not complete successfully: exit code: 2
+
+
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/7g99lkdjupvg9msb8c76rtzts
+

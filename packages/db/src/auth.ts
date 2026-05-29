@@ -35,7 +35,7 @@ function buildOAuthProxyPlugin() {
   return [oAuthProxy({ productionURL: CONSTANTS.BASE_URL })];
 }
 
-export const auth: ReturnType<typeof betterAuth> = betterAuth({
+export const auth = betterAuth({
   baseURL: CONSTANTS.BASE_URL,
   database: drizzleAdapter(db, {
     provider: 'pg',

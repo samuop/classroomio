@@ -1,0 +1,13 @@
+﻿
+> @cio/db@0.0.1 build C:\Repositorio\ClassroomIO\packages\db
+> rm -rf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+
+pnpm : "rm" no se reconoce como un comando interno o externo,
+En línea: 2 Carácter: 44
++ ... o\ClassroomIO\packages\db; pnpm build 2>&1 > build-output.txt; Get-Co ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ("rm" no se reco...erno o externo,:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+programa o archivo por lotes ejecutable.
+ÔÇëELIFECYCLEÔÇë Command failed with exit code 1.

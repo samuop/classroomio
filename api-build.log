@@ -1,0 +1,387 @@
+﻿ÔÇëWARNÔÇë Unsupported engine: wanted: {"node":"^20.19.3"} (current: {"node":"v22.22.1","pnpm":"8.15.4"})
+
+> classroomio@0.1.13 build C:\Repositorio\ClassroomIO
+> turbo run build "--filter" "@cio/api"
+
+ÔÇó Packages in scope: @cio/api
+ÔÇó Running build in 1 packages
+ÔÇó Remote caching disabled
+@cio/certificates:build: cache hit, replaying logs 599b0bfd071dc01f
+@cio/certificates:build: 
+@cio/certificates:build: > @cio/certificates@1.0.0 build C:\Repositorio\ClassroomIO\packages\certificates
+@cio/certificates:build: > tsc && tsc-alias
+@cio/certificates:build: 
+@cio/jobs:build: cache hit, replaying logs 3dc639e150f6519b
+@cio/jobs:build: 
+@cio/jobs:build: > @cio/jobs@0.0.1 build C:\Repositorio\ClassroomIO\packages\jobs
+@cio/jobs:build: > rimraf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+@cio/jobs:build: 
+@cio/question-types:build: cache hit, replaying logs 8a9fec2fff9fd235
+@cio/question-types:build: 
+@cio/question-types:build: > @cio/question-types@1.0.0 build C:\Repositorio\ClassroomIO\packages\question-types
+@cio/question-types:build: > tsc && tsc-alias
+@cio/question-types:build: 
+@cio/ai-assistant:build: cache hit, replaying logs 6114180dc00b0152
+@cio/ai-assistant:build: 
+@cio/ai-assistant:build: > @cio/ai-assistant@1.0.0 build C:\Repositorio\ClassroomIO\packages\ai-assistant
+@cio/ai-assistant:build: > tsc && tsc-alias
+@cio/ai-assistant:build: 
+@cio/utils:build: cache hit, replaying logs 9359fe40cb49c0b7
+@cio/utils:build: 
+@cio/utils:build: > @cio/utils@1.0.0 build C:\Repositorio\ClassroomIO\packages\utils
+@cio/utils:build: > tsc && tsc-alias
+@cio/utils:build: 
+@cio/email:build: cache hit, replaying logs 83a883897d1b02e1
+@cio/email:build: 
+@cio/email:build: > @cio/email@0.0.1 build C:\Repositorio\ClassroomIO\packages\email
+@cio/email:build: > tsc && tsc-alias
+@cio/email:build: 
+@cio/db:build: cache hit, replaying logs 21fbbc1a71dbc293
+@cio/db:build: 
+@cio/db:build: > @cio/db@0.0.1 build C:\Repositorio\ClassroomIO\packages\db
+@cio/db:build: > rimraf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+@cio/db:build: 
+@cio/analytics:build: cache hit, replaying logs 74157c038e3ab594
+@cio/analytics:build: 
+@cio/analytics:build: > @cio/analytics@0.0.1 build C:\Repositorio\ClassroomIO\packages\analytics
+@cio/analytics:build: > rimraf dist tsconfig.tsbuildinfo && tsc && tsc-alias
+@cio/analytics:build: 
+@cio/api:build: cache miss, executing af3c577218d03080
+@cio/api:build: 
+@cio/api:build: > @cio/api@0.0.1 build C:\Repositorio\ClassroomIO\apps\api
+@cio/api:build: > tsc && tsc-alias
+@cio/api:build: 
+@cio/api:build: src/app.ts(78,7): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 2, '(key: "user", value: { id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAnonymous: boolean | ... 1 more ... | undefined; } | null): void', gave the following error.
+@cio/api:build:     Argument of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is not assignable to parameter of type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...'.
+@cio/api:build:       Type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }' is missing the following properties from type '{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; banned: boolean | null | undefined; role?: string | ... 1 more ... | undefined; banReason?: string | ... 1 more ... | undefined; banExpires?: Date | ... 1 more ... | undefined; isAn...': banned, isAnonymous
+@cio/api:build:   Overload 2 of 2, '(key: "secureHeadersNonce", value: string | undefined): void', gave the following error.
+@cio/api:build:     Argument of type '"user"' is not assignable to parameter of type '"secureHeadersNonce"'.
+@cio/api:build: src/middlewares/workspace-not-readonly.ts(30,14): error TS2345: Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { readOnlyUntil: PgColumn<{ name: "read_only_until"; tableName: "organization"; dataType: "string"; columnType: "PgTimestampString"; data: string; driverParam: string; notNull: false; ... 7 more ...; generated: undefined; }, {}, {}>; }) => SQL<...> | undefined) | undefined'.
+@cio/api:build:   Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:     Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/middlewares/workspace-not-readonly.ts(30,17): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "organization"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "organization"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "id"; tableName: "organization"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "organization"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/routes/agent/agent.ts(415,34): error TS2345: Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { title: PgColumn<{ name: "title"; tableName: "course"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, { ...; }>; description: PgColumn<...>; organizationId: ...'.
+@cio/api:build:   Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:     Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/routes/agent/agent.ts(415,37): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "group_id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<PgColumn<{ name: "id"; tableName: "group"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>>, right: PgColumn<...> | SQLWrapper): SQL<...>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "group_id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<PgColumn<{ name: "id"; tableName: "group"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }...'.
+@cio/api:build:       Type 'PgColumn<{ name: "group_id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<PgColumn<{ name: "id"; tableName: "group"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }...': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "group_id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/routes/agent/agent.ts(416,16): error TS2345: Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { title: PgColumn<{ name: "title"; tableName: "course"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, { ...; }>; description: PgColumn<...>; organizationId: ...'.
+@cio/api:build:   Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:     Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/routes/agent/agent.ts(416,19): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "id"; tableName: "course"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; hasRuntimeDefault: false; enumValues: undefined; baseColumn: never; identity: undefined; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(39,9): error TS2322: Type 'SQL<number>' is not assignable to type 'SQL<unknown> | Aliased<unknown> | Subquery<string, Record<string, unknown>> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | PgTable<...> | SelectedFieldsFlat<...>'.
+@cio/api:build:   Type 'SQL<number>' is not assignable to type 'SelectedFieldsFlat<PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>'.
+@cio/api:build:     Index signature for type 'string' is missing in type 'SQL<number>'.
+@cio/api:build: src/services/account/quota.ts(43,9): error TS2345: Argument of type 'SQL<unknown> | undefined' is not assignable to parameter of type 'SQL<unknown> | ((aliases: SelectedFields) => SQL<unknown> | undefined) | undefined'.
+@cio/api:build:   Type 'SQL<unknown>' is not assignable to type 'SQL<unknown> | ((aliases: SelectedFields) => SQL<unknown> | undefined) | undefined'.
+@cio/api:build:     Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:       Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(44,19): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(column: Aliased<string>, values: SQLWrapper | (string | Placeholder<string, any>)[]): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "organization_id"; tableName: "organizationmember"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "organization_id"; tableName: "organizationmember"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 2 of 3, '(column: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, values: readonly unknown[] | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "organization_id"; tableName: "organizationmember"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 3 of 3, '(column: SQLWrapper, values: readonly unknown[] | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "organization_id"; tableName: "organizationmember"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(45,14): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "role_id"; tableName: "organizationmember"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<3>, right: 3 | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "role_id"; tableName: "organizationmember"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<3>'.
+@cio/api:build:       Type 'PgColumn<{ name: "role_id"; tableName: "organizationmember"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<3>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "role_id"; tableName: "organizationmember"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: true; hasDefault: false; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(52,9): error TS2322: Type 'SQL<number>' is not assignable to type 'SQL<unknown> | Aliased<unknown> | Subquery<string, Record<string, unknown>> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | PgTable<...> | SelectedFieldsFlat<...>'.
+@cio/api:build:   Type 'SQL<number>' is not assignable to type 'SelectedFieldsFlat<PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>'.
+@cio/api:build:     Index signature for type 'string' is missing in type 'SQL<number>'.
+@cio/api:build: src/services/account/quota.ts(55,14): error TS2345: Argument of type 'SQL<unknown> | undefined' is not assignable to parameter of type 'SQL<unknown> | ((aliases: SelectedFields) => SQL<unknown> | undefined) | undefined'.
+@cio/api:build:   Type 'SQL<unknown>' is not assignable to type 'SQL<unknown> | ((aliases: SelectedFields) => SQL<unknown> | undefined) | undefined'.
+@cio/api:build:     Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:       Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(55,26): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(column: Aliased<string>, values: SQLWrapper | (string | Placeholder<string, any>)[]): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "org_id"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "org_id"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 2 of 3, '(column: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, values: readonly unknown[] | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "org_id"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 3 of 3, '(column: SQLWrapper, values: readonly unknown[] | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "org_id"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(55,66): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "created_at"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgTimestampString"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "created_at"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgTimestampString"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "created_at"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgTimestampString"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "created_at"; tableName: "ai_token_usage"; dataType: "string"; columnType: "PgTimestampString"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: false; ... 5 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/account/quota.ts(61,22): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+@cio/api:build: src/services/account/quota.ts(66,36): error TS2345: Argument of type '{}' is not assignable to parameter of type 'string'.
+@cio/api:build: src/services/agent/student-tools.ts(148,22): error TS2345: Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; sectionId: PgCo...'.
+@cio/api:build:   Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:     Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(148,25): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(149,24): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 2, '(builder: (aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; sectionId: PgColumn<...>; order: PgColumn<...>; }) => ValueOrArray<...>): Omit<...>', gave the following error.
+@cio/api:build:     Argument of type 'SQL<unknown>' is not assignable to parameter of type '(aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; sectionId: PgColumn<...>; order...'.
+@cio/api:build:       Type 'SQL<unknown>' provides no match for the signature '(aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; sectionId: PgColumn<...>; order: PgColumn<...>; }): ValueOrArray<...>'.
+@cio/api:build:   Overload 2 of 2, '(...columns: (SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | Aliased<unknown>)[]): Omit<PgSelectBase<"lesson", ... 6 more ..., { ...; }>, "where" | "orderBy">', gave the following error.
+@cio/api:build:     Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | Aliased<unknown>'.
+@cio/api:build:       Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:         Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(149,28): error TS2345: Argument of type 'PgColumn<{ name: "order"; tableName: "lesson"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper | AnyColumn'.
+@cio/api:build:   Type 'PgColumn<{ name: "order"; tableName: "lesson"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to type 'AnyColumn'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: src/services/agent/student-tools.ts(159,22): error TS2345: Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; lessonId: PgC...'.
+@cio/api:build:   Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:     Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(159,25): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(160,24): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 2, '(builder: (aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; lessonId: PgColumn<...>; sectionId: PgColumn<...>; order: PgColumn<...>; }) => ValueOrArray<...>): Omit<...>', gave the following error.
+@cio/api:build:     Argument of type 'SQL<unknown>' is not assignable to parameter of type '(aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; lessonId: PgColumn<...>; sect...'.
+@cio/api:build:       Type 'SQL<unknown>' provides no match for the signature '(aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; lessonId: PgColumn<...>; sectionId: PgColumn<...>; order: PgColumn<...>; }): ValueOrArray<...>'.
+@cio/api:build:   Overload 2 of 2, '(...columns: (SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | Aliased<unknown>)[]): Omit<PgSelectBase<"exercise", ... 6 more ..., { ...; }>, "where" | "orderBy">', gave the following error.
+@cio/api:build:     Argument of type 'SQL<unknown>' is not assignable to parameter of type 'SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | Aliased<unknown>'.
+@cio/api:build:       Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:         Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(160,28): error TS2345: Argument of type 'PgColumn<{ name: "order"; tableName: "exercise"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper | AnyColumn'.
+@cio/api:build:   Type 'PgColumn<{ name: "order"; tableName: "exercise"; dataType: "number"; columnType: "PgBigInt53"; data: number; driverParam: string | number; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to type 'AnyColumn'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: src/services/agent/student-tools.ts(243,17): error TS2345: Argument of type 'SQL<unknown> | undefined' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; content: PgColu...'.
+@cio/api:build:   Type 'SQL<unknown>' is not assignable to type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; content: PgColu...'.
+@cio/api:build:     Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:       Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(243,24): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "lesson_id"; tableName: "lesson_language"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: true; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>>, right: PgColumn<...> | SQLWrapper): SQL<...>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "lesson_id"; tableName: "lesson_language"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: true; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>>'.
+@cio/api:build:       Type 'PgColumn<{ name: "lesson_id"; tableName: "lesson_language"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: true; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "lesson_id"; tableName: "lesson_language"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: true; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(243,78): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "locale"; tableName: "lesson_language"; dataType: "string"; columnType: "PgEnumColumn"; data: "en" | "hi" | "fr" | "pt" | "de" | "vi" | "ru" | "es" | "pl" | "da"; driverParam: string; ... 8 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "locale"; tableName: "lesson_language"; dataType: "string"; columnType: "PgEnumColumn"; data: "en" | "hi" | "fr" | "pt" | "de" | "vi" | "ru" | "es" | "pl" | "da"; driverParam: string; ... 8 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "locale"; tableName: "lesson_language"; dataType: "string"; columnType: "PgEnumColumn"; data: "en" | "hi" | "fr" | "pt" | "de" | "vi" | "ru" | "es" | "pl" | "da"; driverParam: string; ... 8 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "locale"; tableName: "lesson_language"; dataType: "string"; columnType: "PgEnumColumn"; data: "en" | "hi" | "fr" | "pt" | "de" | "vi" | "ru" | "es" | "pl" | "da"; driverParam: string; ... 8 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(246,17): error TS2345: Argument of type 'SQL<unknown> | undefined' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; content: PgColu...'.
+@cio/api:build:   Type 'SQL<unknown>' is not assignable to type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; content: PgColu...'.
+@cio/api:build:     Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:       Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(247,22): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "lesson"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(248,28): error TS2345: Argument of type 'PgColumn<{ name: "title"; tableName: "lesson"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to parameter of type 'SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object> | Aliased<unknown>'.
+@cio/api:build:   Type 'PgColumn<{ name: "title"; tableName: "lesson"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: src/services/agent/student-tools.ts(248,65): error TS2345: Argument of type 'PgColumn<{ name: "content"; tableName: "lesson_language"; dataType: "string"; columnType: "PgText"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object> | Aliased<unknown>'.
+@cio/api:build:   Type 'PgColumn<{ name: "content"; tableName: "lesson_language"; dataType: "string"; columnType: "PgText"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: src/services/agent/student-tools.ts(260,17): error TS2345: Argument of type 'SQL<unknown> | undefined' is not assignable to parameter of type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; description: ...'.
+@cio/api:build:   Type 'SQL<unknown>' is not assignable to type 'SQL<unknown> | ((aliases: { id: PgColumn<{ name: "id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; isPrimaryKey: true; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>; title: PgColumn<...>; description: ...'.
+@cio/api:build:     Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:       Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(261,22): error TS2769: No overload matches this call.
+@cio/api:build:   Overload 1 of 3, '(left: Column<ColumnBaseConfig<ColumnDataType, string>, object, object>, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:       The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:         Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:           'string' index signatures are incompatible.
+@cio/api:build:             Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:               Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build:   Overload 2 of 3, '(left: Aliased<string>, right: string | SQLWrapper): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'Aliased<string>'.
+@cio/api:build:       Type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is missing the following properties from type 'Aliased<string>': sql, fieldAlias
+@cio/api:build:   Overload 3 of 3, '(left: SQLWrapper, right: unknown): SQL<unknown>', gave the following error.
+@cio/api:build:     Argument of type 'PgColumn<{ name: "course_id"; tableName: "exercise"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, {}>' is not assignable to parameter of type 'SQLWrapper'.
+@cio/api:build:       The types returned by 'getSQL()' are incompatible between these types.
+@cio/api:build:         Type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.45.2_@types+pg@8.20.0_kysely@0.28.17_pg@8.21.0_postgres@3.4.9/node_modules/drizzle-orm/sql/sql").SQL<unknown>' is not assignable to type 'import("C:/Repositorio/ClassroomIO/node_modules/.pnpm/drizzle-orm@0.44.7_@opentelemetry+api@1.9.1/node_modules/drizzle-orm/sql/sql").SQL<unknown>'.
+@cio/api:build:           Types have separate declarations of a private property 'shouldInlineParams'.
+@cio/api:build: src/services/agent/student-tools.ts(262,28): error TS2345: Argument of type 'PgColumn<{ name: "title"; tableName: "exercise"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to parameter of type 'SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object> | Aliased<unknown>'.
+@cio/api:build:   Type 'PgColumn<{ name: "title"; tableName: "exercise"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: true; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: src/services/agent/student-tools.ts(262,67): error TS2345: Argument of type 'PgColumn<{ name: "description"; tableName: "exercise"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to parameter of type 'SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object> | Aliased<unknown>'.
+@cio/api:build:   Type 'PgColumn<{ name: "description"; tableName: "exercise"; dataType: "string"; columnType: "PgVarchar"; data: string; driverParam: string; notNull: false; hasDefault: false; isPrimaryKey: false; isAutoincrement: false; ... 4 more ...; generated: undefined; }, {}, { ...; }>' is not assignable to type 'Column<ColumnBaseConfig<ColumnDataType, string>, object, object>'.
+@cio/api:build:     The types of 'table._.config.columns' are incompatible between these types.
+@cio/api:build:       Type 'Record<string, PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>>' is not assignable to type 'Record<string, Column<any, object, object>>'.
+@cio/api:build:         'string' index signatures are incompatible.
+@cio/api:build:           Type 'PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}>' is not assignable to type 'Column<any, object, object>'.
+@cio/api:build:             Property 'config' is protected but type 'Column<T, TRuntimeConfig, TTypeConfig>' is not a class derived from 'Column<T, TRuntimeConfig, TTypeConfig>'.
+@cio/api:build: ÔÇëELIFECYCLEÔÇë Command failed with exit code 2.
+pnpm : @cio/api:build: ERROR: command finished with error: command (C:\Repositorio\ClassroomIO\apps\api) 
+C:\Users\Samu\AppData\Local\pnpm\pnpm.exe run build exited (1)
+En línea: 2 Carácter: 32
++ ... c:\Repositorio\ClassroomIO; pnpm build --filter @cio/api 2>&1 | Tee-O ...
++                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (@cio/api:build:...uild exited (1):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+@cio/api#build: command (C:\Repositorio\ClassroomIO\apps\api) C:\Users\Samu\AppData\Local\pnpm\pnpm.exe run build 
+exited (1)
+
+ Tasks:    8 successful, 9 total
+Cached:    8 cached, 9 total
+  Time:    6.41s 
+Failed:    @cio/api#build
+
+ ERROR  run failed: command  exited (1)
+ÔÇëELIFECYCLEÔÇë Command failed with exit code 1.
