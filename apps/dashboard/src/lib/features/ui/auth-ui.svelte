@@ -37,6 +37,11 @@
     getPasswordAuthAlternative
   }: Props = $props();
 
+  // Deployment policy: this instance is invite-only and the consultancy creates
+  // all users. Hide Google sign-in and the self-serve signup link everywhere.
+  const DISABLE_GOOGLE_AUTH = true;
+  const SHOW_SIGNUP_LINK = false;
+
   async function signInWithGoogle() {
     if (isLoading) {
       return;
@@ -97,7 +102,7 @@
             </Card.Title>
           </a>
           {#if isLogin}
-            <Card.Description class="ui:text-center">Sign in to continue</Card.Description>
+            <Card.Description class="ui:text-center">{$t('login.sign_in_to_continue')}</Card.Description>
           {/if}
         {/if}
       </Card.Header>
@@ -108,11 +113,13 @@
         {@render children?.()}
       </form>
 
-      {#if !showOnlyContent && !hideGoogleAuth}
+      {#if !showOnlyContent && !hideGoogleAuth && !DISABLE_GOOGLE_AUTH}
         <div class="mt-6 flex flex-col gap-6">
           <div class="relative flex items-center justify-center">
             <Separator />
-            <span class="ui:bg-card ui:text-muted-foreground absolute px-2 text-sm"> Or continue With </span>
+            <span class="ui:bg-card ui:text-muted-foreground absolute px-2 text-sm">
+              {$t('login.or_continue_with')}
+            </span>
           </div>
 
           {#if getPasswordAuthAlternative}
@@ -128,7 +135,7 @@
         </div>
       {/if}
     </Card.Content>
-    {#if !showOnlyContent}
+    {#if !showOnlyContent && SHOW_SIGNUP_LINK}
       <Card.Footer class="flex-col gap-2 border-t pt-6">
         <p class="text-muted-foreground text-center text-sm">
           {#if isLogin}

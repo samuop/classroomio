@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { Button } from '@cio/ui/base/button';
   import { Empty } from '@cio/ui/custom/empty';
-  import { ExternalLinkIcon, HomeIcon, HoverableItem } from '@cio/ui/custom/moving-icons';
+  import { HomeIcon, HoverableItem } from '@cio/ui/custom/moving-icons';
   import HeartCrack from '@lucide/svelte/icons/heart-crack';
 
   const isNotFound = $derived(page.status === 404);
@@ -16,13 +16,13 @@
 </script>
 
 <svelte:head>
-  <title>{isNotFound ? 'Page not found' : 'Something unexpected occurred'}</title>
+  <title>{isNotFound ? 'Página no encontrada' : 'Ocurrió un error inesperado'}</title>
 </svelte:head>
 
 {#if isNotFound}
   <Empty
-    title="Page not found"
-    description="The page you're looking for doesn't exist or you don't have permission to view it."
+    title="Página no encontrada"
+    description="La página que buscás no existe o no tenés permiso para verla."
     icon={HeartCrack}
     variant="page"
     layout="full-page"
@@ -33,7 +33,7 @@
         {#snippet children(isHovered)}
           <Button onclick={goHome}>
             <HomeIcon {isHovered} size={16} ariaHidden={true} />
-            Go Home
+            Ir al inicio
           </Button>
         {/snippet}
       </HoverableItem>
@@ -41,8 +41,8 @@
   </Empty>
 {:else}
   <Empty
-    title="Something unexpected occurred."
-    description="Don't worry, your learning is safe. It isn't your fault, it is ours. We have gotten the error notification and will push a fix ASAP. In the meantime, take a short break and come back a bit later."
+    title="Ocurrió un error inesperado."
+    description="No te preocupes, tu información está a salvo. Estamos al tanto del problema y lo resolveremos lo antes posible. Por favor, volvé a intentarlo en unos minutos."
     icon={HeartCrack}
     variant="page"
     layout="full-page"
@@ -51,17 +51,9 @@
     <div class="flex gap-2">
       <HoverableItem>
         {#snippet children(isHovered)}
-          <Button href="https://classroomio.com/tools" variant="secondary">
-            <ExternalLinkIcon {isHovered} size={16} ariaHidden={true} />
-            Try Free Tools
-          </Button>
-        {/snippet}
-      </HoverableItem>
-      <HoverableItem>
-        {#snippet children(isHovered)}
           <Button onclick={goHome}>
             <HomeIcon {isHovered} size={16} ariaHidden={true} />
-            Go Home
+            Ir al inicio
           </Button>
         {/snippet}
       </HoverableItem>

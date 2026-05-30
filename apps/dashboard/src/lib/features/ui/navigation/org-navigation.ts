@@ -207,14 +207,8 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.organization_tab',
         path: '/settings/org'
       },
-      {
-        titleKey: 'settings.tabs.landing_page_tab',
-        path: '/settings/landingpage'
-      },
-      {
-        titleKey: 'settings.tabs.billing_tab',
-        path: '/settings/billing'
-      },
+      // Hidden tabs for this deployment: Landing Page (no public site) and
+      // Billing (the consultancy is billed out-of-band, not via the app).
       {
         titleKey: 'settings.tabs.ai_credits_tab',
         path: '/settings/ai-credits'
@@ -231,10 +225,7 @@ export const baseNavConfig: NavItemConfig[] = [
       }
     ],
     nestedRoutes: [
-      {
-        path: 'billing',
-        titleKey: 'settings.tabs.billing_tab'
-      },
+      // Hidden for this deployment: billing, domains, sso, token-auth.
       {
         path: 'ai-credits',
         titleKey: 'settings.tabs.ai_credits_tab'
@@ -248,24 +239,12 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.customize_lms_tab'
       },
       {
-        path: 'domains',
-        titleKey: 'settings.tabs.domains_tab'
-      },
-      {
         path: 'teams',
         titleKey: 'settings.tabs.teams_tab'
       },
       {
         path: 'auth',
         titleKey: 'settings.tabs.auth_tab'
-      },
-      {
-        path: 'auth/sso',
-        titleKey: 'settings.tabs.sso_tab'
-      },
-      {
-        path: 'auth/token-auth',
-        titleKey: 'settings.tabs.token_auth_tab'
       }
     ]
   }

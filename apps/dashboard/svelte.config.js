@@ -11,6 +11,12 @@ const adapterCloudflare = IS_CLOUDFLARE ? (await import('@sveltejs/adapter-cloud
 const isSelfHosted = process.env.PUBLIC_IS_SELFHOSTED === 'true';
 const csp = getCspDomains(isSelfHosted, process.env.PUBLIC_SERVER_URL);
 
+// In dev, Vite injects inline event handlers (onload="this.__e=event") on
+// module preloads which a nonce-based CSP blocks, breaking hydration. Allow
+// inline scripts only in dev; production keeps the strict policy.
+const isDev = process.env.NODE_ENV !== 'production';
+const devScriptSrc = isDev ? ['unsafe-inline'] : [];
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: [vitePreprocess({})],
@@ -35,7 +41,7 @@ const config = {
       mode: 'auto',
       directives: {
         'default-src': ['self'],
-        'script-src': ['self', ...csp.scriptSrc, 'unsafe-hashes', 'unsafe-eval'],
+        'script-src': ['self', ...csp.scriptSrc, ...devScriptSrc, 'unsafe-hashes', 'unsafe-eval'],
         'style-src': ['self', 'unsafe-inline', ...csp.styleSrc],
         'style-src-elem': ['self', 'unsafe-inline', ...csp.styleSrc],
         'font-src': ['self', ...csp.fontSrc],

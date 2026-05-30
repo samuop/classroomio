@@ -3326,6 +3326,7 @@
   },
   "login": {
     "welcome": "Bienvenido de nuevo",
+    "sign_in_to_continue": "Inicia sesión para continuar",
     "email": "Tu correo electrónico",
     "password": "Tu contraseña",
     "forgot": "¿Olvidaste tu contraseña?",

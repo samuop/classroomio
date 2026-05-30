@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import BuyTokensCard from '$features/settings/components/ai-credits/buy-tokens-card.svelte';
   import TeamLeaderboard from '$features/settings/components/ai-credits/team-leaderboard.svelte';
   import UsageChart from '$features/settings/components/ai-credits/usage-chart.svelte';
   import UsageSummaryCards from '$features/settings/components/ai-credits/usage-summary-cards.svelte';
@@ -32,8 +31,9 @@
 
 <div class="ui:mx-auto flex w-full max-w-5xl flex-col gap-8 px-2 pb-12">
   <UsageSummaryCards usage={aiCreditsApi.usage} purchased={aiCreditsApi.purchased} />
-  <p class="ui:text-muted-foreground -mt-4 text-sm">{$t('settings.ai_credits.cost_note')}</p>
   <UsageChart usage={aiCreditsApi.usage} />
   <TeamLeaderboard leaderboard={aiCreditsApi.leaderboard} />
-  <BuyTokensCard onBeforeRedirect={() => aiCreditsApi.fetchAll()} />
+  <!-- BuyTokensCard removed: token top-ups go through ClassroomIO's Polar
+       checkout (not configured here). AI budget is managed per-org via the
+       aiTokenAllowance field instead. -->
 </div>

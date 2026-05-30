@@ -406,7 +406,7 @@ export const profile = pgTable(
     telegramChatId: bigint('telegram_chat_id', { mode: 'number' }),
     isEmailVerified: boolean('is_email_verified').default(false),
     verifiedAt: timestamp('verified_at', { withTimezone: true, mode: 'string' }),
-    locale: locale().default('en'),
+    locale: locale().default('es'),
     isRestricted: boolean('is_restricted').default(false).notNull()
   },
   (table) => [

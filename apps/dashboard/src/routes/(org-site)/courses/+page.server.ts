@@ -18,7 +18,13 @@ function normalizeTagsParam(rawTags: string | null): string[] {
 }
 
 export const load = async ({ parent, url }) => {
-  const { isOrgSite, orgSiteName, org } = await parent();
+  const { isOrgSite, orgSiteName, org, locals } = await parent();
+
+  // Public course catalogue is disabled: no open browsing without login.
+  // Logged-in users go to their dashboard/LMS; everyone else to login.
+  if (isOrgSite && org) {
+    throw redirect(307, locals?.user ? '/home' : '/login');
+  }
 
   if (!isOrgSite || !org) {
     throw redirect(307, '/');

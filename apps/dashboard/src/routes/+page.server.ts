@@ -1,46 +1,23 @@
-import { classroomio, type InferResponseType } from '$lib/utils/services/api';
-import { safeServerApi } from '$lib/utils/services/api/server';
-
-type GetPublicCoursesRequest = typeof classroomio.organization.courses.public.$get;
-type GetPublicCoursesSuccess = Extract<InferResponseType<GetPublicCoursesRequest>, { success: true }>;
+import { redirect } from '@sveltejs/kit';
 
 export const load = async ({ parent }) => {
-  const { isOrgSite, orgSiteName, org } = await parent();
+  const { isOrgSite, org, locals } = await parent();
 
-  if (!isOrgSite || !org) {
-    return {
-      isOrgSite: false as const,
-      org: null,
-      orgSiteName: '',
-      courses: [],
-      hasMoreCourses: false
-    };
+  // Public org site is disabled for this deployment: there is no open course
+  // catalogue. Send visitors straight to the dashboard/LMS (if logged in) or
+  // to the login page (the org admin/tutors assign courses; no self-serve).
+  if (isOrgSite && org) {
+    if (locals?.user) {
+      redirect(307, '/home');
+    }
+    redirect(307, '/login');
   }
-
-  const siteName = orgSiteName || org.siteName;
-  if (!siteName) {
-    return {
-      isOrgSite: true as const,
-      org,
-      orgSiteName,
-      courses: [],
-      hasMoreCourses: false
-    };
-  }
-
-  const coursesResult = await safeServerApi<GetPublicCoursesSuccess>(() =>
-    classroomio.organization.courses.public.$get({
-      query: { siteName }
-    })
-  );
-
-  const courseData = coursesResult.ok ? coursesResult.body.data : { courses: [], hasMoreCourses: false };
 
   return {
-    isOrgSite: true as const,
-    org,
-    orgSiteName,
-    courses: courseData.courses,
-    hasMoreCourses: courseData.hasMoreCourses
+    isOrgSite: false as const,
+    org: null,
+    orgSiteName: '',
+    courses: [],
+    hasMoreCourses: false
   };
 };

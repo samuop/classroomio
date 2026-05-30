@@ -54,6 +54,8 @@
     "dev": "tsc --watch",
     "db": "drizzle-kit",
     "db:reset": "tsx src/scripts/db-reset.ts --skip-seed",
+    "create-admin": "tsx src/scripts/create-admin.ts",
+    "set-allowance": "tsx src/scripts/set-allowance.ts",
     "db:setup": "tsx src/scripts/db-setup.ts",
     "db:setup:seed": "tsx src/scripts/db-setup.ts --seed",
     "db:exercise-backfill": "tsx src/scripts/backfill-exercise-course.ts",

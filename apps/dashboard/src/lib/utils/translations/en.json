@@ -345,6 +345,7 @@
   },
   "login": {
     "welcome": "Welcome back",
+    "sign_in_to_continue": "Sign in to continue",
     "email": "Your email",
     "password": "Your password",
     "forgot": "Forgot password?",

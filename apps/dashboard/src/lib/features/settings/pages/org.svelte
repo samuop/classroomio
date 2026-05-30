@@ -183,21 +183,7 @@
     </Field.Field>
   </Field.Set>
 
-  <Field.Separator />
-
-  <Field.Set>
-    <Field.Legend>{$t('settings.organization.organization_profile.custom_domain.heading')}</Field.Legend>
-    <Field.Description>{$t('settings.organization.organization_profile.custom_domain.sub_heading')}</Field.Description>
-    <Field.Description>{$t('settings.organization.organization_profile.custom_domain.body')}</Field.Description>
-    <Field.Field orientation="horizontal">
-      <Button variant="outline" onclick={() => gotoSettings('/domains')}>
-        {#if $isFreePlan}
-          <ZapIcon size={16} class="filled" />
-        {/if}
-        {$t('settings.organization.organization_profile.custom_domain.button')}
-      </Button>
-    </Field.Field>
-  </Field.Set>
+  <!-- Custom domain section removed: no public/custom domains in this deployment. -->
 
   <Field.Separator />
 
