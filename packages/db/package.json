@@ -55,6 +55,7 @@
     "db": "drizzle-kit",
     "db:reset": "tsx src/scripts/db-reset.ts --skip-seed",
     "create-admin": "tsx src/scripts/create-admin.ts",
+    "crear-empresa": "tsx src/scripts/crear-empresa.ts",
     "set-allowance": "tsx src/scripts/set-allowance.ts",
     "db:setup": "tsx src/scripts/db-setup.ts",
     "db:setup:seed": "tsx src/scripts/db-setup.ts --seed",
