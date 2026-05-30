@@ -1,19 +1,24 @@
 import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
-import { AIProvider, type AIProviderConfig, createModel } from '@cio/ai-assistant';
+import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 
 /**
  * Cheap models used specifically for title generation to minimize token cost.
+ * Google is resolved at call time from the GOOGLE_MODEL env (via
+ * resolveModelName) so it never points at an obsolete pinned name.
  */
-const TITLE_MODELS: Record<AIProvider, string> = {
+const TITLE_MODELS_STATIC: Record<Exclude<AIProvider, 'google'>, string> = {
   [AIProvider.OPENAI]: 'gpt-4o-mini',
   [AIProvider.ANTHROPIC]: 'claude-haiku-4-5-20251001',
-  [AIProvider.GOOGLE]: 'gemini-3.1-flash-lite',
   [AIProvider.MOONSHOT]: 'kimi-k2.6'
 };
 
+function titleModelFor(provider: AIProviderConfig['provider']): string {
+  return provider === AIProvider.GOOGLE ? resolveModelName(AIProvider.GOOGLE) : TITLE_MODELS_STATIC[provider];
+}
+
 function createTitleModel(config: AIProviderConfig) {
-  return createModel({ ...config, model: TITLE_MODELS[config.provider] });
+  return createModel({ ...config, model: titleModelFor(config.provider) });
 }
 
 /**

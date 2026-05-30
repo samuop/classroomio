@@ -11,8 +11,7 @@ import {
   PeopleIcon,
   SettingsIcon,
   SetupIcon,
-  TagIcon,
-  ZapIcon
+  TagIcon
 } from '@cio/ui/custom/moving-icons';
 
 import type { AccountOrg } from '$features/app/types';
@@ -183,15 +182,9 @@ export const baseNavConfig: NavItemConfig[] = [
     disableWhenNotAdmin: true,
     matchPattern: '^/org/[^/]+/api(/.*)?$'
   },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.zapier',
-    path: '/zapier',
-    icon: ZapIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/zapier(/.*)?$'
-  },
+  // Zapier hidden for this deployment: the feature is a "coming soon"
+  // placeholder (not implemented), so it's removed from the menu and blocked
+  // by URL via routes/(app)/org/[slug]/zapier/+layout.server.ts.
   {
     titleKey: 'org_navigation.settings',
     path: '/settings',

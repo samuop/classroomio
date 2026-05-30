@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const teacherStudentJoinedEmail = defineEmail({
   id: 'teacherStudentJoined',
-  subject: "You've got a new student 🎉!",
+  subject: '¡Tenés un nuevo alumno 🎉!',
   schema: z.object({
     courseName: z.string().min(1),
     studentName: z.string().min(1),
@@ -13,10 +13,10 @@ export const teacherStudentJoinedEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>Hi amazing tutor,</p>
-      <p>Congratulations 🎉, a new student: <strong>${fields.studentName} (${fields.studentEmail})</strong> has joined a course you are teaching: ${fields.courseName}</p>
-      <p>We hope they have a great experience learning from the best (YOU).</p>
-      <p>If you run into any issues, please don't fail to reach out to us, we'd love to make your teaching experience as easy as possible.</p>
+      <p>Hola,</p>
+      <p>¡Felicitaciones! 🎉 Un nuevo alumno: <strong>${fields.studentName} (${fields.studentEmail})</strong> se sumó a un curso que dictás: ${fields.courseName}</p>
+      <p>Esperamos que tenga una gran experiencia de aprendizaje.</p>
+      <p>Ante cualquier inconveniente, escribinos.</p>
     `;
 
     return getDefaultTemplate(content);

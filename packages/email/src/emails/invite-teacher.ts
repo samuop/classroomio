@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const inviteTeacherEmail = defineEmail({
   id: 'inviteTeacher',
-  subject: 'Join us on ClassroomIO 😃',
+  subject: 'Te invitaron a sumarte como instructor 😃',
   schema: z.object({
     email: z.string().email(),
     orgName: z.string().min(1),
@@ -16,11 +16,11 @@ export const inviteTeacherEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>Hey there,</p>
-      <p>You have been invited to join ${fields.orgName} on ClassroomIO as ${fields.roleName} 🎉🎉🎉.</p>
-      <p>This invite expires on ${fields.expiresAt} (UTC).</p>
+      <p>Hola,</p>
+      <p>Te invitaron a unirte a ${fields.orgName} como ${fields.roleName} 🎉🎉🎉.</p>
+      <p>Esta invitación vence el ${fields.expiresAt} (UTC).</p>
       <div>
-        <a class="button" href="${fields.inviteLink}">Accept Invitation</a>
+        <a class="button" href="${fields.inviteLink}">Aceptar invitación</a>
       </div>
     `;
 

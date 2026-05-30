@@ -14,31 +14,31 @@
 </script>
 
 <svelte:head>
-  <title>Forgot Password - ClassroomIO</title>
+  <title>Recuperar contraseña</title>
 </svelte:head>
 
 <AuthUI handleSubmit={() => forgotApi.submit(fields)} showOnlyContent={true} showLogo={!forgotApi.success}>
   {#if forgotApi.success}
     <div class="ui:flex ui:flex-col ui:items-center ui:justify-center ui:gap-4">
       <EmailSentIcon />
-      <Card.Title class="ui:text-xl">Email Sent!</Card.Title>
+      <Card.Title class="ui:text-xl">¡Correo enviado!</Card.Title>
       <p class="ui:text-center ui:text-sm ui:text-muted-foreground">
-        We have sent a confirmation email to <span class="ui:text-primary">{fields.email}</span>. Kindly check your
-        inbox to reset password or spam to reset your password.
+        Enviamos un correo de confirmación a <span class="ui:text-primary">{fields.email}</span>. Revisá tu bandeja de
+        entrada (o la carpeta de spam) para restablecer tu contraseña.
       </p>
     </div>
 
     <div class="ui:mt-6 ui:flex ui:w-full ui:items-center ui:justify-end">
-      <Button type="button" class="ui:w-full" onclick={() => goto(ROUTE.LOGIN)}>Okay</Button>
+      <Button type="button" class="ui:w-full" onclick={() => goto(ROUTE.LOGIN)}>Aceptar</Button>
     </div>
   {:else}
     <div class="ui:flex ui:flex-col ui:gap-6">
       <div>
-        <Card.Title class="ui:text-xl">Forgot Password</Card.Title>
-        <Card.Description class="ui:mt-2">We will send you a reset link to your email</Card.Description>
+        <Card.Title class="ui:text-xl">Recuperar contraseña</Card.Title>
+        <Card.Description class="ui:mt-2">Te enviaremos un enlace de recuperación a tu correo</Card.Description>
       </div>
       <Field.Field>
-        <Field.Label for="email">Your email</Field.Label>
+        <Field.Label for="email">Tu correo</Field.Label>
         <Field.Content>
           <Input
             id="email"
@@ -57,9 +57,9 @@
 
       <div class="ui:flex ui:w-full ui:flex-col ui:gap-2">
         <Button type="submit" disabled={forgotApi.isLoading} loading={forgotApi.isLoading} class="ui:w-full">
-          Reset Password
+          Enviar enlace
         </Button>
-        <Button type="button" variant="ghost" class="ui:w-full" onclick={() => goto(ROUTE.LOGIN)}>Cancel</Button>
+        <Button type="button" variant="ghost" class="ui:w-full" onclick={() => goto(ROUTE.LOGIN)}>Cancelar</Button>
       </div>
     </div>
   {/if}

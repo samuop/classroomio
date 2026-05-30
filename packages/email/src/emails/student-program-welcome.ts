@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const studentProgramWelcomeEmail = defineEmail({
   id: 'studentProgramWelcome',
-  subject: 'You have access to a program — sign in to get started',
+  subject: 'Ya tenés acceso a un programa — iniciá sesión para comenzar',
   schema: z.object({
     orgName: z.string().min(1),
     programName: z.string().min(1),
@@ -13,11 +13,11 @@ export const studentProgramWelcomeEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>Hi there,</p>
-      <p>You now have access to <strong>${fields.programName}</strong> in <strong>${fields.orgName}</strong>.</p>
-      <p><a href="${fields.loginUrl}">Sign in to ClassroomIO</a> to open the program and get started.</p>
-      <p>If you run into any issues, reach out to your instructor(s).</p>
-      <p>Cheers,</p>
+      <p>Hola,</p>
+      <p>Ya tenés acceso al programa <strong>${fields.programName}</strong> en <strong>${fields.orgName}</strong>.</p>
+      <p><a href="${fields.loginUrl}">Iniciá sesión</a> para abrir el programa y empezar.</p>
+      <p>Si tenés algún inconveniente, escribile a tu instructor.</p>
+      <p>Saludos,</p>
       <p>${fields.orgName}</p>
     `;
 

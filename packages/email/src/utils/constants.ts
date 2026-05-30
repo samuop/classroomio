@@ -23,4 +23,6 @@ export const EMAIL_IDS = [
 const DEFAULT_EMAIL_FROM = '"Best from ClassroomIO" <notify@mail.classroomio.com>';
 
 export const EMAIL_FROM = env.SMTP_SENDER || DEFAULT_EMAIL_FROM;
-export const EMAIL_REPLY_TO = '"Best from ClassroomIO" <help@classroomio.com>';
+// Reply-To follows the configured sender so replies reach the operator's own
+// inbox instead of ClassroomIO's. Falls back to the original default.
+export const EMAIL_REPLY_TO = env.SMTP_SENDER || '"Best from ClassroomIO" <help@classroomio.com>';

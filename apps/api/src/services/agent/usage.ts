@@ -36,6 +36,9 @@ const PLAN_TOKEN_ALLOWANCES: Record<string, number> = {
 // gemini-2.5-flash kept for backward compat with historical usage records.
 const MODEL_COST_MULTIPLIER: Record<string, number> = {
   'gemini-3.1-flash-lite': 1,
+  'gemini-flash-lite-latest': 1, // Google alias → newest stable Flash-Lite (baseline cost)
+  'gemini-flash-latest': 1.5, // Google alias → newest stable Flash (a bit pricier than Lite)
+  'gemini-2.5-flash-lite': 1,
   'gemini-2.5-flash': 1.5,
   'gpt-5.4-mini': 4,
   'claude-sonnet-4-6': 11,

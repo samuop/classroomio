@@ -27,7 +27,7 @@
   onMount(() => {
     if (token) return;
 
-    snackbar.error('Invalid Token');
+    snackbar.error('Enlace inválido o vencido');
 
     setTimeout(() => {
       goto(resolve('/login', {}));
@@ -48,7 +48,7 @@
 </script>
 
 <svelte:head>
-  <title>Reset Password - ClassroomIO</title>
+  <title>Nueva contraseña</title>
 </svelte:head>
 
 <AuthUI
@@ -60,11 +60,11 @@
 >
   <div class="ui:flex ui:flex-col ui:gap-6">
     <div>
-      <Card.Title class="ui:text-xl">New Password</Card.Title>
-      <Card.Description class="ui:mt-2">Enter your new password details</Card.Description>
+      <Card.Title class="ui:text-xl">Nueva contraseña</Card.Title>
+      <Card.Description class="ui:mt-2">Ingresá tu nueva contraseña</Card.Description>
     </div>
     <Field.Field>
-      <Field.Label for="password">Your Password</Field.Label>
+      <Field.Label for="password">Contraseña</Field.Label>
       <Field.Content>
         <Password
           id="password"
@@ -77,12 +77,12 @@
         {#if resetApi.errors.password}
           <Field.Error>{resetApi.errors.password}</Field.Error>
         {/if}
-        <Field.Description>Password must be more than 8 characters</Field.Description>
+        <Field.Description>La contraseña debe tener más de 8 caracteres</Field.Description>
       </Field.Content>
     </Field.Field>
 
     <Field.Field>
-      <Field.Label for="confirmPassword">Confirm Password</Field.Label>
+      <Field.Label for="confirmPassword">Confirmar contraseña</Field.Label>
       <Field.Content>
         <Password
           id="confirmPassword"
@@ -104,7 +104,7 @@
       loading={resetApi.isLoading}
       class="ui:w-full"
     >
-      Reset Password
+      Cambiar contraseña
     </Button>
   </div>
 </AuthUI>
