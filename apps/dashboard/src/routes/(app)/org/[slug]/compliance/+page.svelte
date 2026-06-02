@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { onMount } from 'svelte';
   import { t } from '$lib/utils/functions/translations';
   import { currentOrg } from '$lib/utils/store/org';
@@ -40,7 +41,7 @@
 </script>
 
 <svelte:head>
-  <title>{$t('compliance.title')} - ClassroomIO</title>
+  <title>{$t('compliance.title')} - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full">

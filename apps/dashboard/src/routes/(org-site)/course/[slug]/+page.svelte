@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
@@ -59,7 +60,7 @@
     };
   });
 
-  const orgName = $derived(data.org?.name ?? data.course?.org?.name ?? 'ClassroomIO');
+  const orgName = $derived(data.org?.name ?? data.course?.org?.name ?? brandName);
   const logoUrl = $derived(data.org?.avatarUrl ?? undefined);
 
   const courseJsonLd = $derived.by(() => {

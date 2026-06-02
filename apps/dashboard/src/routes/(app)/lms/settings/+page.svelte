@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { ProfilePage } from '$features/settings/pages';
   import { t } from '$lib/utils/functions/translations';
   import { Button } from '@cio/ui/base/button';
@@ -18,7 +19,7 @@
 </script>
 
 <svelte:head>
-  <title>Settings - ClassroomIO</title>
+  <title>Settings - {brandName}</title>
 </svelte:head>
 
 <Page.Header isSticky>

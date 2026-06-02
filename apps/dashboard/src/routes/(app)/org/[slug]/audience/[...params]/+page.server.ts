@@ -1,31 +1,14 @@
-import { classroomio, getApiHeaders, type InferResponseType } from '$lib/utils/services/api';
-import { safeServerApi } from '$lib/utils/services/api/server';
+import { redirect } from '@sveltejs/kit';
 
-type GetAudienceAnalyticsRequest = (typeof classroomio.organization.audience)[':userId']['analytics']['$get'];
-type GetAudienceAnalyticsSuccess = Extract<InferResponseType<GetAudienceAnalyticsRequest>, { success: true }>;
+// The audience member-detail view was consolidated into the unified learner
+// profile (org/[slug]/students/[profileId]). Redirect any old links there so
+// there is a single student profile across the app.
+export const load = async ({ params }) => {
+  const userId = params.params?.split('/')[0];
 
-export const load = async ({ params, parent, cookies }) => {
-  const { orgId } = await parent();
-  const paramParts = params.params?.split('/') ?? [];
-
-  const userId = paramParts[0];
-
-  if (!userId || !orgId) {
-    return {
-      userId,
-      orgId,
-      analytics: null
-    };
+  if (userId) {
+    redirect(307, `/org/${params.slug}/students/${userId}`);
   }
 
-  const result = await safeServerApi<GetAudienceAnalyticsSuccess>(() =>
-    classroomio.organization.audience[':userId'].analytics.$get({ param: { userId } }, getApiHeaders(cookies, orgId))
-  );
-  const analytics = result.ok ? result.body.data : null;
-
-  return {
-    userId,
-    orgId,
-    analytics
-  };
+  redirect(307, `/org/${params.slug}/audience`);
 };

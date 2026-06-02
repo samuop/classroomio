@@ -4,6 +4,7 @@
   import { PublicCoursePoweredBy } from '@cio/ui/custom/public-course';
   import { t } from '$lib/utils/functions/translations';
   import { currentOrg, isFreePlan } from '$lib/utils/store/org';
+  import { brandName, sourceCodeUrl } from '$lib/utils/branding';
   import { cn } from '@cio/ui/tools';
 
   type Props = {
@@ -37,17 +38,15 @@
     orgSlug={attributionOrgSlug}
     utmSource={sidebarUtmSource}
     label={$t('public_course.powered_by.label')}
-    brand={$t('public_course.powered_by.brand')}
+    brand={brandName}
+    brandHref={sourceCodeUrl}
     compact={showOnlyLogo}
     align={showOnlyLogo ? 'center' : 'start'}
     class={className}
   />
 {:else if $isFreePlan}
-  <a
-    href={`https://classroomio.com?utm_source=${$currentOrg.siteName}.classroomio.com`}
-    target="_blank"
-    class={cn('group fixed right-9 bottom-14 z-50 hover:no-underline', className)}
-  >
+  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external absolute URL from env -->
+  <a href={sourceCodeUrl} target="_blank" rel="noopener" class={cn('group fixed right-9 bottom-14 z-50 hover:no-underline', className)}>
     <span
       class={cn(
         'relative flex items-center gap-1 overflow-hidden rounded-md border border-gray-100 bg-white text-sm font-medium text-black shadow-sm transition duration-500 group-hover:border-blue-600 group-hover:bg-blue-600 group-hover:text-white dark:border-neutral-700 dark:bg-transparent dark:text-white',
@@ -62,7 +61,7 @@
       />
       <img src="/logo-192.png" alt="logo" class="h-[24px] opacity-100 group-hover:opacity-0" />
       {#if !showOnlyLogo}
-        {$t('course.navItem.landing_page.powered_by')} ClassroomIO
+        {$t('course.navItem.landing_page.powered_by')} {brandName}
       {/if}
     </span>
   </a>

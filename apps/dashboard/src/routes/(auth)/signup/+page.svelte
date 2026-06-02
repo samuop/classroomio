@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { untrack } from 'svelte';
   import { AuthUI, SenjaEmbed } from '$features/ui';
   import { SIGNUP_FIELDS } from '$lib/utils/constants/authentication';
@@ -174,7 +175,7 @@
 </script>
 
 <svelte:head>
-  <title>Join ClassroomIO</title>
+  <title>Join {brandName}</title>
 </svelte:head>
 
 <SenjaEmbed id="aa054658-1e15-4d00-8920-91f424326c4e" />

@@ -839,8 +839,13 @@ export async function getUserAnalytics(userId: string, orgId: string) {
     const completedLessons = coursesWithStats.reduce((acc, course) => acc + (course.lessons_completed || 0), 0);
     const overallCourseProgress = calcPercentageWithRounding(completedLessons, totalLessons);
 
+    // Each course's average_grade is already a 0–100 percentage, so the overall
+    // grade is a plain mean of those percentages — not another percentage-of.
+    // (Using calcPercentageWithRounding here multiplied by 100 a second time,
+    // producing impossible values like 7100%.)
     const allGrades = sumArrObject(coursesWithStats, 'average_grade');
-    const overallAverageGrade = calcPercentageWithRounding(allGrades, coursesWithStats.length);
+    const overallAverageGrade =
+      coursesWithStats.length > 0 ? Math.round(allGrades / coursesWithStats.length) : 0;
 
     return {
       user: {

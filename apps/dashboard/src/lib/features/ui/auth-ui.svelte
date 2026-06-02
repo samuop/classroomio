@@ -4,6 +4,7 @@
   import * as Avatar from '@cio/ui/base/avatar';
   import { t } from '$lib/utils/functions/translations';
   import { currentOrg } from '$lib/utils/store/org';
+  import { brandName } from '$lib/utils/branding';
   import { GoogleIconColored } from '$features/ui/icons';
   import { authClient } from '$lib/utils/services/auth/client';
   import * as Card from '@cio/ui/base/card';
@@ -90,9 +91,9 @@
         <Avatar.Root>
           <Avatar.Image
             src={$currentOrg.avatarUrl ? $currentOrg.avatarUrl : '/logo-192.png'}
-            alt={$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}
+            alt={$currentOrg.name ? $currentOrg.name : brandName}
           />
-          <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}</Avatar.Fallback>
+          <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : brandName}</Avatar.Fallback>
         </Avatar.Root>
 
         {#if !showOnlyContent}

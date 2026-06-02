@@ -84,13 +84,9 @@ export const baseNavConfig: NavItemConfig[] = [
     path: '/stats',
     icon: ChartColumnIcon,
     useHashUrl: true,
-    matchPattern: '^/org/[^/]+/(analytics|compliance)(/.*)?$',
+    matchPattern: '^/org/[^/]+/compliance(/.*)?$',
     items: [
-      {
-        titleKey: 'org_navigation.analytics',
-        path: '/analytics',
-        matchPattern: '^/org/[^/]+/analytics(/.*)?$'
-      },
+      // Analytics is disabled for this deployment; only Compliance remains.
       {
         titleKey: 'org_navigation.compliance',
         path: '/compliance',

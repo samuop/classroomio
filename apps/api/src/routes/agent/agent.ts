@@ -52,8 +52,7 @@ import {
   type AgentContext,
   type AgentStatus
 } from '@cio/ai-assistant';
-import { createModel, getProviderConfigForProvider, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
-import { AGENT_MODELS, DEFAULT_PICKER_MODEL_ID } from '@cio/utils/agent-models';
+import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { buildSystemPrompt, buildContextMessage } from '@cio/ai-assistant/prompt';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { redis } from '@api/utils/redis/redis';
@@ -386,24 +385,21 @@ const agentCoreRouter = new Hono()
     const orgId = c.req.header('cio-org-id')!;
 
     try {
-      const { courseId, conversationId, messages, context, model: requestedModel } = c.req.valid('json');
+      const { courseId, conversationId, messages, context } = c.req.valid('json');
 
       const isTeamMember = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
       const role = isTeamMember ? AgentRole.TEACHER : AgentRole.STUDENT;
 
-      // Students always use the platform default; admins can pick. Forcing the
-      // default avoids exposing premium models to learners and keeps per-message
-      // cost predictable for fair-use accounting.
-      const modelId =
-        role === AgentRole.STUDENT ? DEFAULT_PICKER_MODEL_ID : (requestedModel ?? DEFAULT_PICKER_MODEL_ID);
-      const modelDescriptor = AGENT_MODELS[modelId];
-      const baseProviderConfig = getProviderConfigForProvider(modelDescriptor.provider as AIProvider);
+      // The model/provider is an operator decision, not a user one: it is chosen
+      // entirely by which API key is set in the environment (see
+      // pickAnyConfiguredProvider). Any `model` sent by the client is ignored so
+      // that switching the platform's AI provider is a single .env change and the
+      // client never learns which model is in use.
+      const providerConfig = pickAnyConfiguredProvider();
 
-      if (!baseProviderConfig) {
-        throw new AppError(`AI assistant is not configured for model "${modelId}"`, 'AI_NOT_CONFIGURED', 503);
+      if (!providerConfig) {
+        throw new AppError('AI assistant is not configured', 'AI_NOT_CONFIGURED', 503);
       }
-
-      const providerConfig = { ...baseProviderConfig, model: modelDescriptor.backendModelId };
 
       const [courseRow] = await db
         .select({
@@ -433,10 +429,6 @@ const agentCoreRouter = new Hono()
       }
 
       const isOrgPaid = role === AgentRole.TEACHER ? await isOrgOnPaidPlan(orgId) : false;
-
-      if (role === AgentRole.TEACHER && !modelDescriptor.isFree && !isOrgPaid) {
-        throw new AppError('Upgrade required to use this AI model', 'UPGRADE_REQUIRED', 403);
-      }
 
       // Students go through tutor policy (workspace toggle, pool, per-learner cap).
       // Teachers continue to use the existing pool-only check.

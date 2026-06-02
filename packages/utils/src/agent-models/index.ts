@@ -22,11 +22,12 @@ export const AGENT_MODEL_IDS = [
   // Kept for backend/historical compatibility — not shown in the picker.
   'gpt-5.4-mini',
   'claude-sonnet-3-5',
-  'kimi-k2.6'
+  'kimi-k2.6',
+  'minimax-m2.7'
 ] as const;
 
 export type AgentModelId = (typeof AGENT_MODEL_IDS)[number];
-export type AgentModelProvider = 'google' | 'openai' | 'anthropic' | 'moonshot';
+export type AgentModelProvider = 'google' | 'openai' | 'anthropic' | 'moonshot' | 'minimax';
 export type AgentModelCostTier = 'low' | 'high';
 
 export interface AgentModelDescriptor {
@@ -100,6 +101,14 @@ export const AGENT_MODELS: Record<AgentModelId, AgentModelDescriptor> = {
     isFree: true,
     costTier: 'low',
     contextWindow: 262_144
+  },
+  'minimax-m2.7': {
+    provider: 'minimax',
+    label: 'MiniMax M2.7',
+    backendModelId: 'MiniMax-M2.7',
+    isFree: false,
+    costTier: 'low',
+    contextWindow: 204_800
   }
 };
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { onMount } from 'svelte';
   import { resolve } from '$app/paths';
   import type { Component } from 'svelte';
@@ -26,7 +27,7 @@
   const hasSetupError = $derived(!appInitApi.loading && !!appInitApi.error);
 
   const pageTitle = $derived(
-    data.isOrgSite && data.org ? data.org.name : "ClassroomIO - The Course Platform That's Actually Easy To Use"
+    data.isOrgSite && data.org ? data.org.name : brandName
   );
 
   const authAction = $derived(

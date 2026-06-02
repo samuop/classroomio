@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { AuthUI } from '$features/ui';
   import { LOGIN_FIELDS } from '$lib/utils/constants/authentication';
   import { t } from '$lib/utils/functions/translations';
@@ -124,7 +125,7 @@
 </script>
 
 <svelte:head>
-  <title>Welcome back to {$currentOrg.name || 'ClassroomIO'}</title>
+  <title>Welcome back to {$currentOrg.name || brandName}</title>
 </svelte:head>
 
 {#snippet getPasswordAuthAlternative()}

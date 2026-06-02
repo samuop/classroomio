@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { t } from '$lib/utils/functions/translations';
@@ -47,7 +48,7 @@
 </script>
 
 <svelte:head>
-  <title>Email Verification Error - ClassroomIO</title>
+  <title>Email Verification Error - {brandName}</title>
   <meta name="description" content="There was an issue verifying your email address." />
 </svelte:head>
 

@@ -23,6 +23,11 @@ export function setupCloudAnalytics(user?: PosthogBootstrapUser) {
 }
 
 export function setupAnalyticsBasedOnLicense(user?: PosthogBootstrapUser) {
+  // Self-hosted deployments never load third-party tracking (PostHog/Umami/UserJot).
+  if (PUBLIC_IS_SELFHOSTED === 'true') {
+    return;
+  }
+
   if (licenseApi.hasAccess('no-tracking')) {
     return;
   }

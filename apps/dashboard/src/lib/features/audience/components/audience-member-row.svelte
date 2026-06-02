@@ -5,6 +5,8 @@
   import { Badge } from '@cio/ui/base/badge';
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import EllipsisVerticalIcon from '@lucide/svelte/icons/ellipsis-vertical';
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import type { OrganizationAudienceMember } from '$features/org/utils/types';
   import { t } from '$lib/utils/functions/translations';
   import {
@@ -17,6 +19,7 @@
   interface Props {
     row: OrganizationAudienceMember;
     memberDetailHref: string | null;
+    studentRecordPath: string | null;
     selected: boolean;
     onToggleSelect: () => void;
     inviteActionEmail: string | null;
@@ -30,6 +33,7 @@
   let {
     row,
     memberDetailHref,
+    studentRecordPath,
     selected,
     onToggleSelect,
     inviteActionEmail,
@@ -44,7 +48,7 @@
     !row.profileId && (canResendAudienceInvite(row.status) || canRevokeAudienceInvite(row.status))
   );
   const isActionDisabled = $derived(inviteActionEmail === row.email || deletingMemberId === String(row.id));
-  const showRowActions = $derived(showInviteActions || canDeleteMembers);
+  const showRowActions = $derived(showInviteActions || canDeleteMembers || !!studentRecordPath);
 </script>
 
 <Table.Row>
@@ -81,6 +85,11 @@
           <EllipsisVerticalIcon class="ui:size-4 ui:text-muted-foreground" />
         </DropdownMenu.Trigger>
         <DropdownMenu.Content align="end">
+          {#if studentRecordPath}
+            <DropdownMenu.Item onclick={() => goto(resolve(studentRecordPath, {}))}>
+              {$t('student_overview.view_full_record')}
+            </DropdownMenu.Item>
+          {/if}
           {#if canResendAudienceInvite(row.status)}
             <DropdownMenu.Item disabled={isActionDisabled} onclick={() => onResendInvite(row.email)}>
               {$t('audience.invite.resend')}

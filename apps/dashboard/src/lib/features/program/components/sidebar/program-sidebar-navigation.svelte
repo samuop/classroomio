@@ -3,7 +3,14 @@
   import { resolve } from '$app/paths';
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { BackButton } from '@cio/ui';
-  import { HoverableItem, NewsFeedIcon, CourseIcon, PeopleIcon, SettingsIcon } from '@cio/ui/custom/moving-icons';
+  import {
+    HoverableItem,
+    NewsFeedIcon,
+    CourseIcon,
+    PeopleIcon,
+    SettingsIcon,
+    ChartColumnIcon
+  } from '@cio/ui/custom/moving-icons';
   import { t } from '$lib/utils/functions/translations';
   import { currentOrgPath, isOrgAdmin } from '$lib/utils/store/org';
   import { isStudentExperience } from '$lib/utils/store/app';
@@ -56,6 +63,14 @@
         url: `/programs/${id}/people`,
         isActive: currentPath.endsWith('/people'),
         icon: PeopleIcon,
+        show: () => canManageMembers
+      },
+      {
+        id: 'progress',
+        title: $t('program_progress.tab_title') || 'Progress',
+        url: `/programs/${id}/progress`,
+        isActive: currentPath.endsWith('/progress'),
+        icon: ChartColumnIcon,
         show: () => canManageMembers
       },
       {

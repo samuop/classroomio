@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { AskCommunityPage } from '$features/community/pages';
   import { BackButton } from '@cio/ui';
   import * as Page from '@cio/ui/base/page';
@@ -10,7 +11,7 @@
 </script>
 
 <svelte:head>
-  <title>Ask the Community - ClassroomIO</title>
+  <title>Ask the Community - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-[90%]!">

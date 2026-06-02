@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { LandingpagePage } from '$features/settings/pages';
   import { VisitOrgSiteButton } from '$features/ui';
   import { t } from '$lib/utils/functions/translations';
@@ -6,7 +7,7 @@
 </script>
 
 <svelte:head>
-  <title>Landing Page Settings - ClassroomIO</title>
+  <title>Landing Page Settings - {brandName}</title>
 </svelte:head>
 
 <Page.Header isSticky>

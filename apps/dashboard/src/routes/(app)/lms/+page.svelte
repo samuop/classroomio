@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { onMount } from 'svelte';
   import { DashboardPage } from '$features/lms/pages';
   import PendingInviteModal from '$features/lms/components/pending-invite-modal.svelte';
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-  <title>Student Dashboard - ClassroomIO</title>
+  <title>Student Dashboard - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-full max-w-4xl">

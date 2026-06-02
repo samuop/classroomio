@@ -7,7 +7,8 @@ import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from
 const TEXT_GEN_MODELS_STATIC: Record<Exclude<AIProvider, 'google'>, string> = {
   [AIProvider.OPENAI]: 'gpt-4o-mini',
   [AIProvider.ANTHROPIC]: 'claude-haiku-4-5-20251001',
-  [AIProvider.MOONSHOT]: 'kimi-k2.6'
+  [AIProvider.MOONSHOT]: 'kimi-k2.6',
+  [AIProvider.MINIMAX]: 'MiniMax-M2.7'
 };
 
 function textGenModelFor(provider: AIProviderConfig['provider']): string {

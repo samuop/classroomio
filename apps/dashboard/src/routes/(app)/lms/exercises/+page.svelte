@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { ExercisesPage } from '$features/lms/pages';
   import { t } from '$lib/utils/functions/translations';
   import * as Page from '@cio/ui/base/page';
 </script>
 
 <svelte:head>
-  <title>Exercises - ClassroomIO</title>
+  <title>Exercises - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full">

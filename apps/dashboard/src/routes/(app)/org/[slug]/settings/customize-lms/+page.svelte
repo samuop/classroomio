@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { CustomizeLmsPage } from '$features/settings/pages';
   import { t } from '$lib/utils/functions/translations';
   import { Button } from '@cio/ui/base/button';
@@ -18,7 +19,7 @@
 </script>
 
 <svelte:head>
-  <title>Customize LMS - ClassroomIO</title>
+  <title>Customize LMS - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full md:max-w-4xl lg:mx-auto">

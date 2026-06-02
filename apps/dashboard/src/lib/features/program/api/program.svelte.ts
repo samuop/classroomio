@@ -1,5 +1,12 @@
 import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
-import type { Program, ProgramDetail, ProgramMember, ProgramCourse, ProgramNewsfeed } from '../utils/types';
+import type {
+  Program,
+  ProgramDetail,
+  ProgramMember,
+  ProgramCourse,
+  ProgramNewsfeed,
+  ProgramProgress
+} from '../utils/types';
 import type {
   TCreateProgram,
   TUpdateProgram,
@@ -21,6 +28,7 @@ class ProgramApi extends BaseApiWithErrors {
   members = $state<ProgramMember[]>([]);
   courses = $state<ProgramCourse[]>([]);
   newsfeed = $state<ProgramNewsfeed | null>(null);
+  progress = $state<ProgramProgress | null>(null);
   isProgramShellLoading = $state(false);
   currentProgramId = $state<string | null>(null);
 
@@ -29,6 +37,7 @@ class ProgramApi extends BaseApiWithErrors {
   loadedCoursesProgramId = $state<string | null>(null);
   loadedCoursesStudentExperience = $state<boolean | null>(null);
   loadedNewsfeedProgramId = $state<string | null>(null);
+  loadedProgressProgramId = $state<string | null>(null);
 
   syncProgramCourseCount(programId: string, courseCount: number) {
     this.programs = this.programs.map((program) => (program.id === programId ? { ...program, courseCount } : program));
@@ -60,17 +69,32 @@ class ProgramApi extends BaseApiWithErrors {
     });
   }
 
+  async getProgress(programId: string, force = false) {
+    if (!force && this.loadedProgressProgramId === programId) return;
+
+    await this.execute<(typeof classroomio.program)[':programId']['progress']['$get']>({
+      requestFn: () => classroomio.program[':programId'].progress.$get({ param: { programId } }),
+      onSuccess: (data) => {
+        this.progress = data.data;
+        this.loadedProgressProgramId = programId;
+      },
+      logContext: 'getProgramProgress'
+    });
+  }
+
   resetProgramShell(programId?: string) {
     this.currentProgramId = programId ?? null;
     this.program = null;
     this.members = [];
     this.courses = [];
     this.newsfeed = null;
+    this.progress = null;
     this.loadedProgramId = null;
     this.loadedMembersProgramId = null;
     this.loadedCoursesProgramId = null;
     this.loadedCoursesStudentExperience = null;
     this.loadedNewsfeedProgramId = null;
+    this.loadedProgressProgramId = null;
   }
 
   async ensureProgramShell(programId: string, force = false) {

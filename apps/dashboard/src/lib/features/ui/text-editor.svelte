@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Editor } from '@cio/ui/custom/editor';
   import type { HTMLContent, TiptapEditor } from '@cio/ui/custom/editor';
+  import { brandName } from '$lib/utils/branding';
 
   interface Props {
     placeholder?: string | ((node: any) => string);
@@ -35,7 +36,7 @@
     editableStorageKey = 'edra-editable',
     class: className = '',
     editorClass = '',
-    placeholder = 'Welcome to ClassroomIO',
+    placeholder = `Welcome to ${brandName}`,
     onChange,
     onReady,
     onEditorDestroy

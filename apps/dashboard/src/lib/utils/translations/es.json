@@ -466,6 +466,49 @@
     "required": "Actualización requerida",
     "enterprise_required": "Esta característica requiere un plan Enterprise."
   },
+  "legal": {
+    "menu_link": "Acerca de y Licencia",
+    "title": "Acerca de y Licencia",
+    "subtitle": "Atribución y código fuente de esta plataforma.",
+    "attribution_heading": "Acerca de esta plataforma",
+    "attribution_body": "{brand} es un fork personalizado de ClassroomIO, un sistema de gestión de aprendizaje de código abierto. Ha sido modificado y se opera de forma independiente; los problemas de esta instancia no son responsabilidad del proyecto original ClassroomIO.",
+    "license_heading": "Licencia",
+    "license_body": "Este software se distribuye bajo la",
+    "source_heading": "Código fuente",
+    "source_body": "Conforme a la AGPL-3.0, el código fuente de esta versión modificada está disponible para sus usuarios:",
+    "source_this": "Código de esta instancia",
+    "source_upstream": "Proyecto original",
+    "contact_heading": "Contacto"
+  },
+  "student_overview": {
+    "courses": "Cursos",
+    "programs": "Programas",
+    "lessons": "Lecciones",
+    "exercises": "Ejercicios",
+    "completed": "Completado",
+    "no_courses": "Este estudiante aún no está inscrito en ningún curso.",
+    "courses_enrolled": "Cursos inscritos",
+    "courses_enrolled_description": "Cursos donde es estudiante",
+    "courses_completed": "Cursos completados",
+    "courses_completed_description": "Todas las lecciones finalizadas",
+    "average_progress": "Progreso promedio",
+    "average_progress_description": "En todos los cursos inscritos",
+    "average_grade": "Calificación promedio",
+    "average_grade_description": "En todos los cursos inscritos",
+    "export_csv": "Exportar CSV",
+    "view_full_record": "Ver expediente completo",
+    "yes": "Sí",
+    "no": "No",
+    "export": {
+      "course": "Curso",
+      "progress": "Progreso",
+      "lessons": "Lecciones",
+      "exercises": "Ejercicios",
+      "grade": "Calificación promedio",
+      "completed": "Completado",
+      "certificate": "Certificado obtenido"
+    }
+  },
   "analytics": {
     "title": "Analítica",
     "courses": "Cursos",
@@ -658,8 +701,8 @@
     },
     "page_subtitle": "See who belongs to your org, who is learning, who is invited, and how to reach them.",
     "user_analytics": {
-      "title": "Learner profile",
-      "page_subtitle": "Progress, grades, and activity across their courses."
+      "title": "Perfil del alumno",
+      "page_subtitle": "Progreso, calificaciones y actividad en todos sus cursos."
     }
   },
   "community": {
@@ -1108,7 +1151,7 @@
           "audit_actor": "Actor",
           "audit_ip": "IP",
           "scan_qr": "Escanear QR",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "[[brand]].com",
           "snackbar_invite_link_copied": "Enlace de invitación copiado",
           "snackbar_invite_link_regenerated": "Se ha generado un nuevo enlace de invitación.",
           "snackbar_failed_generate_link": "No se pudo generar el enlace de invitación",
@@ -2148,7 +2191,7 @@
     },
     "creator": {
       "heading": "¿Qué curso quieres crear?",
-      "placeholder": "Pídele a ClassroomIO que cree un curso para ti...",
+      "placeholder": "Pídele a [[brand]] que cree un curso para ti...",
       "type": {
         "self_paced": "a tu propio ritmo",
         "live_class": "Clase en vivo"
@@ -2489,7 +2532,7 @@
     "discussion": "Discusión",
     "people": "gente",
     "goto_lms": "Ir a LMS",
-    "goto_home": "Ir a la página de inicio de ClassroomIO",
+    "goto_home": "Ir a la página de inicio de [[brand]]",
     "login": "Iniciar sesión",
     "signup": "Regístrate",
     "redirecting": "Redireccionando",
@@ -2590,7 +2633,7 @@
     "compliance": "Cumplimiento"
   },
   "media_manager": {
-    "page_title": "Administrador de medios - ClassroomIO",
+    "page_title": "Administrador de medios - [[brand]]",
     "heading": "Gerente de Medios",
     "empty": "No se encontraron activos",
     "usage": {
@@ -2724,7 +2767,7 @@
       "provider": "Usamos Polar para ayudarte a gestionar tu facturación",
       "open_billing": "Facturación abierta",
       "error": "Se produjo un error al abrir la facturación.",
-      "page_subtitle": "Your plan, billing portal, and how you pay for ClassroomIO.",
+      "page_subtitle": "Your plan, billing portal, and how you pay for [[brand]].",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits usados este mes",
       "ai_bonus_credits": "AI credits de bonificación disponibles"
@@ -2732,7 +2775,7 @@
     "integrations": {
       "heading": "Telegrama",
       "sub_heading": "Conecte su cuenta a Telegram para recibir notificaciones de cualquier cambio dentro de la aplicación.",
-      "step_authenticate": "Paso 1: autentica tu cuenta a través del bot ClassroomIO.",
+      "step_authenticate": "Paso 1: autentica tu cuenta a través del bot [[brand]].",
       "open_bot_button": "Abrir robot",
       "step_chatId": "Paso 2: Ingrese el ID de chat que le proporcionó el bot.",
       "connect_button": "Conectar",
@@ -3052,7 +3095,7 @@
       "gallery": {
         "heading": "Temas populares",
         "description": "Creado con funciones principales que puedes personalizar fácilmente, sin necesidad de codificación.",
-        "by_classroomio": "por ClassroomIO",
+        "by_classroomio": "por [[brand]]",
         "add": "Añadir",
         "upgrade": "Actualizar",
         "apply_theme": "Aplicar tema",
@@ -3125,7 +3168,7 @@
         "accepted": "Aceptado:",
         "validation_error": "El tamaño del archivo excede el límite máximo:"
       },
-      "page_subtitle": "Your name, email, and how you appear wherever you work in ClassroomIO."
+      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]]."
     },
     "tabs": {
       "profile_tab": "Perfil",
@@ -3484,7 +3527,7 @@
     "snackbar_error": "error al enviar código"
   },
   "public_courses": {
-    "page_title": "Cursos - ClassroomIO",
+    "page_title": "Cursos - [[brand]]",
     "heading": "Cursos",
     "subtitle": "Explorar todos los cursos publicados",
     "clear_filters": "Borrar filtros",
@@ -3551,7 +3594,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Únase a {orgName} en ClassroomIO",
+      "page_title": "Únase a {orgName} en [[brand]]",
       "invitation_student": "Has sido invitado a {orgName} como estudiante.",
       "invitation_teacher": "Has sido invitado a {orgName} como profesor.",
       "invitation_admin": "Has sido invitado a {orgName} como administrador.",
@@ -3579,20 +3622,20 @@
         "title": "Configuración del cliente",
         "description": "Utilice una clave con ámbito de organización por integración. Si se rota o revoca una clave, el cliente deja de funcionar hasta que se configura el nuevo secreto.",
         "claude_code_description": "Registra `@classroomio/mcp` con Claude Code utilizando la clave de alcance organizacional generada.",
-        "codex_description": "Agrega el servidor ClassroomIO MCP al Codex con la misma clave de ámbito de organización.",
+        "codex_description": "Agrega el servidor [[brand]] MCP al Codex con la misma clave de ámbito de organización.",
         "cursor_description": "Pegue esto en `~/.cursor/mcp.json` o en la configuración MCP de su espacio de trabajo.",
         "opencode_description": "Agregue esto a `opencode.json` en la raíz del proyecto o a `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "Claves MCP",
-        "description": "Estas claves autentican la organización actual cuando un cliente MCP llama a ClassroomIO a través de `@classroomio/mcp`.",
+        "description": "Estas claves autentican la organización actual cuando un cliente MCP llama a [[brand]] a través de `@classroomio/mcp`.",
         "generate": "Generar clave MCP",
         "secret_once": "Este secreto se muestra una vez. Cópielo en su cliente MCP ahora.",
         "modal": {
           "title": "Create MCP key",
           "description": "Choose a name for this MCP key before it is generated.",
           "name_label": "Key name",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "[[brand]] OpenCode",
           "cancel": "Cancel",
           "save": "Create key"
         }
@@ -3608,17 +3651,17 @@
         "rate_limits_description": "Solicitudes de lectura/escritura/publicación permitidas por minuto.",
         "used_label": "Usado:"
       },
-      "page_subtitle": "Connect AI tools to ClassroomIO with org-scoped keys you can rotate anytime."
+      "page_subtitle": "Connect AI tools to [[brand]] with org-scoped keys you can rotate anytime."
     },
     "api": {
-      "subtitle": "Manage API keys to integrate with the ClassroomIO public API.",
+      "subtitle": "Manage API keys to integrate with the [[brand]] public API.",
       "keys": {
         "title": "API keys",
-        "description": "These keys authenticate the current organization when calling the ClassroomIO public API.",
+        "description": "These keys authenticate the current organization when calling the [[brand]] public API.",
         "generate": "Generate API key",
         "secret_once": "This secret is shown once. Copy it and store it securely.",
         "empty_title": "No API keys yet",
-        "empty_description": "Create the first org-scoped API key to use the ClassroomIO public API.",
+        "empty_description": "Create the first org-scoped API key to use the [[brand]] public API.",
         "modal": {
           "title": "Create API key",
           "description": "Choose a name for this API key before it is generated.",
@@ -3664,8 +3707,25 @@
       "disabled_description": "Solo los administradores de la organización pueden crear, rotar o revocar claves de automatización. Los profesores pueden revisar las instrucciones de configuración aquí."
     },
     "zapier": {
-      "page_subtitle": "Automate ClassroomIO with thousands of apps through Zapier. Coming soon."
+      "page_subtitle": "Automate [[brand]] with thousands of apps through Zapier. Coming soon."
     }
+  },
+  "program_progress": {
+    "tab_title": "Progreso",
+    "export_csv": "Exportar CSV",
+    "member": "Miembro",
+    "email": "Correo",
+    "overall": "Total",
+    "card_avg_progress": "Progreso promedio",
+    "card_avg_progress_description": "En todos los alumnos y cursos",
+    "card_members": "Alumnos",
+    "card_members_description": "Inscritos en este programa",
+    "card_courses": "Cursos",
+    "card_courses_description": "En este programa",
+    "card_completed": "Completados",
+    "card_completed_description": "Pares alumno-curso al 100%",
+    "empty_title": "Aún no hay alumnos",
+    "empty": "Agrega alumnos a este programa para ver su progreso."
   },
   "programs": {
     "heading": "Programas",

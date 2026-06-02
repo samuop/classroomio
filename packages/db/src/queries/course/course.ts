@@ -593,6 +593,56 @@ export async function getCourseProgress(
   }
 }
 
+export type ProfileEnrolledCourse = {
+  courseId: string;
+  courseTitle: string;
+  groupMemberId: string;
+  roleId: number;
+  enrolledAt: string | null;
+  certificateEarnedAt: string | null;
+};
+
+/**
+ * Lists every course a profile is enrolled in within an org, with the
+ * membership row needed to compute per-course progress. Powers the student 360
+ * view (compose with getCourseProgress per course).
+ * @param profileId Profile ID
+ * @param organizationId Restrict to courses in this organization
+ */
+export async function getProfileEnrolledCourses(
+  profileId: string,
+  organizationId: string
+): Promise<ProfileEnrolledCourse[]> {
+  try {
+    const rows = await db
+      .select({
+        courseId: schema.course.id,
+        courseTitle: schema.course.title,
+        groupMemberId: schema.groupmember.id,
+        roleId: schema.groupmember.roleId,
+        enrolledAt: schema.groupmember.createdAt,
+        certificateEarnedAt: schema.groupmember.certificateEarnedAt
+      })
+      .from(schema.groupmember)
+      .innerJoin(schema.course, eq(schema.course.groupId, schema.groupmember.groupId))
+      .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+      .where(and(eq(schema.groupmember.profileId, profileId), eq(schema.group.organizationId, organizationId)))
+      .orderBy(desc(schema.groupmember.createdAt));
+
+    return rows.map((row) => ({
+      courseId: row.courseId,
+      courseTitle: row.courseTitle ?? '',
+      groupMemberId: row.groupMemberId,
+      roleId: Number(row.roleId),
+      enrolledAt: row.enrolledAt ?? null,
+      certificateEarnedAt: row.certificateEarnedAt ?? null
+    }));
+  } catch (error) {
+    console.error('getProfileEnrolledCourses error:', error);
+    throw new Error(`Failed to get enrolled courses: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 /** Course + org fields needed for certification email and threshold rules */
 export type TCourseCertificationRow = {
   type: string | null;

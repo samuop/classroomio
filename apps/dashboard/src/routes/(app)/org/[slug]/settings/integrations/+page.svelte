@@ -1,11 +1,12 @@
 <script>
+  import { brandName } from '$lib/utils/branding';
   import { IntegrationsPage } from '$features/settings/pages';
   import { t } from '$lib/utils/functions/translations';
   import * as Page from '@cio/ui/base/page';
 </script>
 
 <svelte:head>
-  <title>Integrations - ClassroomIO</title>
+  <title>Integrations - {brandName}</title>
 </svelte:head>
 
 <Page.Header>

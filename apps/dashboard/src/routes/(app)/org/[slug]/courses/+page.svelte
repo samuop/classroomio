@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { CoursesPage } from '$features/course/pages';
   import { CreateCourseButton, CourseFilterPopover } from '$features/course/components';
   import { courseMetaDeta } from '$features/course/utils/store';
@@ -202,7 +203,7 @@
 </script>
 
 <svelte:head>
-  <title>Courses - ClassroomIO</title>
+  <title>Courses - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full">

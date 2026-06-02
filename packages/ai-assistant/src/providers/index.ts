@@ -13,8 +13,12 @@ const PROVIDER_MODEL_ENV: Record<AIProvider, string> = {
   [AIProvider.OPENAI]: 'OPENAI_MODEL',
   [AIProvider.ANTHROPIC]: 'ANTHROPIC_MODEL',
   [AIProvider.GOOGLE]: 'GOOGLE_MODEL',
-  [AIProvider.MOONSHOT]: 'MOONSHOT_MODEL'
+  [AIProvider.MOONSHOT]: 'MOONSHOT_MODEL',
+  [AIProvider.MINIMAX]: 'MINIMAX_MODEL'
 };
+
+/** MiniMax exposes an OpenAI-compatible endpoint, so we reuse @ai-sdk/openai with this base URL. */
+const MINIMAX_BASE_URL = 'https://api.minimax.io/v1';
 
 /**
  * Built-in fallbacks used when the env override is unset.
@@ -28,14 +32,16 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   [AIProvider.OPENAI]: 'gpt-5.4-mini',
   [AIProvider.ANTHROPIC]: 'claude-sonnet-4-20250514',
   [AIProvider.GOOGLE]: 'gemini-flash-lite-latest',
-  [AIProvider.MOONSHOT]: 'kimi-k2.6'
+  [AIProvider.MOONSHOT]: 'kimi-k2.6',
+  [AIProvider.MINIMAX]: 'MiniMax-M2.7'
 };
 
 const PROVIDER_API_KEY_ENV: Record<AIProvider, string> = {
   [AIProvider.OPENAI]: 'OPENAI_API_KEY',
   [AIProvider.ANTHROPIC]: 'ANTHROPIC_API_KEY',
   [AIProvider.GOOGLE]: 'GOOGLE_API_KEY',
-  [AIProvider.MOONSHOT]: 'MOONSHOT_API_KEY'
+  [AIProvider.MOONSHOT]: 'MOONSHOT_API_KEY',
+  [AIProvider.MINIMAX]: 'MINIMAX_API_KEY'
 };
 
 /**
@@ -72,6 +78,11 @@ export function createModel(config: AIProviderConfig): LanguageModel {
       const moonshot = createMoonshotAI({ apiKey: config.apiKey });
       return moonshot(modelName);
     }
+    case AIProvider.MINIMAX: {
+      // MiniMax is OpenAI-compatible; point the OpenAI provider at its base URL.
+      const minimax = createOpenAI({ apiKey: config.apiKey, baseURL: MINIMAX_BASE_URL });
+      return minimax(modelName);
+    }
     default:
       throw new Error(`Unsupported AI provider: ${config.provider}`);
   }
@@ -93,7 +104,13 @@ export function getProviderConfigForProvider(provider: AIProvider): AIProviderCo
  * Used by routes that don't take an explicit model (status check, title generation).
  */
 export function pickAnyConfiguredProvider(): AIProviderConfig | null {
-  const order: AIProvider[] = [AIProvider.GOOGLE, AIProvider.OPENAI, AIProvider.ANTHROPIC];
+  const order: AIProvider[] = [
+    AIProvider.GOOGLE,
+    AIProvider.OPENAI,
+    AIProvider.ANTHROPIC,
+    AIProvider.MOONSHOT,
+    AIProvider.MINIMAX
+  ];
 
   for (const provider of order) {
     const config = getProviderConfigForProvider(provider);

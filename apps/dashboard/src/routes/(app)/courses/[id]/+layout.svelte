@@ -6,6 +6,7 @@
   import { Spinner } from '@cio/ui/base/spinner';
   import { CourseSidebar } from '$features/course/components/sidebar';
   import { CourseHeader } from '$features/course/components';
+  import { brandName } from '$lib/utils/branding';
   import type { Course } from '$features/course/types';
   import * as Dialog from '@cio/ui/base/dialog';
   import { Button } from '@cio/ui/base/button';
@@ -125,7 +126,7 @@
 </script>
 
 <svelte:head>
-  <title>{courseApi.course?.title || 'ClassroomIO Course'}</title>
+  <title>{courseApi.course?.title || brandName}</title>
 </svelte:head>
 
 {#if isCourseReady}

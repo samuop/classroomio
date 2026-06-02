@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { CommunityQuestionPage } from '$features/community/pages';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
@@ -9,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>Question - ClassroomIO</title>
+  <title>Question - {brandName}</title>
 </svelte:head>
 
 <CommunityQuestionPage slug={data.slug} backHref={resolve(communityPath, {})} />

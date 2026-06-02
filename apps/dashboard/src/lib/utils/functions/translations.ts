@@ -1,7 +1,8 @@
 import type { TLocale } from '@cio/db/types';
 import i18n from '@sveltekit-i18n/base';
 import parser from '@sveltekit-i18n/parser-icu';
-import { writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
+import { brandName } from '$lib/utils/branding';
 
 export const config = {
   parser: parser(),
@@ -59,7 +60,42 @@ export const config = {
   ]
 };
 
-export const { t, loading, locales, locale, initialized, translations, loadTranslations } = new i18n(config);
+const {
+  t: rawT,
+  loading,
+  locales,
+  locale,
+  initialized,
+  translations,
+  loadTranslations
+} = new i18n(config);
+
+/**
+ * Replaces the brand placeholder with the configured brand name. Translations
+ * embed `[[brand]]` (a non-ICU token that the parser leaves untouched) instead
+ * of a hardcoded brand, so the brand is configurable via PUBLIC_BRAND_NAME.
+ */
+function brandify(value: unknown): string {
+  return typeof value === 'string' ? value.replaceAll('[[brand]]', brandName) : (value as string);
+}
+
+type TranslateFn = (key: string, payload?: Record<string, unknown>) => string;
+
+/**
+ * Reactive translate store ($t in markup) that injects the brand name. Wraps
+ * the i18n store and post-processes every result through brandify(); also
+ * exposes `.get()` for use outside components, mirroring the i18n API.
+ */
+export const t = derived(rawT, ($rawT) => {
+  const translate: TranslateFn = (key, payload) => brandify($rawT(key, payload));
+  return translate;
+}) as ReturnType<typeof derived<typeof rawT, TranslateFn>> & {
+  get: TranslateFn;
+};
+
+t.get = (key, payload) => brandify(rawT.get(key, payload));
+
+export { loading, locales, locale, initialized, translations, loadTranslations };
 
 export const selectedLocale = writable<string>('es');
 export const LOCALE_STORAGE_KEY = 'classroomio_locale';

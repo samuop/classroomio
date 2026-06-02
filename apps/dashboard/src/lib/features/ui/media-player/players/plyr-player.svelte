@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { onMount, onDestroy } from 'svelte';
   import 'plyr/dist/plyr.css';
   import type { MediaPlayerOptions } from '../types';
@@ -97,11 +98,11 @@
     <video bind:this={videoElement} {src} {poster} {playsinline} class="plyr-player"></video>
   {/if}
 
-  <!-- ClassroomIO Logo Overlay -->
+  <!-- Brand Logo Overlay -->
   <div
     class="plyr-logo-overlay absolute top-2 right-2 z-10 opacity-90 transition-opacity duration-200 ease-in-out hover:opacity-100"
   >
-    <img src="/logo-192.png" alt="ClassroomIO" class="h-7 w-7 rounded-sm bg-white/90 p-0.5 shadow-sm" />
+    <img src="/logo-192.png" alt={brandName} class="h-7 w-7 rounded-sm bg-white/90 p-0.5 shadow-sm" />
   </div>
 </div>
 
