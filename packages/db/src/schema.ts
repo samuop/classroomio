@@ -1954,6 +1954,12 @@ export const organization = pgTable(
       signup?: {
         inviteOnly?: boolean;
       };
+      atRisk?: {
+        enabled?: boolean;
+        inactiveDays?: number;
+        lowProgressPct?: number;
+        lowGradePct?: number;
+      };
     }>(),
     landingpage: jsonb().default({}).$type<{
       header?: {

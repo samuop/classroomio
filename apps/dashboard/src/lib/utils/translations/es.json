@@ -5,6 +5,73 @@
       "message": "Tienes cambios sin guardar. ¿Estás seguro de que quieres irte?"
     }
   },
+  "at_risk": {
+    "title": "Estudiantes en riesgo",
+    "subtitle": "Estudiantes que necesitan atención según actividad, progreso, notas y cumplimiento.",
+    "summary": {
+      "heading": "Resumen de riesgo",
+      "description": "Estudiantes marcados por al menos una señal de riesgo."
+    },
+    "tiles": {
+      "total_students": "Total de estudiantes",
+      "at_risk": "En riesgo"
+    },
+    "reason": {
+      "inactive": "Inactivo",
+      "low_progress": "Progreso bajo",
+      "low_grade": "Nota baja",
+      "compliance": "Cumplimiento"
+    },
+    "filter": {
+      "all": "Todos",
+      "inactive": "Inactivo",
+      "low_progress": "Progreso bajo",
+      "low_grade": "Nota baja",
+      "compliance": "Cumplimiento"
+    },
+    "learners": {
+      "heading": "Estudiantes",
+      "subtitle": "{count, number} coincidente",
+      "empty": "Ningún estudiante coincide con este filtro",
+      "learner": "Estudiante",
+      "last_activity": "Última actividad",
+      "progress": "Progreso",
+      "grade": "Nota",
+      "reasons": "Motivos"
+    },
+    "table": {
+      "never_active": "Nunca activo",
+      "today": "Hoy",
+      "days_ago": "hace {count, number} días"
+    },
+    "export": {
+      "button": "Exportar CSV",
+      "email": "Correo",
+      "days_since_activity": "Días desde la actividad"
+    },
+    "widget": {
+      "title": "{count, number} de {total, number} estudiantes en riesgo",
+      "description": "Revisa los estudiantes que necesitan atención."
+    },
+    "settings": {
+      "title": "Detección de riesgo",
+      "subtitle": "Configura los umbrales que marcan a un estudiante como en riesgo.",
+      "availability": "Detección",
+      "availability_description": "Activa la detección de estudiantes en riesgo para esta organización.",
+      "enabled": "Activar detección de riesgo",
+      "thresholds": "Umbrales",
+      "thresholds_description": "Un estudiante se marca cuando cumple al menos una de estas señales.",
+      "inactive_days": "Inactivo tras (días)",
+      "inactive_days_description": "Marca a un estudiante sin actividad durante más de estos días.",
+      "low_progress_pct": "Progreso bajo por debajo de (%)",
+      "low_progress_pct_description": "Marca a un estudiante cuyo progreso medio esté por debajo de este porcentaje.",
+      "low_grade_pct": "Nota baja por debajo de (%)",
+      "low_grade_pct_description": "Marca a un estudiante cuya nota media esté por debajo de este porcentaje.",
+      "save": "Guardar",
+      "loading": "Cargando…",
+      "saved": "Ajustes guardados"
+    }
+  },
   "validations": {
     "generic": {
       "invalid_type": "Tipo no válido{expected, select, undefined{} other{. Expected {expected}}}{received, select, undefined{} other{ (received {received})}}",
@@ -2630,7 +2697,8 @@
     "widgets": "widgets",
     "stats": "Estadísticas",
     "analytics": "Analítica",
-    "compliance": "Cumplimiento"
+    "compliance": "Cumplimiento",
+    "at_risk": "Estudiantes en riesgo"
   },
   "media_manager": {
     "page_title": "Administrador de medios - [[brand]]",
@@ -3184,7 +3252,8 @@
       "domains_tab": "Dominios",
       "teams_tab": "equipos",
       "ai_credits_tab": "AI Credits",
-      "ai_tutor_tab": "Tutor de IA"
+      "ai_tutor_tab": "Tutor de IA",
+      "at_risk_tab": "Estudiantes en riesgo"
     },
     "subheadings": {
       "view_site": "Ver sitio"

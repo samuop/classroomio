@@ -1,15 +1,18 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
   import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
   import AwardIcon from '@lucide/svelte/icons/award';
   import BookIcon from '@lucide/svelte/icons/book';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import UsersIcon from '@lucide/svelte/icons/users';
+  import AlertTriangleIcon from '@lucide/svelte/icons/alert-triangle';
   import { Skeleton } from '@cio/ui/base/skeleton';
 
   import { t } from '$lib/utils/functions/translations';
   import { calDateDiff } from '$lib/utils/functions/date';
-  import { currentOrgPath } from '$lib/utils/store/org';
+  import { currentOrg, currentOrgPath, isOrgAdmin } from '$lib/utils/store/org';
+  import { atRiskApi } from '$features/at-risk';
 
   import { CreateCourseButton } from '$features/course/components';
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
@@ -31,6 +34,16 @@
   const totalCertificates = $derived(stats?.totalCertificates || 0);
   const totalStudents = $derived(stats?.totalStudents || 0);
   const topCourses = $derived(stats?.topCourses || []);
+
+  // At-risk widget: admin-only (the overview endpoint requires admin and would
+  // 403 for tutors). Fetched client-side so the dash +page.server.ts is untouched.
+  const atRiskSummary = $derived(atRiskApi.overview?.summary ?? null);
+
+  onMount(() => {
+    if ($isOrgAdmin && $currentOrg.id) {
+      atRiskApi.ensureFetched($currentOrg.id);
+    }
+  });
 </script>
 
 <svelte:head>
@@ -84,6 +97,31 @@
           />
         </div>
       </div>
+
+      {#if $isOrgAdmin && atRiskSummary && atRiskSummary.atRiskCount > 0}
+        <a
+          href={`${$currentOrgPath}/at-risk`}
+          class="group ui:hover:bg-muted/50 mb-6 flex items-center gap-4 rounded-xl border p-4 transition-colors md:p-5"
+        >
+          <div
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400"
+          >
+            <AlertTriangleIcon class="h-5 w-5" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="ui:text-foreground text-sm font-semibold">
+              {$t('at_risk.widget.title', {
+                count: atRiskSummary.atRiskCount,
+                total: atRiskSummary.totalStudents
+              })}
+            </p>
+            <p class="ui:text-muted-foreground text-xs">{$t('at_risk.widget.description')}</p>
+          </div>
+          <ChevronRightIcon
+            class="ui:text-muted-foreground h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5"
+          />
+        </a>
+      {/if}
 
       <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div class="bg-card flex min-h-[45vh] w-full flex-col rounded-xl border p-3 md:p-5 dark:text-white">

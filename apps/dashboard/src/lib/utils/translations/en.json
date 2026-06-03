@@ -287,6 +287,73 @@
       }
     }
   },
+  "at_risk": {
+    "title": "At-risk students",
+    "subtitle": "Students who need attention based on activity, progress, grades, and compliance.",
+    "summary": {
+      "heading": "At-risk summary",
+      "description": "Students flagged by at least one risk signal."
+    },
+    "tiles": {
+      "total_students": "Total students",
+      "at_risk": "At risk"
+    },
+    "reason": {
+      "inactive": "Inactive",
+      "low_progress": "Low progress",
+      "low_grade": "Low grade",
+      "compliance": "Compliance"
+    },
+    "filter": {
+      "all": "All",
+      "inactive": "Inactive",
+      "low_progress": "Low progress",
+      "low_grade": "Low grade",
+      "compliance": "Compliance"
+    },
+    "learners": {
+      "heading": "Students",
+      "subtitle": "{count, number} matching",
+      "empty": "No students match this filter",
+      "learner": "Student",
+      "last_activity": "Last activity",
+      "progress": "Progress",
+      "grade": "Grade",
+      "reasons": "Reasons"
+    },
+    "table": {
+      "never_active": "Never active",
+      "today": "Today",
+      "days_ago": "{count, number} days ago"
+    },
+    "export": {
+      "button": "Export CSV",
+      "email": "Email",
+      "days_since_activity": "Days since activity"
+    },
+    "widget": {
+      "title": "{count, number} of {total, number} students at risk",
+      "description": "Review students who need attention."
+    },
+    "settings": {
+      "title": "At-risk detection",
+      "subtitle": "Configure the thresholds that flag a student as at risk.",
+      "availability": "Detection",
+      "availability_description": "Enable at-risk detection for this organization.",
+      "enabled": "Enable at-risk detection",
+      "thresholds": "Thresholds",
+      "thresholds_description": "A student is flagged when they trip at least one of these signals.",
+      "inactive_days": "Inactive after (days)",
+      "inactive_days_description": "Flag a student with no activity for more than this many days.",
+      "low_progress_pct": "Low progress below (%)",
+      "low_progress_pct_description": "Flag a student whose average progress is below this percentage.",
+      "low_grade_pct": "Low grade below (%)",
+      "low_grade_pct_description": "Flag a student whose average grade is below this percentage.",
+      "save": "Save",
+      "loading": "Loading…",
+      "saved": "Settings saved"
+    }
+  },
   "common": {
     "unsaved_changes": {
       "message": "You have unsaved changes. Are you sure you want to leave?"
@@ -401,6 +468,7 @@
       "billing_tab": "Billing",
       "ai_credits_tab": "AI Credits",
       "ai_tutor_tab": "AI Tutor",
+      "at_risk_tab": "At-risk students",
       "integrations_tab": "Integrations",
       "language_tab": "Language",
       "auth_tab": "Authentication",
@@ -1207,6 +1275,7 @@
     "stats": "Stats",
     "analytics": "Analytics",
     "compliance": "Compliance",
+    "at_risk": "At-risk students",
     "courses": "Courses",
     "programs": "Programs",
     "tags": "Tags",

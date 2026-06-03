@@ -84,14 +84,20 @@ export const baseNavConfig: NavItemConfig[] = [
     path: '/stats',
     icon: ChartColumnIcon,
     useHashUrl: true,
-    matchPattern: '^/org/[^/]+/compliance(/.*)?$',
+    matchPattern: '^/org/[^/]+/(compliance|at-risk)(/.*)?$',
     items: [
-      // Analytics is disabled for this deployment; only Compliance remains.
+      // Analytics is disabled for this deployment; only Compliance + At-risk remain.
       {
         titleKey: 'org_navigation.compliance',
         path: '/compliance',
         requiresAdmin: true,
         matchPattern: '^/org/[^/]+/compliance(/.*)?$'
+      },
+      {
+        titleKey: 'org_navigation.at_risk',
+        path: '/at-risk',
+        requiresAdmin: true,
+        matchPattern: '^/org/[^/]+/at-risk(/.*)?$'
       }
     ]
   },
@@ -207,6 +213,10 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/ai-tutor'
       },
       {
+        titleKey: 'settings.tabs.at_risk_tab',
+        path: '/settings/at-risk'
+      },
+      {
         titleKey: 'settings.tabs.auth_tab',
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
         path: '/settings/auth',
@@ -222,6 +232,10 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'ai-tutor',
         titleKey: 'settings.tabs.ai_tutor_tab'
+      },
+      {
+        path: 'at-risk',
+        titleKey: 'settings.tabs.at_risk_tab'
       },
       {
         path: 'customize-lms',
