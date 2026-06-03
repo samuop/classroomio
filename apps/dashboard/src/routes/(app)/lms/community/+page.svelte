@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { CommunityPage } from '$features/community/pages';
   import { AskCommunityButton } from '$features/community/components';
   import { t } from '$lib/utils/functions/translations';
@@ -6,7 +7,7 @@
 </script>
 
 <svelte:head>
-  <title>Community - ClassroomIO</title>
+  <title>Community - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full">

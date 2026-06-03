@@ -95,7 +95,8 @@
         url: getNavItemRoute(id, 'analytics'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'analytics'),
         show() {
-          return !isStudent;
+          // Analytics is disabled for this deployment.
+          return false;
         },
         icon: getNavIcon(NAV_IDS.ANALYTICS)
       },
@@ -163,7 +164,8 @@
         url: getNavItemRoute(id, 'landingpage'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'landingpage'),
         show() {
-          return !isStudent;
+          // Per-course landing page is disabled for this deployment.
+          return false;
         },
         icon: getNavIcon(NAV_IDS.LANDING_PAGE)
       },

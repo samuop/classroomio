@@ -28,6 +28,88 @@ export async function getLastLogin(userId: string): Promise<string | null> {
 }
 
 /**
+ * Gets the last academic activity timestamp for a profile, taking the most
+ * recent across three signals: login, lesson completion, and submission.
+ * Used by the student 360 view and (later) at-risk detection.
+ * @param profileId Profile ID
+ * @returns Most recent activity ISO timestamp, or null if no activity
+ */
+export async function getProfileLastActivity(profileId: string): Promise<string | null> {
+  try {
+    const rows = await getLastActivityForProfiles([profileId]);
+    return rows.get(profileId) ?? null;
+  } catch (error) {
+    console.error('getProfileLastActivity error:', error);
+    return null;
+  }
+}
+
+/**
+ * Batch version of getProfileLastActivity for lists of learners. Returns a Map
+ * of profileId -> most recent activity ISO timestamp (only includes profiles
+ * that have at least one activity).
+ * @param profileIds Profile IDs
+ */
+export async function getLastActivityForProfiles(profileIds: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (profileIds.length === 0) {
+    return result;
+  }
+
+  try {
+    // submission.submittedBy references groupmember, not profile, so join
+    // through groupmember to resolve the learner's profile.
+    const [logins, lessons, submissions] = await Promise.all([
+      db
+        .select({
+          profileId: schema.analyticsLoginEvents.userId,
+          lastAt: sql<string>`MAX(${schema.analyticsLoginEvents.loggedInAt})`.as('last_at')
+        })
+        .from(schema.analyticsLoginEvents)
+        .where(inArray(schema.analyticsLoginEvents.userId, profileIds))
+        .groupBy(schema.analyticsLoginEvents.userId),
+
+      db
+        .select({
+          profileId: schema.lessonCompletion.profileId,
+          lastAt: sql<string>`MAX(${schema.lessonCompletion.updatedAt})`.as('last_at')
+        })
+        .from(schema.lessonCompletion)
+        .where(inArray(schema.lessonCompletion.profileId, profileIds))
+        .groupBy(schema.lessonCompletion.profileId),
+
+      db
+        .select({
+          profileId: schema.groupmember.profileId,
+          lastAt: sql<string>`MAX(${schema.submission.createdAt})`.as('last_at')
+        })
+        .from(schema.submission)
+        .innerJoin(schema.groupmember, eq(schema.submission.submittedBy, schema.groupmember.id))
+        .where(inArray(schema.groupmember.profileId, profileIds))
+        .groupBy(schema.groupmember.profileId)
+    ]);
+
+    const consider = (profileId: string | null, lastAt: string | null) => {
+      if (!profileId || !lastAt) return;
+
+      const current = result.get(profileId);
+      if (!current || lastAt > current) {
+        result.set(profileId, lastAt);
+      }
+    };
+
+    for (const row of logins) consider(row.profileId, row.lastAt);
+    for (const row of lessons) consider(row.profileId, row.lastAt);
+    for (const row of submissions) consider(row.profileId, row.lastAt);
+
+    return result;
+  } catch (error) {
+    console.error('getLastActivityForProfiles error:', error);
+    return result;
+  }
+}
+
+/**
  * Gets user exercise statistics for a course
  * @param courseId Course ID
  * @param userId User ID (profile ID)

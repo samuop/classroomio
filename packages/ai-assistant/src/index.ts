@@ -30,7 +30,12 @@ export type {
 } from './types';
 
 // Providers
-export { createModel, getProviderConfigForProvider, pickAnyConfiguredProvider } from './providers';
+export {
+  createModel,
+  getProviderConfigForProvider,
+  pickAnyConfiguredProvider,
+  resolveModelName
+} from './providers';
 
 // Tools
 export { getToolSchemas } from './tools';

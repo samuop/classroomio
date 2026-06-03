@@ -39,6 +39,7 @@ import {
   updateProgramNewsfeedService
 } from '@api/services/program/program';
 import { assignExistingStudentsToProgram, inviteStudentsToProgram } from '@api/services/program/invite';
+import { getProgramProgress } from '@api/services/program/progress';
 import {
   archiveGoal,
   createGoal,
@@ -141,6 +142,20 @@ export const programRouter = new Hono()
       return c.json({ success: true, data: program }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to get program');
+    }
+  })
+
+  /**
+   * GET /program/:programId/progress
+   * Program-wide progress rollup (summary + members × courses matrix)
+   */
+  .get('/:programId/progress', authMiddleware, programMemberMiddleware, zValidator('param', ZProgramParam), async (c) => {
+    try {
+      const { programId } = c.req.valid('param');
+      const data = await getProgramProgress(programId);
+      return c.json({ success: true, data }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to get program progress');
     }
   })
 

@@ -50,6 +50,7 @@ import { TOrganization } from '@db/types';
 import { assetsRouter } from '@api/routes/organization/assets';
 import { autoEnrollStudent } from '@api/services/organization/auto-enroll';
 import { organizationAiTutorRouter } from '@api/routes/organization/ai-tutor';
+import { organizationAtRiskRouter } from '@api/routes/organization/at-risk';
 import { authMiddleware } from '@api/middlewares/auth';
 import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
@@ -695,4 +696,5 @@ export const organizationRouter = new Hono()
   .route('/widgets', widgetsRouter)
   .route('/assets', assetsRouter)
   .route('/ai-tutor', organizationAiTutorRouter)
+  .route('/at-risk', organizationAtRiskRouter)
   .route('/:orgId/quiz', quizRouter);

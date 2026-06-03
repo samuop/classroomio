@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const newsfeedPostEmail = defineEmail({
   id: 'newsfeedPost',
-  subject: 'New post in course',
+  subject: 'Nueva publicación en tu curso',
   schema: z.object({
     courseTitle: z.string().min(1),
     teacherName: z.string().min(1),
@@ -15,10 +15,10 @@ export const newsfeedPostEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>${fields.teacherName} made a post in a course you are taking: ${fields.courseTitle}.</p>
+      <p>${fields.teacherName} hizo una publicación en un curso que estás haciendo: ${fields.courseTitle}.</p>
       <div style="font-style: italic; margin-top: 10px;">${fields.content}</div>
       <div>
-        <a class="button" href="${fields.postLink}">View post</a>
+        <a class="button" href="${fields.postLink}">Ver publicación</a>
       </div>
     `;
 
@@ -28,7 +28,7 @@ export const newsfeedPostEmail = defineEmail({
 
 export const newsfeedCommentEmail = defineEmail({
   id: 'newsfeedComment',
-  subject: 'News feed comment',
+  subject: 'Nuevo comentario en tu publicación',
   schema: z.object({
     courseTitle: z.string().min(1),
     comment: z.string().min(1),
@@ -37,10 +37,10 @@ export const newsfeedCommentEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>A student left you a comment on your newsfeed post</p>
+      <p>Un alumno comentó en tu publicación.</p>
       <div style="font-style: italic; margin-top: 10px;">${fields.comment}</div>
       <div>
-        <a class="button" href="${fields.postLink}">View comment</a>
+        <a class="button" href="${fields.postLink}">Ver comentario</a>
       </div>
     `;
 

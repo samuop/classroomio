@@ -662,6 +662,58 @@ export const getOrganizationAudience = async (orgId: string, options: GetOrganiz
 };
 
 /**
+ * Reads the stored at-risk thresholds for an org from `organization.settings.atRisk`.
+ * Returns `null` when nothing is stored (the service layer applies defaults).
+ */
+export const getOrgAtRiskSettings = async (
+  orgId: string
+): Promise<NonNullable<TOrganization['settings']>['atRisk'] | null> => {
+  const [row] = await db
+    .select({ settings: schema.organization.settings })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, orgId))
+    .limit(1);
+
+  return row?.settings?.atRisk ?? null;
+};
+
+export interface OrgStudentProfile {
+  profileId: string;
+  fullname: string;
+  email: string;
+  avatarUrl: string;
+}
+
+/**
+ * Non-paginated variant of {@link getOrganizationAudience}: every STUDENT member
+ * of the org that has a backing profile (invited-but-unregistered rows have a
+ * null `profileId` and are excluded, since the at-risk scan needs a profile to
+ * compute progress/grade). Used by the at-risk service to scan all learners.
+ */
+export const getOrgStudentProfiles = async (orgId: string): Promise<OrgStudentProfile[]> => {
+  const rows = await db
+    .select({
+      profileId: schema.profile.id,
+      fullname: schema.profile.fullname,
+      email: sql<string>`COALESCE(${schema.profile.email}, ${schema.organizationmember.email})`.as('email'),
+      avatarUrl: schema.profile.avatarUrl
+    })
+    .from(schema.organizationmember)
+    .innerJoin(schema.profile, eq(schema.organizationmember.profileId, schema.profile.id))
+    .where(
+      and(eq(schema.organizationmember.organizationId, orgId), eq(schema.organizationmember.roleId, ROLE.STUDENT))
+    )
+    .orderBy(asc(schema.profile.fullname));
+
+  return rows.map((row) => ({
+    profileId: row.profileId,
+    fullname: row.fullname ?? '',
+    email: row.email ?? '',
+    avatarUrl: row.avatarUrl ?? ''
+  }));
+};
+
+/**
  * Student org member matched by profile email or organizationmember.email (for audience invite actions).
  */
 export async function getStudentOrganizationMemberByOrgAndEmail(

@@ -1,11 +1,12 @@
 <script>
+  import { brandName } from '$lib/utils/branding';
   import { TeamsPage } from '$features/settings/pages';
   import { t } from '$lib/utils/functions/translations';
   import * as Page from '@cio/ui/base/page';
 </script>
 
 <svelte:head>
-  <title>Teams - ClassroomIO</title>
+  <title>Teams - {brandName}</title>
 </svelte:head>
 
 <Page.Header>

@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const verifyEmailEmail = defineEmail({
   id: 'verifyEmail',
-  subject: 'Action Required: Confirm your email',
+  subject: 'Acción requerida: confirmá tu correo',
   schema: z.object({
     link: z.url(),
     newEmail: z.email().optional(),
@@ -13,25 +13,24 @@ export const verifyEmailEmail = defineEmail({
   }),
   render: (fields) => {
     const isEmailChange = !!fields.newEmail;
-    const userName = fields.userName || 'there';
+    const userName = fields.userName || '';
 
     const content = isEmailChange
       ? `
-    <p><strong>Hey ${userName} 👋</strong></p>
-    <p>You have requested to change your email address to <strong>${fields.newEmail}</strong>.</p>
-    <p>To approve this change, please click the button below:</p>
+    <p><strong>Hola ${userName} 👋</strong></p>
+    <p>Solicitaste cambiar tu correo a <strong>${fields.newEmail}</strong>.</p>
+    <p>Para aprobar el cambio, hacé clic en el botón de abajo:</p>
     <div>
-      <a class="button" href="${fields.link}">Approve Email Change</a>
+      <a class="button" href="${fields.link}">Aprobar cambio de correo</a>
     </div>
-    <p>If you did not request this change, please ignore this email.</p>
+    <p>Si no solicitaste este cambio, ignorá este correo.</p>
   `
       : `
-    <p><strong>Hey ${userName} 👋</strong></p>
-    <p>Welcome to ClassroomIO! In order to get your account ready for usage, we need to verify your email. </p>
-    <p>We do this to make sure we don't get fake user emails in our signup. To get the best out of our product, we'll need you to verify your email by clicking the <strong>Verify</strong> button below
-    </p>
+    <p><strong>Hola ${userName} 👋</strong></p>
+    <p>Para dejar tu cuenta lista, necesitamos verificar tu correo.</p>
+    <p>Hacé clic en el botón <strong>Verificar</strong> de abajo para confirmar tu dirección.</p>
     <div>
-      <a class="button" href="${fields.link}">Verify</a>
+      <a class="button" href="${fields.link}">Verificar</a>
     </div>
   `;
 

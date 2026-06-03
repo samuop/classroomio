@@ -5,22 +5,22 @@ import { getDefaultTemplate } from '../templates';
 
 export const forgotPasswordEmail = defineEmail({
   id: 'forgotPassword',
-  subject: 'Password reset notification - ClassroomIO',
+  subject: 'Restablecer tu contraseña',
   schema: z.object({
     email: z.email(),
     name: z.string().min(1),
     link: z.url()
   }),
   render: (fields) => {
-    const content = `Hello ${fields.name},
-    <p>You are receiving this email because you have requested a password reset for your ClassroomIO account.</p>
-    <p>Please click the button below to reset your password:</p>
-    
+    const content = `Hola ${fields.name},
+    <p>Recibís este correo porque se solicitó restablecer la contraseña de tu cuenta.</p>
+    <p>Hacé clic en el botón de abajo para crear una nueva contraseña:</p>
+
     <div>
-      <a class="button" href="${fields.link}">Reset my password</a>
+      <a class="button" href="${fields.link}">Restablecer mi contraseña</a>
     </div>
 
-    <p>PS: If you did not initiate this request, reply to this email or write to help@classroomio.com so we can look into a possible attempt to breach your account.</p>
+    <p>PD: Si no solicitaste este cambio, respondé este correo para que podamos revisar un posible intento de acceso a tu cuenta.</p>
     `;
 
     return getDefaultTemplate(content);

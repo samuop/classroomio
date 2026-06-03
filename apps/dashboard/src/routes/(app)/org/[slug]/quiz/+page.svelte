@@ -1,4 +1,5 @@
 <script>
+  import { brandName } from '$lib/utils/branding';
   import { Quizzes, NewQuizModal, DeleteModal } from '$features/org';
   import { Button } from '@cio/ui/base/button';
   import { createQuizModal } from '$lib/utils/store/org';
@@ -7,7 +8,7 @@
 </script>
 
 <svelte:head>
-  <title>Interactive Quizzes - ClassroomIO</title>
+  <title>Interactive Quizzes - {brandName}</title>
 </svelte:head>
 
 <section class="mx-auto w-full max-w-6xl">

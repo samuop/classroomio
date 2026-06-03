@@ -104,14 +104,16 @@
         </Select.Content>
       </Select.Root>
 
-      <ModelPicker
-        value={selectedModel}
-        disabled={loading}
-        variant="select"
-        {lockedModelIds}
-        onChange={handleModelChange}
-        onLockedSelect={onLockedModelSelect}
-      />
+      {#if onModelChange}
+        <ModelPicker
+          value={selectedModel}
+          disabled={loading}
+          variant="select"
+          {lockedModelIds}
+          onChange={handleModelChange}
+          onLockedSelect={onLockedModelSelect}
+        />
+      {/if}
 
       <div class="ui:ml-auto">
         <Button variant="default" size="icon" disabled={!canSubmit} onclick={handleSubmit}>

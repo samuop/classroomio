@@ -11,8 +11,7 @@ import {
   PeopleIcon,
   SettingsIcon,
   SetupIcon,
-  TagIcon,
-  ZapIcon
+  TagIcon
 } from '@cio/ui/custom/moving-icons';
 
 import type { AccountOrg } from '$features/app/types';
@@ -85,18 +84,20 @@ export const baseNavConfig: NavItemConfig[] = [
     path: '/stats',
     icon: ChartColumnIcon,
     useHashUrl: true,
-    matchPattern: '^/org/[^/]+/(analytics|compliance)(/.*)?$',
+    matchPattern: '^/org/[^/]+/(compliance|at-risk)(/.*)?$',
     items: [
-      {
-        titleKey: 'org_navigation.analytics',
-        path: '/analytics',
-        matchPattern: '^/org/[^/]+/analytics(/.*)?$'
-      },
+      // Analytics is disabled for this deployment; only Compliance + At-risk remain.
       {
         titleKey: 'org_navigation.compliance',
         path: '/compliance',
         requiresAdmin: true,
         matchPattern: '^/org/[^/]+/compliance(/.*)?$'
+      },
+      {
+        titleKey: 'org_navigation.at_risk',
+        path: '/at-risk',
+        requiresAdmin: true,
+        matchPattern: '^/org/[^/]+/at-risk(/.*)?$'
       }
     ]
   },
@@ -183,15 +184,9 @@ export const baseNavConfig: NavItemConfig[] = [
     disableWhenNotAdmin: true,
     matchPattern: '^/org/[^/]+/api(/.*)?$'
   },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.zapier',
-    path: '/zapier',
-    icon: ZapIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/zapier(/.*)?$'
-  },
+  // Zapier hidden for this deployment: the feature is a "coming soon"
+  // placeholder (not implemented), so it's removed from the menu and blocked
+  // by URL via routes/(app)/org/[slug]/zapier/+layout.server.ts.
   {
     titleKey: 'org_navigation.settings',
     path: '/settings',
@@ -207,14 +202,8 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.organization_tab',
         path: '/settings/org'
       },
-      {
-        titleKey: 'settings.tabs.landing_page_tab',
-        path: '/settings/landingpage'
-      },
-      {
-        titleKey: 'settings.tabs.billing_tab',
-        path: '/settings/billing'
-      },
+      // Hidden tabs for this deployment: Landing Page (no public site) and
+      // Billing (the consultancy is billed out-of-band, not via the app).
       {
         titleKey: 'settings.tabs.ai_credits_tab',
         path: '/settings/ai-credits'
@@ -224,6 +213,10 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/ai-tutor'
       },
       {
+        titleKey: 'settings.tabs.at_risk_tab',
+        path: '/settings/at-risk'
+      },
+      {
         titleKey: 'settings.tabs.auth_tab',
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
         path: '/settings/auth',
@@ -231,10 +224,7 @@ export const baseNavConfig: NavItemConfig[] = [
       }
     ],
     nestedRoutes: [
-      {
-        path: 'billing',
-        titleKey: 'settings.tabs.billing_tab'
-      },
+      // Hidden for this deployment: billing, domains, sso, token-auth.
       {
         path: 'ai-credits',
         titleKey: 'settings.tabs.ai_credits_tab'
@@ -244,12 +234,12 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.ai_tutor_tab'
       },
       {
-        path: 'customize-lms',
-        titleKey: 'settings.tabs.customize_lms_tab'
+        path: 'at-risk',
+        titleKey: 'settings.tabs.at_risk_tab'
       },
       {
-        path: 'domains',
-        titleKey: 'settings.tabs.domains_tab'
+        path: 'customize-lms',
+        titleKey: 'settings.tabs.customize_lms_tab'
       },
       {
         path: 'teams',
@@ -258,14 +248,6 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'auth',
         titleKey: 'settings.tabs.auth_tab'
-      },
-      {
-        path: 'auth/sso',
-        titleKey: 'settings.tabs.sso_tab'
-      },
-      {
-        path: 'auth/token-auth',
-        titleKey: 'settings.tabs.token_auth_tab'
       }
     ]
   }

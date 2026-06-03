@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const programGoalReminderEmail = defineEmail({
   id: 'programGoalReminder',
-  subject: 'Reminder: a program goal is due soon',
+  subject: 'Recordatorio: un objetivo de tu programa vence pronto',
   schema: z.object({
     orgName: z.string().min(1),
     programName: z.string().min(1),
@@ -18,20 +18,20 @@ export const programGoalReminderEmail = defineEmail({
   render: (fields) => {
     const dueLine =
       fields.daysUntilDue <= 0
-        ? `<p>This goal is now <strong>overdue</strong>.</p>`
+        ? `<p>Este objetivo está <strong>vencido</strong>.</p>`
         : fields.daysUntilDue === 1
-          ? `<p>This goal is due <strong>tomorrow</strong>.</p>`
-          : `<p>This goal is due in <strong>${fields.daysUntilDue} days</strong>.</p>`;
+          ? `<p>Este objetivo vence <strong>mañana</strong>.</p>`
+          : `<p>Este objetivo vence en <strong>${fields.daysUntilDue} días</strong>.</p>`;
 
-    const progress = `${fields.completedCount} of ${fields.requiredCount} courses completed`;
+    const progress = `${fields.completedCount} de ${fields.requiredCount} cursos completados`;
 
     const content = `
-      <p>Hi there,</p>
-      <p>This is a reminder that the goal <strong>${fields.goalTitle}</strong> in your program <strong>${fields.programName}</strong> at ${fields.orgName} needs your attention.</p>
+      <p>Hola,</p>
+      <p>Te recordamos que el objetivo <strong>${fields.goalTitle}</strong> de tu programa <strong>${fields.programName}</strong> en ${fields.orgName} necesita tu atención.</p>
       ${dueLine}
-      <p>Your progress so far: <strong>${progress}</strong>.</p>
-      <p><a href="${fields.loginUrl}">Open ClassroomIO</a> to keep going.</p>
-      <p>Cheers,</p>
+      <p>Tu progreso hasta ahora: <strong>${progress}</strong>.</p>
+      <p><a href="${fields.loginUrl}">Iniciá sesión</a> para continuar.</p>
+      <p>Saludos,</p>
       <p>${fields.orgName}</p>
     `;
 

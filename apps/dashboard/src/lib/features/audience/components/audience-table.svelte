@@ -5,6 +5,7 @@
   import { t } from '$lib/utils/functions/translations';
   import AudienceMemberRow from './audience-member-row.svelte';
   import { resolve } from '$app/paths';
+  import { currentOrgPath } from '$lib/utils/store/org';
 
   interface Header {
     key: string;
@@ -47,6 +48,11 @@
     if (!row.profileId) return null;
     return resolve(`${window.location.pathname}/${row.profileId}`, {});
   }
+
+  function studentRecordPath(row: OrganizationAudienceMember): string | null {
+    if (!row.profileId) return null;
+    return `${$currentOrgPath}/students/${row.profileId}`;
+  }
 </script>
 
 <div class="rounded-md border">
@@ -74,6 +80,7 @@
         <AudienceMemberRow
           {row}
           memberDetailHref={memberHref(row)}
+          studentRecordPath={studentRecordPath(row)}
           selected={isRowSelected(String(row.id))}
           onToggleSelect={() => onToggleRow(String(row.id))}
           {inviteActionEmail}

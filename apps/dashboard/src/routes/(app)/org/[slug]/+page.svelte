@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { brandName } from '$lib/utils/branding';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
@@ -10,26 +10,13 @@
   import { CourseCreator } from '@cio/ui/custom/course-creator';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import { courseApi } from '$features/course/api';
-  import {
-    setInitialChatModel,
-    setInitialChatPrompt,
-    setInitialChatTemplateId
-  } from '$features/ai-assistant/utils/store';
+  import { setInitialChatPrompt, setInitialChatTemplateId } from '$features/ai-assistant/utils/store';
   import { DISPLAY_BY_ID } from '$features/ai-assistant/utils/template-display';
   import { COURSE_TEMPLATES, type CourseTemplate, type CourseTemplateId } from '@cio/ai-assistant';
   import GraduationCapIcon from '@lucide/svelte/icons/graduation-cap';
   import CompassIcon from '@lucide/svelte/icons/compass';
   import AwardIcon from '@lucide/svelte/icons/award';
-  import { openUpgradeModal } from '$lib/utils/functions/org';
-  import { isFreePlan } from '$lib/utils/store/org';
-  import { AI_CHAT_MODEL_STORAGE_KEY } from '$features/ai-assistant/utils/constants';
   import type { TCourseType } from '@cio/db/types';
-  import {
-    AGENT_MODELS,
-    DEFAULT_PICKER_MODEL_ID,
-    UI_PICKER_MODEL_IDS,
-    type AgentModelId
-  } from '@cio/utils/agent-models';
 
   type CreatingStep = 'reading' | 'naming' | 'building';
 
@@ -45,12 +32,6 @@
   let composerPrompt = $state('');
   let pinnedTemplatePrompt: string | null = $state(null);
   let selectedTemplateId: CourseTemplateId | null = $state(null);
-  let selectedModel: AgentModelId = $state(DEFAULT_PICKER_MODEL_ID);
-  const paidModelIds = UI_PICKER_MODEL_IDS.filter((id) => !AGENT_MODELS[id].isFree);
-
-  function isAgentModelId(value: unknown): value is AgentModelId {
-    return typeof value === 'string' && (UI_PICKER_MODEL_IDS as readonly string[]).includes(value);
-  }
 
   function stepStatus(key: CreatingStep): 'done' | 'active' | 'pending' {
     const order: CreatingStep[] = ['reading', 'naming', 'building'];
@@ -62,41 +43,6 @@
 
     return 'pending';
   }
-
-  function handleModelChange(model: string) {
-    if (!isAgentModelId(model)) return;
-
-    if ($isFreePlan && paidModelIds.includes(model)) {
-      openUpgradeModal();
-      return;
-    }
-
-    selectedModel = model;
-
-    try {
-      localStorage.setItem(AI_CHAT_MODEL_STORAGE_KEY, model);
-    } catch {
-      // localStorage unavailable
-    }
-  }
-
-  function handleLockedModelSelect() {
-    openUpgradeModal();
-  }
-
-  $effect(() => {
-    if (!$isFreePlan || !paidModelIds.includes(selectedModel)) {
-      return;
-    }
-
-    selectedModel = DEFAULT_PICKER_MODEL_ID;
-
-    try {
-      localStorage.setItem(AI_CHAT_MODEL_STORAGE_KEY, DEFAULT_PICKER_MODEL_ID);
-    } catch {
-      // localStorage unavailable
-    }
-  });
 
   function selectTemplate(template: CourseTemplate) {
     composerPrompt = template.promptTemplate;
@@ -115,16 +61,7 @@
     }
   });
 
-  async function handleCreate({ prompt, level, model }: { prompt: string; level: string; model?: string }) {
-    if (isAgentModelId(model)) {
-      if ($isFreePlan && paidModelIds.includes(model)) {
-        openUpgradeModal();
-        return;
-      }
-
-      handleModelChange(model);
-    }
-
+  async function handleCreate({ prompt, level }: { prompt: string; level: string }) {
     draftingPrompt = prompt;
     creatingState = 'creating';
     creatingStep = 'reading';
@@ -151,7 +88,6 @@
 
     creatingStep = 'building';
     setInitialChatPrompt(`${prompt}\n\nCourse type: Self-paced. Level: ${level}.`);
-    setInitialChatModel(selectedModel);
 
     if (selectedTemplateId) {
       setInitialChatTemplateId(selectedTemplateId);
@@ -162,27 +98,10 @@
     });
   }
 
-  onMount(() => {
-    try {
-      const storedModel = localStorage.getItem(AI_CHAT_MODEL_STORAGE_KEY);
-
-      if (isAgentModelId(storedModel)) {
-        if ($isFreePlan && paidModelIds.includes(storedModel)) {
-          selectedModel = DEFAULT_PICKER_MODEL_ID;
-          localStorage.setItem(AI_CHAT_MODEL_STORAGE_KEY, DEFAULT_PICKER_MODEL_ID);
-          return;
-        }
-
-        selectedModel = storedModel;
-      }
-    } catch {
-      // localStorage unavailable
-    }
-  });
 </script>
 
 <svelte:head>
-  <title>Home - ClassroomIO</title>
+  <title>Home - {brandName}</title>
 </svelte:head>
 
 {#if creatingState === 'creating'}
@@ -229,15 +148,11 @@
         heading={$t('course.creator.heading')}
         placeholder={$t('course.creator.placeholder')}
         bind:prompt={composerPrompt}
-        model={selectedModel}
         levelOptions={[
           { value: 'beginner', label: $t('course.creator.level.beginner') },
           { value: 'intermediate', label: $t('course.creator.level.intermediate') },
           { value: 'advanced', label: $t('course.creator.level.advanced') }
         ]}
-        lockedModelIds={$isFreePlan ? paidModelIds : []}
-        onModelChange={handleModelChange}
-        onLockedModelSelect={handleLockedModelSelect}
         onsubmit={handleCreate}
       />
 

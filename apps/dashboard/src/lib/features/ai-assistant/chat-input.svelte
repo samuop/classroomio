@@ -15,8 +15,6 @@
   import { resolve } from '$app/paths';
   import { currentOrgPath, isFreePlan } from '$lib/utils/store/org';
   import { openUpgradeModal } from '$lib/utils/functions/org';
-  import { ModelPicker } from '@cio/ui/custom/model-picker';
-  import type { AgentModelId } from '@cio/utils/agent-models';
   import { AI_AGENT_RUNNING_WARNING_DISMISSED_KEY } from '$features/ai-assistant/utils/constants';
 
   interface UploadedDocument {
@@ -32,8 +30,6 @@
     error: Error | null | undefined;
     mentionItems: MentionItem[];
     uploadedDocument: UploadedDocument | null;
-    selectedModel: AgentModelId;
-    lockedModelIds?: readonly AgentModelId[];
     isStudent?: boolean;
     /** Set to 'LEARNER_CAP_REACHED' | 'POOL_EXHAUSTED' | 'AI_TUTOR_DISABLED' to render the take-a-break empty state. */
     tutorBlocked?: 'LEARNER_CAP_REACHED' | 'POOL_EXHAUSTED' | 'AI_TUTOR_DISABLED' | null;
@@ -41,8 +37,6 @@
     onStop: () => void;
     onFileSelect: (file: File) => void;
     onRemoveDocument: () => void;
-    onSelectModel: (id: AgentModelId) => void;
-    onLockedModelSelect?: (id: AgentModelId) => void;
   }
 
   let {
@@ -53,16 +47,12 @@
     error,
     mentionItems,
     uploadedDocument,
-    selectedModel,
-    lockedModelIds = [],
     isStudent = false,
     tutorBlocked = null,
     onSend,
     onStop,
     onFileSelect,
-    onRemoveDocument,
-    onSelectModel,
-    onLockedModelSelect
+    onRemoveDocument
   }: Props = $props();
 
   function tutorBlockedMessage(reason: NonNullable<typeof tutorBlocked>): string {
@@ -291,14 +281,6 @@
               <Button size="icon" variant="outline" onclick={onStop} class="size-7 shrink-0">
                 <SquareIcon size={12} />
               </Button>
-            {:else if !isStudent}
-              <ModelPicker
-                value={selectedModel}
-                disabled={isStreaming}
-                {lockedModelIds}
-                onChange={onSelectModel}
-                onLockedSelect={onLockedModelSelect}
-              />
             {:else}
               <Button size="sm" onclick={onSend} disabled={!inputValue.trim()} class="shrink-0">
                 {$t('ai_assistant.send')}

@@ -2,13 +2,14 @@ import type { MetaTagsProps } from 'svelte-meta-tags';
 import type { OrgSiteInfo } from '$features/app/layout-setup';
 import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
 import { env } from '$env/dynamic/public';
+import { brandName } from '$lib/utils/branding';
 
 const isSelfHosted = PUBLIC_IS_SELFHOSTED === 'true';
 
-const DEFAULT_TITLE = 'ClassroomIO | The Open Source Learning Management System for Companies';
+const DEFAULT_TITLE = `${brandName} | Learning Platform`;
 const DEFAULT_DESCRIPTION =
   'A flexible, user-friendly platform for creating, managing, and delivering courses for companies and training organisations';
-const CLOUD_OG_IMAGE = 'https://brand.cdn.clsrio.com/og/classroomio-og.png';
+const CLOUD_OG_IMAGE = '/logo-512.png';
 
 function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): string {
   const envUrl = env.PUBLIC_OG_IMAGE_URL?.trim();
@@ -46,7 +47,7 @@ export function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): MetaTagsPro
   const siteName =
     env.PUBLIC_APP_TITLE?.trim() ||
     (isSelfHosted && orgSiteInfo.org?.name ? orgSiteInfo.org.name : null) ||
-    'ClassroomIO';
+    brandName;
 
   const ogImageUrl = resolveOgImageUrl(url, orgSiteInfo);
 
@@ -73,8 +74,6 @@ export function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): MetaTagsPro
       ]
     },
     twitter: {
-      handle: '@classroomio',
-      site: '@classroomio',
       cardType: 'summary_large_image' as const,
       title,
       description,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { Button } from '@cio/ui/base/button';
   import { ImportAudiencePage } from '$features/audience/pages';
   import { BackButton } from '@cio/ui';
@@ -13,7 +14,7 @@
 </script>
 
 <svelte:head>
-  <title>{$t('audience.import.title')} - ClassroomIO</title>
+  <title>{$t('audience.import.title')} - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-full max-w-3xl">

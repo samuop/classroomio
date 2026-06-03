@@ -137,10 +137,6 @@ export const getDefaultTemplate = (content: string): string =>
       margin: 0;
       color: #1e293b;
     ">
-  <div class="gutter">
-    <a href="https://classroomio.com" target="_blank">
-      <img src="https://brand.cdn.clsrio.com/cio-bg-transparent.png" alt="ClassroomIO Logo" /></a>
-  </div>
   <div class="wrap" style="
         background-color: #fff;
         padding: 40px 30px;
@@ -154,35 +150,12 @@ export const getDefaultTemplate = (content: string): string =>
     text-align: center;
     font-size: 12px;
     color: #fff;
-    padding: 30px;
+    padding: 24px 30px;
     background-color: #0542CC;
     max-width: 525px;
     margin: 0 auto;">
-    <p>Find us on</p>
-    <table class="socialicons">
-      <tr>
-        <td>
-          <a target="_blank" href="https://twitter.com/classroomio"><img title="X"
-              src="https://brand.cdn.clsrio.com/socials/twitter.png" alt="X" width="19" /></a>
-        </td>
-        <td>
-          <a target="_blank" href="https://www.youtube.com/@ClassroomIO"><img title="Youtube"
-              src="https://brand.cdn.clsrio.com/socials/youtube.png" alt="Youtube" width="24" /></a>
-        </td>
-        <td>
-          <a target="_blank" href="https://www.facebook.com/classroomiohq"><img title="Facebook"
-              src="https://brand.cdn.clsrio.com/socials/facebook.png" alt="Facebook" width="24" /></a>
-        </td>
-      </tr>
-    </table>
-    <p style="padding-top: 8px; line-height: initial">
-      ClassroomIO ${new Date().getFullYear()}. All rights reserved.<br />
-      <a style="text-decoration: none" href="https://classroomio.com/tos"
-        target="_blank">Terms</a>
-      |
-      <a style="text-decoration: none"
-        href="https://classroomio.com/privacy" target="_blank">Privacy
-        Policy</a>
+    <p style="line-height: initial; margin: 0;">
+      ${process.env.EMAIL_BRAND_NAME?.trim() || 'Egea Consultoria'} ${new Date().getFullYear()}
     </p>
   </div>
 </body>

@@ -8,7 +8,7 @@
   let isOrg = $derived(query.get('type') === 'org');
 
   function handleClick() {
-    window.location.href = isOrg ? 'https://classroomio.com' : '/';
+    window.location.href = '/';
   }
 </script>
 

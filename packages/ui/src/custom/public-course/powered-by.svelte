@@ -8,8 +8,10 @@
     orgSlug?: string | null;
     /** Localized label. */
     label?: string;
-    /** Localized "ClassroomIO" brand label. */
+    /** Brand label shown after the label. */
     brand?: string;
+    /** Link target for the attribution. Defaults to '#'. */
+    brandHref?: string;
     /** Logo-only footer (narrow sidebars). */
     compact?: boolean;
     /** Row alignment inside the attribution strip. */
@@ -23,24 +25,15 @@
     courseSlug = null,
     orgSlug = null,
     label = 'Powered by',
-    brand = 'ClassroomIO',
+    brand = 'Tensor Tech',
+    brandHref = '#',
     compact = false,
     align = 'center',
     utmSource = 'public-course',
     class: className
   }: Props = $props();
 
-  const href = $derived.by(() => {
-    const url = new URL('https://classroomio.com');
-
-    url.searchParams.set('utm_source', utmSource);
-    url.searchParams.set('utm_medium', 'powered-by');
-
-    if (orgSlug) url.searchParams.set('utm_campaign', orgSlug);
-    if (courseSlug) url.searchParams.set('utm_content', courseSlug);
-
-    return url.toString();
-  });
+  const href = $derived(brandHref);
 
   const rowAlignClass = $derived(align === 'start' ? 'ui:justify-start' : 'ui:justify-center');
 </script>
@@ -65,7 +58,7 @@
       className
     )}
   >
-    <img src="/logo-192.png" class="ui:size-6" alt="ClassroomIO" />
+    <img src="/logo-192.png" class="ui:size-6" alt={brand} />
     {label}
     <a
       {href}

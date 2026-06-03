@@ -15,7 +15,8 @@ export const AIProvider = {
   OPENAI: 'openai',
   ANTHROPIC: 'anthropic',
   GOOGLE: 'google',
-  MOONSHOT: 'moonshot'
+  MOONSHOT: 'moonshot',
+  MINIMAX: 'minimax'
 } as const;
 
 export type AIProvider = (typeof AIProvider)[keyof typeof AIProvider];

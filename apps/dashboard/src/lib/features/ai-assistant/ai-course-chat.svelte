@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ChatHeader from '$features/ai-assistant/chat-header.svelte';
   import ChatMessageList from '$features/ai-assistant/chat-message-list.svelte';
@@ -18,7 +18,6 @@
   import {
     chatDraft,
     clearChatDraft,
-    initialChatModel,
     initialChatPrompt,
     initialChatTemplateId,
     clearInitialChatModel,
@@ -34,8 +33,6 @@
   import { getMentionableContent } from '$features/course/utils/content';
   import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
   import { getRequestBaseUrl, apiClient } from '$lib/utils/services/api';
-  import { openUpgradeModal } from '$lib/utils/functions/org';
-  import { isFreePlan } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import { profile } from '$lib/utils/store/user';
@@ -47,17 +44,9 @@
   } from '$features/ai-assistant/utils/types';
   import { getCourseTemplate, type CourseTemplateId, type TemplateFormField } from '@cio/ai-assistant';
   import {
-    AI_CHAT_MODEL_STORAGE_KEY,
     AI_ASSISTANT_QUICK_ACTION_ENTRIES,
     STUDENT_QUICK_ACTION_ENTRIES
   } from '$features/ai-assistant/utils/constants';
-  import {
-    AGENT_MODELS,
-    AGENT_MODEL_IDS,
-    DEFAULT_PICKER_MODEL_ID,
-    UI_PICKER_MODEL_IDS,
-    type AgentModelId
-  } from '@cio/utils/agent-models';
 
   /** Every ~30% / 60% / 90% of tool steps completed, refetch course so UI reflects partial mutations */
   const AGENT_STEP_PROGRESS_REFRESH_RATIOS = [0.3, 0.6, 0.9] as const;
@@ -85,47 +74,11 @@
   let statusFetchedForCourseId: string | null = $state(null);
   let conversationsLoadedForCourseId: string | null = $state(null);
   let activeConversationId: string | null = $state(null);
-  let selectedModel: AgentModelId = $state(DEFAULT_PICKER_MODEL_ID);
-  const paidModelIds = UI_PICKER_MODEL_IDS.filter((id) => !AGENT_MODELS[id].isFree);
-
-  function isAgentModelId(value: unknown): value is AgentModelId {
-    return typeof value === 'string' && (AGENT_MODEL_IDS as readonly string[]).includes(value);
-  }
-
-  function handleSelectModel(id: AgentModelId) {
-    if ($isFreePlan && paidModelIds.includes(id)) {
-      openUpgradeModal();
-      return;
-    }
-
-    selectedModel = id;
-
-    try {
-      localStorage.setItem(AI_CHAT_MODEL_STORAGE_KEY, id);
-    } catch {
-      // localStorage unavailable
-    }
-  }
-
-  function handleLockedModelSelect() {
-    openUpgradeModal();
-  }
+  // The AI model/provider is chosen entirely server-side from the .env API key,
+  // so the dashboard neither selects nor displays it. The request omits `model`
+  // and the API resolves the provider itself.
 
   const tokenUsage = $derived(aiAssistantApi.status?.usage ?? null);
-
-  $effect(() => {
-    if (!$isFreePlan || !paidModelIds.includes(selectedModel)) {
-      return;
-    }
-
-    selectedModel = DEFAULT_PICKER_MODEL_ID;
-
-    try {
-      localStorage.setItem(AI_CHAT_MODEL_STORAGE_KEY, DEFAULT_PICKER_MODEL_ID);
-    } catch {
-      // localStorage unavailable
-    }
-  });
 
   function getStorageKey(courseId: string) {
     return `ai-chat-active-${courseId}`;
@@ -320,7 +273,6 @@
       body: () => ({
         courseId,
         conversationId: activeConversationId ?? undefined,
-        model: selectedModel,
         context: {
           lessonId: page.params?.lessonId,
           exerciseId: page.params?.exerciseId,
@@ -733,24 +685,11 @@
     aiAssistantApi.conversations.find((c) => c.id === activeConversationId)?.title ?? null
   );
 
-  onMount(() => {
-    try {
-      const storedModel = localStorage.getItem(AI_CHAT_MODEL_STORAGE_KEY);
-
-      if (isAgentModelId(storedModel)) {
-        selectedModel = storedModel;
-      }
-    } catch {
-      // localStorage unavailable
-    }
-  });
-
   $effect(() => {
     const prompt = $initialChatPrompt;
 
     if (!prompt || !courseId) return;
 
-    const model = $initialChatModel;
     const templateFromHome = $initialChatTemplateId;
     clearInitialChatPrompt();
     clearInitialChatModel();
@@ -758,15 +697,6 @@
 
     tick().then(() => {
       pendingInitialTemplateId = templateFromHome ?? null;
-
-      if (model && isAgentModelId(model)) {
-        if ($isFreePlan && paidModelIds.includes(model)) {
-          openUpgradeModal();
-          return;
-        }
-
-        handleSelectModel(model);
-      }
 
       inputValue = prompt;
       void handleSend();
@@ -839,16 +769,12 @@
     {isUploading}
     {uploadedDocument}
     {mentionItems}
-    {selectedModel}
     {isStudent}
     {tutorBlocked}
-    lockedModelIds={$isFreePlan ? paidModelIds : []}
     error={chat.error}
     onSend={handleSend}
     onStop={handleStop}
     onFileSelect={handleFileSelect}
     onRemoveDocument={handleRemoveDocument}
-    onSelectModel={handleSelectModel}
-    onLockedModelSelect={handleLockedModelSelect}
   />
 </div>

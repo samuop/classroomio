@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import { page } from '$app/state';
   import { AuthUI } from '$features/ui';
   import { Button } from '@cio/ui/base/button';
@@ -14,7 +15,7 @@
 </script>
 
 <svelte:head>
-  <title>Reset Password - ClassroomIO</title>
+  <title>Reset Password - {brandName}</title>
 </svelte:head>
 
 <AuthUI isLogin={false} showOnlyContent={true}>
@@ -22,9 +23,9 @@
     <Avatar.Root>
       <Avatar.Image
         src={$currentOrg.avatarUrl ? $currentOrg.avatarUrl : '/logo-192.png'}
-        alt={$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}
+        alt={$currentOrg.name ? $currentOrg.name : brandName}
       />
-      <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : 'ClassroomIO'}</Avatar.Fallback>
+      <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : brandName}</Avatar.Fallback>
     </Avatar.Root>
 
     <p class="text-xl font-semibold">Something went wrong</p>

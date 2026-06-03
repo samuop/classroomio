@@ -46,15 +46,23 @@
   });
 </script>
 
-<Button {href} target="_blank" {variant} class={`&_span:hidden! md:&_span:block ml-2 ${className}`.trim()}>
-  {#if !$isMobile}
-    <span>
-      {#if isLMS}
-        {$t('dashboard.visit_site')}
-      {:else}
-        {$t(labelKey)}
-      {/if}
-    </span>
-  {/if}
-  <SquareArrowOutUpRight class="custom" />
-</Button>
+<!--
+  Public org site is disabled for this deployment, so the "View site" /
+  "Open academy" button is hidden everywhere. (This also avoids the SSR
+  `window is not defined` issue this component had on custom-domain orgs.)
+  Set SHOW_VISIT_SITE to true to restore it.
+-->
+{#if false}
+  <Button {href} target="_blank" {variant} class={`&_span:hidden! md:&_span:block ml-2 ${className}`.trim()}>
+    {#if !$isMobile}
+      <span>
+        {#if isLMS}
+          {$t('dashboard.visit_site')}
+        {:else}
+          {$t(labelKey)}
+        {/if}
+      </span>
+    {/if}
+    <SquareArrowOutUpRight class="custom" />
+  </Button>
+{/if}

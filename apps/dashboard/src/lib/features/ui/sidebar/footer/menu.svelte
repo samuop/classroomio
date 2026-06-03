@@ -1,11 +1,9 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { goto } from '$app/navigation';
-  import { basePath, globalStore } from '$lib/utils/store/app';
+  import { basePath } from '$lib/utils/store/app';
   import * as DropdownMenu from '@cio/ui/base/dropdown-menu';
-  import RocketIcon from '@lucide/svelte/icons/rocket';
-  import BellPlusIcon from '@lucide/svelte/icons/bell-plus';
-  import BadgeHelpIcon from '@lucide/svelte/icons/badge-help';
+  import InfoIcon from '@lucide/svelte/icons/info';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
@@ -105,39 +103,15 @@
 
         <DropdownMenu.Group>
           <div class="cursor-pointer space-y-2">
-            {#if !$globalStore.isOrgSite}
-              <div class="space-y-4">
-                <DropdownMenu.Item class="m-0">
-                  <a href="https://classroomio.com/roadmap" target="_blank" class="flex w-full items-center gap-2">
-                    <BellPlusIcon size={16} />
-                    <p class="text-sm">{$t('profileMenu.whats_new')}</p>
-                  </a>
-                </DropdownMenu.Item>
-
-                <DropdownMenu.Item class="m-0">
-                  <a
-                    href="https://classroomio.com/blog/launch-week"
-                    target="_blank"
-                    class="flex w-full items-center gap-2"
-                  >
-                    <RocketIcon size={16} />
-                    <p class="text-sm">{$t('profileMenu.launch_week')}</p>
-                  </a>
-                </DropdownMenu.Item>
-
-                <DropdownMenu.Item class="m-0">
-                  <a
-                    href="https://classroomio.com/contact"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="flex h-full w-full items-center justify-start space-x-2 text-start"
-                  >
-                    <BadgeHelpIcon size={20} />
-                    <p class="text-sm dark:text-white">{$t('org_navigation.help')}</p>
-                  </a>
-                </DropdownMenu.Item>
-              </div>
-            {/if}
+            <!-- Licence/attribution must always be reachable (AGPL fork requirement). -->
+            <div class="space-y-4">
+              <DropdownMenu.Item class="m-0">
+                <a href={resolve('/legal', {})} class="flex h-full w-full items-center justify-start space-x-2 text-start">
+                  <InfoIcon size={20} />
+                  <p class="text-sm dark:text-white">{$t('legal.menu_link')}</p>
+                </a>
+              </DropdownMenu.Item>
+            </div>
 
             <DropdownMenu.Separator />
 

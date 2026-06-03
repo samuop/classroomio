@@ -63,3 +63,12 @@ type GoalsOverviewResponse = InferResponseType<GoalsOverviewRequest>;
 type GoalsOverviewSuccess = Extract<GoalsOverviewResponse, { success: true }>;
 export type GoalsOverview = GoalsOverviewSuccess['data'];
 export type GoalsOverviewRow = GoalsOverview['goals'][number];
+
+// ─── Progress ────────────────────────────────────────────────────────────────
+
+export type ProgramProgressRequest = (typeof classroomio.program)[':programId']['progress']['$get'];
+type ProgramProgressResponse = InferResponseType<ProgramProgressRequest>;
+type ProgramProgressSuccess = Extract<ProgramProgressResponse, { success: true }>;
+export type ProgramProgress = ProgramProgressSuccess['data'];
+export type ProgramProgressMember = ProgramProgress['members'][number];
+export type ProgramProgressCourse = ProgramProgress['courses'][number];

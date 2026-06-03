@@ -3,14 +3,31 @@
  *
  * - `AGENT_MODELS` is the full set the backend supports.
  * - `UI_PICKER_MODEL_IDS` is the subset shown in the dashboard model picker.
- *   Anthropic stays in `AGENT_MODELS` so backend code paths keep working
- *   even though it isn't currently exposed to users.
+ *
+ * This deployment only configures a Google (Gemini) API key, so the picker is
+ * scoped to Gemini variants. OpenAI / Anthropic / Moonshot descriptors are kept
+ * in `AGENT_MODELS` (so backend code paths and historical records keep
+ * resolving) but are intentionally NOT offered in the UI — selecting them would
+ * fail without their API keys.
+ *
+ * The Gemini ids use Google's `*-latest` aliases where possible so they never
+ * point at a discontinued version (see resolveModelName in @cio/ai-assistant).
  */
 
-export const AGENT_MODEL_IDS = ['gemini-3.1-flash-lite', 'gpt-5.4-mini', 'claude-sonnet-3-5', 'kimi-k2.6'] as const;
+export const AGENT_MODEL_IDS = [
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  // Kept for backend/historical compatibility — not shown in the picker.
+  'gpt-5.4-mini',
+  'claude-sonnet-3-5',
+  'kimi-k2.6',
+  'minimax-m2.7'
+] as const;
 
 export type AgentModelId = (typeof AGENT_MODEL_IDS)[number];
-export type AgentModelProvider = 'google' | 'openai' | 'anthropic' | 'moonshot';
+export type AgentModelProvider = 'google' | 'openai' | 'anthropic' | 'moonshot' | 'minimax';
 export type AgentModelCostTier = 'low' | 'high';
 
 export interface AgentModelDescriptor {
@@ -27,6 +44,31 @@ export interface AgentModelDescriptor {
 }
 
 export const AGENT_MODELS: Record<AgentModelId, AgentModelDescriptor> = {
+  // ─── Gemini (the only provider with a configured key here) ──────────────────
+  'gemini-flash-latest': {
+    provider: 'google',
+    label: 'Gemini Flash (último)',
+    backendModelId: 'gemini-flash-latest',
+    isFree: true,
+    costTier: 'low',
+    contextWindow: 1_048_576
+  },
+  'gemini-flash-lite-latest': {
+    provider: 'google',
+    label: 'Gemini Flash Lite (último)',
+    backendModelId: 'gemini-flash-lite-latest',
+    isFree: true,
+    costTier: 'low',
+    contextWindow: 1_048_576
+  },
+  'gemini-2.5-flash-lite': {
+    provider: 'google',
+    label: 'Gemini 2.5 Flash Lite',
+    backendModelId: 'gemini-2.5-flash-lite',
+    isFree: true,
+    costTier: 'low',
+    contextWindow: 1_048_576
+  },
   'gemini-3.1-flash-lite': {
     provider: 'google',
     label: 'Gemini 3.1 Flash Lite',
@@ -35,6 +77,7 @@ export const AGENT_MODELS: Record<AgentModelId, AgentModelDescriptor> = {
     costTier: 'low',
     contextWindow: 1_048_576
   },
+  // ─── Other providers: backend-only, hidden from the picker ──────────────────
   'gpt-5.4-mini': {
     provider: 'openai',
     label: 'GPT-5.4 Mini',
@@ -58,14 +101,22 @@ export const AGENT_MODELS: Record<AgentModelId, AgentModelDescriptor> = {
     isFree: true,
     costTier: 'low',
     contextWindow: 262_144
+  },
+  'minimax-m2.7': {
+    provider: 'minimax',
+    label: 'MiniMax M2.7',
+    backendModelId: 'MiniMax-M2.7',
+    isFree: false,
+    costTier: 'low',
+    contextWindow: 204_800
   }
 };
 
 export const UI_PICKER_MODEL_IDS = [
-  'kimi-k2.6',
-  'gemini-3.1-flash-lite',
-  'gpt-5.4-mini',
-  'claude-sonnet-3-5'
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite'
 ] as const satisfies readonly AgentModelId[];
 
-export const DEFAULT_PICKER_MODEL_ID: AgentModelId = 'gemini-3.1-flash-lite';
+export const DEFAULT_PICKER_MODEL_ID: AgentModelId = 'gemini-flash-latest';

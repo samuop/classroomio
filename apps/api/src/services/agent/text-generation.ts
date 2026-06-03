@@ -1,12 +1,21 @@
 import { generateText } from 'ai';
-import { AIProvider, type AIProviderConfig, createModel } from '@cio/ai-assistant';
+import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 
-const TEXT_GEN_MODELS: Record<AIProvider, string> = {
+// Lightweight models for short field-generation tasks. Google is resolved at
+// call time from the GOOGLE_MODEL env (via resolveModelName) so it never points
+// at an obsolete pinned name; the others keep their cheap defaults.
+const TEXT_GEN_MODELS_STATIC: Record<Exclude<AIProvider, 'google'>, string> = {
   [AIProvider.OPENAI]: 'gpt-4o-mini',
   [AIProvider.ANTHROPIC]: 'claude-haiku-4-5-20251001',
-  [AIProvider.GOOGLE]: 'gemini-3.1-flash-lite',
-  [AIProvider.MOONSHOT]: 'kimi-k2.6'
+  [AIProvider.MOONSHOT]: 'kimi-k2.6',
+  [AIProvider.MINIMAX]: 'MiniMax-M2.7'
 };
+
+function textGenModelFor(provider: AIProviderConfig['provider']): string {
+  return provider === AIProvider.GOOGLE
+    ? resolveModelName(AIProvider.GOOGLE)
+    : TEXT_GEN_MODELS_STATIC[provider];
+}
 
 export interface GenerateFieldTextResult {
   text: string;
@@ -21,7 +30,7 @@ export async function generateFieldText(
   context: string | undefined,
   providerConfig: AIProviderConfig
 ): Promise<GenerateFieldTextResult> {
-  const modelName = TEXT_GEN_MODELS[providerConfig.provider];
+  const modelName = textGenModelFor(providerConfig.provider);
   const model = createModel({ ...providerConfig, model: modelName });
 
   const contextLine = context ? `Context: ${context}.` : '';

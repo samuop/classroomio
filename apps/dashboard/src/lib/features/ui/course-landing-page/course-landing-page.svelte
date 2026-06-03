@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import get from 'lodash/get';
   import pluralize from 'pluralize';
   import { page } from '$app/state';
@@ -67,7 +68,7 @@
   const heroShellStyle = $derived(themeStyle(landingSettings.theme));
   const navInsideHero = $derived(themeRendersNavInsideHero(landingSettings.theme));
 
-  const orgNameForNav = $derived($currentOrg.name || get(courseData, 'org.name', '') || 'ClassroomIO');
+  const orgNameForNav = $derived($currentOrg.name || get(courseData, 'org.name', '') || brandName);
   const logoUrlForNav = $derived($currentOrg.avatarUrl || undefined);
 
   const authAction = $derived(

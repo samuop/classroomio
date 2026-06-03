@@ -1,7 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/utils/functions/translations';
   import * as Card from '@cio/ui/base/card';
-  import { Button } from '@cio/ui/base/button';
   import { SvelteDate } from 'svelte/reactivity';
   import type { AiUsageData, PurchasedSummaryData } from '$features/settings/utils/types';
 
@@ -23,11 +22,9 @@
 
     return nextReset.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   });
-
-  const dollarsSpent = $derived(purchased ? (purchased.totalSpentCents / 100).toFixed(2) : '0.00');
 </script>
 
-<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+<div class="grid grid-cols-1 gap-4">
   <Card.Root>
     <Card.Header>
       <Card.Description>{$t('settings.ai_credits.included.title')}</Card.Description>
@@ -59,30 +56,6 @@
     </Card.Content>
   </Card.Root>
 
-  <Card.Root>
-    <Card.Header>
-      <Card.Description>{$t('settings.ai_credits.purchased.title')}</Card.Description>
-      <Card.Title class="text-2xl">
-        {#if purchased}
-          {purchased.currentBalance.toLocaleString()}
-        {:else}
-          —
-        {/if}
-      </Card.Title>
-    </Card.Header>
-    <Card.Content class="flex flex-col gap-3">
-      <p class="ui:text-muted-foreground text-xs">
-        {$t('settings.ai_credits.purchased.subtitle')}
-      </p>
-      <p class="ui:text-muted-foreground text-xs">
-        {$t('settings.ai_credits.purchased.lifetime', {
-          tokens: purchased ? purchased.totalPurchasedTokens.toLocaleString() : '0',
-          dollars: dollarsSpent
-        })}
-      </p>
-      <Button variant="outline" size="sm" class="w-fit" href="#buy-tokens">
-        {$t('settings.ai_credits.purchased.buy_more')}
-      </Button>
-    </Card.Content>
-  </Card.Root>
+  <!-- "Uso comprado" card removed: no in-app token purchases in this
+       deployment. AI budget is set per-org via aiTokenAllowance. -->
 </div>

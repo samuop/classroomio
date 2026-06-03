@@ -1,4 +1,5 @@
 <script>
+  import { brandName } from '$lib/utils/branding';
   import { Button } from '@cio/ui/base/button';
   import { AudiencePage } from '$features/audience/pages';
   import { t } from '$lib/utils/functions/translations';
@@ -21,7 +22,7 @@
 </script>
 
 <svelte:head>
-  <title>Audience - ClassroomIO</title>
+  <title>Audience - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-full max-w-6xl">

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { brandName } from '$lib/utils/branding';
   import * as Page from '@cio/ui/base/page';
   import { t } from '$lib/utils/functions/translations';
   import { programApi } from '$features/program/api';
@@ -28,7 +29,7 @@
 </script>
 
 <svelte:head>
-  <title>{$t('lms_navigation.programs') || 'Programs'} - ClassroomIO</title>
+  <title>{$t('lms_navigation.programs') || 'Programs'} - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="w-full">

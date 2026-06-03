@@ -136,7 +136,11 @@
 
   const ThemeComponent = $derived(landingPageThemeComponents[currentTheme] ?? landingPageThemeComponents.minimal);
 
-  const customizeHref = $derived(resolve(`${$currentOrgPath}/settings/landingpage/edit`, {}));
+  // Guard: $currentOrgPath defaults to '#' until the org is loaded; calling
+  // resolve() with a non-absolute path throws and crashes the page.
+  const customizeHref = $derived(
+    $currentOrgPath?.startsWith('/') ? resolve(`${$currentOrgPath}/settings/landingpage/edit`, {}) : '#'
+  );
 
   function handleAddTheme(theme: LandingPageTheme) {
     if ($isFreePlan && isPaidTheme(theme)) {
@@ -144,6 +148,7 @@
       return;
     }
 
+    if (!$currentOrgPath?.startsWith('/')) return;
     goto(resolve(`${$currentOrgPath}/settings/landingpage/edit?theme=${theme}`, {}));
   }
 

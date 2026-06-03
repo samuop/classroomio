@@ -5,7 +5,7 @@ import { getDefaultTemplate } from '../templates';
 
 export const teacherCourseWelcomeEmail = defineEmail({
   id: 'teacherCourseWelcome',
-  subject: 'You have been invited to a course!',
+  subject: '¡Te invitaron a un curso!',
   schema: z.object({
     name: z.string().min(1),
     orgName: z.string().min(1),
@@ -14,11 +14,11 @@ export const teacherCourseWelcomeEmail = defineEmail({
   }),
   render: (fields) => {
     const content = `
-      <p>Hey ${fields.name},</p>
-      <p>You have been given access to teach a course by ${fields.orgName}</p>
-      <p>The course is titled: ${fields.courseName}</p>
+      <p>Hola ${fields.name},</p>
+      <p>${fields.orgName} te dio acceso para dictar un curso.</p>
+      <p>El curso se llama: ${fields.courseName}</p>
       <div>
-        <a class="button" href="${fields.inviteLink}">Open Dashboard</a>
+        <a class="button" href="${fields.inviteLink}">Abrir panel</a>
       </div>
     `;
 

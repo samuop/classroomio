@@ -5,13 +5,13 @@ import { getDefaultTemplate } from '../templates';
 
 export const onPasswordResetEmail = defineEmail({
   id: 'onPasswordReset',
-  subject: 'Password Reset Successful - ClassroomIO',
+  subject: 'Tu contraseña fue restablecida',
   schema: z.object({
     name: z.string().min(1)
   }),
   render: (fields) => {
-    return getDefaultTemplate(`Heya ${fields.name},
-    <p>Your password has been reset successfully.</p>
+    return getDefaultTemplate(`Hola ${fields.name},
+    <p>Tu contraseña se restableció correctamente.</p>
     `);
   }
 });

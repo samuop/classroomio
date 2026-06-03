@@ -1,11 +1,12 @@
 <script>
+  import { brandName } from '$lib/utils/branding';
   import { ZapierAutomationPage } from '$features/automation/pages';
   import { t } from '$lib/utils/functions/translations';
   import * as Page from '@cio/ui/base/page';
 </script>
 
 <svelte:head>
-  <title>{t.get('automation.tabs.zapier')} - ClassroomIO</title>
+  <title>{t.get('automation.tabs.zapier')} - {brandName}</title>
 </svelte:head>
 
 <Page.Root class="mx-auto w-full max-w-4xl">

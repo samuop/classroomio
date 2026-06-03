@@ -9,9 +9,19 @@
   import type { UserCourseAnalytics } from '$features/course/utils/types';
 
   import { Progress } from '@cio/ui/base/progress';
+  import { Button } from '@cio/ui/base/button';
+  import UserIcon from '@lucide/svelte/icons/user';
+  import { currentOrg } from '$lib/utils/store/org';
+  import { resolve } from '$app/paths';
   import { ActivityCard, HeroProfileCard, LoadingPage } from '$features/ui';
 
   let { data } = $props();
+
+  const studentRecordHref = $derived(
+    $currentOrg?.siteName && data.userId
+      ? resolve(`/org/${$currentOrg.siteName}/students/${data.userId}`, {})
+      : null
+  );
 
   let userCourseAnalytics: UserCourseAnalytics | undefined = $derived(data.userCourseAnalytics ?? undefined);
 
@@ -78,12 +88,21 @@
 {#if userCourseAnalytics}
   <section class="px-1">
     {#if userCourseAnalytics.user}
-      <HeroProfileCard user={userCourseAnalytics.user} />
+      <div class="flex items-start justify-between gap-4">
+        <HeroProfileCard user={userCourseAnalytics.user} />
+
+        {#if studentRecordHref}
+          <Button variant="outline" size="sm" href={studentRecordHref} class="shrink-0">
+            <UserIcon size={16} class="mr-1" />
+            {$t('student_overview.view_full_record')}
+          </Button>
+        {/if}
+      </div>
     {/if}
 
     <div class="mt-5 px-0">
       <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {#each learningActivities as activity}
+        {#each learningActivities as activity (activity.title)}
           <ActivityCard {activity} />
         {/each}
       </div>
@@ -127,8 +146,8 @@
         </div>
       </div>
 
-      {#each filteredExercises as exercise, index}
-        {#key index}
+      {#each filteredExercises as exercise (exercise.id)}
+        {#key exercise.id}
           <div
             class={`mt-5 flex items-center justify-between gap-4 rounded-md border p-5  ${
               exercise.isCompleted
@@ -141,13 +160,13 @@
               <BookOpenIcon size={16} />
               <div>
                 <div class="mb-2">
-                  <a href={`/courses/${data.courseId}/exercises/${exercise.id}`}>
+                  <a href={resolve(`/courses/${data.courseId}/exercises/${exercise.id}`, {})}>
                     <p class="text-lg font-semibold text-gray-600">
                       {exercise.title}
                     </p>
                   </a>
                   {#if exercise.lessonId}
-                    <a href={`/courses/${data.courseId}/lessons/${exercise.lessonId}`}>
+                    <a href={resolve(`/courses/${data.courseId}/lessons/${exercise.lessonId}`, {})}>
                       <p class="text-sm text-gray-500">
                         #{exercise.lessonTitle}
                       </p>
