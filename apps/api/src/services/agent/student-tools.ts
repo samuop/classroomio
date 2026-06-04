@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { tool } from 'ai';
 import { z } from 'zod';
 
@@ -12,6 +12,8 @@ import { listCourseSections } from '@api/services/course/section';
 import { AppError } from '@api/utils/errors';
 import { AgentEvent, trackAgentEvent } from '@api/utils/tinybird';
 import { verifyExerciseBelongsToCourse, verifyLessonBelongsToCourse } from './chat-context';
+import { semanticSearchCourse } from './embeddings';
+import type { TLocale } from '@db/types';
 
 /**
  * Student agent tools — read-only, course-scoped.
@@ -127,7 +129,13 @@ const searchCourseParam = z.object({
   limit: z.number().int().min(1).max(20).default(8)
 });
 
-export function buildStudentAgentTools(orgId: string, userId: string, courseId: string, _settings: AiTutorSettings) {
+export function buildStudentAgentTools(
+  orgId: string,
+  userId: string,
+  courseId: string,
+  _settings: AiTutorSettings,
+  locale: TLocale = 'en'
+) {
   return {
     list_course_outline: tool({
       description:
@@ -179,7 +187,10 @@ export function buildStudentAgentTools(orgId: string, userId: string, courseId: 
             note?: string | null;
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const content = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en')?.content ?? null;
+          const content =
+            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale)?.content ??
+            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en')?.content ??
+            null;
 
           return {
             id: lesson.id,
@@ -227,8 +238,38 @@ export function buildStudentAgentTools(orgId: string, userId: string, courseId: 
       inputSchema: searchCourseParam,
       execute: async (args) => {
         return executeStudentTool('search_course', { orgId, userId, courseId, args }, async () => {
-          const pattern = `%${args.query}%`;
           const limit = args.limit ?? 8;
+
+          // Primary path: semantic (vector) search over indexed lesson chunks.
+          // Matches by meaning, so synonyms/paraphrase work. Falls through to the
+          // literal ILIKE search below if embeddings are unavailable or nothing
+          // is indexed for this course yet.
+          try {
+            const semantic = await semanticSearchCourse({ courseId, query: args.query, locale, limit });
+
+            if (semantic.length > 0) {
+              const ids = [...new Set(semantic.map((s) => s.lessonId))];
+              const titles = await db
+                .select({ id: schema.lesson.id, title: schema.lesson.title })
+                .from(schema.lesson)
+                .where(and(eq(schema.lesson.courseId, courseId), inArray(schema.lesson.id, ids)));
+              const titleById = new Map(titles.map((t) => [t.id, t.title]));
+
+              return {
+                query: args.query,
+                results: semantic.map((s) => ({
+                  type: 'lesson' as const,
+                  id: s.lessonId,
+                  title: titleById.get(s.lessonId) ?? '',
+                  snippet: makeSnippet(s.content, args.query)
+                }))
+              };
+            }
+          } catch (error) {
+            console.warn('[search_course] semantic search failed, falling back to literal:', error);
+          }
+
+          const pattern = `%${args.query}%`;
 
           const [lessonMatches, exerciseMatches] = await Promise.all([
             db
@@ -240,7 +281,7 @@ export function buildStudentAgentTools(orgId: string, userId: string, courseId: 
               .from(schema.lesson)
               .leftJoin(
                 schema.lessonLanguage,
-                and(eq(schema.lessonLanguage.lessonId, schema.lesson.id), eq(schema.lessonLanguage.locale, 'en'))
+                and(eq(schema.lessonLanguage.lessonId, schema.lesson.id), eq(schema.lessonLanguage.locale, locale))
               )
               .where(
                 and(

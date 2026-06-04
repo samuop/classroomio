@@ -8,6 +8,7 @@
   import { renderMarkdown } from '$features/ai-assistant/utils/markdown';
   import { renderMentions } from '$features/ai-assistant/utils/mentions';
   import PlanView from '$features/ai-assistant/plan-view.svelte';
+  import AgentSteps from '$features/ai-assistant/agent-steps.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
   import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
   import { isTemplateFormResolved } from '$features/ai-assistant/utils/template-form-resolved';
@@ -27,6 +28,7 @@
     getAgentToolInput,
     getAgentToolResult,
     getAgentToolStatus,
+    getAgentStepsForMessage,
     isAgentToolPart
   } from '$features/ai-assistant/utils/tool-parts';
   import type { AiAssistantMessage, AiAssistantMessageMetadata } from '$features/ai-assistant/utils/types';
@@ -40,6 +42,8 @@
     onRequestPlanChanges: () => void;
     isStreaming: boolean;
     isLast?: boolean;
+    /** True when the live ProgressCard is rendered for this turn (last message) — suppress bubble steps to avoid duplication. */
+    liveProgressActive?: boolean;
     onSubmitTemplateAnswers: (payload: {
       templateId: CourseTemplateId;
       answers: Record<string, string>;
@@ -67,7 +71,8 @@
     onSkipDiscoveryForm,
     onMentionClick,
     isStreaming,
-    isLast = false
+    isLast = false,
+    liveProgressActive = false
   }: Props = $props();
 
   function localizePendingTool(toolName: string): string {
@@ -125,11 +130,20 @@
     return (part as { errorText?: string }).errorText;
   }
 
+  // Persisted per-message agent steps (update_lesson_content, create_*, get_*, …).
+  // Shown collapsed in the bubble so any past turn can reveal what it did. While the
+  // live ProgressCard is showing this turn's steps (streaming, or stopped/step-limit),
+  // it owns the display — suppress the bubble steps then to avoid showing them twice.
+  const agentSteps = $derived(message.role === 'assistant' ? getAgentStepsForMessage(message) : []);
+  const showAgentSteps = $derived(agentSteps.length > 0 && !(isLast && liveProgressActive));
+
   const inlineParts = $derived((message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text'));
   const deferredPlanParts = $derived(
     (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
   );
-  const hasBubbleContent = $derived(inlineParts.length > 0 || deferredPlanParts.length > 0 || !!messageAttachment);
+  const hasBubbleContent = $derived(
+    inlineParts.length > 0 || deferredPlanParts.length > 0 || !!messageAttachment || showAgentSteps
+  );
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
   // Cards (plan, forms, tool status) need the full panel width to breathe; plain
   // text bubbles stay narrower for readability.
@@ -178,10 +192,16 @@
         </div>
       {/if}
 
+      {#if showAgentSteps}
+        <div class="mb-2">
+          <AgentSteps steps={agentSteps} {courseId} onNavigate={onMentionClick} />
+        </div>
+      {/if}
+
       {#each inlineParts as part, partIndex (partIndex)}
         {#if part.type === 'text'}
           <div
-            class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-all {message.role === 'user' &&
+            class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-words {message.role === 'user' &&
               'ui:text-primary-foreground!'}"
           >
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->

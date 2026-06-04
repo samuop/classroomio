@@ -85,8 +85,36 @@ async function dbSetup() {
 
     // Note: 'public' role exists by default in PostgreSQL
 
+    // pgvector extension — required for semantic search (lesson_embedding.embedding).
+    // The image (pgvector/pgvector:pg16) ships the extension; this enables it on the DB.
+    try {
+      await sql`CREATE EXTENSION IF NOT EXISTS vector`;
+      console.log('✓ vector (pgvector) extension enabled');
+    } catch (error) {
+      console.warn(
+        '⚠ Could not enable the pgvector extension — semantic search will fall back to text search. ' +
+          'Ensure the Postgres image is pgvector/pgvector:pg16.',
+        error instanceof Error ? error.message : error
+      );
+    }
+
     if (shouldSyncSchema) {
       await runSchemaSync();
+    }
+
+    // ANN index for semantic search. drizzle push does not manage HNSW indexes,
+    // so create it here after the table exists. Idempotent + stable name.
+    try {
+      await sql`
+        CREATE INDEX IF NOT EXISTS idx_lesson_embedding_hnsw
+        ON lesson_embedding USING hnsw (embedding vector_cosine_ops)
+      `;
+      console.log('✓ lesson_embedding HNSW index ready');
+    } catch (error) {
+      console.warn(
+        '⚠ Could not create the lesson_embedding HNSW index (is pgvector enabled and the table present?).',
+        error instanceof Error ? error.message : error
+      );
     }
 
     await runSeedEssential();

@@ -11,6 +11,7 @@ import {
 
 import { getLessonById } from '@cio/db/queries/lesson/lesson';
 import { touchCourseUpdatedAt } from '@cio/db/queries/course';
+import { reindexLessonLanguageInBackground } from '@api/services/agent/embeddings';
 
 /**
  * Gets all language translations for a lesson
@@ -76,6 +77,14 @@ export async function upsertLessonLanguageService(
       await touchCourseUpdatedAt(lesson.courseId);
     }
 
+    // Re-index for the student tutor's semantic search (non-blocking, best-effort).
+    reindexLessonLanguageInBackground({
+      lessonId,
+      courseId: lesson.courseId,
+      locale: (language.locale ?? 'en') as TLocale,
+      content: language.content
+    });
+
     return language;
   } catch (error) {
     if (error instanceof AppError) {
@@ -121,6 +130,14 @@ export async function updateLessonLanguageService(
     if (lesson.courseId) {
       await touchCourseUpdatedAt(lesson.courseId);
     }
+
+    // Re-index for the student tutor's semantic search (non-blocking, best-effort).
+    reindexLessonLanguageInBackground({
+      lessonId,
+      courseId: lesson.courseId,
+      locale,
+      content: language.content
+    });
 
     return language;
   } catch (error) {

@@ -35,6 +35,7 @@ import {
   createExerciseSectionParam,
   createLessonParam,
   createSectionParam,
+  editContentParam,
   emptyParam,
   exerciseReadParam,
   fetchDocumentationUrlParam,
@@ -329,6 +330,73 @@ export function buildAgentTools(
             lessonTitle: lesson.title,
             locale: args.locale,
             contentLength: normalizedContent.length,
+            updated: true
+          };
+        });
+      }
+    }),
+
+    edit_lesson_content: tool({
+      description:
+        'Make a TARGETED edit to a lesson by find-and-replace — replace one exact fragment of its HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). You MUST call get_lesson_content first and copy oldString VERBATIM from it. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
+      inputSchema: editContentParam,
+      execute: async (args) => {
+        return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {
+          await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          const lesson = await getLesson(args.lessonId);
+          const lessonWithLangs = lesson as {
+            id: string;
+            title: string;
+            lessonLanguages?: Array<{ locale: string; content: string | null }>;
+          };
+          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+
+          if (!current) {
+            throw new Error(
+              `This lesson has no content in locale "${args.locale}" yet. Use update_lesson_content to write the initial content instead of edit_lesson_content.`
+            );
+          }
+
+          const occurrences = current.split(args.oldString).length - 1;
+
+          if (occurrences === 0) {
+            throw new Error(
+              'oldString was not found in the lesson. Call get_lesson_content and copy the fragment EXACTLY (verbatim: same whitespace, quotes, and HTML entities) before retrying.'
+            );
+          }
+
+          if (occurrences > 1 && !args.replaceAll) {
+            throw new Error(
+              `oldString appears ${occurrences} times (ambiguous). Include more surrounding context to make it unique, or pass replaceAll: true to replace every occurrence.`
+            );
+          }
+
+          if (/<h[12][\s>]/i.test(args.newString)) {
+            throw new Error(
+              'newString must not contain <h1> or <h2>. Lesson headings start at <h3>. Adjust the heading level and retry.'
+            );
+          }
+
+          // String replace (no regex) so $&, $1, $$ etc. in newString are not interpreted.
+          const updated = args.replaceAll
+            ? current.split(args.oldString).join(args.newString)
+            : current.replace(args.oldString, () => args.newString);
+
+          if (updated === current) {
+            throw new Error('The replacement produced no change (oldString and newString are equivalent).');
+          }
+
+          await upsertLessonLanguageService(args.lessonId, {
+            locale: args.locale as 'en',
+            content: updated
+          });
+
+          return {
+            lessonId: args.lessonId,
+            lessonTitle: lesson.title,
+            locale: args.locale,
+            replacements: args.replaceAll ? occurrences : 1,
+            contentLength: updated.length,
             updated: true
           };
         });

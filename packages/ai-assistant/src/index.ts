@@ -34,7 +34,11 @@ export {
   createModel,
   getProviderConfigForProvider,
   pickAnyConfiguredProvider,
-  resolveModelName
+  resolveModelName,
+  getEmbeddingModel,
+  normalizeEmbedding,
+  EMBEDDING_MODEL_NAME,
+  EMBEDDING_PROVIDER_OPTIONS
 } from './providers';
 
 // Tools

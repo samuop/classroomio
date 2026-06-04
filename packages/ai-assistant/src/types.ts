@@ -115,6 +115,7 @@ export const ToolName = {
   CREATE_LESSON: 'create_lesson',
   UPDATE_LESSON: 'update_lesson',
   UPDATE_LESSON_CONTENT: 'update_lesson_content',
+  EDIT_LESSON_CONTENT: 'edit_lesson_content',
   CREATE_EXERCISE: 'create_exercise',
   CREATE_EXERCISE_SECTION: 'create_exercise_section',
   UPDATE_EXERCISE: 'update_exercise',

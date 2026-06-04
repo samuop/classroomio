@@ -52,7 +52,9 @@ export const defaultAiTutorSettings: AiTutorSettings = {
   customPersona: '',
   responseLength: 'medium',
   welcomeMessage: '',
-  disclaimerFooter: 'I am an AI tutor, not your instructor.',
+  // Empty by default so no hardcoded English line is appended to every reply.
+  // Teachers can set their own disclaimer (in their language) from the AI Tutor settings.
+  disclaimerFooter: '',
   thingsToSay: '',
   thingsNotToSay: '',
   forbiddenTopics: [],

@@ -29,7 +29,7 @@
   }}
 >
   <Dialog.Content
-    class="flex max-h-[680px] max-w-2xl! flex-col overflow-hidden"
+    class="ui:sm:max-w-2xl flex max-h-[680px] w-full flex-col overflow-hidden"
     showCloseButton={!$lessonVideoUpload.isUploading}
     onEscapeKeydown={(e) => {
       if ($lessonVideoUpload.isUploading) e.preventDefault();
@@ -51,7 +51,7 @@
           <UnderlineTabs.Trigger
             value={String(item.value)}
             disabled={$lessonVideoUpload.isUploading && currentTab !== String(item.value)}
-            class="ui:flex ui:items-center ui:gap-2"
+            class="ui:flex ui:flex-none ui:shrink-0 ui:items-center ui:gap-2"
           >
             {#if $isFreePlan && item.value === 3}
               <ZapIcon size={16} class="filled" />

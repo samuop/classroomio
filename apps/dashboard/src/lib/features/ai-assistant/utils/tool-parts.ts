@@ -1,4 +1,5 @@
 import type { ProgressStep } from './tool-labels';
+import { getCompletedToolLine, getPendingToolLine } from './tool-labels';
 
 export interface AgentToolPart {
   type: string;
@@ -48,6 +49,45 @@ export function getAgentToolResult(part: AgentToolPart): unknown {
 
 export function getAgentToolInput(part: AgentToolPart): unknown {
   return (part as { input?: unknown }).input;
+}
+
+/**
+ * Tools that render their own rich card in the message bubble (plan view,
+ * template/discovery forms) — excluded from the generic step list.
+ */
+const SELF_RENDERED_TOOLS = new Set([
+  'generate_course_plan',
+  'ask_template_questions',
+  'ask_discovery_questions'
+]);
+
+/**
+ * Derive the agent's step list from a single message's parts. Because parts are
+ * persisted per message, this lets any past assistant message show what steps it
+ * ran — not just the live one. Mirrors the mapping in `planExecutionState`.
+ */
+export function getAgentStepsForMessage(message: { parts?: unknown[] }): ProgressStep[] {
+  const parts = (message.parts ?? []) as unknown[];
+
+  return parts.flatMap((part) => {
+    if (!isAgentToolPart(part)) {
+      return [];
+    }
+
+    const toolName = getAgentToolName(part);
+
+    if (!toolName || SELF_RENDERED_TOOLS.has(toolName)) {
+      return [];
+    }
+
+    const status = getAgentToolStatus(part);
+    const line =
+      status === 'completed'
+        ? getCompletedToolLine(toolName, getAgentToolResult(part))
+        : getPendingToolLine(toolName, getAgentToolInput(part));
+
+    return [{ line, status } satisfies ProgressStep];
+  });
 }
 
 export function getAgentToolStatus(part: AgentToolPart): ProgressStep['status'] {

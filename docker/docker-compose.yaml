@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector image = Postgres 16 + the `vector` extension (semantic search / RAG).
+    # Drop-in replacement for postgres:16 on the same data volume.
+    image: pgvector/pgvector:pg16
     container_name: cio-postgres
     ports:
       - "5432:5432"

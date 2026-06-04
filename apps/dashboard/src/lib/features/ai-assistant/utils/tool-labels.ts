@@ -29,6 +29,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'create_lesson',
   'update_lesson',
   'update_lesson_content',
+  'edit_lesson_content',
   'create_exercise',
   'create_exercise_section',
   'update_exercise',
@@ -126,6 +127,22 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
       return {
         shape: 'i18n',
         key: 'ai_assistant.tool.done.update_lesson_content_fallback',
+        vars: { count: contentLength }
+      };
+    }
+    case 'edit_lesson_content': {
+      const lessonId = readString(r, 'lessonId') ?? '';
+      const rawTitle = readString(r, 'lessonTitle');
+      const displayTitle = rawTitle && rawTitle.trim().length > 0 ? rawTitle : '';
+      const contentLength = readPositiveInt(r, 'contentLength');
+
+      if (lessonId && displayTitle) {
+        return { shape: 'lesson_written', lessonId, title: displayTitle, charCount: contentLength };
+      }
+
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.edit_lesson_content_fallback',
         vars: { count: contentLength }
       };
     }
@@ -273,6 +290,7 @@ export const MUTATION_TOOLS = [
   'create_lesson',
   'update_lesson',
   'update_lesson_content',
+  'edit_lesson_content',
   'create_exercise',
   'create_exercise_section',
   'update_exercise',

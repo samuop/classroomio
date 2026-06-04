@@ -60,6 +60,26 @@ export const updateContentParam = z.object({
   content: z.string().min(1)
 });
 
+export const editContentParam = z.object({
+  lessonId: z.string(),
+  locale: z.string().default('en'),
+  oldString: z
+    .string()
+    .min(1)
+    .describe(
+      'Exact, VERBATIM text/HTML to replace, copied as-is from get_lesson_content (same whitespace, quotes, and HTML entities). Must appear exactly once unless replaceAll is true. Include enough surrounding context to make it unique.'
+    ),
+  newString: z
+    .string()
+    .describe(
+      'Replacement text/HTML. May be an empty string to delete the fragment. Keep headings at h3 or lower and use only allowed HTML.'
+    ),
+  replaceAll: z
+    .boolean()
+    .optional()
+    .describe('If true, replace ALL occurrences. Defaults to false, which requires oldString to be unique.')
+});
+
 export const questionSchema = z.object({
   question: z.string().min(1),
   questionTypeId: z

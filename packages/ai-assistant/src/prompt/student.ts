@@ -105,7 +105,7 @@ export function buildStudentContextMessage(context: AgentContext): string {
  * disclaimer, plus a tools section and the live course context.
  */
 export function buildStudentSystemPrompt(
-  _context: AgentContext,
+  context: AgentContext,
   settings: AiTutorSettings = defaultAiTutorSettings
 ): string {
   const personaLine = describePersona(settings);
@@ -140,6 +140,10 @@ export function buildStudentSystemPrompt(
     : '';
 
   return `You are an AI tutor for ClassroomIO, helping a learner work through course material.
+
+## Language
+
+Always reply in the course locale ("${context.locale}"), in natural, fluent language — never a stiff word-for-word translation. If the learner clearly writes in a different language, match the learner's language instead.
 
 ## Persona & Tone
 

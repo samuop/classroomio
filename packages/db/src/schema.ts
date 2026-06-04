@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   date,
   doublePrecision,
   foreignKey,
@@ -22,6 +23,29 @@ import {
 
 import type { AnswerData } from '@cio/question-types';
 import { sql } from 'drizzle-orm';
+
+/**
+ * pgvector column type. Drizzle has no native `vector`, so we map a JS number[]
+ * to/from the pgvector text form `[1,2,3]`. Dimension is fixed to the embedding
+ * model output (Gemini text-embedding-004 → 768). Changing the model means
+ * changing this and re-indexing.
+ */
+export const EMBEDDING_DIMENSIONS = 768;
+
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return `vector(${EMBEDDING_DIMENSIONS})`;
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(',')}]`;
+  },
+  fromDriver(value: string): number[] {
+    return value
+      .slice(1, -1)
+      .split(',')
+      .map((n) => Number(n));
+  }
+});
 
 export const courseType = pgEnum('COURSE_TYPE', ['SELF_PACED', 'LIVE_CLASS', 'COMPLIANCE', 'PUBLIC']);
 export const locale = pgEnum('LOCALE', ['en', 'hi', 'fr', 'pt', 'de', 'vi', 'ru', 'es', 'pl', 'da']);
@@ -1745,6 +1769,45 @@ export const lessonLanguageHistory = pgTable(
   ]
 );
 
+/**
+ * Semantic search index for the student AI tutor (RAG). Each row is one chunk of
+ * a lesson's content for a given locale, with its embedding. `courseId` is
+ * denormalized so the student tool can pre-filter by course cheaply before the
+ * vector search. The HNSW index on `embedding` is created in db-setup.ts (raw
+ * SQL — drizzle push does not manage ANN indexes).
+ */
+export const lessonEmbedding = pgTable(
+  'lesson_embedding',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedByDefaultAsIdentity({
+      name: 'lesson_embedding_id_seq',
+      startWith: 1,
+      increment: 1,
+      minValue: 1,
+      cache: 1
+    }),
+    lessonId: uuid('lesson_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    locale: locale().default('en').notNull(),
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text().notNull(),
+    embedding: vector('embedding').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.lessonId],
+      foreignColumns: [lesson.id],
+      name: 'lesson_embedding_lesson_id_fkey'
+    })
+      .onUpdate('cascade')
+      .onDelete('cascade'),
+    index('idx_lesson_embedding_course_locale').on(table.courseId, table.locale)
+  ]
+);
+
 export const organizationmember = pgTable(
   'organizationmember',
   {
@@ -2109,7 +2172,7 @@ export const organization = pgTable(
         customPersona: '',
         responseLength: 'medium',
         welcomeMessage: '',
-        disclaimerFooter: 'I am an AI tutor, not your instructor.',
+        disclaimerFooter: '',
         thingsToSay: '',
         thingsNotToSay: '',
         forbiddenTopics: [],

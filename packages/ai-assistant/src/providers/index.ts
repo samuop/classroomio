@@ -2,8 +2,47 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createMoonshotAI } from '@ai-sdk/moonshotai';
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import { AIProvider, type AIProviderConfig } from '../types';
+
+/**
+ * Embedding model for semantic search (RAG). We use Google's gemini-embedding-001
+ * truncated to 768 dims (must match EMBEDDING_DIMENSIONS in @cio/db schema) via
+ * outputDimensionality. NOTE: gemini-embedding-001 does NOT auto-normalize reduced
+ * dimensions — callers must L2-normalize the vector (see normalizeEmbedding) so
+ * cosine distance is meaningful. Returns null when GOOGLE_API_KEY is unset, so
+ * callers can fall back to literal search.
+ */
+export const EMBEDDING_MODEL_NAME = 'gemini-embedding-001';
+export const EMBEDDING_OUTPUT_DIMENSIONS = 768;
+
+export function getEmbeddingModel(): EmbeddingModel | null {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+
+  const google = createGoogleGenerativeAI({ apiKey });
+  return google.textEmbeddingModel(EMBEDDING_MODEL_NAME);
+}
+
+/**
+ * providerOptions to pass to embed()/embedMany() so Gemini returns 768-dim
+ * vectors (Matryoshka truncation) instead of the default 3072.
+ */
+export const EMBEDDING_PROVIDER_OPTIONS = {
+  google: { outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS }
+} as const;
+
+/**
+ * L2-normalize an embedding so cosine distance behaves correctly. Required for
+ * gemini-embedding-001 at reduced dimensionality (it returns un-normalized vectors).
+ */
+export function normalizeEmbedding(vector: number[]): number[] {
+  let sumSquares = 0;
+  for (const v of vector) sumSquares += v * v;
+  const norm = Math.sqrt(sumSquares);
+  if (norm === 0) return vector;
+  return vector.map((v) => v / norm);
+}
 
 /**
  * Per-provider env var to override the model name without code changes.

@@ -58,6 +58,7 @@ import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { redis } from '@api/utils/redis/redis';
 import { db } from '@cio/db';
 import * as schema from '@cio/db/schema';
+import type { TLocale } from '@db/types';
 import { eq } from 'drizzle-orm';
 import { listCourseSections } from '@api/services/course/section';
 import { getLesson } from '@api/services/lesson/lesson';
@@ -584,7 +585,13 @@ const agentCoreRouter = new Hono()
 
       const agentTools =
         role === AgentRole.STUDENT
-          ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings)
+          ? buildStudentAgentTools(
+              orgId,
+              user.id,
+              courseId,
+              studentPolicy!.settings,
+              agentContext.locale as TLocale
+            )
           : buildAgentTools(orgId, user.id, courseId, messages, { isOrgOnPaidPlan: isOrgPaid });
 
       const contextManaged = await buildModelContextMessages({

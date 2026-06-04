@@ -18,6 +18,7 @@ import MathMatics from '@tiptap/extension-mathematics';
 import AutoJoiner from 'tiptap-extension-auto-joiner';
 import 'katex/dist/katex.min.css';
 import { InlineMathReplacer } from './extensions/InlineMathReplacer';
+import { Svg } from './extensions/svg/Svg';
 
 export default (
   element?: HTMLElement,
@@ -109,6 +110,7 @@ export default (
       TableRow,
       TableCell,
       Markdown,
+      Svg,
 
       ...(extensions ?? [])
     ],

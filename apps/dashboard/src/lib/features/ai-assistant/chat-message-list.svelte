@@ -200,6 +200,7 @@
           {courseId}
           {isStreaming}
           {isLast}
+          liveProgressActive={isLast && !isStudent && planExecutionState !== null}
           {onImplementPlan}
           {onRequestPlanChanges}
           {onSubmitTemplateAnswers}
