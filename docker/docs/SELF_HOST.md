@@ -49,6 +49,35 @@ docker compose --env-file .env -p classroomio -f docker/docker-compose.yaml \
   run --rm db-init sh -c "pnpm --filter @cio/db db:setup -- --seed"
 ```
 
+## AI Tutor Semantic Search (pgvector / RAG)
+
+The student AI tutor uses **semantic search** (embeddings) to find lesson content
+by meaning, not just literal keywords. This requires:
+
+1. **pgvector**: the Postgres service uses the `pgvector/pgvector:pg16` image (set
+   in `docker/docker-compose.yaml`). `db:setup` enables the `vector` extension and
+   creates the `lesson_embedding` table + HNSW index automatically.
+   - **Upgrading an existing install** (was `postgres:16-alpine`): pull the new
+     image and recreate the container — the data volume is preserved:
+     ```bash
+     dc up -d --pull always postgres
+     dc run --rm db-init sh -c "pnpm --filter @cio/db db:setup"
+     ```
+2. **`GOOGLE_API_KEY`** in the API env — embeddings use Gemini
+   `gemini-embedding-001` (3072 dims, stored as `halfvec`). Without the key, the
+   tutor automatically falls back to literal text search (no error).
+3. **Backfill existing courses** once, so content created before enabling RAG gets
+   indexed (new/edited lessons index automatically on save):
+   ```bash
+   dc exec api pnpm --filter @cio/api exec tsx scripts/backfill-lesson-embeddings.ts
+   ```
+
+> Local dev (no Docker): each developer must run `docker compose ... up -d postgres`
+> to pick up the pgvector image, then `pnpm --filter @cio/db db:setup`, then the
+> backfill script above. Changing the embedding model/dimension means updating
+> `EMBEDDING_DIMENSIONS` (schema) + `EMBEDDING_OUTPUT_DIMENSIONS` (providers) and
+> re-running the backfill.
+
 ## Command Reference
 
 All commands use this prefix — abbreviated as `dc` below:

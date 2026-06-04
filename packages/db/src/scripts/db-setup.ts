@@ -107,7 +107,7 @@ async function dbSetup() {
     try {
       await sql`
         CREATE INDEX IF NOT EXISTS idx_lesson_embedding_hnsw
-        ON lesson_embedding USING hnsw (embedding vector_cosine_ops)
+        ON lesson_embedding USING hnsw (embedding halfvec_cosine_ops)
       `;
       console.log('✓ lesson_embedding HNSW index ready');
     } catch (error) {

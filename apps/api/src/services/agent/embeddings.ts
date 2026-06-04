@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 
 import { db } from '@cio/db';
 import * as schema from '@cio/db/schema';
-import { getEmbeddingModel, normalizeEmbedding, EMBEDDING_PROVIDER_OPTIONS } from '@cio/ai-assistant';
+import { getEmbeddingModel, EMBEDDING_PROVIDER_OPTIONS } from '@cio/ai-assistant';
 import type { TLocale } from '@db/types';
 
 /**
@@ -120,7 +120,7 @@ export async function indexLessonLanguage(params: {
       locale,
       chunkIndex,
       content,
-      embedding: normalizeEmbedding(embeddings[chunkIndex])
+      embedding: embeddings[chunkIndex]
     }))
   );
 
@@ -171,7 +171,7 @@ export async function semanticSearchCourse(params: {
     value: params.query,
     providerOptions: EMBEDDING_PROVIDER_OPTIONS
   });
-  const queryVec = `[${normalizeEmbedding(embedding).join(',')}]`;
+  const queryVec = `[${embedding.join(',')}]`;
 
   const localeFilter = params.locale
     ? sql`AND locale = ${params.locale}`
@@ -180,10 +180,10 @@ export async function semanticSearchCourse(params: {
   // <=> is pgvector cosine distance (smaller = closer). Parameterized query vector.
   // The postgres-js driver returns the row array directly from db.execute().
   const rows = (await db.execute(sql`
-    SELECT lesson_id, chunk_index, content, (embedding <=> ${queryVec}::vector) AS distance
+    SELECT lesson_id, chunk_index, content, (embedding <=> ${queryVec}::halfvec) AS distance
     FROM lesson_embedding
     WHERE course_id = ${params.courseId} ${localeFilter}
-    ORDER BY embedding <=> ${queryVec}::vector
+    ORDER BY embedding <=> ${queryVec}::halfvec
     LIMIT ${limit}
   `)) as unknown as Array<{
     lesson_id: string;

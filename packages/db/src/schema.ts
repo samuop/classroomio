@@ -25,16 +25,21 @@ import type { AnswerData } from '@cio/question-types';
 import { sql } from 'drizzle-orm';
 
 /**
- * pgvector column type. Drizzle has no native `vector`, so we map a JS number[]
- * to/from the pgvector text form `[1,2,3]`. Dimension is fixed to the embedding
- * model output (Gemini text-embedding-004 → 768). Changing the model means
- * changing this and re-indexing.
+ * pgvector column type for embeddings. Drizzle has no native vector type, so we
+ * map a JS number[] to/from the pgvector text form `[1,2,3]`.
+ *
+ * We use `halfvec` (half-precision) rather than `vector`: Gemini's
+ * gemini-embedding-001 emits 3072-dim embeddings, and pgvector's HNSW index only
+ * supports up to 2000 dims for `vector` but up to 4000 for `halfvec`. Half
+ * precision costs negligible retrieval quality while keeping the full 3072 dims
+ * (maximum semantic quality) and halving storage. Changing the model/dimension
+ * means changing EMBEDDING_DIMENSIONS and re-indexing.
  */
-export const EMBEDDING_DIMENSIONS = 768;
+export const EMBEDDING_DIMENSIONS = 3072;
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {
-    return `vector(${EMBEDDING_DIMENSIONS})`;
+    return `halfvec(${EMBEDDING_DIMENSIONS})`;
   },
   toDriver(value: number[]): string {
     return `[${value.join(',')}]`;

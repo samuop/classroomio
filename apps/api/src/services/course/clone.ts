@@ -24,6 +24,8 @@ import {
 
 import { ROLE } from '@cio/utils/constants';
 import { QUESTION_TYPE_IDS } from '@cio/question-types';
+import type { TLocale } from '@db/types';
+import { reindexLessonLanguageInBackground } from '@api/services/agent/embeddings';
 
 async function cloneLessonLanguages(newLessons: TLesson[], oldLessons: TLesson[]): Promise<void> {
   // Extract old lesson IDs
@@ -51,6 +53,19 @@ async function cloneLessonLanguages(newLessons: TLesson[], oldLessons: TLesson[]
 
   // Bulk insert lesson languages
   await createLessonLanguages(newLessonLanguages);
+
+  // Index the cloned content for the student tutor's semantic search. The bulk
+  // insert bypasses upsertLessonLanguageService (where indexing is normally
+  // hooked), so re-index here. courseId comes from the new lessons.
+  const courseIdByLessonId = new Map(newLessons.map((l) => [l.id, l.courseId]));
+  for (const lang of newLessonLanguages) {
+    reindexLessonLanguageInBackground({
+      lessonId: lang.lessonId,
+      courseId: courseIdByLessonId.get(lang.lessonId),
+      locale: (lang.locale ?? 'en') as TLocale,
+      content: lang.content
+    });
+  }
 }
 
 async function cloneExercises(newLessons: TLesson[], oldLessons: TLesson[]): Promise<void> {

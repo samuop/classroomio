@@ -36,7 +36,6 @@ export {
   pickAnyConfiguredProvider,
   resolveModelName,
   getEmbeddingModel,
-  normalizeEmbedding,
   EMBEDDING_MODEL_NAME,
   EMBEDDING_PROVIDER_OPTIONS
 } from './providers';

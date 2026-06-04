@@ -6,15 +6,15 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
 import { AIProvider, type AIProviderConfig } from '../types';
 
 /**
- * Embedding model for semantic search (RAG). We use Google's gemini-embedding-001
- * truncated to 768 dims (must match EMBEDDING_DIMENSIONS in @cio/db schema) via
- * outputDimensionality. NOTE: gemini-embedding-001 does NOT auto-normalize reduced
- * dimensions — callers must L2-normalize the vector (see normalizeEmbedding) so
- * cosine distance is meaningful. Returns null when GOOGLE_API_KEY is unset, so
- * callers can fall back to literal search.
+ * Embedding model for semantic search (RAG). Google's gemini-embedding-001 at its
+ * full 3072 dimensions (maximum semantic quality; must match EMBEDDING_DIMENSIONS
+ * in @cio/db schema, stored as halfvec). At full 3072 dims the model returns
+ * already-normalized vectors, so no manual L2 normalization is needed (unlike the
+ * truncated <3072 case). Returns null when GOOGLE_API_KEY is unset, so callers can
+ * fall back to literal search.
  */
 export const EMBEDDING_MODEL_NAME = 'gemini-embedding-001';
-export const EMBEDDING_OUTPUT_DIMENSIONS = 768;
+export const EMBEDDING_OUTPUT_DIMENSIONS = 3072;
 
 export function getEmbeddingModel(): EmbeddingModel | null {
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -25,24 +25,12 @@ export function getEmbeddingModel(): EmbeddingModel | null {
 }
 
 /**
- * providerOptions to pass to embed()/embedMany() so Gemini returns 768-dim
- * vectors (Matryoshka truncation) instead of the default 3072.
+ * providerOptions to pass to embed()/embedMany() so Gemini returns the full
+ * 3072-dim vectors explicitly (the model default, stated here for clarity).
  */
 export const EMBEDDING_PROVIDER_OPTIONS = {
   google: { outputDimensionality: EMBEDDING_OUTPUT_DIMENSIONS }
 } as const;
-
-/**
- * L2-normalize an embedding so cosine distance behaves correctly. Required for
- * gemini-embedding-001 at reduced dimensionality (it returns un-normalized vectors).
- */
-export function normalizeEmbedding(vector: number[]): number[] {
-  let sumSquares = 0;
-  for (const v of vector) sumSquares += v * v;
-  const norm = Math.sqrt(sumSquares);
-  if (norm === 0) return vector;
-  return vector.map((v) => v / norm);
-}
 
 /**
  * Per-provider env var to override the model name without code changes.
