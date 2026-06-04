@@ -7,7 +7,8 @@ import {
   SUPPORTED_DOCUMENT_TYPES
 } from '@cio/ai-assistant';
 import type { DocumentUploadResult } from '@cio/ai-assistant';
-import { agentDocumentKey } from '@api/utils/redis/key-generators';
+import { agentDocumentKey, agentDocumentSummaryKey } from '@api/utils/redis/key-generators';
+import { summarizeDocument } from '@api/services/agent/summarize';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import type { RedisClient } from '@api/utils/redis/redis';
 import { createChatDocument, getChatDocument } from '@cio/db/queries/agent';
@@ -16,18 +17,21 @@ import { uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
 import { createAssetFromUploadService } from '@api/services/assets/assets';
 
+export interface ParsedDocument {
+  text: string;
+  fileName: string;
+  mimeType: string;
+  pageCount: number | null;
+  wordCount: number;
+  textPreview: string;
+  truncated: boolean;
+}
+
 /**
- * Parse an uploaded document, store extracted text in Redis (hot cache) and Postgres
- * (durable, scoped to a conversation). Supports PDF, DOCX, and PPTX files.
+ * Validate and extract text from an uploaded document (PDF, DOCX, PPTX). Does
+ * not store anything — callers persist as needed. Throws 415/413 on bad input.
  */
-export async function parseAndStoreDocument(
-  file: File,
-  orgId: string,
-  userId: string,
-  courseId: string,
-  conversationId: string,
-  redis: RedisClient
-): Promise<DocumentUploadResult> {
+export async function parseDocument(file: File): Promise<ParsedDocument> {
   const mimeType = file.type;
 
   if (!SUPPORTED_DOCUMENT_TYPES.includes(mimeType as (typeof SUPPORTED_DOCUMENT_TYPES)[number])) {
@@ -68,6 +72,53 @@ export async function parseAndStoreDocument(
 
   const wordCount = extractedText.split(/\s+/).filter(Boolean).length;
   const textPreview = extractedText.slice(0, 200);
+
+  return { text: extractedText, fileName: file.name, mimeType, pageCount, wordCount, textPreview, truncated };
+}
+
+/**
+ * Store an already-parsed document as a DRAFT — Redis only, no conversation,
+ * no course, no S3/asset/Postgres. Used by the pre-creation course wizard so a
+ * teacher can attach material before the course exists. The stored `userId`
+ * lets getDocumentText's ownership check pass on the first chat turn.
+ */
+export async function storeDraftDocument(
+  parsed: ParsedDocument,
+  userId: string,
+  redis: RedisClient
+): Promise<{ documentId: string }> {
+  const documentId = nanoid();
+
+  await redis.set(
+    agentDocumentKey(documentId),
+    JSON.stringify({
+      text: parsed.text,
+      fileName: parsed.fileName,
+      mimeType: parsed.mimeType,
+      userId,
+      uploadedAt: new Date().toISOString()
+    }),
+    { EX: DOCUMENT_REDIS_TTL }
+  );
+
+  return { documentId };
+}
+
+/**
+ * Parse an uploaded document, store extracted text in Redis (hot cache) and Postgres
+ * (durable, scoped to a conversation). Supports PDF, DOCX, and PPTX files.
+ */
+export async function parseAndStoreDocument(
+  file: File,
+  orgId: string,
+  userId: string,
+  courseId: string,
+  conversationId: string,
+  redis: RedisClient
+): Promise<DocumentUploadResult> {
+  const parsed = await parseDocument(file);
+  const { text: extractedText, mimeType, pageCount, wordCount, textPreview, truncated } = parsed;
+  const buffer = Buffer.from(await file.arrayBuffer());
   const documentId = nanoid();
 
   // Persist the original file to S3 and register it as an asset so it shows
@@ -179,6 +230,42 @@ export async function getDocumentText(documentId: string, userId: string, redis:
   );
 
   return record.text;
+}
+
+const DOCUMENT_SUMMARY_EXCERPT_CHARS = 1_500;
+
+/**
+ * Lazily generated, Redis-cached short summary of a document, injected on
+ * follow-up turns instead of the full text. Falls back to a truncated excerpt
+ * on no-provider / generation failure. Never throws — must not block the chat.
+ */
+export async function getDocumentSummary(
+  documentId: string,
+  userId: string,
+  redis: RedisClient
+): Promise<string | null> {
+  const cached = await redis.get(agentDocumentSummaryKey(documentId));
+
+  if (cached) return cached;
+
+  const text = await getDocumentText(documentId, userId, redis);
+
+  if (!text) return null;
+
+  try {
+    const summary = await summarizeDocument(text);
+
+    if (summary) {
+      await redis.set(agentDocumentSummaryKey(documentId), summary, { EX: DOCUMENT_REDIS_TTL });
+
+      return summary;
+    }
+  } catch {
+    // Fall through to excerpt — never block the chat on a summary failure.
+  }
+
+  // Excerpt fallback (NOT cached, so a real summary can replace it next turn).
+  return text.slice(0, DOCUMENT_SUMMARY_EXCERPT_CHARS);
 }
 
 // ─── Extraction Helpers ──────────────────────────────────────────────────────

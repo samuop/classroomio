@@ -2092,10 +2092,66 @@
   "course": {
     "creator": {
       "heading": "What course do you want to create?",
-      "placeholder": "Ask [[brand]] to create a course for you...",
+      "placeholder": "Describe the course you want — who it's for, the topic, and the outcome. e.g. \"A 5-module onboarding for new sales reps covering our CRM and pitch.\"",
+      "examples": {
+        "label": "Or start from an example — we'll ask follow-up questions:",
+        "sales_onboarding": "Onboarding for new sales reps",
+        "excel_basics": "Basic Excel course for the finance team",
+        "customer_support": "Customer support training for a SaaS product",
+        "product_demo": "Course teaching customers to use our product"
+      },
+      "wizard": {
+        "steps": {
+          "type": { "title": "What kind of course?", "subtitle": "Pick a starting point — we'll tailor the questions." },
+          "topic": { "title": "Topic & goal", "subtitle": "What's it about, and what should learners achieve?" },
+          "audience": { "title": "Audience & level", "subtitle": "Who is it for, and how advanced are they?" },
+          "source": { "title": "Source material", "subtitle": "Optional — add documents or links to ground the course." }
+        },
+        "type": {
+          "from_scratch": {
+            "title": "From scratch",
+            "description": "Describe any course and we'll design it with you."
+          }
+        },
+        "topic": {
+          "topic_label": "What is the course about?",
+          "topic_placeholder": "e.g. Our CRM for new sales reps",
+          "goal_label": "What should learners be able to do afterward?",
+          "goal_placeholder": "e.g. Build a pipeline, log calls, and run reports confidently"
+        },
+        "audience": {
+          "audience_label": "Who is this for?",
+          "audience_placeholder": "e.g. New account executives at SMB sales teams",
+          "level_label": "Level"
+        },
+        "source": {
+          "document_label": "Upload a document",
+          "document_hint": "PDF, DOCX, or PPTX — max 5MB.",
+          "upload_button": "Choose file",
+          "too_large": "File is too large. Maximum size is 5MB.",
+          "upload_failed": "Couldn't upload the file. Try again.",
+          "url_label": "Documentation links",
+          "url_placeholder": "https://docs.your-product.com",
+          "add_url": "Add another link"
+        },
+        "nav": { "back": "Back", "next": "Next", "finish": "Create course" },
+        "creating": {
+          "heading": "Creating your course…",
+          "subtext": "Setting up a draft workspace and briefing the assistant."
+        },
+        "handoff": {
+          "type": "Course type",
+          "topic": "Topic",
+          "goal": "Goal",
+          "audience": "Audience",
+          "level": "Level",
+          "sources": "Source links",
+          "outro": "The basics are decided — propose a course plan based on the above (and any attached document)."
+        }
+      },
       "drafting": {
         "heading": "Drafting your course idea",
-        "subtext": "We're turning your prompt into a course title and workspace.",
+        "subtext": "We're creating a draft course and workspace from your prompt. You can refine or discard it anytime.",
         "step_reading": "Reading your prompt",
         "step_naming": "Naming your course",
         "step_building": "Creating your workspace"
@@ -2113,6 +2169,8 @@
       },
       "template": {
         "heading": "Or start from a template",
+        "divider": "Shortcuts for common cases",
+        "subheading": "Building a product course, onboarding, or expert track? Pick a template for a structured, form-guided setup.",
         "product_101": {
           "title": "Product 101 Course",
           "description": "A fundamentals course teaching customers how to use your product.",
@@ -2145,6 +2203,13 @@
             "hint": "We'll read this site to ground the course in your real product."
           }
         }
+      },
+      "discovery": {
+        "form_title": "A few quick questions",
+        "submit": "Submit answers",
+        "skip": "Answer in chat instead",
+        "submitted_summary": "Answers submitted",
+        "skipped_summary": "Switched to chat-based Q&A"
       }
     },
     "navItems": {
@@ -2212,7 +2277,8 @@
     },
     "header": {
       "preview": "Preview course",
-      "preview_missing_slug": "Generate and save a course slug before previewing."
+      "preview_missing_slug": "Generate and save a course slug before previewing.",
+      "discard_draft": "Discard draft"
     },
     "navItem": {
       "news_feed": {
@@ -4472,6 +4538,10 @@
     "run_waiting_for_worker": "Waiting for the background worker",
     "run_checkpoint": "Saving progress checkpoint",
     "plan_implement": "Implement Plan",
+    "plan_implemented": "Plan implemented",
+    "plan_request_changes": "Request changes",
+    "plan_estimated_cost": "Estimated cost: ~{count, number} tokens",
+    "plan_estimated_cost_with_pct": "Estimated cost: ~{count, number} tokens ({pct}% of remaining)",
     "plan_ask_changes_placeholder": "Tell me what to change about the plan…",
     "plan_ask_changes_send_aria": "Send change request",
     "stop": "Stop",
@@ -4494,6 +4564,7 @@
     "rename_chat_placeholder": "Conversation title",
     "rename_chat_failed": "Could not rename this conversation. Try again.",
     "tokens_label": "tokens",
+    "tokens_used_label": "{count, number} tokens used",
     "implementing_course_plan": "Implementing Course Plan",
     "resume": "Resume",
     "retry": "Retry",
@@ -4571,6 +4642,7 @@
         "go_live_course": "Publishing course",
         "generate_course_plan": "Generating course plan",
         "ask_template_questions": "Preparing template form",
+        "ask_discovery_questions": "Preparing questions",
         "fetch_documentation_url": "Reading docs page",
         "fetch_documentation_url_with_url": "Reading {url}"
       },
@@ -4604,6 +4676,7 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Template form ready",
+        "ask_discovery_questions": "Asked discovery questions",
         "fetch_documentation_url": "Read {url}"
       }
     },

@@ -18,6 +18,7 @@ import {
   goLiveCourseSchema,
   generateCoursePlanSchema,
   askTemplateQuestionsSchema,
+  askDiscoveryQuestionsSchema,
   fetchDocumentationUrlSchema
 } from './teacher';
 import { listCourseOutlineSchema, readLessonSchema, readExerciseSchema, searchCourseSchema } from './student';
@@ -58,6 +59,7 @@ const teacherTools: ToolRegistry = {
   [ToolName.GO_LIVE_COURSE]: goLiveCourseSchema,
   [ToolName.GENERATE_COURSE_PLAN]: generateCoursePlanSchema,
   [ToolName.ASK_TEMPLATE_QUESTIONS]: askTemplateQuestionsSchema,
+  [ToolName.ASK_DISCOVERY_QUESTIONS]: askDiscoveryQuestionsSchema,
   [ToolName.FETCH_DOCUMENTATION_URL]: fetchDocumentationUrlSchema
 };
 
@@ -105,6 +107,7 @@ export {
   goLiveCourseSchema,
   generateCoursePlanSchema,
   askTemplateQuestionsSchema,
+  askDiscoveryQuestionsSchema,
   fetchDocumentationUrlSchema,
   listCourseOutlineSchema,
   readLessonSchema,

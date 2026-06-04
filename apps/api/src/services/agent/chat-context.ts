@@ -1,5 +1,5 @@
 import { AppError } from '@api/utils/errors';
-import { getDocumentText } from '@api/services/agent/document';
+import { getDocumentText, getDocumentSummary } from '@api/services/agent/document';
 import { redis } from '@api/utils/redis/redis';
 import { getCourseSectionBinding, getExerciseCourseBinding, getLessonCourseBinding } from '@cio/db/queries/agent';
 import { z } from 'zod';
@@ -111,18 +111,38 @@ export function collectDocumentIds(messages: unknown[], currentDocumentId?: stri
   return Array.from(ids);
 }
 
-export async function loadDocumentsText(documentIds: string[], userId: string): Promise<string | undefined> {
+/**
+ * Build the document context block. The document attached to the CURRENT user
+ * message (`currentDocumentId`) is injected as full text; documents seen only in
+ * prior history are injected as short cached summaries instead — this avoids
+ * re-sending ~75K tokens of full document text on every follow-up turn.
+ */
+export async function loadDocumentsContext(
+  documentIds: string[],
+  currentDocumentId: string | undefined,
+  userId: string
+): Promise<string | undefined> {
   const loaded = await Promise.all(
     documentIds.map(async (id) => {
-      const text = await getDocumentText(id, userId, redis);
+      if (id === currentDocumentId) {
+        const text = await getDocumentText(id, userId, redis);
 
-      return text ? { id, text } : null;
+        return text ? { id, kind: 'full' as const, body: text } : null;
+      }
+
+      const summary = await getDocumentSummary(id, userId, redis);
+
+      return summary ? { id, kind: 'summary' as const, body: summary } : null;
     })
   );
 
   const sections = loaded
-    .filter((d): d is { id: string; text: string } => d !== null)
-    .map((d, i) => `--- Document ${i + 1} (id: ${d.id}) ---\n${d.text}`);
+    .filter((d): d is { id: string; kind: 'full' | 'summary'; body: string } => d !== null)
+    .map((d, i) =>
+      d.kind === 'full'
+        ? `--- Document ${i + 1} (id: ${d.id}, full text) ---\n${d.body}`
+        : `--- Document ${i + 1} (id: ${d.id}, summary of a previously shared document) ---\n${d.body}`
+    );
 
   return sections.length > 0 ? sections.join('\n\n') : undefined;
 }
@@ -165,14 +185,16 @@ export function getActiveCourseTemplateId(messages: unknown[]): CourseTemplateId
   for (const message of messages) {
     const candidate = message as {
       role?: string;
-      metadata?: { template?: { id?: string } };
+      metadata?: { template?: { id?: string; templateId?: string } };
     };
 
     if (candidate.role !== 'user') {
       continue;
     }
 
-    const id = candidate.metadata?.template?.id;
+    // Activation marker `{ id }` (template picked, form pending) OR a wizard
+    // submission `{ action: 'submit_template_answers', templateId, ... }`.
+    const id = candidate.metadata?.template?.id ?? candidate.metadata?.template?.templateId;
 
     if (id && COURSE_TEMPLATE_ID_SET.has(id as CourseTemplateId)) {
       return id as CourseTemplateId;

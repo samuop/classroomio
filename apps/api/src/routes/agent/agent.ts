@@ -38,7 +38,7 @@ import {
   incrementStudentTutorCount
 } from '@api/services/agent/tutor-usage';
 import { buildStudentAgentTools } from '@api/services/agent/student-tools';
-import { parseAndStoreDocument } from '@api/services/agent/document';
+import { parseAndStoreDocument, parseDocument, storeDraftDocument } from '@api/services/agent/document';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
@@ -67,7 +67,7 @@ import {
   collectDocumentIds,
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
-  loadDocumentsText,
+  loadDocumentsContext,
   verifyExerciseBelongsToCourse,
   verifyLessonBelongsToCourse
 } from '@api/services/agent/chat-context';
@@ -165,6 +165,63 @@ const agentCoreRouter = new Hono()
       const result = await parseAndStoreDocument(file, orgId, user.id, courseId, conversationId, redis);
 
       return c.json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof AppError) {
+        if (error.statusCode === 413) {
+          return c.json({ success: false, error: 'file_too_large', maxSize: 5242880 }, 413);
+        }
+
+        if (error.statusCode === 415) {
+          return c.json(
+            {
+              success: false,
+              error: 'unsupported_file_type',
+              allowed: [
+                'application/pdf',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+              ]
+            },
+            415
+          );
+        }
+      }
+
+      return handleError(c, error, 'Failed to upload document');
+    }
+  })
+  .post('/upload-draft', authMiddleware, orgMemberMiddleware, async (c) => {
+    // Pre-creation upload for the course wizard: no courseId/conversationId yet.
+    // Stores extracted text in Redis only (1h TTL); the wizard passes the
+    // returned documentId into the first chat message once the course exists.
+    try {
+      const user = c.get('user')!;
+      const orgId = c.req.header('cio-org-id')!;
+
+      const isPaid = await isOrgOnPaidPlan(orgId);
+      if (!isPaid) {
+        return c.json({ success: false, error: 'document_upload_requires_upgrade', upgradeRequired: true }, 403);
+      }
+
+      const body = await c.req.parseBody();
+      const file = body.file;
+
+      if (!(file instanceof File)) {
+        throw new AppError('File is required', 'FILE_REQUIRED', 400);
+      }
+
+      const parsed = await parseDocument(file);
+      const { documentId } = await storeDraftDocument(parsed, user.id, redis);
+
+      return c.json({
+        success: true,
+        data: {
+          documentId,
+          fileName: parsed.fileName,
+          wordCount: parsed.wordCount,
+          truncated: parsed.truncated
+        }
+      });
     } catch (error) {
       if (error instanceof AppError) {
         if (error.statusCode === 413) {
@@ -440,7 +497,10 @@ const agentCoreRouter = new Hono()
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
-      const documentText = documentIds.length > 0 ? await loadDocumentsText(documentIds, user.id) : undefined;
+      const documentText =
+        documentIds.length > 0
+          ? await loadDocumentsContext(documentIds, context?.documentId, user.id)
+          : undefined;
 
       const existingSections = await listCourseSections(courseId);
 
@@ -454,7 +514,10 @@ const agentCoreRouter = new Hono()
           const lessonWithLangs = lesson as {
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en');
+          const editorLocale = context?.locale ?? 'en';
+          const langContent =
+            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === editorLocale) ??
+            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en');
           lessonContent = langContent?.content || undefined;
         } catch {
           // Lesson not found or doesn't belong — continue without lesson context
@@ -479,7 +542,7 @@ const agentCoreRouter = new Hono()
         courseDescription: courseRow.description || undefined,
         userId: user.id,
         role,
-        locale: 'en',
+        locale: context?.locale ?? 'en',
         lessonId: context?.lessonId,
         lessonTitle,
         lessonContent,

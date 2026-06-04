@@ -389,6 +389,24 @@ export const askTemplateQuestionsSchema = {
   })
 };
 
+export const askDiscoveryQuestionsSchema = {
+  description:
+    'Render a dynamic discovery questionnaire card to the teacher to gather missing course requirements (target audience, primary goal/outcome, scope/depth, tone, source documentation URL) BEFORE proposing a plan. Provide your OWN labels and select options — they render to the teacher exactly as written, in the course locale. Call this at most ONCE per conversation, with 2–4 targeted questions covering only the critical gaps. Do NOT ask what the course title/description already answers. Do NOT call generate_course_plan in the same turn — emit this card and stop until the teacher submits (user message with metadata.discovery.action="submit_discovery_answers") or skips ("skip_discovery_form").',
+  parameters: z.object({
+    title: z.string().min(1).optional().describe('Card heading shown above the questions. Optional.'),
+    intro: z.string().optional().describe('One or two short sentences framing why you are asking. Optional.'),
+    formId: z
+      .string()
+      .min(1)
+      .describe('A short unique id for this questionnaire (e.g. "disc-1"). Used to correlate the teacher\'s answers.'),
+    fields: z
+      .array(TemplateFormFieldSchema)
+      .min(1)
+      .max(6)
+      .describe('2–4 recommended. Each field is rendered as-is with your label, type, and (for select) your options.')
+  })
+};
+
 export const fetchDocumentationUrlSchema = {
   description:
     'Fetch a public documentation URL via Jina Reader and return cleaned markdown plus a list of same-origin sub-page links. Use this iteratively when the teacher provided a documentation URL: start with the root, then call again with the most relevant 5–15 sub-pages until you have enough product context.',

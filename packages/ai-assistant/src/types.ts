@@ -127,6 +127,7 @@ export const ToolName = {
   // Agent tools
   GENERATE_COURSE_PLAN: 'generate_course_plan',
   ASK_TEMPLATE_QUESTIONS: 'ask_template_questions',
+  ASK_DISCOVERY_QUESTIONS: 'ask_discovery_questions',
   FETCH_DOCUMENTATION_URL: 'fetch_documentation_url',
   // Student read tools (course-scoped, read-only)
   LIST_COURSE_OUTLINE: 'list_course_outline',

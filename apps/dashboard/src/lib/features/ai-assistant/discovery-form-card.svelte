@@ -1,6 +1,5 @@
 <script lang="ts">
-  import type { CourseTemplateId, TemplateFormField } from '@cio/ai-assistant';
-  import { getCourseTemplate } from '@cio/ai-assistant';
+  import type { TemplateFormField } from '@cio/ai-assistant';
   import { InputField } from '@cio/ui/custom/input-field';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
   import { Button } from '@cio/ui/base/button';
@@ -8,32 +7,27 @@
   import * as Select from '@cio/ui/base/select';
   import GlobeIcon from '@lucide/svelte/icons/globe';
   import { t } from '$lib/utils/functions/translations';
-  import { DISPLAY_BY_ID } from '$features/ai-assistant/utils/template-display';
   import type { AiAssistantMessage } from '$features/ai-assistant/utils/types';
 
   interface Props {
-    templateId: CourseTemplateId;
+    formId: string;
     fields: TemplateFormField[];
+    title?: string;
+    intro?: string;
     allMessages: AiAssistantMessage[];
     submitted: boolean;
-    /** True while the `ask_template_questions` tool is still in progress (not the global chat busy flag). */
+    /** True while the `ask_discovery_questions` tool is still in progress (not the global chat busy flag). */
     disableFormInputs: boolean;
-    onSubmit: (payload: {
-      templateId: CourseTemplateId;
-      answers: Record<string, string>;
-      fields: TemplateFormField[];
-    }) => void;
-    onSkip: (payload: { templateId: CourseTemplateId }) => void;
+    onSubmit: (payload: { formId: string; answers: Record<string, string>; fields: TemplateFormField[] }) => void;
+    onSkip: (payload: { formId: string }) => void;
   }
 
-  let { templateId, fields, allMessages, submitted, disableFormInputs, onSubmit, onSkip }: Props = $props();
-
-  const display = $derived(DISPLAY_BY_ID[templateId]);
+  let { formId, fields, title, intro, allMessages, submitted, disableFormInputs, onSubmit, onSkip }: Props = $props();
 
   let answers = $state<Record<string, string>>({});
 
   $effect.pre(() => {
-    void templateId;
+    void formId;
     void fields;
     const next: Record<string, string> = {};
 
@@ -60,57 +54,27 @@
         continue;
       }
 
-      const tmpl = message.metadata?.template;
+      const discovery = message.metadata?.discovery;
 
-      if (!tmpl || !('action' in tmpl)) {
+      if (!discovery || !('action' in discovery)) {
         continue;
       }
 
-      if (tmpl.templateId !== templateId) {
+      if (discovery.formId !== formId) {
         continue;
       }
 
-      if (tmpl.action === 'submit_template_answers') {
+      if (discovery.action === 'submit_discovery_answers') {
         return 'submitted';
       }
 
-      if (tmpl.action === 'skip_template_form') {
+      if (discovery.action === 'skip_discovery_form') {
         return 'skipped';
       }
     }
 
     return null;
   });
-
-  function resolveFieldLabel(field: TemplateFormField): string {
-    const key = display?.fieldLabelKeys?.[field.id];
-
-    if (key) {
-      const translated = t.get(key);
-
-      if (translated && translated !== key) {
-        return translated;
-      }
-    }
-
-    return field.label;
-  }
-
-  function resolveFormTitle(): string {
-    const key = display?.formTitleKey;
-
-    if (!key) {
-      return getCourseTemplate(templateId)?.formTitle ?? '';
-    }
-
-    const translated = t.get(key);
-
-    if (translated && translated !== key) {
-      return translated;
-    }
-
-    return getCourseTemplate(templateId)?.formTitle ?? '';
-  }
 
   function isValidHttpUrl(value: string): boolean {
     if (!value.trim()) {
@@ -160,25 +124,29 @@
       return;
     }
 
-    onSubmit({ templateId, answers: { ...answers }, fields });
+    onSubmit({ formId, answers: { ...answers }, fields });
   }
 </script>
 
 <div class="ui:bg-card max-w-xl rounded-xl border p-5">
-  <h4 class="ui:text-foreground mb-3 text-sm font-medium">{resolveFormTitle()}</h4>
+  <h4 class="ui:text-foreground mb-1 text-sm font-medium">{title ?? $t('course.creator.discovery.form_title')}</h4>
+
+  {#if intro}
+    <p class="ui:text-muted-foreground mb-3 text-xs">{intro}</p>
+  {/if}
 
   {#if submitted}
     <p class="ui:text-muted-foreground text-sm">
       {resolutionKind === 'skipped'
-        ? $t('course.creator.template.skipped_summary')
-        : $t('course.creator.template.submitted_summary')}
+        ? $t('course.creator.discovery.skipped_summary')
+        : $t('course.creator.discovery.submitted_summary')}
     </p>
   {:else}
     <div class="flex flex-col gap-4">
       {#each fields as field (field.id)}
         {#if field.type === 'text'}
           <InputField
-            label={resolveFieldLabel(field)}
+            label={field.label}
             bind:value={answers[field.id]}
             placeholder={field.placeholder ?? ''}
             isRequired={field.required === true}
@@ -186,7 +154,7 @@
           />
         {:else if field.type === 'textarea'}
           <TextareaField
-            label={resolveFieldLabel(field)}
+            label={field.label}
             bind:value={answers[field.id]}
             placeholder={field.placeholder ?? ''}
             isRequired={field.required === true}
@@ -196,7 +164,7 @@
         {:else if field.type === 'select'}
           <Field.Field>
             <Field.Label>
-              {resolveFieldLabel(field)}
+              {field.label}
               {#if field.required}
                 <span class="ui:text-red-700">*</span>
               {/if}
@@ -220,7 +188,7 @@
               <GlobeIcon class="ui:text-muted-foreground mt-2.5 size-4 shrink-0" />
               <div class="min-w-0 flex-1">
                 <InputField
-                  label={resolveFieldLabel(field)}
+                  label={field.label}
                   bind:value={answers[field.id]}
                   placeholder={field.placeholder ?? ''}
                   type="url"
@@ -229,24 +197,21 @@
                 />
               </div>
             </div>
-            <p class="ui:text-muted-foreground pl-7 text-xs">
-              {$t('course.creator.template.field.documentation_url.hint')}
-            </p>
           </div>
         {/if}
       {/each}
 
       <div class="flex flex-col gap-2">
         <Button size="sm" disabled={!canSubmit} onclick={handleSubmit}>
-          {$t('course.creator.template.submit')}
+          {$t('course.creator.discovery.submit')}
         </Button>
         <button
           type="button"
           class="ui:text-muted-foreground hover:ui:text-foreground text-xs underline-offset-2 hover:underline"
           disabled={disableFormInputs}
-          onclick={() => onSkip({ templateId })}
+          onclick={() => onSkip({ formId })}
         >
-          {$t('course.creator.template.skip')}
+          {$t('course.creator.discovery.skip')}
         </button>
       </div>
     </div>

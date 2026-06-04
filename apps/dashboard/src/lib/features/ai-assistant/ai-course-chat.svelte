@@ -20,9 +20,13 @@
     clearChatDraft,
     initialChatPrompt,
     initialChatTemplateId,
+    initialChatDocumentIds,
+    initialChatTemplateAnswers,
     clearInitialChatModel,
     clearInitialChatPrompt,
-    clearInitialChatTemplateId
+    clearInitialChatTemplateId,
+    clearInitialChatDocumentIds,
+    clearInitialChatTemplateAnswers
   } from '$features/ai-assistant/utils/store';
   import { get } from 'svelte/store';
   import { page } from '$app/state';
@@ -33,6 +37,7 @@
   import { getMentionableContent } from '$features/course/utils/content';
   import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
   import { getRequestBaseUrl, apiClient } from '$lib/utils/services/api';
+  import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
   import { t } from '$lib/utils/functions/translations';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import { profile } from '$lib/utils/store/user';
@@ -70,6 +75,8 @@
   let isUploading = $state(false);
 
   let pendingInitialTemplateId: CourseTemplateId | null = $state(null);
+  let pendingInitialDocumentIds: string[] = $state([]);
+  let pendingInitialTemplateAnswers: Record<string, string> | null = $state(null);
 
   let statusFetchedForCourseId: string | null = $state(null);
   let conversationsLoadedForCourseId: string | null = $state(null);
@@ -276,7 +283,8 @@
         context: {
           lessonId: page.params?.lessonId,
           exerciseId: page.params?.exerciseId,
-          documentId: uploadedDocument?.id
+          documentId: uploadedDocument?.id,
+          locale: lessonApi.currentLocale
         }
       }),
       fetch: (input, init) => apiClient.request(input, init)
@@ -336,7 +344,15 @@
 
     const text = inputValue;
     const userMessageCount = chat.messages.filter((message) => message.role === 'user').length;
-    const templateForFirstMessage = userMessageCount === 0 ? pendingInitialTemplateId : null;
+    const isFirstMessage = userMessageCount === 0;
+    const templateForFirstMessage = isFirstMessage ? pendingInitialTemplateId : null;
+
+    // On the very first message, a wizard-uploaded draft document has no
+    // `uploadedDocument` chip yet — adopt its id so the attachment + context
+    // resolve to the draft (full-text injection on turn 1).
+    if (isFirstMessage && !uploadedDocument && pendingInitialDocumentIds.length > 0) {
+      uploadedDocument = { id: pendingInitialDocumentIds[0], name: 'document' };
+    }
 
     const messageAttachment = uploadedDocument
       ? {
@@ -352,7 +368,17 @@
     }
 
     if (templateForFirstMessage) {
-      const templateMeta: AiAssistantTemplateMetadata = { id: templateForFirstMessage };
+      // When the wizard already collected the template answers, send them as a
+      // submission so the agent skips its own form; otherwise just activate the
+      // template flow with the id marker.
+      const templateMeta: AiAssistantTemplateMetadata =
+        pendingInitialTemplateAnswers != null
+          ? {
+              action: 'submit_template_answers',
+              templateId: templateForFirstMessage,
+              answers: pendingInitialTemplateAnswers
+            }
+          : { id: templateForFirstMessage };
       metadata.template = templateMeta;
     }
 
@@ -361,6 +387,11 @@
 
     if (templateForFirstMessage) {
       pendingInitialTemplateId = null;
+      pendingInitialTemplateAnswers = null;
+    }
+
+    if (isFirstMessage) {
+      pendingInitialDocumentIds = [];
     }
 
     inputValue = '';
@@ -409,6 +440,80 @@
         template: {
           action: 'skip_template_form',
           templateId: payload.templateId
+        }
+      }
+    });
+  }
+
+  function buildDiscoveryAnswersSummary(answers: Record<string, string>, fields: TemplateFormField[]): string {
+    const lines: string[] = ['Here are my answers to your questions:'];
+    const seen = new Set<string>();
+
+    for (const field of fields) {
+      if (!field?.id || seen.has(field.id)) {
+        continue;
+      }
+
+      seen.add(field.id);
+      const trimmed = answers[field.id]?.trim() ?? '';
+
+      if (!trimmed) {
+        continue;
+      }
+
+      lines.push(`- ${field.label ?? field.id}: ${trimmed}`);
+    }
+
+    for (const [fieldId, value] of Object.entries(answers)) {
+      if (seen.has(fieldId)) continue;
+
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+
+      lines.push(`- ${fieldId}: ${trimmed}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  async function handleSubmitDiscoveryAnswers(payload: {
+    formId: string;
+    answers: Record<string, string>;
+    fields: TemplateFormField[];
+  }) {
+    if (!courseId || chat.status === 'streaming') {
+      return;
+    }
+
+    const conversationId = await ensureActiveConversation(courseId);
+    if (!conversationId) return;
+
+    chat.sendMessage({
+      text: buildDiscoveryAnswersSummary(payload.answers, payload.fields),
+      metadata: {
+        discovery: {
+          action: 'submit_discovery_answers',
+          formId: payload.formId,
+          answers: payload.answers
+        }
+      }
+    });
+  }
+
+  async function handleSkipDiscoveryForm(payload: { formId: string }) {
+    if (!courseId || chat.status === 'streaming') {
+      return;
+    }
+
+    const conversationId = await ensureActiveConversation(courseId);
+    if (!conversationId) return;
+
+    chat.sendMessage({
+      text: "I'll answer your questions in chat instead of the form.",
+      metadata: {
+        discovery: {
+          action: 'skip_discovery_form',
+          formId: payload.formId
         }
       }
     });
@@ -475,16 +580,11 @@
     });
   }
 
-  async function handleAskPlanChanges(message: string) {
-    const trimmed = message.trim();
+  // Bumped to focus the main chat input (from the plan card's "Request changes").
+  let focusInputSignal = $state(0);
 
-    if (!trimmed || chat.status === 'streaming') return;
-    if (!courseId) return;
-
-    const conversationId = await ensureActiveConversation(courseId);
-    if (!conversationId) return;
-
-    chat.sendMessage({ text: trimmed });
+  function handleRequestPlanChanges() {
+    focusInputSignal += 1;
   }
 
   function handleResume() {
@@ -497,7 +597,10 @@
   }
 
   const isStreaming = $derived(chat.status === 'streaming' || chat.status === 'submitted');
-  const isExhausted = $derived(tokenUsage !== null && tokenUsage.remaining <= 0);
+  // Self-hosted has no monthly cap (own provider key), so it's never "exhausted".
+  const isExhausted = $derived(
+    PUBLIC_IS_SELFHOSTED !== 'true' && tokenUsage !== null && tokenUsage.remaining <= 0
+  );
 
   const status = $derived(aiAssistantApi.status);
   const isStudent = $derived(status?.role === 'student');
@@ -583,7 +686,11 @@
     // generate_course_plan renders its own PlanView — exclude it from the card
     const toolParts = allToolParts.filter((part) => {
       const toolName = getAgentToolName(part);
-      return toolName !== 'generate_course_plan' && toolName !== 'ask_template_questions';
+      return (
+        toolName !== 'generate_course_plan' &&
+        toolName !== 'ask_template_questions' &&
+        toolName !== 'ask_discovery_questions'
+      );
     });
 
     if (toolParts.length === 0) {
@@ -691,12 +798,18 @@
     if (!prompt || !courseId) return;
 
     const templateFromHome = $initialChatTemplateId;
+    const documentIdsFromHome = $initialChatDocumentIds;
+    const templateAnswersFromHome = $initialChatTemplateAnswers;
     clearInitialChatPrompt();
     clearInitialChatModel();
     clearInitialChatTemplateId();
+    clearInitialChatDocumentIds();
+    clearInitialChatTemplateAnswers();
 
     tick().then(() => {
       pendingInitialTemplateId = templateFromHome ?? null;
+      pendingInitialDocumentIds = documentIdsFromHome ?? [];
+      pendingInitialTemplateAnswers = templateAnswersFromHome ?? null;
 
       inputValue = prompt;
       void handleSend();
@@ -754,9 +867,11 @@
     {quickActions}
     onQuickAction={handleQuickAction}
     onImplementPlan={handleImplementPlan}
-    onAskPlanChanges={handleAskPlanChanges}
+    onRequestPlanChanges={handleRequestPlanChanges}
     onSubmitTemplateAnswers={handleSubmitTemplateAnswers}
     onSkipTemplateForm={handleSkipTemplateForm}
+    onSubmitDiscoveryAnswers={handleSubmitDiscoveryAnswers}
+    onSkipDiscoveryForm={handleSkipDiscoveryForm}
     onStop={handleStop}
     onResume={handleResume}
     onMentionClick={handleMentionClick}
@@ -771,6 +886,7 @@
     {mentionItems}
     {isStudent}
     {tutorBlocked}
+    focusSignal={focusInputSignal}
     error={chat.error}
     onSend={handleSend}
     onStop={handleStop}

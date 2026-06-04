@@ -44,14 +44,14 @@
 </script>
 
 <div class="ui:bg-background rounded-lg border">
-  <div class="border-b px-3 py-2">
+  <div class="border-b px-4 py-3">
     <h4 class="text-sm font-semibold">{$t(titleKey)}</h4>
     <p class="ui:text-muted-foreground text-xs">
       {$t('ai_assistant.plan_progress', { completed: completedCount, total: totalCount })}
     </p>
   </div>
 
-  <div class="max-h-75 space-y-0.5 overflow-y-auto p-2">
+  <div class="space-y-0.5 p-2">
     {#each steps as step, i (stepRowKey(step, i))}
       <div class="flex items-center gap-2 rounded px-2 py-1 text-xs {step.indent ? 'ml-4' : ''}">
         {#if step.status === 'completed'}
@@ -70,7 +70,7 @@
     {/each}
   </div>
 
-  <div class="space-y-1 border-t px-3 py-2">
+  <div class="space-y-1 border-t px-4 py-3">
     {#if error}
       <p class="text-xs text-red-600 dark:text-red-400">{error}</p>
     {/if}

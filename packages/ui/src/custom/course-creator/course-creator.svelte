@@ -91,18 +91,20 @@
     />
 
     <div class="ui:mt-3 ui:flex ui:items-center ui:gap-2">
-      <Select.Root type="single" bind:value={level} disabled={loading}>
-        <Select.Trigger>
-          {selectedLevelLabel}
-        </Select.Trigger>
-        <Select.Content>
-          {#each levelOptions as option (option.value)}
-            <Select.Item value={option.value} label={option.label}>
-              {option.label}
-            </Select.Item>
-          {/each}
-        </Select.Content>
-      </Select.Root>
+      {#if levelOptions.length > 0}
+        <Select.Root type="single" bind:value={level} disabled={loading}>
+          <Select.Trigger>
+            {selectedLevelLabel}
+          </Select.Trigger>
+          <Select.Content>
+            {#each levelOptions as option (option.value)}
+              <Select.Item value={option.value} label={option.label}>
+                {option.label}
+              </Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      {/if}
 
       {#if onModelChange}
         <ModelPicker

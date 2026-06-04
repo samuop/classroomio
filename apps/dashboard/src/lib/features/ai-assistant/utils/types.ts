@@ -29,9 +29,18 @@ export type AiAssistantTemplateMetadata =
   | { action: 'submit_template_answers'; templateId: CourseTemplateId; answers: Record<string, string> }
   | { action: 'skip_template_form'; templateId: CourseTemplateId };
 
+export type AiAssistantDiscoveryMetadata =
+  | { action: 'submit_discovery_answers'; formId: string; answers: Record<string, string> }
+  | { action: 'skip_discovery_form'; formId: string };
+
 export interface AiAssistantCompactionMetadata {
   compactedAt: string;
   originalMessageCount: number;
+}
+
+export interface AiAssistantPlanMetadata {
+  action: 'implement_course_plan';
+  payload?: unknown;
 }
 
 export interface AiAssistantMessageMetadata {
@@ -39,6 +48,8 @@ export interface AiAssistantMessageMetadata {
   tokenUsage?: AiAssistantMessageTokenUsage;
   continuation?: AiAssistantMessageContinuation;
   template?: AiAssistantTemplateMetadata;
+  discovery?: AiAssistantDiscoveryMetadata;
+  plan?: AiAssistantPlanMetadata;
   compaction?: AiAssistantCompactionMetadata;
 }
 

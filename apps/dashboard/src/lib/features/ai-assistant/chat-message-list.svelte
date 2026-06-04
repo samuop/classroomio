@@ -32,13 +32,19 @@
     quickActions: QuickActionOption[];
     onQuickAction: (action: string) => void;
     onImplementPlan: (editedPlan: unknown) => void;
-    onAskPlanChanges: (message: string) => void;
+    onRequestPlanChanges: () => void;
     onSubmitTemplateAnswers: (payload: {
       templateId: CourseTemplateId;
       answers: Record<string, string>;
       fields: TemplateFormField[];
     }) => void;
     onSkipTemplateForm: (payload: { templateId: CourseTemplateId }) => void;
+    onSubmitDiscoveryAnswers: (payload: {
+      formId: string;
+      answers: Record<string, string>;
+      fields: TemplateFormField[];
+    }) => void;
+    onSkipDiscoveryForm: (payload: { formId: string }) => void;
     onStop: () => void;
     onResume: () => void;
     onMentionClick: (route: string) => void;
@@ -53,9 +59,11 @@
     quickActions,
     onQuickAction,
     onImplementPlan,
-    onAskPlanChanges,
+    onRequestPlanChanges,
     onSubmitTemplateAnswers,
     onSkipTemplateForm,
+    onSubmitDiscoveryAnswers,
+    onSkipDiscoveryForm,
     onStop,
     onResume,
     onMentionClick
@@ -193,9 +201,11 @@
           {isStreaming}
           {isLast}
           {onImplementPlan}
-          {onAskPlanChanges}
+          {onRequestPlanChanges}
           {onSubmitTemplateAnswers}
           {onSkipTemplateForm}
+          {onSubmitDiscoveryAnswers}
+          {onSkipDiscoveryForm}
           {onMentionClick}
         />
       {/each}

@@ -184,3 +184,37 @@ export async function summarizeConversationDelta(options: SummarizeDeltaOptions)
 
   return result.text.trim();
 }
+
+const DOCUMENT_SUMMARY_SYSTEM_PROMPT = `You summarize an uploaded reference document so an assistant can recall it on later turns without re-reading the full text. Produce a compact brief (200-400 words, plain text, no markdown headings):
+- What this document is (title / type) and its purpose and intended audience.
+- Key topics, sections, and notable facts/figures, in the order they appear.
+- Any explicit instructions, requirements, or constraints it states.
+Be specific with names and numbers. Do not add commentary or phrases like "the document says".`;
+
+const MAX_DOCUMENT_SUMMARY_INPUT_CHARS = 60_000;
+const MAX_DOCUMENT_SUMMARY_OUTPUT_TOKENS = 700;
+
+/**
+ * Generate a compact summary of an uploaded document. Throws AppError when no
+ * provider is configured (caller falls back to a truncated excerpt).
+ */
+export async function summarizeDocument(text: string): Promise<string> {
+  const providerConfig = pickAnyConfiguredProvider();
+
+  if (!providerConfig) {
+    throw new AppError('AI assistant is not configured', 'AI_NOT_CONFIGURED', 503);
+  }
+
+  const model = createModel(providerConfig);
+  const input = truncate(text, MAX_DOCUMENT_SUMMARY_INPUT_CHARS);
+
+  const result = await generateText({
+    model,
+    system: DOCUMENT_SUMMARY_SYSTEM_PROMPT,
+    prompt: `Document text:\n\n${input}\n\nReturn the compact brief described in the system prompt.`,
+    maxOutputTokens: MAX_DOCUMENT_SUMMARY_OUTPUT_TOKENS,
+    maxRetries: 0
+  });
+
+  return result.text.trim();
+}

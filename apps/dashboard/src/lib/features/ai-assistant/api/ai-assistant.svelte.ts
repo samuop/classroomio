@@ -159,6 +159,34 @@ class AiAssistantApi extends BaseApiWithErrors {
     return null;
   }
 
+  async uploadDraftDocument(
+    file: File
+  ): Promise<{ documentId: string; fileName: string; wordCount: number; truncated: boolean } | null> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await apiClient.request(`${getRequestBaseUrl()}/agent/upload-draft`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+      const result = (await response.json()) as {
+        success: boolean;
+        data?: { documentId: string; fileName: string; wordCount: number; truncated: boolean };
+      };
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+    } catch (error) {
+      console.error('Error uploading draft document:', error);
+      this.error = 'Failed to upload document';
+    }
+
+    return null;
+  }
+
   async generateTitle(conversationId: string, firstMessageText: string): Promise<string | null> {
     let generatedTitle: string | null = null;
 

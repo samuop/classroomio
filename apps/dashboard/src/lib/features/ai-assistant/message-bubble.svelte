@@ -9,7 +9,9 @@
   import { renderMentions } from '$features/ai-assistant/utils/mentions';
   import PlanView from '$features/ai-assistant/plan-view.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
+  import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
   import { isTemplateFormResolved } from '$features/ai-assistant/utils/template-form-resolved';
+  import { isDiscoveryFormResolved } from '$features/ai-assistant/utils/discovery-form-resolved';
   import { mergeTemplateFieldsWithRegistry } from '$features/ai-assistant/utils/template-fields';
   import ToolLine from '$features/ai-assistant/utils/tool-line.svelte';
   import {
@@ -35,7 +37,7 @@
     messages: AiAssistantMessage[];
     courseId: string;
     onImplementPlan: (editedPlan: unknown) => void;
-    onAskPlanChanges: (message: string) => void;
+    onRequestPlanChanges: () => void;
     isStreaming: boolean;
     isLast?: boolean;
     onSubmitTemplateAnswers: (payload: {
@@ -44,6 +46,12 @@
       fields: TemplateFormField[];
     }) => void;
     onSkipTemplateForm: (payload: { templateId: CourseTemplateId }) => void;
+    onSubmitDiscoveryAnswers: (payload: {
+      formId: string;
+      answers: Record<string, string>;
+      fields: TemplateFormField[];
+    }) => void;
+    onSkipDiscoveryForm: (payload: { formId: string }) => void;
     onMentionClick: (route: string) => void;
   }
 
@@ -52,9 +60,11 @@
     messages,
     courseId,
     onImplementPlan,
-    onAskPlanChanges,
+    onRequestPlanChanges,
     onSubmitTemplateAnswers,
     onSkipTemplateForm,
+    onSubmitDiscoveryAnswers,
+    onSkipDiscoveryForm,
     onMentionClick,
     isStreaming,
     isLast = false
@@ -92,7 +102,9 @@
 
     const name = getAgentToolName(part);
 
-    return name === 'generate_course_plan' || name === 'ask_template_questions';
+    return (
+      name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions'
+    );
   }
 
   function truncateErrorText(errorText: string): string {
@@ -119,6 +131,25 @@
   );
   const hasBubbleContent = $derived(inlineParts.length > 0 || deferredPlanParts.length > 0 || !!messageAttachment);
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
+  // Cards (plan, forms, tool status) need the full panel width to breathe; plain
+  // text bubbles stay narrower for readability.
+  const isWideBubble = $derived(deferredPlanParts.length > 0);
+
+  // A plan is "already implemented" once a later user message requested its
+  // implementation — hide the plan card's Implement/Request-changes buttons.
+  const planAlreadyImplemented = $derived.by(() => {
+    const selfIndex = messages.indexOf(message);
+    if (selfIndex < 0) return false;
+
+    for (let index = selfIndex + 1; index < messages.length; index += 1) {
+      const meta = messages[index]?.metadata as AiAssistantMessageMetadata | undefined;
+      if (messages[index]?.role === 'user' && meta?.plan?.action === 'implement_course_plan') {
+        return true;
+      }
+    }
+
+    return false;
+  });
 </script>
 
 <div data-role={message.role} class="flex flex-col gap-1 {message.role === 'user' ? 'items-end' : 'items-start'}">
@@ -127,7 +158,8 @@
   {:else}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
-      class="max-w-[90%] rounded-lg px-3 py-2 text-sm {message.role === 'user'
+      class="rounded-lg px-3 py-2 text-sm {isWideBubble ? 'w-full max-w-full' : 'max-w-[85%]'} {message.role ===
+      'user'
         ? 'ui:bg-primary ui:text-primary-foreground'
         : 'ui:bg-muted'}"
       onclick={handleBubbleClick}
@@ -168,8 +200,9 @@
             <PlanView
               plan={toolResult as CoursePlan}
               onImplement={onImplementPlan}
-              onAskChanges={onAskPlanChanges}
+              onRequestChanges={onRequestPlanChanges}
               isBusy={isStreaming}
+              implemented={planAlreadyImplemented}
             />
           </div>
         {:else if toolName === 'ask_template_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
@@ -191,6 +224,25 @@
                 />
               </div>
             {/if}
+          {/if}
+        {:else if toolName === 'ask_discovery_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
+          {@const data = (toolResult ?? getAgentToolInput(part)) as
+            | { formId?: string; title?: string; intro?: string; fields?: TemplateFormField[] }
+            | undefined}
+          {#if data?.formId && data?.fields?.length}
+            <div class="mt-3">
+              <DiscoveryFormCard
+                formId={data.formId}
+                fields={data.fields}
+                title={data.title}
+                intro={data.intro}
+                allMessages={messages}
+                submitted={isDiscoveryFormResolved(messages, data.formId)}
+                disableFormInputs={toolStatus === 'in_progress'}
+                onSubmit={onSubmitDiscoveryAnswers}
+                onSkip={onSkipDiscoveryForm}
+              />
+            </div>
           {/if}
         {:else}
           <div class="ui:bg-background/70 mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs">

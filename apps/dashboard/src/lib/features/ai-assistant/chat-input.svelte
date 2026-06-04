@@ -33,6 +33,8 @@
     isStudent?: boolean;
     /** Set to 'LEARNER_CAP_REACHED' | 'POOL_EXHAUSTED' | 'AI_TUTOR_DISABLED' to render the take-a-break empty state. */
     tutorBlocked?: 'LEARNER_CAP_REACHED' | 'POOL_EXHAUSTED' | 'AI_TUTOR_DISABLED' | null;
+    /** Bump this number to programmatically focus the input (e.g. from the plan card's "Request changes"). */
+    focusSignal?: number;
     onSend: () => void;
     onStop: () => void;
     onFileSelect: (file: File) => void;
@@ -49,11 +51,24 @@
     uploadedDocument,
     isStudent = false,
     tutorBlocked = null,
+    focusSignal = 0,
     onSend,
     onStop,
     onFileSelect,
     onRemoveDocument
   }: Props = $props();
+
+  let lastFocusSignal = $state(0);
+
+  $effect(() => {
+    if (focusSignal === lastFocusSignal) return;
+
+    lastFocusSignal = focusSignal;
+
+    requestAnimationFrame(() => {
+      chatTextareaRef?.focus();
+    });
+  });
 
   function tutorBlockedMessage(reason: NonNullable<typeof tutorBlocked>): string {
     if (reason === 'LEARNER_CAP_REACHED') return t.get('aiTutor.takeABreak.learnerCap');
@@ -178,7 +193,7 @@
     </div>
   </div>
 {:else}
-  <div class="border-t px-3 pt-3 pb-1.5">
+  <div class="border-t px-4 pt-3 pb-2">
     {#if isExhausted}
       <div
         class="flex flex-col gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"

@@ -51,6 +51,31 @@ export function clearInitialChatModel() {
   initialChatModel.set(null);
 }
 
+/** Draft document IDs uploaded in the course-creation wizard, attached to the first chat message. */
+export const initialChatDocumentIds = writable<string[]>([]);
+
+export function setInitialChatDocumentIds(ids: string[]) {
+  initialChatDocumentIds.set(ids);
+}
+
+export function clearInitialChatDocumentIds() {
+  initialChatDocumentIds.set([]);
+}
+
+/**
+ * Template answers collected by the wizard. When set, the first chat message
+ * carries them as `submit_template_answers` so the agent skips its own form.
+ */
+export const initialChatTemplateAnswers = writable<Record<string, string> | null>(null);
+
+export function setInitialChatTemplateAnswers(answers: Record<string, string>) {
+  initialChatTemplateAnswers.set(answers);
+}
+
+export function clearInitialChatTemplateAnswers() {
+  initialChatTemplateAnswers.set(null);
+}
+
 /**
  * Pending composer action picked up by the chat component:
  * - `append` adds the text to whatever is already in the input (panel was open).

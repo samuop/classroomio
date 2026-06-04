@@ -108,6 +108,14 @@ export const agentDocumentKey = (documentId: string): string => {
 };
 
 /**
+ * Redis key for the cached short summary of an uploaded document, injected on
+ * follow-up turns instead of the full text. TTL: 3600 seconds (1 hour).
+ */
+export const agentDocumentSummaryKey = (documentId: string): string => {
+  return `agent:document:summary:${documentId}`;
+};
+
+/**
  * Rate limit key for agent chat endpoint (per-user).
  */
 export const agentChatKeyGenerator = (c: Context): string => {

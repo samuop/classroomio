@@ -13,6 +13,14 @@ import type { UsageLeaderboardRow } from '@cio/db/queries/agent';
 import { getActiveOrganizationPlan } from '@cio/db/queries/organization';
 
 import { AppError } from '@api/utils/errors';
+import { env } from '@api/config/env';
+
+/**
+ * Self-hosted instances bring their own provider API key and pay the provider
+ * directly, so the plan-based token allowance must NOT block them. We still
+ * record usage (for stats), we just never enforce a cap.
+ */
+const isSelfHosted = (): boolean => env.PUBLIC_IS_SELFHOSTED === 'true';
 
 function startOfCurrentMonth(): Date {
   const date = new Date();
@@ -95,6 +103,11 @@ export async function getTokenBalance(orgId: string): Promise<TokenBalance> {
 export async function enforceTokenBalance(orgId: string): Promise<TokenBalance> {
   const balance = await getTokenBalance(orgId);
 
+  // Self-hosted instances use their own provider key — never cap them.
+  if (isSelfHosted()) {
+    return balance;
+  }
+
   if (balance.remaining <= 0) {
     throw new AppError('Token limit reached', 'TOKEN_LIMIT_REACHED', 402);
   }
@@ -143,6 +156,12 @@ export async function getOrgPlanName(orgId: string): Promise<string> {
 }
 
 export async function isOrgOnPaidPlan(orgId: string): Promise<boolean> {
+  // Self-hosted instances bring their own provider key — every plan-gated AI
+  // feature (document upload, URL fetching, premium question types) is unlocked.
+  if (isSelfHosted()) {
+    return true;
+  }
+
   const planName = await getOrgPlanName(orgId);
 
   return planName !== 'BASIC';

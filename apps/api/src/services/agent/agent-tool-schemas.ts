@@ -253,6 +253,13 @@ export const askTemplateQuestionsParam = z.object({
   fields: z.array(agentTemplateFormFieldParam).min(1)
 });
 
+export const askDiscoveryQuestionsParam = z.object({
+  title: z.string().min(1).optional(),
+  intro: z.string().optional(),
+  formId: z.string().min(1),
+  fields: z.array(agentTemplateFormFieldParam).min(1).max(6)
+});
+
 export const fetchDocumentationUrlParam = z.object({
   url: z.string().url()
 });

@@ -29,6 +29,7 @@ import {
 import {
   addQuestionsParam,
   askTemplateQuestionsParam,
+  askDiscoveryQuestionsParam,
   coursePlanParam,
   createExerciseParam,
   createExerciseSectionParam,
@@ -685,6 +686,26 @@ export function buildAgentTools(
               templateId: args.templateId,
               title: args.title,
               description: args.description,
+              fields: args.fields
+            }) as const
+        );
+      }
+    }),
+
+    ask_discovery_questions: tool({
+      description:
+        'Render a dynamic discovery questionnaire card to the teacher (your own labels/options, rendered as-is) to gather missing course requirements before planning. Pause until the teacher submits via metadata.discovery.action submit_discovery_answers or skips via skip_discovery_form.',
+      inputSchema: askDiscoveryQuestionsParam,
+      execute: async (args) => {
+        return executeAgentTool(
+          'ask_discovery_questions',
+          { orgId, userId, courseId, args },
+          async () =>
+            ({
+              awaiting_user: true as const,
+              title: args.title,
+              intro: args.intro,
+              formId: args.formId,
               fields: args.fields
             }) as const
         );

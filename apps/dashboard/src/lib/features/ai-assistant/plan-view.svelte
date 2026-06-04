@@ -4,9 +4,8 @@
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import FileQuestionIcon from '@lucide/svelte/icons/file-question';
   import PencilIcon from '@lucide/svelte/icons/pencil';
-  import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
+  import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
   import { Button } from '@cio/ui/base/button';
-  import { Textarea } from '@cio/ui/base/textarea';
   import { SvelteSet } from 'svelte/reactivity';
   import { t } from '$lib/utils/functions/translations';
   import type { CoursePlan } from './utils/course-plan';
@@ -21,31 +20,16 @@
   interface Props {
     plan: CoursePlan;
     onImplement: (editedPlan: CoursePlan) => void;
-    onAskChanges: (message: string) => void;
-    /** When true, disables the inline change-request composer (agent is already working). */
+    /** Focuses the main chat input so the teacher can type the change they want. */
+    onRequestChanges: () => void;
+    /** When true, the agent is already working — disables the action buttons. */
     isBusy?: boolean;
+    /** When true, this plan was already sent for implementation — hide the action buttons. */
+    implemented?: boolean;
     remainingTokens?: number;
   }
 
-  let { plan, onImplement, onAskChanges, isBusy = false, remainingTokens }: Props = $props();
-
-  let changeRequest = $state('');
-  const canSendChange = $derived(!isBusy && changeRequest.trim().length > 0);
-
-  function submitChangeRequest() {
-    if (!canSendChange) return;
-
-    const message = changeRequest.trim();
-    changeRequest = '';
-    onAskChanges(message);
-  }
-
-  function handleChangeKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      submitChangeRequest();
-    }
-  }
+  let { plan, onImplement, onRequestChanges, isBusy = false, implemented = false, remainingTokens }: Props = $props();
 
   // CoursePlan is plain JSON; structuredClone fails when the AI SDK part carries
   // non-cloneable internals, so JSON round-trip is both safer and sufficient.
@@ -123,7 +107,7 @@
 
 <div class="ui:bg-background rounded-lg border">
   <!-- Plan header -->
-  <div class="border-b px-3 py-2">
+  <div class="border-b px-4 py-3">
     {#if editingField === 'plan-title'}
       <input
         type="text"
@@ -149,8 +133,8 @@
     </p>
   </div>
 
-  <!-- Sections tree -->
-  <div class="max-h-[300px] overflow-y-auto p-2">
+  <!-- Sections tree (grows naturally; the chat provides the single scroll) -->
+  <div class="p-2">
     {#each editablePlan.sections as section, sectionIndex (sectionIndex)}
       <div class="mb-1">
         <div class="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium">
@@ -250,39 +234,31 @@
   </div>
 
   <!-- Cost estimate + actions -->
-  <div class="space-y-2 border-t px-3 py-2">
+  <div class="space-y-3 border-t px-4 py-3">
     {#if estimatedTokens > 0}
       <p class="text-xs {isHighCost ? 'text-amber-600 dark:text-amber-400' : 'ui:text-muted-foreground'}">
-        Estimated cost: ~{estimatedTokens.toLocaleString()} tokens
         {#if costPercentage !== null}
-          ({costPercentage}% of remaining)
+          {$t('ai_assistant.plan_estimated_cost_with_pct', { count: estimatedTokens, pct: costPercentage })}
+        {:else}
+          {$t('ai_assistant.plan_estimated_cost', { count: estimatedTokens })}
         {/if}
       </p>
     {/if}
 
-    <div class="flex flex-col gap-2">
-      <Button size="sm" onclick={() => onImplement(editablePlan)} class="w-full">
-        {$t('ai_assistant.plan_implement')}
-      </Button>
-      <div class="flex items-end gap-2">
-        <Textarea
-          bind:value={changeRequest}
-          placeholder={$t('ai_assistant.plan_ask_changes_placeholder')}
-          rows={1}
-          disabled={isBusy}
-          onkeydown={handleChangeKeydown}
-          class="ui:min-h-9! ui:resize-none ui:py-2 ui:text-sm"
-        />
-        <Button
-          size="icon-sm"
-          variant="default"
-          disabled={!canSendChange}
-          onclick={submitChangeRequest}
-          aria-label={$t('ai_assistant.plan_ask_changes_send_aria')}
-        >
-          <ArrowUpIcon class="ui:size-4" />
+    {#if implemented}
+      <div class="ui:text-muted-foreground flex items-center gap-2 text-xs">
+        <CheckCircleIcon size={14} class="text-green-500" />
+        {$t('ai_assistant.plan_implemented')}
+      </div>
+    {:else}
+      <div class="flex gap-2">
+        <Button size="sm" variant="outline" disabled={isBusy} onclick={onRequestChanges} class="flex-1">
+          {$t('ai_assistant.plan_request_changes')}
+        </Button>
+        <Button size="sm" disabled={isBusy} onclick={() => onImplement(editablePlan)} class="flex-1">
+          {$t('ai_assistant.plan_implement')}
         </Button>
       </div>
-    </div>
+    {/if}
   </div>
 </div>

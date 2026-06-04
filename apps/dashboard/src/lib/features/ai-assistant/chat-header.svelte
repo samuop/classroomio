@@ -1,7 +1,12 @@
 <script lang="ts">
   import * as Popover from '@cio/ui/base/popover';
   import { Input } from '@cio/ui/base/input';
+  import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
   import { tick } from 'svelte';
+
+  // Self-hosted instances use their own provider key with no monthly cap, so the
+  // billing meter (used / allowance %) is meaningless — show informational use only.
+  const isSelfHosted = PUBLIC_IS_SELFHOSTED === 'true';
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
   import XIcon from '@lucide/svelte/icons/x';
   import PlusIcon from '@lucide/svelte/icons/plus';
@@ -265,7 +270,13 @@
         ></div>
       </div>
     </div>
-  {:else if !isStudent && tokenUsage && tokenUsage.used + tokenUsage.remaining > 0}
+  {:else if !isStudent && isSelfHosted && tokenUsage && tokenUsage.used > 0}
+    <div class="mt-2">
+      <span class="ui:text-muted-foreground text-[10px]">
+        {$t('ai_assistant.tokens_used_label', { count: tokenUsage.used })}
+      </span>
+    </div>
+  {:else if !isStudent && !isSelfHosted && tokenUsage && tokenUsage.used + tokenUsage.remaining > 0}
     {@const totalBudget = tokenUsage.used + tokenUsage.remaining}
     {@const usagePercent = Math.min(100, Math.round((tokenUsage.used / totalBudget) * 100))}
     <div class="mt-2">

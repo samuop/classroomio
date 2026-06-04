@@ -8,7 +8,10 @@
   import { HoverableItem, PreviewIcon } from '@cio/ui/custom/moving-icons';
   import RefreshCcwIcon from '@lucide/svelte/icons/refresh-ccw';
   import * as Empty from '@cio/ui/base/empty';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { currentOrg, currentOrgDomain } from '$lib/utils/store/org';
   import { isStudentExperience } from '$lib/utils/store/app';
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
@@ -18,13 +21,30 @@
   import { getActiveCourseNavKey } from '$features/course/utils/functions';
   import { toggleAiAssistant } from '$features/ai-assistant/utils/store';
   import { t } from '$lib/utils/functions/translations';
+  import { DeleteModal } from '$features/ui';
   import CoursePublishBadge from './course-publish-badge.svelte';
   import CoursePublicBadge from './course-public-badge.svelte';
 
   const siteName = $derived($currentOrg.siteName);
   const showCoursePublishBadge = $derived(!$isStudentExperience);
   const isPublicCourse = $derived(courseApi.course?.type === 'PUBLIC');
+  const isDraftCourse = $derived(!$isStudentExperience && courseApi.course?.isPublished === false);
   const activeNavKey = $derived(getActiveCourseNavKey(page.url.pathname, courseApi.course?.id ?? ''));
+
+  let discardModalOpen = $state(false);
+  let isDiscarding = $state(false);
+
+  async function handleDiscardDraft() {
+    const courseId = courseApi.course?.id;
+    if (!courseId) return;
+
+    isDiscarding = true;
+    await courseApi.delete(courseId);
+    isDiscarding = false;
+    discardModalOpen = false;
+
+    goto(resolve('/org/[slug]', { slug: siteName }));
+  }
 
   $effect(() => {
     if (!siteName) return;
@@ -68,6 +88,18 @@
     </div>
 
     <span class="grow"></span>
+
+    {#if isDraftCourse}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="ui:text-muted-foreground hover:ui:text-destructive"
+        onclick={() => (discardModalOpen = true)}
+      >
+        <Trash2Icon size={14} />
+        {$t('course.header.discard_draft')}
+      </Button>
+    {/if}
 
     <Button variant="outline" size="sm" onclick={toggleAiAssistant}>
       <SparklesIcon size={14} />
@@ -113,3 +145,5 @@
     </HoverableItem>
   </div>
 </header>
+
+<DeleteModal bind:open={discardModalOpen} onDelete={handleDiscardDraft} isLoading={isDiscarding} />

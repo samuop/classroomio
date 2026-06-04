@@ -1,9 +1,9 @@
 /** When set (e.g. to `1`), the streaming "don't reload" banner stays hidden across sessions */
 export const AI_AGENT_RUNNING_WARNING_DISMISSED_KEY = 'classroomio-ai-agent-running-warning-dismissed';
 
-export const AI_COURSE_CHAT_DEFAULT_WIDTH = 360;
-export const AI_COURSE_CHAT_MIN_WIDTH = 280;
-export const AI_COURSE_CHAT_MAX_WIDTH = 520;
+export const AI_COURSE_CHAT_DEFAULT_WIDTH = 560;
+export const AI_COURSE_CHAT_MIN_WIDTH = 320;
+export const AI_COURSE_CHAT_MAX_WIDTH = 1100;
 export const AI_COURSE_CHAT_STORAGE_KEY = 'classroomio-ai-course-chat-width';
 export const AI_CHAT_MODEL_STORAGE_KEY = 'classroomio-ai-chat-model';
 

@@ -28,7 +28,9 @@ export const ZAgentChatBody = z.object({
     .object({
       lessonId: z.string().uuid().optional(),
       exerciseId: z.string().uuid().optional(),
-      documentId: z.string().optional()
+      documentId: z.string().optional(),
+      /** The locale the lesson editor is currently showing — content is written in this language. */
+      locale: z.string().optional()
     })
     .optional()
 });

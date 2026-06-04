@@ -41,6 +41,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'go_live_course',
   'generate_course_plan',
   'ask_template_questions',
+  'ask_discovery_questions',
   'fetch_documentation_url'
 ]);
 
@@ -229,6 +230,8 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
       return { shape: 'i18n', key: 'ai_assistant.tool.done.generate_course_plan' };
     case 'ask_template_questions':
       return { shape: 'i18n', key: 'ai_assistant.tool.done.ask_template_questions' };
+    case 'ask_discovery_questions':
+      return { shape: 'i18n', key: 'ai_assistant.tool.done.ask_discovery_questions' };
     case 'fetch_documentation_url': {
       const rawUrl = readString(r, 'url') ?? '';
 
