@@ -5,11 +5,10 @@
   import type { Component } from 'svelte';
 
   import { appInitApi } from '$features/app/init.svelte';
-  import { Spinner } from '@cio/ui/base/spinner';
   import { Button } from '@cio/ui/base/button';
   import FrownIcon from '@lucide/svelte/icons/frown';
   import { Empty } from '@cio/ui/custom/empty';
-  import { SimpleLogoNav } from '@cio/ui/custom/simple-logo-nav';
+  import BrandSpinner from '$features/app/components/brand-spinner.svelte';
   import {
     buildOrgLandingPageProps,
     importThemeComponent,
@@ -25,6 +24,12 @@
   let ThemeComponent = $state<Component<any> | null>(null);
 
   const hasSetupError = $derived(!appInitApi.loading && !!appInitApi.error);
+
+  // A logged-in user landing on `/` is always on the way to their dashboard/LMS
+  // (the redirect happens in setupApp -> routeUserToNextPage). In self-hosted
+  // mode `isOrgSite`/`org` are always set, so without this guard the org landing
+  // page (course catalogue) would flash before that redirect fires.
+  const isLoggedIn = $derived(!!data.locals?.user);
 
   const pageTitle = $derived(
     data.isOrgSite && data.org ? data.org.name : brandName
@@ -55,7 +60,7 @@
   });
 
   onMount(async () => {
-    if (!data.isOrgSite || !data.org) {
+    if (!data.isOrgSite || !data.org || isLoggedIn) {
       if (!appInitApi.loading) {
         appInitApi.setupApp(data.locals, {
           isOrgSite: data.isOrgSite,
@@ -76,13 +81,13 @@
   <title>{pageTitle}</title>
 </svelte:head>
 
-{#if data.isOrgSite && data.org}
+{#if data.isOrgSite && data.org && !isLoggedIn}
   {#if ThemeComponent && landingPageProps}
     <ThemeComponent {...landingPageProps} />
   {:else}
     <!-- Theme loading -->
   {/if}
-{:else if hasSetupError}
+{:else if hasSetupError && !isLoggedIn}
   <Empty
     title="Something Went Wrong"
     description="We encountered an unexpected error. Please reload the page or contact us for support."
@@ -98,8 +103,5 @@
     </div>
   </Empty>
 {:else}
-  <div class="m-2 flex h-screen w-screen flex-col items-center justify-center font-sans sm:m-0">
-    <SimpleLogoNav />
-    <Spinner class="size-14! text-blue-700!" />
-  </div>
+  <BrandSpinner />
 {/if}

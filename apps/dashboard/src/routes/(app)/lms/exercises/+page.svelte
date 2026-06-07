@@ -13,6 +13,7 @@
   <Page.Header>
     <Page.HeaderContent>
       <Page.Title>{$t('exercises.heading')}</Page.Title>
+      <Page.Subtitle>{$t('exercises.subheading')}</Page.Subtitle>
     </Page.HeaderContent>
   </Page.Header>
   <Page.Body>

@@ -4066,11 +4066,17 @@
   },
   "exercises": {
     "heading": "Exercises",
+    "subheading": "Your assignments organized by submission status.",
     "not_submitted": "Not Submitted",
     "submitted": "Submitted",
     "in_progress": "Grading In Progress",
     "graded": "Graded",
-    "lesson": "Lesson"
+    "lesson": "Lesson",
+    "empty_column": "Nothing here",
+    "empty_all_title": "No exercises yet",
+    "empty_all_description": "When your tutor assigns exercises, they'll show up here.",
+    "grade": "Grade",
+    "open_exercise": "Open exercise"
   },
   "explore": {
     "heading": "Explore our courses",

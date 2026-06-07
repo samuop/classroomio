@@ -496,11 +496,17 @@
   },
   "exercises": {
     "heading": "Ejercicios",
+    "subheading": "Tus tareas organizadas por estado de entrega.",
     "not_submitted": "No enviado",
     "submitted": "Enviado",
     "in_progress": "Calificación en progreso",
     "graded": "Calificado",
-    "lesson": "Lección"
+    "lesson": "Lección",
+    "empty_column": "Nada por aquí",
+    "empty_all_title": "Sin ejercicios todavía",
+    "empty_all_description": "Cuando tu tutor te asigne ejercicios, aparecerán aquí.",
+    "grade": "Nota",
+    "open_exercise": "Abrir ejercicio"
   },
   "my_learning": {
     "heading": "Mi aprendizaje",

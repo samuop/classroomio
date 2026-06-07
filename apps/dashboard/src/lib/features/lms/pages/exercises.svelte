@@ -1,47 +1,66 @@
 <script lang="ts">
   import cloneDeep from 'lodash/cloneDeep';
-  import { Chip } from '@cio/ui/custom/chip';
   import { profile } from '$lib/utils/store/user';
   import { currentOrg } from '$lib/utils/store/org';
   import { snackbar } from '$features/ui/snackbar/store';
   import { lmsExercisesApi, type LMSExercise } from '$features/lms/api/exercises.svelte';
   import { calDateDiff } from '$lib/utils/functions/date';
   import { t } from '$lib/utils/functions/translations';
+  import { Badge } from '@cio/ui/base/badge';
+  import { Skeleton } from '@cio/ui/base/skeleton';
+  import * as Empty from '@cio/ui/base/empty';
+  import BookOpenIcon from '@lucide/svelte/icons/book-open';
+  import ClipboardListIcon from '@lucide/svelte/icons/clipboard-list';
+  import InboxIcon from '@lucide/svelte/icons/inbox';
+  import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 
-  const defaultSections = [
+  // Visual treatment per column. `dot` colours the status indicator + count
+  // badge; `accent` is the thin top bar that makes each column scannable.
+  const defaultSections: Section[] = [
     {
       id: 0,
       title: $t('exercises.not_submitted'),
       items: [],
-      className: 'text-[#E35353] bg-[#FDDFE4]'
+      dot: 'bg-rose-500',
+      badge: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+      accent: 'bg-rose-500'
     },
     {
       id: 1,
       title: $t('exercises.submitted'),
       items: [],
-      className: 'text-orange-700 bg-orange-200'
+      dot: 'bg-orange-500',
+      badge: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+      accent: 'bg-orange-500'
     },
     {
       id: 2,
       title: $t('exercises.in_progress'),
       items: [],
-      className: 'text-yellow-700 bg-yellow-200'
+      dot: 'bg-amber-400',
+      badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+      accent: 'bg-amber-400'
     },
     {
       id: 3,
       title: $t('exercises.graded'),
-      value: 0,
       items: [],
-      className: 'text-green-700 bg-green-200'
+      dot: 'bg-emerald-500',
+      badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+      accent: 'bg-emerald-500'
     }
   ];
+
   let sections: Section[] = $state(cloneDeep(defaultSections));
   let hasFetched = $state(false);
+  let loading = $state(true);
 
   interface Section {
     id: number;
     title: string;
-    className: string;
+    dot: string;
+    badge: string;
+    accent: string;
     items: ExerciseItem[];
   }
 
@@ -58,6 +77,9 @@
     submissionStatus: number;
     submissionUpdatedAt: string;
   }
+
+  const totalItems = $derived(sections.reduce((acc, s) => acc + s.items.length, 0));
+  const isEmpty = $derived(!loading && totalItems === 0);
 
   function generateSections(exercises: LMSExercise[]): Section[] {
     const _sections: Section[] = cloneDeep(defaultSections);
@@ -103,18 +125,21 @@
     }
 
     hasFetched = true;
+    loading = true;
 
     await lmsExercisesApi.fetchLMSExercises(orgId);
 
     if (!lmsExercisesApi.success) {
       snackbar.error('snackbar.exercise.error_fetching');
+      loading = false;
       return;
     }
 
-    if (!lmsExercisesApi.exercises || lmsExercisesApi.exercises.length === 0) return;
+    if (lmsExercisesApi.exercises && lmsExercisesApi.exercises.length > 0) {
+      sections = generateSections(lmsExercisesApi.exercises);
+    }
 
-    sections = generateSections(lmsExercisesApi.exercises);
-    console.log('sections', sections);
+    loading = false;
   }
 
   $effect(() => {
@@ -122,40 +147,102 @@
   });
 </script>
 
-<div class="flex w-full items-center overflow-x-auto">
-  {#each sections as { title, items, className, id }}
-    <div
-      class="mr-3 h-[70vh] max-w-[355px] min-w-[355px] overflow-hidden rounded-md border border-gray-50 bg-gray-100 p-3 dark:border-neutral-700 dark:bg-black"
-    >
-      <div class="mb-2 flex items-center gap-2">
-        <p class="ml-2 dark:text-white">{title}</p>
-        <Chip value={items.length} {className} />
-      </div>
-      <div class="h-full overflow-y-auto pr-2 pb-3">
-        {#each items as item}
-          <div class=" mx-0 my-2 w-full rounded-md bg-white px-3 py-3 dark:bg-neutral-800">
-            <a class="ui:text-primary mb-2 flex w-full cursor-pointer items-center" href={item.courseURL}>
-              <p class="text-xs">{item.courseTitle}</p>
-            </a>
-            <a class="text-md text-black dark:text-white" href={item.exerciseURL}>
-              {#if id === 3}
-                ({item.grade}) -
-              {/if}
-              {item.exerciseTitle}
-            </a>
-            {#if item.lessonURL}
-              <a class="my-2 flex w-fit items-center text-black no-underline hover:underline" href={item.lessonURL}>
-                <p class="text-grey text-sm dark:text-white">
-                  {$t('exercises.lesson')} <span class="italic">{item.lessonTitle}</span>
+{#if isEmpty}
+  <Empty.Root class="ui:py-20">
+    <Empty.Header>
+      <Empty.Media variant="icon">
+        <ClipboardListIcon class="size-6" />
+      </Empty.Media>
+      <Empty.Title>{$t('exercises.empty_all_title')}</Empty.Title>
+      <Empty.Description>{$t('exercises.empty_all_description')}</Empty.Description>
+    </Empty.Header>
+  </Empty.Root>
+{:else}
+  <div class="flex w-full gap-4 overflow-x-auto pb-4">
+    {#each sections as section (section.id)}
+      <div
+        class="flex h-[72vh] w-[320px] min-w-[320px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60 dark:border-neutral-800 dark:bg-neutral-900/40"
+      >
+        <!-- accent bar -->
+        <div class="h-1 w-full {section.accent}"></div>
+
+        <!-- column header -->
+        <div
+          class="flex items-center justify-between gap-2 border-b border-gray-200 bg-white/60 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60"
+        >
+          <div class="flex items-center gap-2">
+            <span class="size-2 rounded-full {section.dot}"></span>
+            <p class="text-sm font-semibold text-gray-800 dark:text-neutral-100">{section.title}</p>
+          </div>
+          <span
+            class="inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold {section.badge}"
+          >
+            {section.items.length}
+          </span>
+        </div>
+
+        <!-- column body -->
+        <div class="flex-1 space-y-2.5 overflow-y-auto px-3 py-3">
+          {#if loading}
+            {#each [0, 1, 2] as i (i)}
+              <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-800">
+                <Skeleton class="mb-2 h-3 w-24" />
+                <Skeleton class="mb-2 h-4 w-full" />
+                <Skeleton class="h-3 w-32" />
+              </div>
+            {/each}
+          {:else if section.items.length === 0}
+            <div class="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+              <InboxIcon class="size-7 text-gray-300 dark:text-neutral-600" />
+              <p class="text-xs text-gray-400 dark:text-neutral-500">{$t('exercises.empty_column')}</p>
+            </div>
+          {:else}
+            {#each section.items as item (item.exerciseId)}
+              <a
+                href={item.exerciseURL}
+                class="group block rounded-lg border border-gray-200 bg-white p-3 transition-all hover:border-primary/40 hover:shadow-sm dark:border-neutral-800 dark:bg-neutral-800 dark:hover:border-primary/50"
+              >
+                <!-- course chip -->
+                <Badge variant="secondary" class="mb-2 max-w-full truncate text-[11px] font-normal">
+                  {item.courseTitle}
+                </Badge>
+
+                <!-- exercise title -->
+                <div class="flex items-start justify-between gap-2">
+                  <p
+                    class="text-sm leading-snug font-medium text-gray-900 group-hover:text-primary dark:text-neutral-50"
+                  >
+                    {#if section.id === 3}
+                      <span
+                        class="mr-1 inline-flex items-center rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                      >
+                        {item.grade}
+                      </span>
+                    {/if}
+                    {item.exerciseTitle}
+                  </p>
+                  <ArrowRightIcon
+                    class="mt-0.5 size-4 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary dark:text-neutral-600"
+                  />
+                </div>
+
+                <!-- lesson meta -->
+                {#if item.lessonURL}
+                  <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400">
+                    <BookOpenIcon class="size-3.5 shrink-0" />
+                    <span class="truncate">{item.lessonTitle}</span>
+                  </div>
+                {/if}
+
+                <!-- timestamp -->
+                <p class="mt-2 text-[11px] text-gray-400 dark:text-neutral-500">
+                  {item.submissionUpdatedAt}
                 </p>
               </a>
-            {/if}
-            <p class="text-xs text-gray-500 dark:text-white">
-              {item.submissionUpdatedAt}
-            </p>
-          </div>
-        {/each}
+            {/each}
+          {/if}
+        </div>
       </div>
-    </div>
-  {/each}
-</div>
+    {/each}
+  </div>
+{/if}
