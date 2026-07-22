@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
-import { Scalar } from '@scalar/hono-api-reference';
 import { env } from '@api/config/env';
 import { AuthSession } from '@api/types/auth';
 
-export function configureOpenAPI(app: Hono<AuthSession>) {
+export async function configureOpenAPI(app: Hono<AuthSession>) {
   if (env.OPENAPI_URL) {
+    const { Scalar } = await import('@scalar/hono-api-reference');
+
     app.get('/docs', Scalar({ url: env.OPENAPI_URL, theme: 'none' }));
   }
 }

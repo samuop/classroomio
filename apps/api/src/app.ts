@@ -27,6 +27,7 @@ import { onboardingRouter } from '@api/routes/onboarding';
 import { organizationRouter } from '@api/routes/organization';
 import { organizationSsoRouter } from '@api/routes/organization/sso';
 import { organizationTokenAuthRouter } from '@api/routes/organization/token-auth';
+import { platformRouter } from '@api/routes/platform';
 import { prettyJSON } from 'hono/pretty-json';
 import { programRouter } from '@api/routes/program';
 import { studentRouter } from '@api/routes/student';
@@ -213,6 +214,7 @@ export const app = new Hono()
   .route('/widgets', publicWidgetsRouter)
   .route('/internal', internalRouter)
   .route('/agent', agentRouter)
+  .route('/platform', platformRouter)
 
   // Error handling
   .onError((err, c) => {

@@ -4725,5 +4725,76 @@
       "done": "Listo",
       "failed": "Error al subir"
     }
+  },
+  "platform": {
+    "access_denied_title": "Solo administradores de plataforma",
+    "access_denied_body": "Necesitás acceso de administrador de plataforma para gestionar las empresas.",
+    "snackbar": {
+      "org_created": "Empresa creada",
+      "org_updated": "Empresa actualizada",
+      "org_suspended": "Empresa suspendida",
+      "org_reactivated": "Empresa reactivada",
+      "plan_updated": "Plan actualizado",
+      "domain_connected": "Dominio personalizado conectado",
+      "domain_refreshed": "Estado del dominio actualizado",
+      "domain_removed": "Dominio personalizado eliminado"
+    },
+    "plans": {
+      "basic": "Básico (Free)",
+      "early_adopter": "Early Adopter",
+      "enterprise": "Enterprise"
+    },
+    "detail": {
+      "plan": "Plan",
+      "plan_hint": "Cambiar el plan ajusta al instante la cuota de tokens, el límite de alumnos y las funciones disponibles.",
+      "members": "Miembros",
+      "tokens_all_time": "Tokens (histórico)",
+      "domains_title": "Dominios",
+      "tenant_url_label": "Subdominio de la plataforma",
+      "tenant_url_hint": "Se genera automáticamente a partir del nombre del sitio. No requiere configuración de DNS por empresa.",
+      "custom_domain_label": "Dominio personalizado",
+      "custom_domain_hint": "Conectá un dominio que sea del cliente, como egea.com.ar. Vas a recibir los registros DNS para apuntarlo acá.",
+      "domain_verified": "Verificado",
+      "domain_pending": "DNS pendiente",
+      "domain_connect": "Conectar",
+      "domain_refresh": "Actualizar estado",
+      "domain_remove": "Eliminar"
+    },
+    "orgs": {
+      "page_title": "Empresas",
+      "page_description": "Todas las empresas de la plataforma, con su plan, miembros y consumo de tokens del mes.",
+      "back": "Volver",
+      "search_placeholder": "Buscar por nombre o sitio…",
+      "create_cta": "Nueva empresa",
+      "empty": "No se encontraron empresas",
+      "no_plan": "Sin plan",
+      "total_count": "{count} empresas",
+      "col_name": "Nombre",
+      "col_plan": "Plan",
+      "col_tokens": "Tokens (mes)",
+      "col_members": "Miembros",
+      "col_status": "Estado",
+      "col_created": "Creada",
+      "status_active": "Activa",
+      "status_suspended": "Suspendida",
+      "action_detail": "Detalles y dominios",
+      "action_rename": "Renombrar",
+      "action_suspend": "Suspender",
+      "action_reactivate": "Reactivar",
+      "create_title": "Crear empresa",
+      "create_description": "El dueño ya debe tener una cuenta; se lo agregará como administrador de la empresa.",
+      "name_label": "Nombre de la empresa",
+      "site_name_label": "Nombre del sitio (subdominio)",
+      "owner_email_label": "Email del dueño",
+      "owner_email_hint": "Email de un usuario existente que será dueño de esta empresa.",
+      "cancel": "Cancelar",
+      "create_submit": "Crear",
+      "rename_title": "Renombrar empresa",
+      "rename_submit": "Guardar",
+      "suspend_title": "Suspender empresa",
+      "suspend_body": "Los miembros de {name} perderán acceso hasta que la reactives. ¿Continuar?",
+      "reactivate_title": "Reactivar empresa",
+      "reactivate_body": "¿Restaurar el acceso para los miembros de {name}?"
+    }
   }
 }

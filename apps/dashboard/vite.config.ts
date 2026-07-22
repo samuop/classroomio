@@ -15,6 +15,13 @@ export default ({ mode }) => {
       }
     },
     plugins: [sveltekit()],
+    // Expose PUBLIC_* env vars on `import.meta.env` in the client bundle. Vite's
+    // default envPrefix is only `VITE_`, so without this `@cio/utils` (which reads
+    // import.meta.env.PUBLIC_TENANT_ROOT_DOMAIN / _BRAND_ROOT_DOMAIN) would never
+    // see them in the browser and fall back to the cloud default. SvelteKit's
+    // PUBLIC_ prefix only feeds `$env/static/public`, not import.meta.env, so this
+    // must be set explicitly. VITE_ stays included so existing VITE_* vars work.
+    envPrefix: ['VITE_', 'PUBLIC_'],
     server: {
       ...getServer(process.env),
       watch: {

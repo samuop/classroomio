@@ -94,6 +94,7 @@ export const ErrorCodes = {
 
   // Auth errors
   FORBIDDEN: 'FORBIDDEN',
+  PLATFORM_NOT_AUTHORIZED: 'PLATFORM_NOT_AUTHORIZED',
 
   // Course errors
   COURSE_NOT_FOUND: 'COURSE_NOT_FOUND',

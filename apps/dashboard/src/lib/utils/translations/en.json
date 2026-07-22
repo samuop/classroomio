@@ -4716,5 +4716,76 @@
       "ai_assistant": "AI Assistant",
       "transcript": "Transcript"
     }
+  },
+  "platform": {
+    "access_denied_title": "Platform admins only",
+    "access_denied_body": "You need platform administrator access to manage organizations.",
+    "snackbar": {
+      "org_created": "Organization created",
+      "org_updated": "Organization updated",
+      "org_suspended": "Organization suspended",
+      "org_reactivated": "Organization reactivated",
+      "plan_updated": "Plan updated",
+      "domain_connected": "Custom domain connected",
+      "domain_refreshed": "Domain status refreshed",
+      "domain_removed": "Custom domain removed"
+    },
+    "plans": {
+      "basic": "Basic (Free)",
+      "early_adopter": "Early Adopter",
+      "enterprise": "Enterprise"
+    },
+    "detail": {
+      "plan": "Plan",
+      "plan_hint": "Changing the plan instantly adjusts the token allowance, student limit, and available features.",
+      "members": "Members",
+      "tokens_all_time": "Tokens (all time)",
+      "domains_title": "Domains",
+      "tenant_url_label": "Platform subdomain",
+      "tenant_url_hint": "Generated automatically from the site name. No DNS setup needed per workspace.",
+      "custom_domain_label": "Custom domain",
+      "custom_domain_hint": "Connect a domain the customer owns, like egea.com.ar. You'll get DNS records to point it here.",
+      "domain_verified": "Verified",
+      "domain_pending": "Pending DNS",
+      "domain_connect": "Connect",
+      "domain_refresh": "Refresh status",
+      "domain_remove": "Remove"
+    },
+    "orgs": {
+      "page_title": "Organizations",
+      "page_description": "Every workspace on the platform, with its plan, members, and token usage this month.",
+      "back": "Back",
+      "search_placeholder": "Search by name or site…",
+      "create_cta": "New organization",
+      "empty": "No organizations found",
+      "no_plan": "No plan",
+      "total_count": "{count} organizations",
+      "col_name": "Name",
+      "col_plan": "Plan",
+      "col_tokens": "Tokens (mo)",
+      "col_members": "Members",
+      "col_status": "Status",
+      "col_created": "Created",
+      "status_active": "Active",
+      "status_suspended": "Suspended",
+      "action_detail": "Details & domains",
+      "action_rename": "Rename",
+      "action_suspend": "Suspend",
+      "action_reactivate": "Reactivate",
+      "create_title": "Create organization",
+      "create_description": "The owner must already have an account; they'll be added as the organization's admin.",
+      "name_label": "Organization name",
+      "site_name_label": "Site name (subdomain)",
+      "owner_email_label": "Owner email",
+      "owner_email_hint": "Email of an existing user who will own this organization.",
+      "cancel": "Cancel",
+      "create_submit": "Create",
+      "rename_title": "Rename organization",
+      "rename_submit": "Save",
+      "suspend_title": "Suspend organization",
+      "suspend_body": "Members of {name} will lose access until you reactivate it. Continue?",
+      "reactivate_title": "Reactivate organization",
+      "reactivate_body": "Restore access for members of {name}?"
+    }
   }
 }

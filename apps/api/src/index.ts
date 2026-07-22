@@ -28,7 +28,7 @@ async function startServer() {
   }
 }
 
-configureOpenAPI(app);
+await configureOpenAPI(app);
 
 startServer().catch((error) => {
   console.error('Failed to start server:', error);

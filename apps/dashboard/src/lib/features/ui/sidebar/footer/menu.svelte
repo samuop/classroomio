@@ -5,6 +5,7 @@
   import * as DropdownMenu from '@cio/ui/base/dropdown-menu';
   import InfoIcon from '@lucide/svelte/icons/info';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
+  import BuildingIcon from '@lucide/svelte/icons/building-2';
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import { useSidebar } from '@cio/ui/base/sidebar';
@@ -12,11 +13,13 @@
   import ThemeToggle from './theme-toggle.svelte';
 
   import { t } from '$lib/utils/functions/translations';
-  import { profile } from '$lib/utils/store/user';
+  import { profile, user } from '$lib/utils/store/user';
   import { currentOrg } from '$lib/utils/store/org';
-  import { ROLE } from '@cio/utils/constants';
+  import { ROLE, PLATFORM_ROLE } from '@cio/utils/constants';
 
   const sidebar = useSidebar();
+
+  const isPlatformAdmin = $derived($user.currentSession?.role === PLATFORM_ROLE.ADMIN);
 
   function getRoleLabel(roleId: number): string {
     if (roleId === ROLE.ADMIN) return $t('course.navItem.people.roles.admin');
@@ -103,6 +106,20 @@
 
         <DropdownMenu.Group>
           <div class="cursor-pointer space-y-2">
+            {#if isPlatformAdmin}
+              <DropdownMenu.Item class="m-0">
+                <a
+                  href={resolve('/platform', {})}
+                  class="flex h-full w-full items-center justify-start space-x-2 text-start"
+                >
+                  <BuildingIcon size={20} />
+                  <p class="text-sm dark:text-white">{$t('platform.orgs.page_title')}</p>
+                </a>
+              </DropdownMenu.Item>
+
+              <DropdownMenu.Separator />
+            {/if}
+
             <!-- Licence/attribution must always be reachable (AGPL fork requirement). -->
             <div class="space-y-4">
               <DropdownMenu.Item class="m-0">

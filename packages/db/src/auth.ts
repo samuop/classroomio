@@ -124,6 +124,14 @@ export const auth = betterAuth({
     }
   },
   plugins: [
+    // `platformAdmin` (PLATFORM_ROLE.ADMIN) is our SaaS-operator role, stored on
+    // Better Auth's global `user.role`. The /platform panel authorizes it via
+    // platformAdminMiddleware, which reads `user.role` directly — it does NOT go
+    // through this plugin. We intentionally do NOT add it to `adminRoles`: this
+    // plugin (v1.6) requires any adminRole to also be declared in an access-
+    // control `roles` map, and platform admins don't need the admin plugin's
+    // own endpoints (list/ban/impersonate) yet. Add it here with a matching
+    // `roles` entry if that capability is needed later.
     admin(),
     anonymous(),
     sso({

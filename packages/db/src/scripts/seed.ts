@@ -11,6 +11,7 @@ import { seedGroupmembers } from '@db/utils/seed/groupmember';
 import { type LessonTemplate, seedLessons } from '@db/utils/seed/lesson';
 import { seedOrganization } from '@db/utils/seed/organization';
 import { seedOrganizationMember } from '@db/utils/seed/organizationmember';
+import { seedPlatformAdmin } from '@db/utils/seed/platformAdmin';
 import { seedEarlyAdopterOrganizationPlan, seedEnterpriseOrganizationPlan } from '@db/utils/seed/organizationPlan';
 import { seedProfile } from '@db/utils/seed/profile';
 import { seedQuestionTypes } from '@db/utils/seed/questionType';
@@ -68,6 +69,7 @@ Flags:
   --question-types             Seed question types
   --users                     Seed users
   --profiles                  Seed profiles
+  --platform-admin            Promote SaaS operator(s) to global platform admin
   --accounts                  Seed accounts
   --organizations             Seed organizations
   --organization-members      Seed organization members
@@ -111,6 +113,10 @@ const seedFunctions = {
   profiles: async () => {
     console.log('📝 Seeding profiles...');
     await seedProfile({ usersData });
+  },
+  'platform-admin': async () => {
+    console.log('📝 Seeding platform admin(s)...');
+    await seedPlatformAdmin();
   },
   accounts: async () => {
     console.log('📝 Seeding accounts...');
@@ -247,6 +253,7 @@ async function seed() {
       await seedFunctions['question-types']();
       await seedFunctions.users();
       await seedFunctions.profiles();
+      await seedFunctions['platform-admin']();
       await seedFunctions.accounts();
       await seedFunctions.organizations();
       await seedFunctions['organization-members']();
@@ -269,6 +276,7 @@ async function seed() {
         'question-types',
         'users',
         'profiles',
+        'platform-admin',
         'accounts',
         'organizations',
         'organization-members',

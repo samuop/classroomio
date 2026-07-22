@@ -29,6 +29,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# deploy secrets (credenciales de MinIO en el VPS — se crea a mano allá)
+infra/minio.env
+
 # turbo
 .turbo
 
