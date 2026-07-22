@@ -9,13 +9,18 @@ const IS_CLOUDFLARE = process.env.CI_ENVIRONMENT === 'cloudflare';
 
 const adapterCloudflare = IS_CLOUDFLARE ? (await import('@sveltejs/adapter-cloudflare')).default : null;
 const isSelfHosted = process.env.PUBLIC_IS_SELFHOSTED === 'true';
-const csp = getCspDomains(isSelfHosted, process.env.PUBLIC_SERVER_URL);
+const csp = getCspDomains(isSelfHosted, process.env.PUBLIC_SERVER_URL, process.env.PUBLIC_MEDIA_HOST);
 
 // In dev, Vite injects inline event handlers (onload="this.__e=event") on
 // module preloads which a nonce-based CSP blocks, breaking hydration. Allow
 // inline scripts only in dev; production keeps the strict policy.
 const isDev = process.env.NODE_ENV !== 'production';
 const devScriptSrc = isDev ? ['unsafe-inline'] : [];
+// Local MinIO (docker) only exists in dev; in prod media comes from PUBLIC_MEDIA_HOST
+// (baked into csp.mediaSrc). Keeping localhost:9000 in prod would leave the storage
+// domain out of img-src and CSP would block uploaded images (broken avatar/logo).
+const devMediaSrc = isDev ? ['http://localhost:9000'] : [];
+const devConnectSrc = isDev ? ['http://localhost:3002', 'http://localhost:9000'] : [];
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -45,14 +50,13 @@ const config = {
         'style-src': ['self', 'unsafe-inline', ...csp.styleSrc],
         'style-src-elem': ['self', 'unsafe-inline', ...csp.styleSrc],
         'font-src': ['self', ...csp.fontSrc],
-        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', 'http://localhost:9000'],
-        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', 'http://localhost:9000'],
+        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', ...devMediaSrc],
+        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', ...devMediaSrc],
         'frame-src': ['self', ...csp.frameSrc],
         'connect-src': [
           'self',
           'blob:',
-          'http://localhost:3002',
-          'http://localhost:9000',
+          ...devConnectSrc,
           ...(csp.apiOrigin ? [csp.apiOrigin] : []),
           ...csp.connectSrc
         ],
@@ -70,14 +74,13 @@ const config = {
         'style-src': ['self', 'unsafe-inline', ...csp.styleSrc],
         'style-src-elem': ['self', 'unsafe-inline', ...csp.styleSrc],
         'font-src': ['self', ...csp.fontSrc],
-        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', 'http://localhost:9000'],
-        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', 'http://localhost:9000'],
+        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', ...devMediaSrc],
+        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', ...devMediaSrc],
         'frame-src': ['self', ...csp.frameSrc],
         'connect-src': [
           'self',
           'blob:',
-          'http://localhost:3002',
-          'http://localhost:9000',
+          ...devConnectSrc,
           ...(csp.apiOrigin ? [csp.apiOrigin] : []),
           ...csp.connectSrc
         ],

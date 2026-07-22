@@ -59,6 +59,10 @@ jobs:
           # y no con el fallback myclassroomio.com. Ponerlo solo en el .env del VPS
           # NO alcanza — el browser recibe el literal ya compilado.
           PUBLIC_TENANT_ROOT_DOMAIN: 'tensor.com.ar'
+          # Dominio del object-storage (MinIO tras Nginx). SvelteKit hornea la CSP en
+          # build-time; sin esto, img-src/media-src no incluyen el storage y el browser
+          # bloquea las imágenes subidas (avatar/logo salen rotos). Ver svelte.config.js.
+          PUBLIC_MEDIA_HOST: 'learn-files.tensor.com.ar'
         run: |
           # @cio/jobs-worker excluido: bug preexistente del fork — importa
           # ffmpegProbeLuma (no implementado en utils/ffmpeg) y no compila. Sin él

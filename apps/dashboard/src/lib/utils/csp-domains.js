@@ -53,24 +53,46 @@ const saasDefaults = {
 };
 
 /**
+ * Normalizes a media/storage host into an origin usable in a CSP source list.
+ * Accepts either a bare host (`learn-files.tensor.com.ar`) or a full URL and
+ * returns `https://host`. Empty/undefined → null.
+ * @param {string | undefined} host
+ * @returns {string | null}
+ */
+function normalizeMediaHost(host) {
+  const value = host?.trim();
+  if (!value) return null;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  return `https://${value}`;
+}
+
+/**
  * @param {boolean} isSelfHosted
  * @param {string | undefined} serverUrl - PUBLIC_SERVER_URL, added to connect-src for SaaS builds
+ * @param {string | undefined} mediaHost - PUBLIC_MEDIA_HOST, the object-storage origin (e.g.
+ *   `learn-files.tensor.com.ar`). Baked into img-src/media-src/connect-src at build time so
+ *   uploaded images/videos aren't blocked by CSP when served from a separate storage domain.
  */
-export function getCspDomains(isSelfHosted, serverUrl) {
+export function getCspDomains(isSelfHosted, serverUrl, mediaHost) {
+  const mediaOrigin = normalizeMediaHost(mediaHost);
+  const media = mediaOrigin ? [mediaOrigin] : [];
+
   if (isSelfHosted) {
     return {
       scriptSrc: [],
       styleSrc: [],
-      connectSrc: [],
+      connectSrc: media,
       frameSrc: [],
       fontSrc: [],
-      mediaSrc: [],
+      mediaSrc: media,
       apiOrigin: null
     };
   }
 
   return {
     ...saasDefaults,
+    connectSrc: [...saasDefaults.connectSrc, ...media],
+    mediaSrc: [...saasDefaults.mediaSrc, ...media],
     apiOrigin: serverUrl ?? null
   };
 }
