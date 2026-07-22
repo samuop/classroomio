@@ -284,7 +284,12 @@
           lessonId: page.params?.lessonId,
           exerciseId: page.params?.exerciseId,
           documentId: uploadedDocument?.id,
-          locale: lessonApi.currentLocale
+          // When a lesson is open, currentLocale was set to that lesson's editing
+          // locale (lesson.svelte sets it to $profile.locale on mount). During course
+          // generation from the chat there is NO open lesson, so currentLocale is still
+          // its default 'en' — which mislabels Spanish content as English and makes the
+          // editor show lessons as "empty". Fall back to the user's profile locale.
+          locale: page.params?.lessonId ? lessonApi.currentLocale : $profile.locale
         }
       }),
       fetch: (input, init) => apiClient.request(input, init)
