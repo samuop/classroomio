@@ -20,10 +20,12 @@
 
   const metaTags = $derived(merge(data.baseMetaTags, page.data.pageMetaTags));
 
-  // Per-org favicon (browser tab icon). Prefer the reactive store (updates when the
-  // user switches org in the dashboard); fall back to the SSR-loaded tenant org so the
-  // right icon is in the initial HTML on a tenant site. Empty → default from app.html.
-  const orgFavicon = $derived($currentOrg.favicon || data.org?.favicon || '');
+  // Browser-tab favicon. Prefer the reactive store (updates when the user switches org in
+  // the dashboard); fall back to the SSR-loaded tenant org; else the platform default.
+  // app.html no longer emits any <link rel="icon">, so this is the ONLY one — that way the
+  // org's favicon can never lose to a default with an explicit sizes="…".
+  const DEFAULT_FAVICON = '/logo-32.png';
+  const favicon = $derived($currentOrg.favicon || data.org?.favicon || DEFAULT_FAVICON);
 
   onMount(() => {
     console.log('Layout', data);
@@ -69,9 +71,7 @@
 </script>
 
 <svelte:head>
-  {#if orgFavicon}
-    <link rel="icon" href={orgFavicon} />
-  {/if}
+  <link rel="icon" href={favicon} />
 </svelte:head>
 
 <div>

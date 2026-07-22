@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#333333" />
 
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
-    <link rel="icon" type="image/png" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/logo-32.png" />
+    <!-- El favicon se emite desde routes/+layout.svelte (default o el de la org) para
+         que nunca compitan varios <link rel="icon"> y el de la org gane cuando exista. -->
 
     %sveltekit.head%
     <style id="app-loading-styles">
