@@ -197,8 +197,13 @@ export const MAX_AGENT_DOCUMENT_SIZE = 5 * 1024 * 1024;
 /** Redis TTL for uploaded document text (1 hour) */
 export const DOCUMENT_REDIS_TTL = 3600;
 
-/** Maximum steps per streamText() round */
-export const MAX_STEPS_PER_ROUND = 15;
+/**
+ * Maximum steps per streamText() round. A full course build (sections + lessons +
+ * content + exercises + questions) easily needs 30–50 tool calls; at 15 the agent
+ * ran out mid-plan and stopped. 40 lets most courses finish in one round; anything
+ * longer is picked up by the step-limit continuation flow.
+ */
+export const MAX_STEPS_PER_ROUND = 40;
 
 /** Supported MIME types for document upload */
 export const SUPPORTED_DOCUMENT_TYPES = [

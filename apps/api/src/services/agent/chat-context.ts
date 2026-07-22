@@ -179,6 +179,116 @@ export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof
   return undefined;
 }
 
+/**
+ * Real course item as returned by getCourseContentItems — only the fields this
+ * module needs. Kept structural (not imported) so the DB row type can evolve
+ * without coupling the anchor to it.
+ */
+type CourseItemState = {
+  type: string;
+  title: string | null;
+  sectionId: string | null;
+  hasNoteContent?: boolean | null;
+  questionCount?: number | null;
+};
+
+type CourseSectionState = { id: string; title: string | null };
+
+function normalizeTitle(title: string | null | undefined): string {
+  return (title ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Compares the approved plan (the Syllabus — the source of truth for WHAT to build)
+ * against the course's REAL current state (from get_course_structure) and returns a
+ * compact progress anchor injected into every implementation turn.
+ *
+ * This is the fix for "the agent said it finished but hadn't / skipped sub-topics":
+ * the model no longer depends on the (trimmed) chat history to remember what it did.
+ * It always sees, per plan item, whether it is ✅ done, ⚠️ present-but-empty, or ⬜ missing,
+ * plus an explicit "you are NOT done until every ⬜/⚠️ is resolved" instruction.
+ *
+ * Matching is by normalized title (the same heuristic the prompt already uses).
+ * Returns undefined when there is no plan (nothing to anchor against).
+ */
+export function buildPlanProgressAnchor(
+  plan: z.infer<typeof CoursePlanFieldsSchema> | undefined,
+  sections: CourseSectionState[],
+  items: CourseItemState[]
+): string | undefined {
+  if (!plan || plan.sections.length === 0) return undefined;
+
+  const sectionIdByTitle = new Map<string, string>();
+  for (const s of sections) {
+    sectionIdByTitle.set(normalizeTitle(s.title), s.id);
+  }
+
+  // Index real items by sectionId + normalized title for O(1) lookup.
+  const itemsBySectionAndTitle = new Map<string, CourseItemState>();
+  for (const it of items) {
+    if (it.type === 'section') continue;
+    itemsBySectionAndTitle.set(`${it.sectionId ?? ''}::${normalizeTitle(it.title)}`, it);
+  }
+
+  const lines: string[] = [];
+  let pendingCount = 0;
+  let emptyCount = 0;
+
+  for (const planSection of plan.sections) {
+    const realSectionId = sectionIdByTitle.get(normalizeTitle(planSection.title));
+    if (!realSectionId) {
+      lines.push(`Section "${planSection.title}" ⬜ NOT CREATED — create it and everything below.`);
+      for (const item of planSection.items) {
+        pendingCount += 1;
+        lines.push(`  - ${item.type} "${item.title}" ⬜ missing`);
+      }
+      continue;
+    }
+
+    const itemStatuses: string[] = [];
+    let sectionComplete = true;
+
+    for (const item of planSection.items) {
+      const real = itemsBySectionAndTitle.get(`${realSectionId}::${normalizeTitle(item.title)}`);
+      if (!real) {
+        pendingCount += 1;
+        sectionComplete = false;
+        itemStatuses.push(`  - ${item.type} "${item.title}" ⬜ missing — create it`);
+        continue;
+      }
+      // Lesson present but no written content, or exercise with no questions → not done.
+      if (real.type === 'lesson' && real.hasNoteContent === false) {
+        emptyCount += 1;
+        sectionComplete = false;
+        itemStatuses.push(`  - lesson "${item.title}" ⚠️ EXISTS BUT EMPTY — write its content`);
+      } else if (real.type === 'exercise' && (real.questionCount ?? 0) === 0) {
+        emptyCount += 1;
+        sectionComplete = false;
+        itemStatuses.push(`  - exercise "${item.title}" ⚠️ EXISTS BUT HAS NO QUESTIONS — add questions`);
+      } else {
+        itemStatuses.push(`  - ${item.type} "${item.title}" ✅`);
+      }
+    }
+
+    lines.push(`Section "${planSection.title}" ${sectionComplete ? '✅ complete' : '⬜ incomplete'}`);
+    lines.push(...itemStatuses);
+  }
+
+  if (pendingCount === 0 && emptyCount === 0) {
+    return `## Plan Progress (source of truth)
+
+Every item in the approved plan is present and has content. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`;
+  }
+
+  return `## Plan Progress — YOU ARE NOT DONE (source of truth)
+
+This is the REAL state of the course right now (from the live structure), compared against the approved plan. Trust THIS, not your memory of what you did — the chat history may be trimmed.
+
+${lines.join('\n')}
+
+${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.`;
+}
+
 const COURSE_TEMPLATE_ID_SET = new Set<CourseTemplateId>(['product_101', 'product_onboarding', 'expert_on_x']);
 
 export function getActiveCourseTemplateId(messages: unknown[]): CourseTemplateId | undefined {

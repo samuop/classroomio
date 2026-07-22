@@ -61,10 +61,12 @@ import * as schema from '@cio/db/schema';
 import type { TLocale } from '@db/types';
 import { eq } from 'drizzle-orm';
 import { listCourseSections } from '@api/services/course/section';
+import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getLesson } from '@api/services/lesson/lesson';
 import { getExercise } from '@api/services/exercise/exercise';
 import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-calls';
 import {
+  buildPlanProgressAnchor,
   collectDocumentIds,
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
@@ -578,10 +580,32 @@ const agentCoreRouter = new Hono()
         isOrgOnPaidPlan: isOrgPaid
       });
 
-      const contextMessageText = buildContextMessage(agentContext, {
+      let contextMessageText = buildContextMessage(agentContext, {
         template: activeTemplate,
         approvedPlan
       });
+
+      // Coherence anchor: when a plan is being implemented, inject the REAL course
+      // state (plan vs live structure — done/empty/missing per item) so the agent
+      // can't lose track of progress when history is trimmed or falsely believe it
+      // finished. Only when there's an approved plan (skip the extra query otherwise).
+      if (approvedPlan) {
+        try {
+          const [progressItems, progressSections] = await Promise.all([
+            getCourseContentItems(courseId),
+            listCourseSections(courseId)
+          ]);
+          const progressAnchor = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems);
+          if (progressAnchor) {
+            contextMessageText = contextMessageText
+              ? `${contextMessageText}\n\n${progressAnchor}`
+              : progressAnchor;
+          }
+        } catch (err) {
+          // Never block the chat on the anchor — it's an enhancement, not required.
+          console.error('[agent.chat] failed to build plan progress anchor:', err);
+        }
+      }
 
       const agentTools =
         role === AgentRole.STUDENT
