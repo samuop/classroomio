@@ -5,19 +5,16 @@ name: Deploy ClassroomIO to VPS
 # El VPS solo reinstala node_modules de runtime y corre los procesos con PM2.
 
 on:
-  # ⏸️ Trigger por push DESACTIVADO temporalmente durante el setup inicial del VPS
-  # (aún no hay secrets ni provisioning → un deploy automático fallaría). Se dispara
-  # SOLO a mano (workflow_dispatch) hasta que todo esté listo. Reactivar el bloque
-  # push cuando el primer deploy manual haya funcionado.
-  #
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'apps/**'
-  #     - 'packages/**'
-  #     - 'infra/**'
-  #     - 'pnpm-lock.yaml'
-  #     - '.github/workflows/deploy-classroomio.yml'
+  # Deploy automático al pushear a main (el primer deploy end-to-end ya funcionó).
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'infra/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-classroomio.yml'
+  # Re-disparar a mano desde la pestaña Actions sin commit.
   workflow_dispatch:
 
 concurrency:
