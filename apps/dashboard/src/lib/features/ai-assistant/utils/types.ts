@@ -18,11 +18,22 @@ export interface AiAssistantMessageTokenUsage {
   totalTokens: number;
 }
 
-export interface AiAssistantMessageContinuation {
-  reason: 'step_limit';
-  maxSteps: number;
-  finishReason?: string;
-}
+export type AiAssistantMessageContinuation =
+  | {
+      // The run hit the per-round step cap; more work may remain.
+      reason: 'step_limit';
+      maxSteps: number;
+      finishReason?: string;
+    }
+  | {
+      // The model stopped but the approved plan still has missing/empty items
+      // (server compared plan vs live course). Drives the "Continue" button even
+      // when the model wrongly claimed completion.
+      reason: 'incomplete_plan';
+      pendingCount: number;
+      emptyCount: number;
+      finishReason?: string;
+    };
 
 export type AiAssistantTemplateMetadata =
   | { id: CourseTemplateId }

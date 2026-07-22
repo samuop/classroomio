@@ -595,11 +595,11 @@ const agentCoreRouter = new Hono()
             getCourseContentItems(courseId),
             listCourseSections(courseId)
           ]);
-          const progressAnchor = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems);
-          if (progressAnchor) {
+          const progress = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems);
+          if (progress) {
             contextMessageText = contextMessageText
-              ? `${contextMessageText}\n\n${progressAnchor}`
-              : progressAnchor;
+              ? `${contextMessageText}\n\n${progress.anchorText}`
+              : progress.anchorText;
           }
         } catch (err) {
           // Never block the chat on the anchor — it's an enhancement, not required.
@@ -627,6 +627,10 @@ const agentCoreRouter = new Hono()
       const convertedMessages = sanitizeDanglingToolCalls(await convertToModelMessages(contextManaged.messages as any));
       let completedStepCount = 0;
       let finishReason: string | undefined;
+      // Set in onFinish (async) so the sync messageMetadata callback can report to the
+      // UI whether the plan is still incomplete — this drives the "Continue" button
+      // even when the model wrongly claimed the course was finished.
+      let planIncomplete: { pendingCount: number; emptyCount: number } | undefined;
 
       const isAnthropic = providerConfig.provider === AIProvider.ANTHROPIC;
 
@@ -684,6 +688,27 @@ const agentCoreRouter = new Hono()
           completedStepCount = steps.length;
           finishReason = resultFinishReason;
           const durationMs = Date.now() - startTime;
+
+          // Re-check the plan vs the (now-updated) live course. If items are still
+          // missing/empty, flag it so the UI can offer "Continue" — regardless of
+          // whether the model stopped by choice or hit the step limit.
+          if (approvedPlan) {
+            try {
+              const [finalItems, finalSections] = await Promise.all([
+                getCourseContentItems(courseId),
+                listCourseSections(courseId)
+              ]);
+              const finalProgress = buildPlanProgressAnchor(approvedPlan, finalSections, finalItems);
+              if (finalProgress && (finalProgress.pendingCount > 0 || finalProgress.emptyCount > 0)) {
+                planIncomplete = {
+                  pendingCount: finalProgress.pendingCount,
+                  emptyCount: finalProgress.emptyCount
+                };
+              }
+            } catch (err) {
+              console.error('[agent.chat] failed to recompute plan progress at finish:', err);
+            }
+          }
           const inputTokens = totalUsage?.inputTokens ?? 0;
           const outputTokens = totalUsage?.outputTokens ?? 0;
 
@@ -751,7 +776,16 @@ const agentCoreRouter = new Hono()
                     maxSteps: MAX_STEPS_PER_ROUND,
                     finishReason
                   }
-                : undefined
+                : planIncomplete
+                  ? {
+                      // The model stopped (often falsely claiming completion) but the
+                      // plan still has missing/empty items — offer the teacher a Continue.
+                      reason: 'incomplete_plan' as const,
+                      pendingCount: planIncomplete.pendingCount,
+                      emptyCount: planIncomplete.emptyCount,
+                      finishReason
+                    }
+                  : undefined
           };
         }
       });

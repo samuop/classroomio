@@ -21,6 +21,8 @@
     isStopped: boolean;
     /** True while the assistant is invoking course-mutation tools (see `MUTATION_TOOLS`). */
     hasMutations?: boolean;
+    /** Set when the server reported the plan is still incomplete → drives the Continue button copy. */
+    pendingSummary?: { pendingCount: number; emptyCount: number };
   }
 
   interface Props {
@@ -231,9 +233,17 @@
             isStopped={planExecutionState.isStopped}
           />
           {#if planExecutionState.isStopped}
-            <Button size="sm" variant="outline" onclick={onResume} class="mt-2 w-full"
-              >{$t('ai_assistant.resume')}</Button
-            >
+            {#if planExecutionState.pendingSummary}
+              <p class="ui:text-muted-foreground mt-2 text-xs">
+                {$t('ai_assistant.plan_incomplete_notice', {
+                  pending: planExecutionState.pendingSummary.pendingCount,
+                  empty: planExecutionState.pendingSummary.emptyCount
+                })}
+              </p>
+            {/if}
+            <Button size="sm" variant="default" onclick={onResume} class="mt-2 w-full">
+              {$t('ai_assistant.resume')}
+            </Button>
           {/if}
         </div>
       {/if}

@@ -683,7 +683,11 @@
     const lastAssistantMsg = lastMsg;
 
     const continuation = (lastAssistantMsg.metadata as AiAssistantMessageMetadata | undefined)?.continuation;
+    // Either the run hit the step cap, OR the model stopped but the server found the
+    // plan still incomplete (missing/empty items). Both offer a "Continue".
     const reachedStepLimit = continuation?.reason === 'step_limit';
+    const planIncomplete = continuation?.reason === 'incomplete_plan';
+    const canResume = reachedStepLimit || planIncomplete;
     const allToolParts = lastAssistantMsg.parts.filter((part: Record<string, unknown>) =>
       isAgentToolPart(part)
     ) as AgentToolPart[];
@@ -735,10 +739,11 @@
     });
 
     const allDone = steps.every((s) => s.status === 'completed');
-    const isStopped = !isStreaming && (!allDone || reachedStepLimit);
+    const isStopped = !isStreaming && (!allDone || canResume);
 
-    // Hide the card once the agent finishes cleanly — the text response takes over
-    if (allDone && !isStreaming && !reachedStepLimit) return null;
+    // Hide the card once the agent finishes cleanly — the text response takes over.
+    // But keep it (to show the Continue button) when the plan is still incomplete.
+    if (allDone && !isStreaming && !canResume) return null;
 
     const hasMutations = toolParts.some((part) => {
       const toolName = getAgentToolName(part);
@@ -746,8 +751,11 @@
     });
     const titleKey = hasMutations ? 'ai_assistant.plan_applying_changes' : 'ai_assistant.plan_working';
     const currentActionLine = steps.find((s) => s.status === 'in_progress')?.line;
+    const pendingSummary = planIncomplete
+      ? { pendingCount: continuation.pendingCount, emptyCount: continuation.emptyCount }
+      : undefined;
 
-    return { steps, currentActionLine, isStopped, titleKey, hasMutations };
+    return { steps, currentActionLine, isStopped, titleKey, hasMutations, pendingSummary };
   });
 
   $effect(() => {

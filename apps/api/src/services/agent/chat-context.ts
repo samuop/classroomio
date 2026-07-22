@@ -210,12 +210,22 @@ function normalizeTitle(title: string | null | undefined): string {
  *
  * Matching is by normalized title (the same heuristic the prompt already uses).
  * Returns undefined when there is no plan (nothing to anchor against).
+ *
+ * `pendingCount`/`emptyCount` are also surfaced so the API can tell the UI the plan
+ * is not actually finished (⬜ missing + ⚠️ empty) even when the model wrongly claimed
+ * completion — that's what powers the "Continue" button after a false "done".
  */
+export interface PlanProgress {
+  anchorText: string;
+  pendingCount: number;
+  emptyCount: number;
+}
+
 export function buildPlanProgressAnchor(
   plan: z.infer<typeof CoursePlanFieldsSchema> | undefined,
   sections: CourseSectionState[],
   items: CourseItemState[]
-): string | undefined {
+): PlanProgress | undefined {
   if (!plan || plan.sections.length === 0) return undefined;
 
   const sectionIdByTitle = new Map<string, string>();
@@ -275,18 +285,26 @@ export function buildPlanProgressAnchor(
   }
 
   if (pendingCount === 0 && emptyCount === 0) {
-    return `## Plan Progress (source of truth)
+    return {
+      pendingCount,
+      emptyCount,
+      anchorText: `## Plan Progress (source of truth)
 
-Every item in the approved plan is present and has content. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`;
+Every item in the approved plan is present and has content. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`
+    };
   }
 
-  return `## Plan Progress — YOU ARE NOT DONE (source of truth)
+  return {
+    pendingCount,
+    emptyCount,
+    anchorText: `## Plan Progress — YOU ARE NOT DONE (source of truth)
 
 This is the REAL state of the course right now (from the live structure), compared against the approved plan. Trust THIS, not your memory of what you did — the chat history may be trimmed.
 
 ${lines.join('\n')}
 
-${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.`;
+${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.`
+  };
 }
 
 const COURSE_TEMPLATE_ID_SET = new Set<CourseTemplateId>(['product_101', 'product_onboarding', 'expert_on_x']);
