@@ -15,9 +15,16 @@
 
 const APP_DIR = '/var/www/classroomio';
 
-// Heap acotado: fuerza un GC más agresivo en el VPS de 4GB. Ajustable si se ve
-// presión de memoria en la medición.
+// Heap acotado: fuerza un GC más agresivo en el VPS. Ajustable si se ve presión
+// de memoria en la medición.
 const NODE_HEAP = '--max-old-space-size=384';
+
+// El build del dashboard (adapter-node) y el worker NO cargan .env por sí solos:
+// leen del entorno del proceso. `-r dotenv/config` precarga dotenv, que lee el
+// .env del cwd de cada app. Sin esto: "PRIVATE_SERVER_KEY is not configured" y
+// 500 SSR. (El API ya hace `import 'dotenv/config'` en su código, pero incluirlo
+// acá es idempotente y homogéneo.) PM2 7.0.1 no soporta `env_file`, por eso esto.
+const WITH_DOTENV = `${NODE_HEAP} -r dotenv/config`;
 
 module.exports = {
   apps: [
@@ -27,7 +34,7 @@ module.exports = {
       script: 'dist/index.js',
       exec_mode: 'fork',
       instances: 1,
-      node_args: NODE_HEAP,
+      node_args: WITH_DOTENV,
       max_memory_restart: '450M',
       autorestart: true,
       watch: false,
@@ -45,7 +52,7 @@ module.exports = {
       script: 'build/index.js',
       exec_mode: 'fork',
       instances: 1,
-      node_args: NODE_HEAP,
+      node_args: WITH_DOTENV,
       max_memory_restart: '450M',
       autorestart: true,
       watch: false,
@@ -66,7 +73,7 @@ module.exports = {
     //   script: 'dist/index.js',
     //   exec_mode: 'fork',
     //   instances: 1,
-    //   node_args: NODE_HEAP,
+    //   node_args: WITH_DOTENV,
     //   max_memory_restart: '600M',
     //   autorestart: true,
     //   watch: false,
