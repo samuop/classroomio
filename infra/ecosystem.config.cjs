@@ -57,26 +57,26 @@ module.exports = {
       env: { NODE_ENV: 'development', PORT: 3082 },
       env_production: { NODE_ENV: 'production', PORT: 3082 }
     },
-    {
-      name: 'cio-jobs',
-      cwd: `${APP_DIR}/apps/jobs`,
-      script: 'dist/index.js',
-      exec_mode: 'fork',
-      instances: 1,
-      node_args: NODE_HEAP,
-      // Límite más alto que los otros: ffmpeg corre como proceso hijo nativo
-      // (su RAM no cuenta en el heap de Node), pero el worker bufferea I/O del
-      // video. 600M deja margen sin matar el proceso en cada transcodificación.
-      max_memory_restart: '600M',
-      autorestart: true,
-      watch: false,
-      kill_timeout: 30000, // los jobs de media pueden tardar en cerrar limpio
-      out_file: '/var/log/classroomio/jobs-out.log',
-      error_file: '/var/log/classroomio/jobs-error.log',
-      merge_logs: true,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      env: { NODE_ENV: 'development' },
-      env_production: { NODE_ENV: 'production' }
-    }
+    // cio-jobs DESHABILITADO: el jobs-worker no se buildea (bug preexistente
+    // ffmpegProbeLuma, ver workflow). Sin su dist/, PM2 crashearía en loop.
+    // Reactivar este bloque cuando el build del worker vuelva a compilar.
+    // {
+    //   name: 'cio-jobs',
+    //   cwd: `${APP_DIR}/apps/jobs`,
+    //   script: 'dist/index.js',
+    //   exec_mode: 'fork',
+    //   instances: 1,
+    //   node_args: NODE_HEAP,
+    //   max_memory_restart: '600M',
+    //   autorestart: true,
+    //   watch: false,
+    //   kill_timeout: 30000,
+    //   out_file: '/var/log/classroomio/jobs-out.log',
+    //   error_file: '/var/log/classroomio/jobs-error.log',
+    //   merge_logs: true,
+    //   log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    //   env: { NODE_ENV: 'development' },
+    //   env_production: { NODE_ENV: 'production' }
+    // }
   ]
 };
