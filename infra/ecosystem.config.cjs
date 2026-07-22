@@ -64,26 +64,27 @@ module.exports = {
       env: { NODE_ENV: 'development', PORT: 3082 },
       env_production: { NODE_ENV: 'production', PORT: 3082 }
     },
-    // cio-jobs DESHABILITADO: el jobs-worker no se buildea (bug preexistente
-    // ffmpegProbeLuma, ver workflow). Sin su dist/, PM2 crashearía en loop.
-    // Reactivar este bloque cuando el build del worker vuelva a compilar.
-    // {
-    //   name: 'cio-jobs',
-    //   cwd: `${APP_DIR}/apps/jobs`,
-    //   script: 'dist/index.js',
-    //   exec_mode: 'fork',
-    //   instances: 1,
-    //   node_args: WITH_DOTENV,
-    //   max_memory_restart: '600M',
-    //   autorestart: true,
-    //   watch: false,
-    //   kill_timeout: 30000,
-    //   out_file: '/var/log/classroomio/jobs-out.log',
-    //   error_file: '/var/log/classroomio/jobs-error.log',
-    //   merge_logs: true,
-    //   log_date_format: 'YYYY-MM-DD HH:mm:ss',
-    //   env: { NODE_ENV: 'development' },
-    //   env_production: { NODE_ENV: 'production' }
-    // }
+    // cio-jobs: worker BullMQ (cola de emails → invitaciones a alumnos; media →
+    // thumbnails/transcode de video). Reactivado tras implementar ffmpegProbeLuma
+    // (utils/ffmpeg.ts), el bug que impedía compilar el worker. Lee apps/jobs/.env
+    // (symlink → ../api/.env), así comparte SMTP/DB/Redis con la API.
+    {
+      name: 'cio-jobs',
+      cwd: `${APP_DIR}/apps/jobs`,
+      script: 'dist/index.js',
+      exec_mode: 'fork',
+      instances: 1,
+      node_args: WITH_DOTENV,
+      max_memory_restart: '600M',
+      autorestart: true,
+      watch: false,
+      kill_timeout: 30000,
+      out_file: '/var/log/classroomio/jobs-out.log',
+      error_file: '/var/log/classroomio/jobs-error.log',
+      merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      env: { NODE_ENV: 'development' },
+      env_production: { NODE_ENV: 'production' }
+    }
   ]
 };

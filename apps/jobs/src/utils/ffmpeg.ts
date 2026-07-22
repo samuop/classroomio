@@ -63,6 +63,41 @@ export async function ffmpegRun(args: string[]): Promise<void> {
 }
 
 /**
+ * Measure the average luma (perceived brightness, 0–255) of an image/frame via
+ * ffmpeg's `signalstats` filter. Used by thumbnail generation to reject black
+ * frames — a near-zero mean luma means the extracted frame is essentially black.
+ *
+ * We read the filter's per-frame `YAVG` value, which ffmpeg emits to stderr as
+ * `lavfi.signalstats.YAVG=<n>` when `signalstats` runs with `metadata=print`.
+ * On a single still frame there is exactly one such line. Returns 0 when the
+ * value can't be parsed (caller treats that as "black / unusable").
+ */
+export async function ffmpegProbeLuma(localPath: string): Promise<number> {
+  // `-f null -` discards output; signalstats+metadata=print writes YAVG to stderr.
+  const args = ['-v', 'info', '-i', localPath, '-vf', 'signalstats,metadata=print', '-f', 'null', '-'];
+
+  let stderr = '';
+  try {
+    // ffmpeg exits 0 here; capture stderr from the resolved result.
+    const result = await execFileAsync(FFMPEG_BIN, args, { maxBuffer: MAX_OUTPUT_BYTES });
+    // execFile resolves stdout/stderr as strings by default (no encoding override).
+    stderr = typeof result.stderr === 'string' ? result.stderr : String(result.stderr ?? '');
+  } catch (error) {
+    // Non-zero exit still often carries the metadata on stderr — try to use it.
+    stderr = (error as { stderr?: string | Buffer })?.stderr?.toString('utf8') ?? '';
+  }
+
+  const match = stderr.match(/lavfi\.signalstats\.YAVG=([0-9.]+)/);
+  if (!match) {
+    log.warn('ffmpeg-probe-luma-no-yavg', { localPath });
+    return 0;
+  }
+
+  const value = Number.parseFloat(match[1]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
  * Probe for the binaries at worker startup. Logs a warning when missing so
  * media jobs surface a clearer failure than a raw ENOENT from the first
  * spawn. Non-media workers (emails, maintenance) keep booting either way.
