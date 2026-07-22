@@ -1,0 +1,61 @@
+# MinIO standalone — único contenedor del deploy nativo de ClassroomIO.
+#
+# El resto del stack (postgres, redis, api, dashboard, jobs) corre nativo en el
+# VPS. MinIO es lo único en Docker porque es la forma soportada de correrlo.
+# Extraído de docker/docker-compose.yaml (servicios minio + minio-init).
+#
+# Levantar:  docker compose -f infra/minio-compose.yaml --env-file infra/minio.env up -d
+# Detener:   docker compose -f infra/minio-compose.yaml down
+# Logs:      docker compose -f infra/minio-compose.yaml logs -f minio
+#
+# Credenciales y límite de RAM vienen de infra/minio.env (ver infra/README.md).
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: cio-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000" # API S3 — solo loopback; el navegador llega vía Nginx
+      - "127.0.0.1:9001:9001" # Consola web — solo loopback (acceder por túnel SSH)
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio-data:/data
+    # Techo de RAM para que MinIO no se expanda sin control en el VPS de 4GB.
+    mem_limit: ${MINIO_MEM_LIMIT:-256m}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: cio-minio-init
+    depends_on:
+      - minio
+    # Crea los buckets que la API y el worker esperan. Idempotente: --ignore-existing
+    # no falla si ya existen, así que correr el compose de nuevo es seguro.
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO to be ready...';
+      sleep 5;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb local/videos --ignore-existing;
+      mc mb local/documents --ignore-existing;
+      mc mb local/media --ignore-existing;
+      mc anonymous set download local/media;
+      echo 'MinIO buckets ready';
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    restart: "no"
+
+volumes:
+  minio-data:

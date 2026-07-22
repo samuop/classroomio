@@ -1,0 +1,142 @@
+name: Deploy ClassroomIO to VPS
+
+# Buildea en el runner de GitHub (7GB RAM — el build del dashboard pide ~3GB de
+# heap que NO entran en el VPS de 4GB) y despliega artefactos al VPS vía rsync.
+# El VPS solo reinstala node_modules de runtime y corre los procesos con PM2.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'infra/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-classroomio.yml'
+  # Re-disparar a mano desde la pestaña Actions sin commit.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-classroomio
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. pnpm + Node 20 ────────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.19.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.3'
+          cache: 'pnpm'
+
+      # ── 3. Install (full, con devDeps — necesario para buildear) ─────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 4. Build api + dashboard + jobs-worker ───────────────────────────
+      # Heap grande para el dashboard (vite). PUBLIC_IS_SELFHOSTED en build-time
+      # porque el adapter lo lee al generar el bundle.
+      - name: Build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=6144'
+          PUBLIC_IS_SELFHOSTED: 'true'
+          # Horneado en el bundle del dashboard en build-time (envPrefix incluye
+          # PUBLIC_): así los subdominios de empresa salen como <site>.tensor.com.ar
+          # y no con el fallback myclassroomio.com. Ponerlo solo en el .env del VPS
+          # NO alcanza — el browser recibe el literal ya compilado.
+          PUBLIC_TENANT_ROOT_DOMAIN: 'tensor.com.ar'
+        run: |
+          pnpm -r \
+            --filter @cio/api... \
+            --filter @cio/dashboard... \
+            --filter @cio/jobs-worker... \
+            build
+
+      - name: Verify build output
+        run: |
+          test -f apps/api/dist/index.js        || (echo "ERROR: falta apps/api/dist/index.js" && exit 1)
+          test -f apps/dashboard/build/index.js || (echo "ERROR: falta apps/dashboard/build/index.js" && exit 1)
+          test -f apps/jobs/dist/index.js       || (echo "ERROR: falta apps/jobs/dist/index.js" && exit 1)
+
+      # ── 5. SSH setup (patrón robusto: keyscan con backoff por fail2ban) ──
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          HOST="${{ secrets.VPS_HOST }}"
+          ok=0
+          for intento in 1 2 3 4 5 6; do
+            echo "==> keyscan intento $intento contra $HOST"
+            if ssh-keyscan -T 15 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null && [ -s ~/.ssh/known_hosts ]; then
+              ok=1; break
+            fi
+            espera=$((intento * 15))
+            echo "    sin respuesta — reintento en ${espera}s"
+            sleep $espera
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::No se pudo contactar el SSH del VPS tras 6 intentos (posible ban de fail2ban)."
+            exit 1
+          fi
+
+          cat > ~/.ssh/config <<SSHCFG
+          Host *
+            ConnectTimeout 30
+            ConnectionAttempts 5
+            ServerAliveInterval 15
+            ServerAliveCountMax 8
+            StrictHostKeyChecking accept-new
+          SSHCFG
+          chmod 600 ~/.ssh/config
+
+      # ── 6. rsync del repo buildeado (sin node_modules ni .git) ───────────
+      # El VPS reinstala node_modules (deploy-remote.sh) para que los symlinks
+      # @cio/* del workspace resuelvan localmente. Transferimos código + dist/ +
+      # build/ + manifests + infra.
+      - name: Rsync to VPS
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='**/node_modules' \
+            --exclude='**/.svelte-kit' \
+            --exclude='**/.turbo' \
+            --exclude='**/*.tsbuildinfo' \
+            ./ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/
+
+      # ── 7. Escribir los DOS .env en sus rutas ────────────────────────────
+      - name: Write API .env
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
+          ${{ secrets.VPS_CIO_API_ENV }}
+          ENVEOF
+
+      - name: Write Dashboard .env
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "cat > /var/www/classroomio/apps/dashboard/.env" <<'ENVEOF'
+          ${{ secrets.VPS_CIO_DASHBOARD_ENV }}
+          ENVEOF
+
+      # ── 8. Install + db:setup + MinIO + PM2 ──────────────────────────────
+      - name: Run remote deploy
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "cd /var/www/classroomio && bash infra/deploy-remote.sh"
