@@ -19,6 +19,21 @@
   let isChangingEmail = $state(false);
   let emailChangeInitiated = $state(false);
 
+  // Password change (uses current password, no email needed)
+  let currentPassword = $state('');
+  let newPassword = $state('');
+  let confirmPassword = $state('');
+
+  async function handleChangePassword() {
+    await profileApi.changePassword({ currentPassword, newPassword, confirmPassword });
+
+    if (profileApi.success) {
+      currentPassword = '';
+      newPassword = '';
+      confirmPassword = '';
+    }
+  }
+
   export async function handleUpdate() {
     await profileApi.submit(
       {
@@ -160,6 +175,47 @@
           bind:value={locale}
           className=""
         />
+      </Field.Field>
+    </Field.Group>
+  </Field.Set>
+
+  <Field.Separator />
+
+  <Field.Set>
+    <Field.Legend>{$t('settings.profile.password.heading')}</Field.Legend>
+    <Field.Description>{$t('settings.profile.password.sub_heading')}</Field.Description>
+
+    <Field.Group>
+      <Field.Field>
+        <Field.Label>{$t('settings.profile.password.current')}</Field.Label>
+        <Input type="password" bind:value={currentPassword} autocomplete="current-password" />
+        {#if profileApi.errors.currentPassword}
+          <Field.Error>{profileApi.errors.currentPassword}</Field.Error>
+        {/if}
+      </Field.Field>
+      <Field.Field>
+        <Field.Label>{$t('settings.profile.password.new')}</Field.Label>
+        <Input type="password" bind:value={newPassword} autocomplete="new-password" />
+        {#if profileApi.errors.newPassword}
+          <Field.Error>{profileApi.errors.newPassword}</Field.Error>
+        {/if}
+      </Field.Field>
+      <Field.Field>
+        <Field.Label>{$t('settings.profile.password.confirm')}</Field.Label>
+        <Input type="password" bind:value={confirmPassword} autocomplete="new-password" />
+        {#if profileApi.errors.confirmPassword}
+          <Field.Error>{profileApi.errors.confirmPassword}</Field.Error>
+        {/if}
+      </Field.Field>
+      <Field.Field orientation="horizontal">
+        <Button
+          variant="default"
+          loading={profileApi.isLoading}
+          disabled={profileApi.isLoading || !currentPassword || !newPassword || !confirmPassword}
+          onclick={handleChangePassword}
+        >
+          {$t('settings.profile.password.button')}
+        </Button>
       </Field.Field>
     </Field.Group>
   </Field.Set>

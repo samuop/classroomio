@@ -8,10 +8,12 @@
   import { Button } from '@cio/ui/base/button';
   import { Input } from '@cio/ui/base/input';
 
-  import { UploadWidget } from '$features/ui';
+  import { UploadImage, UploadWidget } from '$features/ui';
   import * as Field from '@cio/ui/base/field';
 
   let widgetKey = $state('');
+  // Favicon: bind a File (from UploadImage) that orgApi.update uploads to storage.
+  let faviconFile = $state<string | File | undefined>();
 
   function widgetControl(key: string) {
     widgetKey = key;
@@ -33,8 +35,19 @@
 
   export async function handleSave() {
     await orgApi.update($currentOrg.id, {
-      customization: $currentOrg.customization
+      customization: $currentOrg.customization,
+      // Only send favicon when the user picked a new file; otherwise leave it untouched.
+      ...(faviconFile instanceof File ? { favicon: faviconFile } : {})
     });
+
+    if (orgApi.success) {
+      faviconFile = undefined;
+    }
+  }
+
+  function clearFavicon() {
+    faviconFile = undefined;
+    orgApi.update($currentOrg.id, { favicon: '' });
   }
 </script>
 
@@ -81,6 +94,29 @@
           placeholder={$t('components.settings.customize_lms.dashboard.banner_text_placeholder')}
           bind:value={$currentOrg.customization.dashboard.bannerText}
         />
+      </Field.Field>
+    </Field.Group>
+  </Field.Set>
+
+  <Field.Separator />
+
+  <Field.Set>
+    <Field.Legend>{$t('components.settings.customize_lms.favicon.title')}</Field.Legend>
+    <Field.Description>{$t('components.settings.customize_lms.favicon.description')}</Field.Description>
+    <Field.Group>
+      <Field.Field>
+        <UploadImage
+          bind:avatar={faviconFile}
+          src={$currentOrg.favicon}
+          shape="rounded-md"
+          widthHeight="w-16 h-16"
+          maxFileSizeInMb={1}
+        />
+        {#if $currentOrg.favicon}
+          <Button variant="outline" class="w-fit" onclick={clearFavicon}>
+            {$t('ai.reset')}
+          </Button>
+        {/if}
       </Field.Field>
     </Field.Group>
   </Field.Set>

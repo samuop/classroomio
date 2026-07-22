@@ -20,6 +20,12 @@ export interface TChangeEmailForm {
   callbackURL?: string;
 }
 
+export interface TChangePasswordForm {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 export class ProfileApi extends BaseApiWithErrors {
   private validateForm(fields: TProfileUpdateForm): boolean {
     const validationData = {
@@ -165,6 +171,56 @@ export class ProfileApi extends BaseApiWithErrors {
       const message = error instanceof Error ? error.message : `${error}`;
 
       this.errors.email = message;
+      snackbar.error(`${t.get('snackbar.update_failed')}: ${message}`);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  /**
+   * Changes the account password using the current password (no email needed).
+   * Uses Better Auth's changePassword; revokes other sessions for safety.
+   */
+  async changePassword(fields: TChangePasswordForm) {
+    this.errors = {};
+
+    if (!fields.currentPassword) {
+      this.errors.currentPassword = t.get('settings.profile.password.errors.current_required');
+      return;
+    }
+    if (!fields.newPassword || fields.newPassword.length < 8) {
+      this.errors.newPassword = t.get('settings.profile.password.errors.too_short');
+      return;
+    }
+    if (fields.newPassword !== fields.confirmPassword) {
+      this.errors.confirmPassword = t.get('settings.profile.password.errors.mismatch');
+      return;
+    }
+
+    try {
+      this.isLoading = true;
+      this.success = false;
+
+      const { error } = await authClient.changePassword({
+        currentPassword: fields.currentPassword,
+        newPassword: fields.newPassword,
+        revokeOtherSessions: true
+      });
+
+      if (error) throw new Error(error.message);
+
+      snackbar.success('settings.profile.password.success');
+      this.success = true;
+    } catch (error) {
+      console.error(error);
+      const message = error instanceof Error ? error.message : `${error}`;
+
+      // Better Auth returns "Invalid password" when the current password is wrong.
+      if (/invalid password/i.test(message)) {
+        this.errors.currentPassword = t.get('settings.profile.password.errors.current_incorrect');
+      } else {
+        this.errors.general = message;
+      }
       snackbar.error(`${t.get('snackbar.update_failed')}: ${message}`);
     } finally {
       this.isLoading = false;

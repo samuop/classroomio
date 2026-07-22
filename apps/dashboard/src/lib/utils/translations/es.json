@@ -2275,10 +2275,22 @@
       },
       "wizard": {
         "steps": {
-          "type": { "title": "¿Qué tipo de curso?", "subtitle": "Elige un punto de partida — adaptaremos las preguntas." },
-          "topic": { "title": "Tema y objetivo", "subtitle": "¿De qué trata y qué deben lograr los alumnos?" },
-          "audience": { "title": "Audiencia y nivel", "subtitle": "¿Para quién es y qué nivel tienen?" },
-          "source": { "title": "Material de origen", "subtitle": "Opcional — añade documentos o enlaces para basar el curso." }
+          "type": {
+            "title": "¿Qué tipo de curso?",
+            "subtitle": "Elige un punto de partida — adaptaremos las preguntas."
+          },
+          "topic": {
+            "title": "Tema y objetivo",
+            "subtitle": "¿De qué trata y qué deben lograr los alumnos?"
+          },
+          "audience": {
+            "title": "Audiencia y nivel",
+            "subtitle": "¿Para quién es y qué nivel tienen?"
+          },
+          "source": {
+            "title": "Material de origen",
+            "subtitle": "Opcional — añade documentos o enlaces para basar el curso."
+          }
         },
         "type": {
           "from_scratch": {
@@ -2307,7 +2319,11 @@
           "url_placeholder": "https://docs.tu-producto.com",
           "add_url": "Añadir otro enlace"
         },
-        "nav": { "back": "Atrás", "next": "Siguiente", "finish": "Crear curso" },
+        "nav": {
+          "back": "Atrás",
+          "next": "Siguiente",
+          "finish": "Crear curso"
+        },
         "creating": {
           "heading": "Creando tu curso…",
           "subtext": "Preparando un espacio de trabajo borrador e informando al asistente."
@@ -2583,7 +2599,11 @@
           "paid_plan_note": "Mejora tu plan para personalizar el fondo de acceso.",
           "preview_alt": "Vista previa del fondo de acceso"
         },
-        "page_subtitle": "Choose which tabs, banners, course tools, and extras learners see."
+        "page_subtitle": "Choose which tabs, banners, course tools, and extras learners see.",
+        "favicon": {
+          "title": "Favicon",
+          "description": "El ícono que se muestra en la pestaña del navegador. Imagen cuadrada (PNG/ICO), máx 1MB."
+        }
       },
       "domains": {
         "title": "Dominio personalizado",
@@ -3308,7 +3328,22 @@
         "accepted": "Aceptado:",
         "validation_error": "El tamaño del archivo excede el límite máximo:"
       },
-      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]]."
+      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]].",
+      "password": {
+        "heading": "Cambiar contraseña",
+        "sub_heading": "Actualizá tu contraseña usando la actual. No hace falta correo.",
+        "current": "Contraseña actual",
+        "new": "Nueva contraseña",
+        "confirm": "Confirmar nueva contraseña",
+        "button": "Cambiar contraseña",
+        "success": "Contraseña actualizada correctamente",
+        "errors": {
+          "current_required": "Ingresá tu contraseña actual",
+          "current_incorrect": "La contraseña actual es incorrecta",
+          "too_short": "La nueva contraseña debe tener al menos 8 caracteres",
+          "mismatch": "Las contraseñas no coinciden"
+        }
+      }
     },
     "tabs": {
       "profile_tab": "Perfil",

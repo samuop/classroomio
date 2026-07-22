@@ -91,6 +91,8 @@ export const ZUpdateOrganization = z.object({
     })
     .optional(),
   avatarUrl: z.url().optional(),
+  // Per-org favicon shown in the browser tab. URL to the uploaded image, or '' / null to clear it.
+  favicon: z.union([z.url(), z.literal('')]).nullable().optional(),
   theme: z.string().optional(),
   landingpage: z.record(z.string(), z.unknown()).optional(),
   siteName: z.string().min(1).optional(),

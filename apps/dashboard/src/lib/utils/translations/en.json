@@ -499,7 +499,22 @@
       },
       "heading": "Profile",
       "update_profile": "Update Profile",
-      "logout": "Log out"
+      "logout": "Log out",
+      "password": {
+        "heading": "Change password",
+        "sub_heading": "Update your password using your current one. No email required.",
+        "current": "Current password",
+        "new": "New password",
+        "confirm": "Confirm new password",
+        "button": "Change password",
+        "success": "Password updated successfully",
+        "errors": {
+          "current_required": "Enter your current password",
+          "current_incorrect": "Current password is incorrect",
+          "too_short": "New password must be at least 8 characters",
+          "mismatch": "Passwords do not match"
+        }
+      }
     },
     "organization": {
       "page_subtitle": "Set the name, logo, and theme learners see for this organization.",
@@ -1698,6 +1713,10 @@
           "description": "Optional background image behind login, signup, and other account pages on your organization's site.",
           "paid_plan_note": "Upgrade your plan to customize the sign-in background.",
           "preview_alt": "Sign-in background preview"
+        },
+        "favicon": {
+          "title": "Favicon",
+          "description": "The icon shown in the browser tab. Square image (PNG/ICO), max 1MB."
         }
       }
     }
@@ -2102,10 +2121,22 @@
       },
       "wizard": {
         "steps": {
-          "type": { "title": "What kind of course?", "subtitle": "Pick a starting point — we'll tailor the questions." },
-          "topic": { "title": "Topic & goal", "subtitle": "What's it about, and what should learners achieve?" },
-          "audience": { "title": "Audience & level", "subtitle": "Who is it for, and how advanced are they?" },
-          "source": { "title": "Source material", "subtitle": "Optional — add documents or links to ground the course." }
+          "type": {
+            "title": "What kind of course?",
+            "subtitle": "Pick a starting point — we'll tailor the questions."
+          },
+          "topic": {
+            "title": "Topic & goal",
+            "subtitle": "What's it about, and what should learners achieve?"
+          },
+          "audience": {
+            "title": "Audience & level",
+            "subtitle": "Who is it for, and how advanced are they?"
+          },
+          "source": {
+            "title": "Source material",
+            "subtitle": "Optional — add documents or links to ground the course."
+          }
         },
         "type": {
           "from_scratch": {
@@ -2134,7 +2165,11 @@
           "url_placeholder": "https://docs.your-product.com",
           "add_url": "Add another link"
         },
-        "nav": { "back": "Back", "next": "Next", "finish": "Create course" },
+        "nav": {
+          "back": "Back",
+          "next": "Next",
+          "finish": "Create course"
+        },
         "creating": {
           "heading": "Creating your course…",
           "subtext": "Setting up a draft workspace and briefing the assistant."

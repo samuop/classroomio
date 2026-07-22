@@ -44,6 +44,7 @@ import { DEFAULT_ORG_AUDIENCE_QUERY, toAudienceRequestQuery } from '../utils/aud
 export interface TOrgUpdateForm {
   name?: string;
   avatar?: string | File | undefined;
+  favicon?: string | File | null | undefined;
   theme?: string;
   landingpage?: AccountOrg['landingpage'];
   siteName?: string;
@@ -267,13 +268,6 @@ class OrgApi extends BaseApiWithErrors {
     fields: TOrgUpdateForm,
     options: { onSuccess?: (data: TUpdateOrganization) => void } = {}
   ) {
-    const result = ZUpdateOrganization.safeParse(fields);
-
-    if (!result.success) {
-      this.errors = mapZodErrorsToTranslations(result.error, 'organization');
-      return;
-    }
-
     this.isLoading = true;
 
     // Handle avatar upload if provided
@@ -284,13 +278,32 @@ class OrgApi extends BaseApiWithErrors {
       avatarUrl = fields.avatar;
     }
 
-    // Build update payload
+    // Handle favicon upload if provided. A File → upload and use the URL; a string
+    // (incl. '') passes through as-is so the tab icon can be set or cleared.
+    let favicon: string | undefined;
+    if (fields.favicon instanceof File) {
+      favicon = await uploadImage(fields.favicon);
+    } else if (typeof fields.favicon === 'string') {
+      favicon = fields.favicon;
+    }
+
+    // Build update payload (favicon/avatar already resolved to URLs before validation,
+    // so the schema — which expects a URL/string — doesn't reject the raw File).
     fields.avatar = undefined;
+    fields.favicon = undefined;
     const updates: TUpdateOrganization = {
       ...fields,
       landingpage: fields.landingpage ?? undefined,
-      avatarUrl
+      avatarUrl,
+      favicon
     };
+
+    const result = ZUpdateOrganization.safeParse(updates);
+    if (!result.success) {
+      this.errors = mapZodErrorsToTranslations(result.error, 'organization');
+      this.isLoading = false;
+      return;
+    }
 
     await this.execute<UpdateOrganizationRequest>({
       requestFn: () =>
