@@ -3,10 +3,17 @@
   import { page } from '$app/state';
   import { Empty } from '@cio/ui/custom/empty';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
+  import LockOpenIcon from '@lucide/svelte/icons/lock-open';
+  import LockIcon from '@lucide/svelte/icons/lock';
+  import { Button } from '@cio/ui/base/button';
   import ContentList from '$features/course/components/lesson/content-list.svelte';
   import ContentSectionList from '$features/course/components/lesson/content-section-list.svelte';
   import CourseContentIcon from '$features/course/components/course-content-icon.svelte';
   import { courseApi } from '$features/course/api';
+  import { contentApi } from '$features/course/api/content.svelte';
+  import { profile } from '$lib/utils/store/user';
+  import { isOrgStudent } from '$lib/utils/store/app';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
   import { getCourseContent } from '$features/course/utils/content';
   import { ContentType } from '@cio/utils/constants/content';
@@ -34,6 +41,26 @@
   );
   const lessonsTotal = $derived(contentItems.filter((item) => item.type === ContentType.Lesson).length);
   const exercisesTotal = $derived(contentItems.filter((item) => item.type === ContentType.Exercise).length);
+
+  // "Unlock all" control (team only). Show it whenever there is content and the viewer
+  // isn't a student. If everything is already unlocked, the button locks all instead.
+  const hasLockedContent = $derived(navigableContentItems.some((item) => item.isUnlocked === false));
+  const showLockAllButton = $derived($isOrgStudent !== true && navigableContentItems.length > 0);
+  let isTogglingLockAll = $state(false);
+
+  async function handleToggleLockAll() {
+    const unlock = hasLockedContent; // if anything is locked → unlock all; else lock all
+    isTogglingLockAll = true;
+    const ok = await contentApi.setLockAll(courseId, unlock);
+    if (ok) {
+      const profileId = $profile.id;
+      if (profileId) {
+        await courseApi.refreshCourse(courseId, profileId);
+      }
+      snackbar.success(unlock ? 'course.navItem.lessons.unlock_all_done' : 'course.navItem.lessons.lock_all_done');
+    }
+    isTogglingLockAll = false;
+  }
 
   let isFetching: boolean = $state(false);
   let hasHandledNext = $state(false);
@@ -72,6 +99,26 @@
     variant="page"
   />
 {:else if contentLength > 0}
+  {#if showLockAllButton}
+    <div class="mb-3 flex justify-end">
+      <Button
+        variant="outline"
+        size="sm"
+        loading={isTogglingLockAll}
+        disabled={isTogglingLockAll}
+        onclick={handleToggleLockAll}
+      >
+        {#if hasLockedContent}
+          <LockOpenIcon size={14} class="mr-1" />
+          {$t('course.navItem.lessons.unlock_all')}
+        {:else}
+          <LockIcon size={14} class="mr-1" />
+          {$t('course.navItem.lessons.lock_all')}
+        {/if}
+      </Button>
+    </div>
+  {/if}
+
   <div
     class="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3"
     role="region"

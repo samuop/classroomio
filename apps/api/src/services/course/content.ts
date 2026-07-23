@@ -3,7 +3,11 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { ContentType } from '@cio/utils/constants';
 import type { DbOrTxClient } from '@cio/db/drizzle';
 import { db } from '@cio/db/drizzle';
-import { applyCourseContentBulkUpdates, applyCourseSectionOrderUpdates } from '@cio/db/queries/course/content-batch';
+import {
+  applyCourseContentBulkUpdates,
+  applyCourseSectionOrderUpdates,
+  setCourseContentLockState
+} from '@cio/db/queries/course/content-batch';
 import { deleteCourseSection, getCourseSectionById, getCourseSectionsByCourseId } from '@cio/db/queries/course';
 import { OperationalQueryError } from '@cio/db/queries/query-errors';
 import { getCourseContentItems, type CourseContentItemRow } from '@cio/db/queries/course/content';
@@ -125,6 +129,27 @@ export async function updateCourseContent(courseId: string, items: TCourseConten
 
     throw new AppError(
       error instanceof Error ? error.message : 'Failed to update course content',
+      ErrorCodes.INTERNAL_ERROR,
+      500
+    );
+  }
+}
+
+/**
+ * Unlock (or lock) every lesson and exercise in a course at once. Backs the
+ * "unlock all" course action so a teacher doesn't have to toggle each item.
+ * Returns how many items were affected.
+ */
+export async function setCourseContentLock(courseId: string, isUnlocked: boolean): Promise<number> {
+  try {
+    return await setCourseContentLockState(courseId, isUnlocked);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new AppError(
+      error instanceof Error ? error.message : 'Failed to update course content lock state',
       ErrorCodes.INTERNAL_ERROR,
       500
     );

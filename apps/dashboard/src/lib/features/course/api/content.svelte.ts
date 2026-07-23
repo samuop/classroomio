@@ -34,6 +34,28 @@ export class ContentApi extends BaseApiWithErrors {
     return Boolean(result?.success);
   }
 
+  /** Unlock (isUnlocked=true) or lock every lesson and exercise in the course at once. */
+  async setLockAll(courseId: string, isUnlocked: boolean) {
+    const result = await this.execute({
+      requestFn: () =>
+        classroomio.course[':courseId'].content['lock-all'].$put({
+          param: { courseId },
+          json: { isUnlocked }
+        }),
+      logContext: 'updating course content lock state',
+      onSuccess: () => {
+        this.success = true;
+        this.errors = {};
+      },
+      onError: (error) => {
+        const errorMessage = typeof error === 'string' ? error : (error as any)?.error;
+        snackbar.error(errorMessage || 'Failed to update lock state');
+      }
+    });
+
+    return Boolean(result?.success);
+  }
+
   async deleteContent(
     courseId: string,
     payload: { sectionId?: string; items?: Array<{ id: string; type: ContentType.Lesson | ContentType.Exercise }> }

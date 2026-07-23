@@ -3126,7 +3126,11 @@
           "fetch_more_versions": "Fetch more versions",
           "current_version": "Current version",
           "restore_version": "Restore this version"
-        }
+        },
+        "unlock_all": "Unlock all",
+        "lock_all": "Lock all",
+        "unlock_all_done": "All course content has been unlocked.",
+        "lock_all_done": "All course content has been locked."
       },
       "attendance": {
         "title": "Attendance",

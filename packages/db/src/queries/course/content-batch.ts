@@ -2,8 +2,8 @@ import type { TCourseContentReorder, TCourseContentUpdate } from '@cio/utils/val
 import { ContentType, ErrorCodes } from '@cio/utils/constants';
 
 import * as schema from '@db/schema';
-import { inArray, sql } from 'drizzle-orm';
-import type { DbOrTxClient } from '@db/drizzle';
+import { eq, inArray, sql } from 'drizzle-orm';
+import { db, type DbOrTxClient } from '@db/drizzle';
 
 import { OperationalQueryError } from '../query-errors';
 
@@ -183,4 +183,28 @@ export async function applyCourseSectionOrderUpdates(
   }
 
   return sections.length;
+}
+
+/**
+ * Set the lock state (isUnlocked) of EVERY lesson and exercise in a course in one
+ * shot. Powers the "unlock all" / "lock all" course action so a teacher doesn't have
+ * to toggle each item individually. Runs both updates in a single transaction.
+ * Returns how many lessons + exercises were affected.
+ */
+export async function setCourseContentLockState(courseId: string, isUnlocked: boolean): Promise<number> {
+  return db.transaction(async (tx) => {
+    const updatedLessons = await tx
+      .update(lesson)
+      .set({ isUnlocked })
+      .where(eq(lesson.courseId, courseId))
+      .returning({ id: lesson.id });
+
+    const updatedExercises = await tx
+      .update(exercise)
+      .set({ isUnlocked })
+      .where(eq(exercise.courseId, courseId))
+      .returning({ id: exercise.id });
+
+    return updatedLessons.length + updatedExercises.length;
+  });
 }

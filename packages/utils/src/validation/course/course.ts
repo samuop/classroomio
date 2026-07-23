@@ -141,6 +141,12 @@ export const ZCourseContentUpdate = z.object({
 });
 export type TCourseContentUpdate = z.infer<typeof ZCourseContentUpdate>;
 
+/** Body for the bulk lock/unlock-all-content course action. */
+export const ZCourseContentLockAll = z.object({
+  isUnlocked: z.boolean()
+});
+export type TCourseContentLockAll = z.infer<typeof ZCourseContentLockAll>;
+
 export const ZCourseContentReorderSection = z.object({
   id: z.string().min(1),
   order: z.number().int().min(0)

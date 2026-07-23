@@ -2071,7 +2071,11 @@
           "sections": "Secciones",
           "lessons": "Lecciones",
           "exercises": "Ejercicios"
-        }
+        },
+        "unlock_all": "Desbloquear todo",
+        "lock_all": "Bloquear todo",
+        "unlock_all_done": "Se desbloqueó todo el contenido del curso.",
+        "lock_all_done": "Se bloqueó todo el contenido del curso."
       },
       "news_feed": {
         "heading": "Noticias",

@@ -1,5 +1,15 @@
-import { ZCourseContentDelete, ZCourseContentReorder, ZCourseContentUpdate } from '@cio/utils/validation/course';
-import { deleteCourseContent, reorderCourseContent, updateCourseContent } from '@api/services/course/content';
+import {
+  ZCourseContentDelete,
+  ZCourseContentLockAll,
+  ZCourseContentReorder,
+  ZCourseContentUpdate
+} from '@cio/utils/validation/course';
+import {
+  deleteCourseContent,
+  reorderCourseContent,
+  setCourseContentLock,
+  updateCourseContent
+} from '@api/services/course/content';
 
 import { Hono } from '@api/utils/hono';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
@@ -52,6 +62,18 @@ export const contentRouter = new Hono()
       return c.json({ success: true }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to update course content');
+    }
+  })
+  .put('/lock-all', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZCourseContentLockAll), async (c) => {
+    try {
+      const courseId = c.req.param('courseId')!;
+      const { isUnlocked } = c.req.valid('json');
+
+      const affected = await setCourseContentLock(courseId, isUnlocked);
+
+      return c.json({ success: true, data: { affected } }, 200);
+    } catch (error) {
+      return handleError(c, error, 'Failed to update course content lock state');
     }
   })
   .delete('/', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZCourseContentDelete), async (c) => {
