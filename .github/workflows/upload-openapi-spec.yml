@@ -1,10 +1,9 @@
 name: Upload OpenAPI Spec to R2
 
+# Heredado del upstream: sube el spec OpenAPI a un bucket R2 de Cloudflare que este
+# fork no tiene configurado (fallaba en cada push a apps/api). Trigger de push quitado;
+# queda solo manual.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/api/**'
   workflow_dispatch:
 
 env:

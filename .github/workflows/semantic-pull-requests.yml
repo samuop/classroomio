@@ -1,12 +1,9 @@
 name: 'Check PR'
 
+# Bot heredado del upstream (valida títulos de PR con convención semántica).
+# Desactivado en este fork.
 on:
-  pull_request_target:
-    types:
-      - opened
-      - reopened
-      - edited
-      - synchronize
+  workflow_dispatch:
 
 permissions:
   pull-requests: write

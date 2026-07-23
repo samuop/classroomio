@@ -1,8 +1,8 @@
 name: Automatic Comment
 
+# Bot heredado del upstream (auto-comenta issues nuevos). Desactivado en este fork.
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
 permissions:
   contents: read
 

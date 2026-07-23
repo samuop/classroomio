@@ -1,11 +1,11 @@
 name: Publish Docker Images
 
+# Heredado del proyecto upstream (classroomio/classroomio). Este fork despliega
+# nativo en el VPS (deploy-classroomio.yml), NO publica imágenes Docker. El trigger
+# de push se quitó porque fallaba en cada commit ("Username and password required":
+# no hay credenciales de Docker Hub en este repo). Queda solo manual por si algún
+# día se quiere publicar imágenes.
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       version:

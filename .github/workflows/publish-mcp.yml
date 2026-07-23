@@ -1,16 +1,9 @@
 name: Publish @classroomio/mcp to NPM
 
+# Heredado del upstream: publica a NPM bajo el scope @classroomio, que no pertenece a
+# este fork. Triggers de push/PR quitados; queda solo manual.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "packages/mcp/**"
-
-  push:
-    paths:
-      - "packages/mcp/**"
-    branches:
-      - main
 
 jobs:
   publish:

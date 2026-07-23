@@ -1,12 +1,8 @@
 name: Deploy embeds to R2
 
+# Heredado del upstream: despliega los embeds a un R2 de Cloudflare que este fork no
+# usa. Trigger de push quitado (se disparaba al tocar packages/ui); queda solo manual.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "packages/ui/**"
-      - "packages/question-types/**"
-      - "apps/embeds/**"
   workflow_dispatch:
 
 env:

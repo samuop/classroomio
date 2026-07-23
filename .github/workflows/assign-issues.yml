@@ -1,10 +1,9 @@
 name: 'Assign issues with .take'
 
+# Bot heredado del upstream (auto-asigna issues por comentario "/take"). Desactivado en
+# este fork.
 on:
-  issue_comment:
-    types:
-      - created
-      - edited
+  workflow_dispatch:
 jobs:
   take-issue:
     name: Disable take issue
