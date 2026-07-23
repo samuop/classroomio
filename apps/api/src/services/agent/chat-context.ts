@@ -120,10 +120,21 @@ export function collectDocumentIds(messages: unknown[], currentDocumentId?: stri
 export async function loadDocumentsContext(
   documentIds: string[],
   currentDocumentId: string | undefined,
-  userId: string
+  userId: string,
+  /**
+   * When set, the full text of this document id is OMITTED from the inline
+   * context — used when the document has been placed in a Gemini explicit cache
+   * and is referenced via providerOptions instead of being re-sent every turn.
+   */
+  excludeFullTextForId?: string
 ): Promise<string | undefined> {
   const loaded = await Promise.all(
     documentIds.map(async (id) => {
+      if (id === excludeFullTextForId) {
+        // Cached separately (Gemini cachedContent) — do not inline its text.
+        return null;
+      }
+
       if (id === currentDocumentId) {
         const text = await getDocumentText(id, userId, redis);
 

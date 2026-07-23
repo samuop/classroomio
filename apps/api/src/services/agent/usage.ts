@@ -142,6 +142,7 @@ export async function recordTokenUsage(
     courseId,
     promptTokens: usage.promptTokens,
     completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens ?? null,
     reasoningTokens: usage.reasoningTokens ?? null,
     cacheReadTokens: usage.cacheReadTokens ?? null,
     cacheWriteTokens: usage.cacheWriteTokens ?? null,

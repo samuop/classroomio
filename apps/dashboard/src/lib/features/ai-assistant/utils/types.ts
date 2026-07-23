@@ -16,6 +16,10 @@ export interface AiAssistantMessageTokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  // Optional breakdown reported by the provider (present for Gemini/Anthropic).
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export type AiAssistantMessageContinuation =

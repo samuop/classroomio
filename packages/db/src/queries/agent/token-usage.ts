@@ -62,6 +62,8 @@ export interface InsertTokenUsageParams {
   courseId: string;
   promptTokens: number;
   completionTokens: number;
+  /** The provider's own reported total (verbatim, not computed). */
+  totalTokens?: number | null;
   /** Optional detailed breakdown; stored when the provider reports it. */
   reasoningTokens?: number | null;
   cacheReadTokens?: number | null;
@@ -81,6 +83,7 @@ export async function insertTokenUsageAndDrainCredits(params: InsertTokenUsagePa
         courseId: params.courseId,
         promptTokens: params.promptTokens,
         completionTokens: params.completionTokens,
+        totalTokens: params.totalTokens ?? null,
         reasoningTokens: params.reasoningTokens ?? null,
         cacheReadTokens: params.cacheReadTokens ?? null,
         cacheWriteTokens: params.cacheWriteTokens ?? null,

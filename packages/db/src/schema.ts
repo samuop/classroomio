@@ -2999,6 +2999,11 @@ export const aiTokenUsage = pgTable(
     courseId: uuid('course_id').notNull(),
     promptTokens: integer('prompt_tokens').notNull(),
     completionTokens: integer('completion_tokens').notNull(),
+    // The provider's OWN reported total. Stored verbatim (not computed as
+    // prompt+completion) because a provider's total can legitimately differ from
+    // the sum (extra buckets, different accounting). Nullable for old rows and
+    // coarse callers. This is the authoritative "tokens spent" for this call.
+    totalTokens: integer('total_tokens'),
     // Detailed breakdown for cost/analytics. Nullable so old rows and providers
     // that don't report these stay valid. reasoning_tokens is a SUBSET of
     // completion_tokens (Google/OpenAI bill it at output price); cache_read/write

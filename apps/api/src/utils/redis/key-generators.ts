@@ -116,6 +116,16 @@ export const agentDocumentSummaryKey = (documentId: string): string => {
 };
 
 /**
+ * Redis key holding the Gemini explicit-cache handle for a large uploaded
+ * document: JSON { cacheName, model, expireAt }. Lets us reference an existing
+ * cachedContent across turns instead of re-creating (and re-paying for) it.
+ * TTL is aligned to the Gemini cache's own TTL so a stale handle self-evicts.
+ */
+export const agentDocumentGeminiCacheKey = (documentId: string): string => {
+  return `agent:document:gemini-cache:${documentId}`;
+};
+
+/**
  * Rate limit key for agent chat endpoint (per-user).
  */
 export const agentChatKeyGenerator = (c: Context): string => {

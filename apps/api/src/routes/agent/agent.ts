@@ -39,6 +39,7 @@ import {
 } from '@api/services/agent/tutor-usage';
 import { buildStudentAgentTools } from '@api/services/agent/student-tools';
 import { parseAndStoreDocument, parseDocument, storeDraftDocument } from '@api/services/agent/document';
+import { resolveDocumentCache } from '@api/services/agent/gemini-cache';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
@@ -501,9 +502,24 @@ const agentCoreRouter = new Hono()
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
+
+      // Capa 2b: for a LARGE current document under Gemini, place it in an
+      // explicit cache and reference it via providerOptions instead of re-sending
+      // its full text every turn (~10% input cost). Fully defensive — an empty
+      // result means "inline as before". Only teachers upload building material.
+      const documentCache =
+        role === AgentRole.TEACHER
+          ? await resolveDocumentCache({
+              provider: providerConfig.provider,
+              currentDocumentId: context?.documentId,
+              userId: user.id,
+              redis
+            })
+          : {};
+
       const documentText =
         documentIds.length > 0
-          ? await loadDocumentsContext(documentIds, context?.documentId, user.id)
+          ? await loadDocumentsContext(documentIds, context?.documentId, user.id, documentCache.excludeDocumentId)
           : undefined;
 
       const existingSections = await listCourseSections(courseId);
@@ -693,12 +709,22 @@ const agentCoreRouter = new Hono()
         };
       }
 
+      // Capa 2b: reference the document's Gemini explicit cache (if one was
+      // created) so its ~large text is billed at ~10% instead of re-sent inline.
+      const providerOptions = documentCache.cachedContentName
+        ? { google: { cachedContent: documentCache.cachedContentName } }
+        : undefined;
+      if (documentCache.cachedContentName) {
+        console.log(`[agent.chat] using gemini cachedContent for document (${documentCache.excludeDocumentId})`);
+      }
+
       const result = streamText({
         model,
         maxRetries: 2,
         system: systemContent,
         messages: modelMessages,
         tools: agentTools,
+        ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(MAX_STEPS_PER_ROUND),
         onStepFinish: () => {
           completedStepCount += 1;
@@ -730,6 +756,9 @@ const agentCoreRouter = new Hono()
           }
           const inputTokens = totalUsage?.inputTokens ?? 0;
           const outputTokens = totalUsage?.outputTokens ?? 0;
+          // Trust the provider's own total — do NOT recompute as input+output,
+          // which can diverge from what the API actually billed.
+          const reportedTotal = totalUsage?.totalTokens ?? inputTokens + outputTokens;
 
           // Detailed breakdown (provider-agnostic in AI SDK v7): reasoning is a
           // subset of output; cacheRead/cacheWrite are subsets of input. Populated
@@ -759,7 +788,7 @@ const agentCoreRouter = new Hono()
               {
                 promptTokens: inputTokens,
                 completionTokens: outputTokens,
-                totalTokens: inputTokens + outputTokens,
+                totalTokens: reportedTotal,
                 reasoningTokens: reasoning || undefined,
                 cacheReadTokens: cacheRead || undefined,
                 cacheWriteTokens: cacheWrite || undefined
@@ -792,9 +821,13 @@ const agentCoreRouter = new Hono()
 
           return {
             tokenUsage: {
+              // Reported verbatim by the provider (AI SDK v7) — never recomputed.
               promptTokens: part.totalUsage.inputTokens,
               completionTokens: part.totalUsage.outputTokens,
-              totalTokens: part.totalUsage.totalTokens
+              totalTokens: part.totalUsage.totalTokens,
+              reasoningTokens: part.totalUsage.outputTokenDetails?.reasoningTokens,
+              cacheReadTokens: part.totalUsage.inputTokenDetails?.cacheReadTokens,
+              cacheWriteTokens: part.totalUsage.inputTokenDetails?.cacheWriteTokens
             },
             continuation:
               completedStepCount >= MAX_STEPS_PER_ROUND
