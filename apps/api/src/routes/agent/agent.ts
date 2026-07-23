@@ -6,7 +6,7 @@ import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
-import { streamText, stepCountIs, convertToModelMessages } from 'ai';
+import { streamText, stepCountIs, convertToModelMessages, pruneMessages } from 'ai';
 import {
   ZAgentChatBody,
   ZAgentCreditPurchase,
@@ -671,7 +671,19 @@ const agentCoreRouter = new Hono()
         userId: user.id,
         messages
       });
-      const convertedMessages = sanitizeDanglingToolCalls(await convertToModelMessages(contextManaged.messages as any));
+      // Paso 1 (context diet): after converting the persisted history, strip tool
+      // call/result content (including the huge INPUTS — full lesson HTML in
+      // update_lesson_content, 150KB fetch outputs...) from all but the last 2
+      // messages. Ground truth doesn't live in old tool calls: the server rebuilds
+      // it every turn via the plan-progress + TODO anchors, and the model can
+      // re-read anything cheaply (get_course_structure/get_lesson_content).
+      // Without this, one build round (40 steps folded into ONE assistant
+      // message) kept 300K-1M chars of tool inputs inside the keep-window.
+      const convertedMessages = pruneMessages({
+        messages: sanitizeDanglingToolCalls(await convertToModelMessages(contextManaged.messages as any)),
+        toolCalls: 'before-last-2-messages',
+        emptyMessages: 'remove'
+      });
       let completedStepCount = 0;
       let finishReason: string | undefined;
       // Set in onFinish (async) so the sync messageMetadata callback can report to the
@@ -738,6 +750,22 @@ const agentCoreRouter = new Hono()
         tools: agentTools,
         ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(MAX_STEPS_PER_ROUND),
+        // Paso 2 (context diet, intra-round): a build round runs up to 40 steps in
+        // one loop, and by default every step re-sends ALL prior steps' tool calls
+        // verbatim — including full lesson-HTML inputs and 150KB fetched docs. From
+        // step 5 on, prune tool content older than the last 4 messages; the recent
+        // pair the model is actively working with stays intact, and the override
+        // carries forward so the window stays flat instead of growing quadratically.
+        prepareStep: ({ stepNumber, messages: stepMessages }) => {
+          if (stepNumber < 5) return {};
+          return {
+            messages: pruneMessages({
+              messages: stepMessages,
+              toolCalls: 'before-last-4-messages',
+              emptyMessages: 'remove'
+            })
+          };
+        },
         onStepFinish: () => {
           completedStepCount += 1;
         },
