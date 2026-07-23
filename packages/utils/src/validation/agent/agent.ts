@@ -83,7 +83,7 @@ export const SUPPORTED_UPLOAD_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 ] as const;
 
-export const MAX_AGENT_DOCUMENT_SIZE = 5 * 1024 * 1024; // 5MB
+export const MAX_AGENT_DOCUMENT_SIZE = 25 * 1024 * 1024; // 25MB (keep in sync with @cio/ai-assistant)
 
 // ─── GET /agent/history (list conversations) ────────────────────────────────
 

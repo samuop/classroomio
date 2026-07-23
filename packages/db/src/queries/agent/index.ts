@@ -3,6 +3,7 @@ export * from './chat-document';
 export * from './chat-resource';
 export * from './chat-model-context';
 export * from './run-state';
+export * from './todo-list';
 export * from './credit-purchase';
 export * from './token-usage';
 export * from './usage-aggregations';

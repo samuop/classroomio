@@ -43,7 +43,7 @@ import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
-import { getChatConversation } from '@cio/db/queries/agent';
+import { getChatConversation, readCourseTodoList } from '@cio/db/queries/agent';
 import {
   AgentRole,
   AIProvider,
@@ -67,6 +67,7 @@ import { getExercise } from '@api/services/exercise/exercise';
 import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-calls';
 import {
   buildPlanProgressAnchor,
+  buildTodoListAnchor,
   collectDocumentIds,
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
@@ -607,6 +608,21 @@ const agentCoreRouter = new Hono()
         }
       }
 
+      // Task Manager anchor: surface the model's own persisted TODO list every turn
+      // so it survives history trimming. Teachers only (students don't build courses).
+      if (role === AgentRole.TEACHER) {
+        try {
+          const todos = await readCourseTodoList({ orgId, courseId, conversationId, userId: user.id });
+          const todoAnchor = buildTodoListAnchor(todos);
+          if (todoAnchor) {
+            contextMessageText = contextMessageText ? `${contextMessageText}\n\n${todoAnchor}` : todoAnchor;
+          }
+        } catch (err) {
+          // Additive safety net — never block the chat if the list can't be read.
+          console.error('[agent.chat] failed to build todo list anchor:', err);
+        }
+      }
+
       const agentTools =
         role === AgentRole.STUDENT
           ? buildStudentAgentTools(
@@ -616,7 +632,10 @@ const agentCoreRouter = new Hono()
               studentPolicy!.settings,
               agentContext.locale as TLocale
             )
-          : buildAgentTools(orgId, user.id, courseId, messages, { isOrgOnPaidPlan: isOrgPaid });
+          : buildAgentTools(orgId, user.id, courseId, messages, {
+              isOrgOnPaidPlan: isOrgPaid,
+              conversationId
+            });
 
       const contextManaged = await buildModelContextMessages({
         conversationId,

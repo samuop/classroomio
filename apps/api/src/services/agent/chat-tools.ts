@@ -4,6 +4,7 @@ import { AppError } from '@api/utils/errors';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
+import { writeCourseTodoList } from '@cio/db/queries/agent';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import { listCourseSections, createCourseSection, updateCourseSectionService } from '@api/services/course/section';
 import { createLesson, getLesson, updateLessonService } from '@api/services/lesson/lesson';
@@ -45,6 +46,7 @@ import {
   updateContentParam,
   updateCourseLandingPageParam,
   updateExerciseParam,
+  updateCourseTodoListParam,
   updateExerciseSectionParam,
   updateLessonParam,
   updateQuestionsParam,
@@ -194,9 +196,45 @@ export function buildAgentTools(
   userId: string,
   courseId: string,
   priorMessages: unknown[],
-  _options?: { isOrgOnPaidPlan?: boolean }
+  _options?: { isOrgOnPaidPlan?: boolean; conversationId?: string | null }
 ) {
+  const conversationId = _options?.conversationId ?? null;
+
   return {
+    update_course_todo_list: tool({
+      description:
+        'Your persistent task list for building this course — it survives even when the chat history is trimmed. ' +
+        'Immediately AFTER a plan is approved, your FIRST action MUST be to call this with one task per section/lesson/exercise to build. ' +
+        'Send the COMPLETE list every time (tasks you omit are dropped). Keep exactly ONE task "in_progress"; ' +
+        'mark a task "completed" ONLY after you have actually created/filled it, then move to the next. ' +
+        'You are NOT done while any task is pending or in_progress. Reuse each task\'s `key` to update it in place.',
+      inputSchema: updateCourseTodoListParam,
+      execute: async (args) => {
+        return executeAgentTool('update_course_todo_list', { orgId, userId, courseId, args }, async () => {
+          const saved = await writeCourseTodoList({
+            orgId,
+            courseId,
+            conversationId,
+            userId,
+            items: args.todos.map((t) => ({
+              key: t.key,
+              content: t.content,
+              status: t.status,
+              priority: t.priority
+            }))
+          });
+          const remaining = saved.filter((t) => t.status !== 'completed').length;
+          return {
+            todos: saved,
+            total: saved.length,
+            completed: saved.length - remaining,
+            remaining,
+            allDone: remaining === 0
+          };
+        });
+      }
+    }),
+
     get_course_structure: tool({
       description:
         'Get the full course structure including sections, lessons, and exercises as a tree. The courseId is automatically set — do not pass it.',

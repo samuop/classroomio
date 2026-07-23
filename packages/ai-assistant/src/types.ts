@@ -127,6 +127,7 @@ export const ToolName = {
   GO_LIVE_COURSE: 'go_live_course',
   // Agent tools
   GENERATE_COURSE_PLAN: 'generate_course_plan',
+  UPDATE_COURSE_TODO_LIST: 'update_course_todo_list',
   ASK_TEMPLATE_QUESTIONS: 'ask_template_questions',
   ASK_DISCOVERY_QUESTIONS: 'ask_discovery_questions',
   FETCH_DOCUMENTATION_URL: 'fetch_documentation_url',
@@ -188,11 +189,20 @@ export interface DocumentUploadResult {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-/** Maximum characters of extracted document text to include in LLM context */
-export const MAX_DOCUMENT_TEXT_LENGTH = 100_000;
+/**
+ * Maximum characters of extracted document text kept for LLM context. At 100k a
+ * large manual (300+ pages) got silently truncated to its first ~50–70 pages, so the
+ * agent planned/wrote the course over a fraction of the source. Gemini's 1M-token
+ * window fits far more, so we raise this to ~500k chars (~125k words, ~250–350 pages,
+ * ~180k tokens) — big enough for real books while staying under the context region
+ * where "lost in the middle" attention decay gets bad. Documents beyond this are still
+ * truncated (a warning is surfaced); the map-reduce approach is the next step for those.
+ */
+export const MAX_DOCUMENT_TEXT_LENGTH = 500_000;
 
-/** Maximum file size for document upload (5MB) */
-export const MAX_AGENT_DOCUMENT_SIZE = 5 * 1024 * 1024;
+/** Maximum file size for document upload. Raised to 25MB so large PDFs (whose byte
+ *  size dwarfs their text) actually upload instead of being rejected before parsing. */
+export const MAX_AGENT_DOCUMENT_SIZE = 25 * 1024 * 1024;
 
 /** Redis TTL for uploaded document text (1 hour) */
 export const DOCUMENT_REDIS_TTL = 3600;

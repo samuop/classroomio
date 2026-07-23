@@ -2159,7 +2159,7 @@
           "document_label": "Upload a document",
           "document_hint": "PDF, DOCX, or PPTX — max 5MB.",
           "upload_button": "Choose file",
-          "too_large": "File is too large. Maximum size is 5MB.",
+          "too_large": "File is too large. Maximum size is 25MB.",
           "upload_failed": "Couldn't upload the file. Try again.",
           "url_label": "Documentation links",
           "url_placeholder": "https://docs.your-product.com",

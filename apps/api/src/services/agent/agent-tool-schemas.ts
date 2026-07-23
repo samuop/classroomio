@@ -13,6 +13,30 @@ import { ZCourseLandingPageUpdate, ZCourseLandingPageMetadataUpdate } from '@cio
 // This prevents prompt injection from tricking the LLM into targeting another course.
 
 export const emptyParam = z.object({});
+
+// ─── Task Manager (course-build TODO list) ──────────────────────────────────
+// The model sends the FULL list every call (like Claude Code's TodoWrite). Each
+// item has a stable `key` used to upsert it in place across calls.
+export const courseTodoItemParam = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(128)
+    .describe('Stable identifier for this task (e.g. "sec-1-lesson-intro"). Reuse the same key to update a task.'),
+  content: z.string().min(1).max(300).describe('Short human-readable description of the task.'),
+  status: z
+    .enum(['pending', 'in_progress', 'completed'])
+    .describe('Exactly one task should be in_progress at a time. Mark completed before moving on.'),
+  priority: z.enum(['low', 'medium', 'high']).default('medium')
+});
+
+export const updateCourseTodoListParam = z.object({
+  todos: z
+    .array(courseTodoItemParam)
+    .min(1)
+    .describe('The COMPLETE task list, in build order. Send every task each time — omitted tasks are dropped.')
+});
+
 export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string().default('en') });
 export const exerciseReadParam = z.object({ exerciseId: z.string() });
 export const createSectionParam = z.object({ title: z.string().min(1), order: z.number().int().min(0) });

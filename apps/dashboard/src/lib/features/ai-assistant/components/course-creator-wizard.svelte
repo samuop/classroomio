@@ -26,6 +26,7 @@
     setInitialChatDocumentIds
   } from '$features/ai-assistant/utils/store';
   import { DISPLAY_BY_ID } from '$features/ai-assistant/utils/template-display';
+  import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
   import type { CourseTemplateId } from '@cio/ai-assistant';
   import type { TCourseType } from '@cio/db/types';
 
@@ -73,7 +74,7 @@
 
   const ACCEPT =
     '.pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation';
-  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+  const MAX_FILE_SIZE = MAX_AGENT_DOCUMENT_SIZE;
 
   const TOTAL_STEPS = 4;
 

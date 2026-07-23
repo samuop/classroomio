@@ -307,6 +307,38 @@ ${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are em
   };
 }
 
+/**
+ * Render the persisted course-build TODO list (Task Manager) as a context block so
+ * the model always sees its own task list — even after history trimming. This is the
+ * model's self-declared plan of record; the Plan Progress anchor above is the
+ * server's independent verification against the live course (double safety net).
+ */
+export function buildTodoListAnchor(
+  todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; priority: string }>
+): string | undefined {
+  if (!todos || todos.length === 0) return undefined;
+
+  const icon = (s: string) => (s === 'completed' ? '✅' : s === 'in_progress' ? '🔄' : '⬜');
+  const lines = todos.map((t) => `- ${icon(t.status)} ${t.content}`);
+  const remaining = todos.filter((t) => t.status !== 'completed').length;
+
+  if (remaining === 0) {
+    return `## Your Task List (Task Manager)
+
+Every task you registered is completed:
+${lines.join('\n')}
+
+If the teacher hasn't asked for anything new, your task list is done.`;
+  }
+
+  return `## Your Task List (Task Manager) — ${remaining} task(s) remaining
+
+This is YOUR task list, saved outside the chat so you never lose it:
+${lines.join('\n')}
+
+Keep working through it: exactly one task 🔄 in_progress at a time, mark it ✅ completed the moment it's actually built, then start the next ⬜. Call update_course_todo_list to update this list. You are NOT finished while any ⬜ or 🔄 remains.`;
+}
+
 const COURSE_TEMPLATE_ID_SET = new Set<CourseTemplateId>(['product_101', 'product_onboarding', 'expert_on_x']);
 
 export function getActiveCourseTemplateId(messages: unknown[]): CourseTemplateId | undefined {
