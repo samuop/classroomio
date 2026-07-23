@@ -53,6 +53,7 @@ export {
   buildTeacherContextMessage,
   buildStudentContextMessage
 } from './prompt';
+export type { TeacherPromptMode } from './prompt/teacher';
 
 export {
   COURSE_TEMPLATES,

@@ -1,5 +1,5 @@
 import { AgentRole, type AgentContext } from '../types';
-import { buildTeacherSystemPrompt, buildTeacherContextMessage } from './teacher';
+import { buildTeacherSystemPrompt, buildTeacherContextMessage, type TeacherPromptMode } from './teacher';
 import { buildStudentSystemPrompt, buildStudentContextMessage } from './student';
 import type { CourseTemplate } from '../templates';
 import type { AiTutorSettings } from '../tutor-config';
@@ -9,18 +9,21 @@ import type { AiTutorSettings } from '../tutor-config';
  * across requests (no per-request context) so it can be cached as a long-lived
  * Anthropic prompt-cache prefix. Per-request volatile context belongs in
  * `buildContextMessage` and is sent as a user-turn message.
+ *
+ * `mode` scopes the teacher prompt to the conversation phase ('plan' | 'build' |
+ * 'full') — each mode is itself stable, so each yields its own cacheable prefix.
  */
 export function buildSystemPrompt(
   context: AgentContext,
-  options?: { tutorSettings?: AiTutorSettings; isOrgOnPaidPlan?: boolean }
+  options?: { tutorSettings?: AiTutorSettings; isOrgOnPaidPlan?: boolean; mode?: TeacherPromptMode }
 ): string {
   switch (context.role) {
     case AgentRole.TEACHER:
-      return buildTeacherSystemPrompt(context, { isOrgOnPaidPlan: options?.isOrgOnPaidPlan });
+      return buildTeacherSystemPrompt(context, { isOrgOnPaidPlan: options?.isOrgOnPaidPlan, mode: options?.mode });
     case AgentRole.STUDENT:
       return buildStudentSystemPrompt(context, options?.tutorSettings);
     default:
-      return buildTeacherSystemPrompt(context, { isOrgOnPaidPlan: options?.isOrgOnPaidPlan });
+      return buildTeacherSystemPrompt(context, { isOrgOnPaidPlan: options?.isOrgOnPaidPlan, mode: options?.mode });
   }
 }
 

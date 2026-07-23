@@ -51,7 +51,8 @@ import {
   MAX_STEPS_PER_ROUND,
   getCourseTemplate,
   type AgentContext,
-  type AgentStatus
+  type AgentStatus,
+  type TeacherPromptMode
 } from '@cio/ai-assistant';
 import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { buildSystemPrompt, buildContextMessage } from '@cio/ai-assistant/prompt';
@@ -588,13 +589,26 @@ const agentCoreRouter = new Hono()
       const activeTemplateId = role === AgentRole.TEACHER ? getActiveCourseTemplateId(messages) : undefined;
       const activeTemplate = activeTemplateId ? getCourseTemplate(activeTemplateId) : undefined;
 
+      // Paso 3 (prompt por fase): scope the system prompt to the conversation's
+      // phase instead of always sending the 12.6k-token monolith.
+      // - build: a plan was approved → implementation/content rules (~9.3k tokens).
+      // - plan: no plan AND the teacher is not viewing a lesson → pure planning
+      //   conversation (wizard/discovery) → planning rules only (~6.6k tokens).
+      // - full: no plan but a lesson is open — likely a single-lesson edit chat,
+      //   which needs the content-writing rules; keep everything (safe fallback).
+      // Each mode yields a stable, cacheable prefix; the one cache miss happens
+      // at the plan→build transition, then the build prefix caches for the run.
+      const teacherPromptMode: TeacherPromptMode =
+        role === AgentRole.TEACHER ? (approvedPlan ? 'build' : context?.lessonId ? 'full' : 'plan') : 'full';
+
       // Stable across requests — safe to cache as a long-lived Anthropic prefix.
       // Volatile per-request context (lesson/exercise/document/section count/
       // approved plan/active template) is sent as a user-turn message instead so
       // it doesn't invalidate the tools+system cache.
       const systemPrompt = buildSystemPrompt(agentContext, {
         tutorSettings: studentPolicy?.settings,
-        isOrgOnPaidPlan: isOrgPaid
+        isOrgOnPaidPlan: isOrgPaid,
+        mode: teacherPromptMode
       });
 
       let contextMessageText = buildContextMessage(agentContext, {
@@ -733,6 +747,36 @@ const agentCoreRouter = new Hono()
         };
       }
 
+      // Paso 3 (tools por fase): restrict which tools ship to the provider per
+      // mode. Filtered tools are omitted from the request entirely (real token
+      // savings on every call) while the full ToolSet stays registered, so tool
+      // definitions never change shape. Rationale per mode:
+      // - plan: no write tools (the prompt forbids building pre-approval anyway;
+      //   this enforces it) — reads, planning tools, docs fetch, landing page
+      //   (templates set it during the plan phase) and go-live check remain.
+      // - build: everything except the two questionnaire tools (discovery and
+      //   template forms only run pre-plan). generate_course_plan STAYS — the
+      //   shared "re-show the plan" rule and mid-build revisions need it.
+      // - full (lesson-edit chat / students): no restriction.
+      const activeToolNames =
+        role === AgentRole.TEACHER && teacherPromptMode === 'plan'
+          ? ([
+              'get_course_structure',
+              'get_lesson_content',
+              'get_exercise_details',
+              'generate_course_plan',
+              'ask_template_questions',
+              'ask_discovery_questions',
+              'fetch_documentation_url',
+              'update_course_landing_page',
+              'check_course_go_live_readiness'
+            ] as const)
+          : role === AgentRole.TEACHER && teacherPromptMode === 'build'
+            ? (Object.keys(agentTools).filter(
+                (name) => name !== 'ask_template_questions' && name !== 'ask_discovery_questions'
+              ) as Array<keyof typeof agentTools & string>)
+            : undefined;
+
       // Capa 2b: reference the document's Gemini explicit cache (if one was
       // created) so its ~large text is billed at ~10% instead of re-sent inline.
       const providerOptions = documentCache.cachedContentName
@@ -748,6 +792,7 @@ const agentCoreRouter = new Hono()
         system: systemContent,
         messages: modelMessages,
         tools: agentTools,
+        ...(activeToolNames ? { activeTools: activeToolNames as any } : {}),
         ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(MAX_STEPS_PER_ROUND),
         // Paso 2 (context diet, intra-round): a build round runs up to 40 steps in
