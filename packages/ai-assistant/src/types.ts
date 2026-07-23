@@ -146,6 +146,15 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * Optional detailed breakdown (populated when the provider reports it, e.g.
+   * Gemini via AI SDK v7). Reasoning is a subset of completionTokens; cacheRead/
+   * cacheWrite are subsets of promptTokens (cacheRead is billed at ~10%). Left
+   * undefined by callers that only have the coarse totals.
+   */
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface TokenBalance {

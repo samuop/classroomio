@@ -1,4 +1,4 @@
-import { tool } from 'ai';
+import { tool, type ToolSet } from 'ai';
 import { CoursePlanSchema } from '@cio/ai-assistant';
 import { AppError } from '@api/utils/errors';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
@@ -197,7 +197,7 @@ export function buildAgentTools(
   courseId: string,
   priorMessages: unknown[],
   _options?: { isOrgOnPaidPlan?: boolean; conversationId?: string | null }
-) {
+): ToolSet {
   const conversationId = _options?.conversationId ?? null;
 
   return {

@@ -35,12 +35,12 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.69",
-    "@ai-sdk/google": "^3.0.0",
-    "@ai-sdk/moonshotai": "^2.0.21",
-    "@ai-sdk/openai": "^3.0.52",
+    "@ai-sdk/anthropic": "^4.0.18",
+    "@ai-sdk/google": "^4.0.22",
+    "@ai-sdk/moonshotai": "^3.0.17",
+    "@ai-sdk/openai": "^4.0.18",
     "@cio/question-types": "workspace:*",
-    "ai": "^6.0.158",
+    "ai": "^7.0.35",
     "zod": "^3.24.4"
   },
   "devDependencies": {

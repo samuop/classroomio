@@ -731,20 +731,25 @@ const agentCoreRouter = new Hono()
           const inputTokens = totalUsage?.inputTokens ?? 0;
           const outputTokens = totalUsage?.outputTokens ?? 0;
 
-          // Cache hit/miss visibility. If cacheRead stays 0 across repeated
-          // turns of the same conversation, a silent invalidator is leaking
+          // Detailed breakdown (provider-agnostic in AI SDK v7): reasoning is a
+          // subset of output; cacheRead/cacheWrite are subsets of input. Populated
+          // for Anthropic AND Gemini — recorded per row for cost analytics and to
+          // measure the explicit-cache savings (Capa 2b).
+          const inputDetails = totalUsage?.inputTokenDetails;
+          const outputDetails = totalUsage?.outputTokenDetails;
+          const cacheRead = inputDetails?.cacheReadTokens ?? 0;
+          const cacheWrite = inputDetails?.cacheWriteTokens ?? 0;
+          const reasoning = outputDetails?.reasoningTokens ?? 0;
+
+          // Cache hit/miss visibility (all providers). If cacheRead stays 0 across
+          // repeated turns of the same conversation, a silent invalidator is leaking
           // into the cached prefix — audit system prompt and tool definitions.
-          if (isAnthropic) {
-            const details = totalUsage?.inputTokenDetails;
-            const cacheRead = details?.cacheReadTokens ?? 0;
-            const cacheWrite = details?.cacheWriteTokens ?? 0;
-            const uncached = details?.noCacheTokens ?? inputTokens;
-            const total = uncached + cacheRead + cacheWrite;
-            const hitRate = total > 0 ? Math.round((cacheRead / total) * 100) : 0;
-            console.log(
-              `[agent.chat] cache hit=${hitRate}% read=${cacheRead} write=${cacheWrite} uncached=${uncached} output=${outputTokens}`
-            );
-          }
+          const uncached = inputDetails?.noCacheTokens ?? inputTokens;
+          const totalIn = uncached + cacheRead + cacheWrite;
+          const hitRate = totalIn > 0 ? Math.round((cacheRead / totalIn) * 100) : 0;
+          console.log(
+            `[agent.chat] cache hit=${hitRate}% read=${cacheRead} write=${cacheWrite} uncached=${uncached} output=${outputTokens} reasoning=${reasoning}`
+          );
 
           if (totalUsage) {
             await recordTokenUsage(
@@ -754,7 +759,10 @@ const agentCoreRouter = new Hono()
               {
                 promptTokens: inputTokens,
                 completionTokens: outputTokens,
-                totalTokens: inputTokens + outputTokens
+                totalTokens: inputTokens + outputTokens,
+                reasoningTokens: reasoning || undefined,
+                cacheReadTokens: cacheRead || undefined,
+                cacheWriteTokens: cacheWrite || undefined
               },
               providerConfig.model || providerConfig.provider
             );

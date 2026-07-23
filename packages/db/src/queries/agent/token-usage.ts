@@ -62,6 +62,10 @@ export interface InsertTokenUsageParams {
   courseId: string;
   promptTokens: number;
   completionTokens: number;
+  /** Optional detailed breakdown; stored when the provider reports it. */
+  reasoningTokens?: number | null;
+  cacheReadTokens?: number | null;
+  cacheWriteTokens?: number | null;
   costUnits: number;
   model: string;
   planAllowance: number;
@@ -77,6 +81,9 @@ export async function insertTokenUsageAndDrainCredits(params: InsertTokenUsagePa
         courseId: params.courseId,
         promptTokens: params.promptTokens,
         completionTokens: params.completionTokens,
+        reasoningTokens: params.reasoningTokens ?? null,
+        cacheReadTokens: params.cacheReadTokens ?? null,
+        cacheWriteTokens: params.cacheWriteTokens ?? null,
         costUnits: params.costUnits,
         model: params.model
       });

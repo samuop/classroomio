@@ -2999,6 +2999,13 @@ export const aiTokenUsage = pgTable(
     courseId: uuid('course_id').notNull(),
     promptTokens: integer('prompt_tokens').notNull(),
     completionTokens: integer('completion_tokens').notNull(),
+    // Detailed breakdown for cost/analytics. Nullable so old rows and providers
+    // that don't report these stay valid. reasoning_tokens is a SUBSET of
+    // completion_tokens (Google/OpenAI bill it at output price); cache_read/write
+    // are subsets of prompt_tokens (cache_read is billed at ~10%).
+    reasoningTokens: integer('reasoning_tokens'),
+    cacheReadTokens: integer('cache_read_tokens'),
+    cacheWriteTokens: integer('cache_write_tokens'),
     costUnits: integer('cost_units'),
     model: text().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()

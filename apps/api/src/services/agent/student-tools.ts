@@ -1,5 +1,5 @@
 import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
-import { tool } from 'ai';
+import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 
 import { db } from '@cio/db';
@@ -135,7 +135,7 @@ export function buildStudentAgentTools(
   courseId: string,
   _settings: AiTutorSettings,
   locale: TLocale = 'en'
-) {
+): ToolSet {
   return {
     list_course_outline: tool({
       description:
