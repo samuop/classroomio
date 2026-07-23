@@ -23,16 +23,32 @@ import type { RedisClient } from '@api/utils/redis/redis';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-/** Cache TTL. 1h matches the document Redis TTL and covers most build loops. */
-const CACHE_TTL_SECONDS = 3600;
+/**
+ * Cache TTL: 15 minutes, sliding. Build/edit sessions hammer the model in
+ * bursts, so a short TTL renewed on use (see maybeRenewGeminiCache) keeps the
+ * cache alive exactly while it's being worked with and lets it die minutes
+ * after the instructor walks away — minimizing the per-hour storage meter.
+ */
+const CACHE_TTL_SECONDS = 900;
+
+/** Renew the TTL when a use finds less than this much lifetime remaining. */
+const CACHE_RENEW_THRESHOLD_MS = 5 * 60 * 1000;
 
 /**
- * Minimum characters of document text before explicit caching is worth the
- * create + hourly-storage overhead. Small docs re-sent inline are cheaper than a
- * cache. ~50k chars ≈ 12k tokens — comfortably above Gemini's 2048-token floor
- * and large enough that re-sending it every turn actually hurts.
+ * Minimum characters before explicit caching kicks in. Policy: activate at the
+ * model minimum. Gemini 3.x Flash requires 4096 cached tokens (2.5 requires
+ * 2048); at ~4 chars/token, 16k chars ≈ 4k tokens covers every supported model
+ * without a rejected create call.
  */
-export const MIN_CACHE_DOCUMENT_CHARS = 50_000;
+export const MIN_CACHE_DOCUMENT_CHARS = 16_000;
+
+/**
+ * Maximum tokens a single course's cached material may hold. Policy: at 400k
+ * tokens the instructor is told no more material fits and to start a separate
+ * course. Estimated at ~4 chars/token (~1.6M chars).
+ */
+export const MAX_CACHE_TOKENS = 400_000;
+export const MAX_CACHE_CHARS = MAX_CACHE_TOKENS * 4;
 
 interface GeminiCacheHandle {
   cacheName: string; // "cachedContents/xxxx"
@@ -45,9 +61,19 @@ export function isGeminiCacheEnabled(): boolean {
   return process.env.GEMINI_EXPLICIT_CACHE === 'true';
 }
 
-/** Whether a given document is large enough to justify explicit caching. */
-export function shouldCacheDocument(text: string | undefined | null): boolean {
-  return !!text && text.length >= MIN_CACHE_DOCUMENT_CHARS;
+export type CacheEligibility = 'cache' | 'too_small' | 'over_limit';
+
+/**
+ * Classify a document for explicit caching:
+ * - 'cache': within [model minimum, 400k-token policy cap] → cache it.
+ * - 'too_small': below the model minimum → inline (cheaper than a cache).
+ * - 'over_limit': beyond the 400k-token cap → inline (truncated upstream) AND
+ *   the instructor is warned that no more material fits this course.
+ */
+export function classifyDocumentForCache(text: string | undefined | null): CacheEligibility {
+  if (!text || text.length < MIN_CACHE_DOCUMENT_CHARS) return 'too_small';
+  if (text.length > MAX_CACHE_CHARS) return 'over_limit';
+  return 'cache';
 }
 
 /** Gemini requires the "models/<name>" form; resolveModelName returns the bare alias. */
@@ -125,6 +151,37 @@ export async function deleteGeminiCache(cacheName: string): Promise<void> {
 }
 
 /**
+ * Sliding TTL: when a reused cache has < CACHE_RENEW_THRESHOLD_MS of life left,
+ * PATCH it back up to CACHE_TTL_SECONDS ("15 min, renewed 15 more while in
+ * use"). Returns the (possibly updated) expireAt. Best-effort: on failure the
+ * old expireAt stands and the cache simply dies on schedule — next use rebuilds.
+ */
+async function maybeRenewGeminiCache(handle: GeminiCacheHandle): Promise<number> {
+  if (handle.expireAt - Date.now() > CACHE_RENEW_THRESHOLD_MS) return handle.expireAt;
+
+  const key = apiKey();
+  if (!key) return handle.expireAt;
+
+  try {
+    const res = await fetch(`${GEMINI_API_BASE}/${handle.cacheName}?key=${encodeURIComponent(key)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: `${CACHE_TTL_SECONDS}s` })
+    });
+
+    if (!res.ok) {
+      console.error(`[gemini-cache] ttl renew failed: ${res.status}`);
+      return handle.expireAt;
+    }
+
+    return Date.now() + CACHE_TTL_SECONDS * 1000;
+  } catch (err) {
+    console.error('[gemini-cache] ttl renew error:', err);
+    return handle.expireAt;
+  }
+}
+
+/**
  * Get (or lazily create) the Gemini cache handle for a document. Dedups on
  * documentId via Redis: an existing, non-expired, same-model handle is reused;
  * otherwise a new cache is created and the handle stored with a TTL aligned to
@@ -143,12 +200,22 @@ export async function ensureGeminiDocumentCache(params: {
   const redisKey = agentDocumentGeminiCacheKey(documentId);
 
   // Reuse an existing handle when present, not expired, and same model. A model
-  // change (GOOGLE_MODEL edited) invalidates the cache — rebuild against the new one.
+  // change (GOOGLE_MODEL edited) invalidates the cache — rebuild against the new
+  // one. On reuse, slide the TTL forward when it's close to expiring.
   try {
     const raw = await redis.get(redisKey);
     if (raw) {
       const handle = JSON.parse(raw) as GeminiCacheHandle;
       if (handle.cacheName && handle.model === model && handle.expireAt > Date.now() + 30_000) {
+        const renewedExpireAt = await maybeRenewGeminiCache(handle);
+        if (renewedExpireAt !== handle.expireAt) {
+          const renewed: GeminiCacheHandle = { ...handle, expireAt: renewedExpireAt };
+          try {
+            await redis.set(redisKey, JSON.stringify(renewed), { EX: CACHE_TTL_SECONDS });
+          } catch (err) {
+            console.error('[gemini-cache] redis renew-write error:', err);
+          }
+        }
         return { cacheName: handle.cacheName };
       }
     }
@@ -171,6 +238,28 @@ export async function ensureGeminiDocumentCache(params: {
 }
 
 /**
+ * Release the Gemini caches (and their Redis handles) for a set of documents —
+ * called when the conversation that owns them is deleted, so storage stops
+ * being billed for material of a chat that no longer exists. Best-effort:
+ * failures are logged and never propagate (the cache would die by TTL anyway).
+ */
+export async function releaseDocumentCaches(documentIds: string[], redis: RedisClient): Promise<void> {
+  for (const documentId of documentIds) {
+    const redisKey = agentDocumentGeminiCacheKey(documentId);
+    try {
+      const raw = await redis.get(redisKey);
+      if (raw) {
+        const handle = JSON.parse(raw) as GeminiCacheHandle;
+        if (handle.cacheName) await deleteGeminiCache(handle.cacheName);
+      }
+      await redis.del(redisKey);
+    } catch (err) {
+      console.error(`[gemini-cache] release error for document ${documentId}:`, err);
+    }
+  }
+}
+
+/**
  * Decide whether the CURRENT document should be served from a Gemini explicit
  * cache, and if so ensure the cache exists. Returns the cache name to reference
  * and the document id to exclude from inline context. Fully defensive: any
@@ -182,7 +271,7 @@ export async function resolveDocumentCache(params: {
   currentDocumentId: string | undefined;
   userId: string;
   redis: RedisClient;
-}): Promise<{ cachedContentName?: string; excludeDocumentId?: string }> {
+}): Promise<{ cachedContentName?: string; excludeDocumentId?: string; overLimit?: boolean }> {
   const { provider, currentDocumentId, userId, redis } = params;
 
   // Explicit caching is a Gemini feature; other providers keep inlining.
@@ -190,7 +279,15 @@ export async function resolveDocumentCache(params: {
   if (!currentDocumentId || !isGeminiCacheEnabled() || !apiKey()) return {};
 
   const text = await getDocumentText(currentDocumentId, userId, redis);
-  if (!shouldCacheDocument(text)) return {};
+  const eligibility = classifyDocumentForCache(text);
+
+  if (eligibility === 'over_limit') {
+    // Policy: at 400k tokens the course's material is full — inline (truncated
+    // upstream) and surface a warning so the instructor starts a separate course.
+    return { overLimit: true };
+  }
+
+  if (eligibility === 'too_small') return {};
 
   const cache = await ensureGeminiDocumentCache({ documentId: currentDocumentId, text: text!, redis });
   if (!cache) return {}; // creation failed → inline fallback

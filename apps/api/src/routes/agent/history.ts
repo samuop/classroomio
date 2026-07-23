@@ -24,6 +24,9 @@ import {
 import { compactConversation } from '@api/services/agent/compact';
 import { generateConversationTitle } from '@api/services/agent/title-generation';
 import { pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
+import { collectDocumentIds } from '@api/services/agent/chat-context';
+import { releaseDocumentCaches } from '@api/services/agent/gemini-cache';
+import { redis } from '@api/utils/redis/redis';
 
 export const agentHistoryRouter = new Hono()
   /**
@@ -156,6 +159,19 @@ export const agentHistoryRouter = new Hono()
       try {
         const user = c.get('user')!;
         const { conversationId } = c.req.valid('param');
+
+        // Release any Gemini document caches owned by this conversation BEFORE
+        // deleting it (afterwards the attachment metadata is gone). Best-effort —
+        // an error here must never block the deletion itself.
+        try {
+          const conversation = await getChatConversation(conversationId, user.id);
+          const documentIds = collectDocumentIds((conversation?.messages as unknown[]) ?? []);
+          if (documentIds.length > 0) {
+            await releaseDocumentCaches(documentIds, redis);
+          }
+        } catch (err) {
+          console.error('[agent.history] failed to release document caches on delete:', err);
+        }
 
         await deleteChatConversation(conversationId, user.id);
 

@@ -639,6 +639,18 @@ const agentCoreRouter = new Hono()
         }
       }
 
+      // Material-cap notice (policy: 400k cached tokens per course). Tell the model
+      // so it warns the instructor, in the conversation's language, that no more
+      // source material fits this course and a separate course is the way forward.
+      if (documentCache.overLimit) {
+        const capNotice =
+          '[Material limit] The attached document exceeds the 400k-token material limit for one course. ' +
+          'Only the first part of it is available to you. Tell the instructor (in their language) that the ' +
+          'course material is full: no more source material fits this course, and suggest splitting the ' +
+          'remaining content into a separate new course.';
+        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${capNotice}` : capNotice;
+      }
+
       const agentTools =
         role === AgentRole.STUDENT
           ? buildStudentAgentTools(
