@@ -506,25 +506,36 @@ const agentCoreRouter = new Hono()
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
+      const existingSections = await listCourseSections(courseId);
 
       // Cache activation is PHASE-based, not "is a document attached?" (user
       // policy: don't create a cache for a one-off edit — storage costs money).
-      // The Gemini cache is worth creating only when the same material is read
-      // many times: building an approved plan, or planning a course FROM a
-      // document. A single-lesson edit (lessonId present, no approved plan) must
-      // NOT create/touch a cache. approvedPlan only needs `messages`, so we can
-      // decide here, before resolving the cache.
+      // A Gemini cache is worth creating ONLY when the same material is read many
+      // times, which is exactly two situations:
+      //   1. Building an approved plan (hasApprovedPlan) — dozens of calls read
+      //      the material. Adding NEW sections to an existing course also lands
+      //      here, because bulk creation requires an approved plan first.
+      //   2. Planning a course FROM a document on an EMPTY course (a genuine
+      //      build-from-scratch). Requiring the course to be empty is what keeps
+      //      "next day I attach a file just to EDIT/extend the course" OUT of the
+      //      cache: on a course that already has content, a newly attached doc is
+      //      edit material → it goes inline now (and RAG later, step 6), not a cache.
+      // A single-lesson edit (lessonId present) is never cache-eligible.
       const hasApprovedPlanForCache =
         role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
-      const isPlanningWithMaterial =
-        role === AgentRole.TEACHER && !!context?.documentId && !context?.lessonId && !hasApprovedPlanForCache;
-      const cacheEligiblePhase = hasApprovedPlanForCache || isPlanningWithMaterial;
+      const isPlanningEmptyCourseFromDoc =
+        role === AgentRole.TEACHER &&
+        !!context?.documentId &&
+        !context?.lessonId &&
+        !hasApprovedPlanForCache &&
+        existingSections.length === 0;
+      const cacheEligiblePhase = hasApprovedPlanForCache || isPlanningEmptyCourseFromDoc;
 
       // Capa 2b: for a LARGE current document under Gemini, place it in an
       // explicit cache and reference it via providerOptions instead of re-sending
       // its full text every turn (~10% input cost). Fully defensive — an empty
       // result means "inline as before". Gated on cacheEligiblePhase so one-off
-      // lesson edits never spin up a cache.
+      // edits and same-day "attach a file to tweak the course" never spin up a cache.
       const documentCache =
         role === AgentRole.TEACHER && cacheEligiblePhase
           ? await resolveDocumentCache({
@@ -539,8 +550,6 @@ const agentCoreRouter = new Hono()
         documentIds.length > 0
           ? await loadDocumentsContext(documentIds, context?.documentId, user.id, documentCache.excludeDocumentId)
           : undefined;
-
-      const existingSections = await listCourseSections(courseId);
 
       let lessonTitle: string | undefined;
       let lessonContent: string | undefined;
