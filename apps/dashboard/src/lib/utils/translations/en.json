@@ -4574,6 +4574,9 @@
     },
     "plan_applying_changes": "Applying changes",
     "plan_working": "Working",
+    "todo_checklist": {
+      "title": "Build progress"
+    },
     "plan_thinking": "Thinking through your request…",
     "plan_progress": "{completed} / {total} steps completed",
     "plan_steps_collapsed": "{count, plural, one {# step completed} other {# steps completed}}",

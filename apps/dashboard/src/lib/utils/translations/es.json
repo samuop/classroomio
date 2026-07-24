@@ -4146,6 +4146,9 @@
     },
     "plan_applying_changes": "Applying changes",
     "plan_working": "Working",
+    "todo_checklist": {
+      "title": "Progreso de construcción"
+    },
     "plan_progress": "{completed} / {total} steps completed",
     "plan_steps_collapsed": "{count, plural, one {# paso completado} other {# pasos completados}}",
     "stop": "Stop",

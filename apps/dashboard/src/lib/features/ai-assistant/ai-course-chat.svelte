@@ -757,13 +757,15 @@
       isAgentToolPart(part)
     ) as AgentToolPart[];
 
-    // generate_course_plan renders its own PlanView — exclude it from the card
+    // Self-rendered tools show their own card (PlanView, forms, todo checklist) —
+    // exclude them from the generic activity-card step list.
     const toolParts = allToolParts.filter((part) => {
       const toolName = getAgentToolName(part);
       return (
         toolName !== 'generate_course_plan' &&
         toolName !== 'ask_template_questions' &&
-        toolName !== 'ask_discovery_questions'
+        toolName !== 'ask_discovery_questions' &&
+        toolName !== 'update_course_todo_list'
       );
     });
 

@@ -8,6 +8,7 @@
   import { renderMarkdown } from '$features/ai-assistant/utils/markdown';
   import { renderMentions } from '$features/ai-assistant/utils/mentions';
   import PlanView from '$features/ai-assistant/plan-view.svelte';
+  import TodoChecklist from '$features/ai-assistant/todo-checklist.svelte';
   import AgentSteps from '$features/ai-assistant/agent-steps.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
   import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
@@ -108,7 +109,10 @@
     const name = getAgentToolName(part);
 
     return (
-      name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions'
+      name === 'generate_course_plan' ||
+      name === 'ask_template_questions' ||
+      name === 'ask_discovery_questions' ||
+      name === 'update_course_todo_list'
     );
   }
 
@@ -140,6 +144,13 @@
   const inlineParts = $derived((message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text'));
   const deferredPlanParts = $derived(
     (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
+  );
+  // The build agent calls update_course_todo_list many times per turn; render only
+  // the LAST one so the checklist shows the current state, not a stack of stale copies.
+  const latestTodoPart = $derived(
+    (message.parts ?? [])
+      .filter((part) => isAgentToolPart(part) && getAgentToolName(part) === 'update_course_todo_list')
+      .at(-1)
   );
   const hasBubbleContent = $derived(
     inlineParts.length > 0 || deferredPlanParts.length > 0 || !!messageAttachment || showAgentSteps
@@ -225,6 +236,27 @@
               implemented={planAlreadyImplemented}
             />
           </div>
+        {:else if toolName === 'update_course_todo_list'}
+          <!-- Only the LAST todo update in this message renders (the model calls it
+               repeatedly during a build); earlier ones would show stale checklists. -->
+          {#if part === latestTodoPart && toolStatus === 'completed'}
+            {@const todoData = toolResult as {
+              todos: Array<{ key: string; content: string; status: 'pending' | 'in_progress' | 'completed'; priority?: 'low' | 'medium' | 'high' }>;
+              total: number;
+              completed: number;
+              remaining: number;
+              allDone: boolean;
+            }}
+            {#if todoData?.todos?.length}
+              <TodoChecklist
+                todos={todoData.todos}
+                total={todoData.total}
+                completed={todoData.completed}
+                remaining={todoData.remaining}
+                allDone={todoData.allDone}
+              />
+            {/if}
+          {/if}
         {:else if toolName === 'ask_template_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
           {@const merged = (toolResult ?? getAgentToolInput(part)) as
             | { templateId?: CourseTemplateId; fields?: TemplateFormField[] }
