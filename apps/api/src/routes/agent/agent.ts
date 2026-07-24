@@ -507,12 +507,26 @@ const agentCoreRouter = new Hono()
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
 
+      // Cache activation is PHASE-based, not "is a document attached?" (user
+      // policy: don't create a cache for a one-off edit — storage costs money).
+      // The Gemini cache is worth creating only when the same material is read
+      // many times: building an approved plan, or planning a course FROM a
+      // document. A single-lesson edit (lessonId present, no approved plan) must
+      // NOT create/touch a cache. approvedPlan only needs `messages`, so we can
+      // decide here, before resolving the cache.
+      const hasApprovedPlanForCache =
+        role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
+      const isPlanningWithMaterial =
+        role === AgentRole.TEACHER && !!context?.documentId && !context?.lessonId && !hasApprovedPlanForCache;
+      const cacheEligiblePhase = hasApprovedPlanForCache || isPlanningWithMaterial;
+
       // Capa 2b: for a LARGE current document under Gemini, place it in an
       // explicit cache and reference it via providerOptions instead of re-sending
       // its full text every turn (~10% input cost). Fully defensive — an empty
-      // result means "inline as before". Only teachers upload building material.
+      // result means "inline as before". Gated on cacheEligiblePhase so one-off
+      // lesson edits never spin up a cache.
       const documentCache =
-        role === AgentRole.TEACHER
+        role === AgentRole.TEACHER && cacheEligiblePhase
           ? await resolveDocumentCache({
               provider: providerConfig.provider,
               currentDocumentId: context?.documentId,
@@ -723,6 +737,26 @@ const agentCoreRouter = new Hono()
           }
         : systemPrompt;
 
+      // Paso 5a (build subagent — clean context): in build mode the agent is
+      // executing an approved plan, not continuing a conversation. The full
+      // discovery/chat transcript is dead weight and can distract the builder,
+      // so we run it with an ISOLATED context: just the context message (which
+      // already carries the approved plan + Plan-Progress + TODO anchors — the
+      // real source of truth) plus the single latest user turn (the "Implement
+      // this plan." / "continue" instruction). This keeps the builder focused
+      // and stops the build from ever polluting or being polluted by the main
+      // conversation history. Same streamText/response, so the UI is unchanged.
+      //
+      // Every other mode (plan, single-lesson edit, student) keeps the full
+      // trimmed transcript, since those ARE conversational.
+      const isBuildSubagent = role === AgentRole.TEACHER && teacherPromptMode === 'build';
+      const builderMessages = isBuildSubagent
+        ? (() => {
+            const lastUserIndex = convertedMessages.map((m) => m.role).lastIndexOf('user');
+            return lastUserIndex >= 0 ? [convertedMessages[lastUserIndex]] : [];
+          })()
+        : convertedMessages;
+
       // Prepend volatile context as a user-turn message so the stable system +
       // tools prefix stays cacheable even when the teacher navigates to a
       // different lesson or the agent creates sections mid-run.
@@ -730,9 +764,15 @@ const agentCoreRouter = new Hono()
         contextMessageText.length > 0
           ? [
               { role: 'user' as const, content: [{ type: 'text' as const, text: contextMessageText }] },
-              ...convertedMessages
+              ...builderMessages
             ]
-          : convertedMessages;
+          : builderMessages;
+
+      if (isBuildSubagent) {
+        console.log(
+          `[agent.chat] build subagent: isolated context (${builderMessages.length} user turn(s), ${convertedMessages.length} transcript msgs dropped)`
+        );
+      }
 
       console.log(`[agent.chat] user=${user.id} messages=${modelMessages.length}`);
 
