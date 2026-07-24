@@ -5,6 +5,7 @@ import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { writeCourseTodoList } from '@cio/db/queries/agent';
+import { semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import { listCourseSections, createCourseSection, updateCourseSectionService } from '@api/services/course/section';
 import { createLesson, getLesson, updateLessonService } from '@api/services/lesson/lesson';
@@ -46,6 +47,7 @@ import {
   updateContentParam,
   updateCourseLandingPageParam,
   updateExerciseParam,
+  searchDocumentParam,
   updateCourseTodoListParam,
   updateExerciseSectionParam,
   updateLessonParam,
@@ -196,11 +198,33 @@ export function buildAgentTools(
   userId: string,
   courseId: string,
   priorMessages: unknown[],
-  _options?: { isOrgOnPaidPlan?: boolean; conversationId?: string | null }
+  _options?: { isOrgOnPaidPlan?: boolean; conversationId?: string | null; searchableDocumentId?: string | null }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
+  const searchableDocumentId = _options?.searchableDocumentId ?? null;
 
   return {
+    search_document: tool({
+      description:
+        'Search the attached reference document for the fragments most relevant to a query, instead of reading the whole document. Use this when editing or extending a course from an attached document: search for the specific topic/section you need, then write from the returned fragments. Returns the top matching passages.',
+      inputSchema: searchDocumentParam,
+      execute: async (args) => {
+        return executeAgentTool('search_document', { orgId, userId, courseId, args }, async () => {
+          if (!searchableDocumentId) {
+            return { fragments: [], note: 'No searchable document is attached to this conversation.' };
+          }
+          const results = await semanticSearchDocument({
+            documentId: searchableDocumentId,
+            query: args.query,
+            limit: args.limit
+          });
+          return {
+            fragments: results.map((r) => ({ content: r.content, relevance: Number((1 - r.distance).toFixed(3)) })),
+            count: results.length
+          };
+        });
+      }
+    }),
     update_course_todo_list: tool({
       description:
         'Your persistent task list for building this course — it survives even when the chat history is trimmed. ' +

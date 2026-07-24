@@ -117,6 +117,20 @@ async function dbSetup() {
       );
     }
 
+    // Same ANN index for the uploaded-document embeddings (RAG for edits, step 6).
+    try {
+      await sql`
+        CREATE INDEX IF NOT EXISTS idx_document_embedding_hnsw
+        ON document_embedding USING hnsw (embedding halfvec_cosine_ops)
+      `;
+      console.log('✓ document_embedding HNSW index ready');
+    } catch (error) {
+      console.warn(
+        '⚠ Could not create the document_embedding HNSW index (is pgvector enabled and the table present?).',
+        error instanceof Error ? error.message : error
+      );
+    }
+
     await runSeedEssential();
 
     if (shouldSeed) {

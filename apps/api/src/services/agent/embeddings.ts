@@ -199,3 +199,111 @@ export async function semanticSearchCourse(params: {
     distance: Number(r.distance)
   }));
 }
+
+// ─── RAG for edits (step 6): index + search UPLOADED documents ───────────────
+
+/**
+ * Index an uploaded document into `document_embedding`. Idempotent: clears the
+ * document's existing chunks first. The document text is already plain text
+ * (extracted from PDF/DOCX/PPTX), so no htmlToText step. No-op when embeddings
+ * are unavailable or the text is empty.
+ */
+export async function indexDocument(params: {
+  documentId: string;
+  courseId: string;
+  text: string | null | undefined;
+}): Promise<{ indexed: number }> {
+  const model = getEmbeddingModel();
+  if (!model) return { indexed: 0 };
+
+  const { documentId, courseId } = params;
+
+  await db.delete(schema.documentEmbedding).where(eq(schema.documentEmbedding.documentId, documentId));
+
+  const chunks = chunkText(params.text ?? '');
+  if (chunks.length === 0) return { indexed: 0 };
+
+  const { embeddings } = await embedMany({
+    model,
+    values: chunks,
+    providerOptions: EMBEDDING_PROVIDER_OPTIONS
+  });
+
+  await db.insert(schema.documentEmbedding).values(
+    chunks.map((content, chunkIndex) => ({
+      documentId,
+      courseId,
+      chunkIndex,
+      content,
+      embedding: embeddings[chunkIndex]
+    }))
+  );
+
+  return { indexed: chunks.length };
+}
+
+/**
+ * Fire-and-forget document indexing. Never throws into the caller — indexing must
+ * not break the upload/chat flow. Skips silently when embeddings are off or the
+ * document is already indexed (checked cheaply by the caller when it matters).
+ */
+export function indexDocumentInBackground(params: {
+  documentId: string;
+  courseId: string | null | undefined;
+  text: string | null | undefined;
+}): void {
+  if (!params.courseId) return;
+  if (!getEmbeddingModel()) return;
+
+  void indexDocument({
+    documentId: params.documentId,
+    courseId: params.courseId,
+    text: params.text
+  }).catch((error) => {
+    console.warn('[embeddings] background index failed for document', params.documentId, error);
+  });
+}
+
+/** Whether a document already has embedding rows (so we don't re-index needlessly). */
+export async function isDocumentIndexed(documentId: string): Promise<boolean> {
+  const rows = (await db.execute(sql`
+    SELECT 1 FROM document_embedding WHERE document_id = ${documentId} LIMIT 1
+  `)) as unknown as unknown[];
+  return rows.length > 0;
+}
+
+/**
+ * Vector similarity search over ONE uploaded document's indexed chunks. Returns
+ * the most semantically similar fragments for the query. Empty array when
+ * embeddings are unavailable — callers fall back to inlining/other behavior.
+ */
+export async function semanticSearchDocument(params: {
+  documentId: string;
+  query: string;
+  limit?: number;
+}): Promise<Array<{ chunkIndex: number; content: string; distance: number }>> {
+  const model = getEmbeddingModel();
+  if (!model) return [];
+
+  const limit = params.limit ?? 6;
+  const { embedding } = await embed({
+    model,
+    value: params.query,
+    providerOptions: EMBEDDING_PROVIDER_OPTIONS
+  });
+  const queryVec = `[${embedding.join(',')}]`;
+
+  const rows = (await db.execute(sql`
+    SELECT chunk_index, content, (embedding <=> ${queryVec}::halfvec) AS distance
+    FROM document_embedding
+    WHERE document_id = ${params.documentId}
+    ORDER BY embedding <=> ${queryVec}::halfvec
+    LIMIT ${limit}
+  `)) as unknown as Array<{ chunk_index: number; content: string; distance: number }>;
+
+  return rows.map((r) => ({
+    chunkIndex: Number(r.chunk_index),
+    content: r.content,
+    distance: Number(r.distance)
+  }));
+}

@@ -548,6 +548,10 @@ export function buildTeacherContextMessage(
     contextLines.push(
       `The teacher has uploaded document material — use it as the source for course planning and content generation. Blocks labeled "full text" are complete; blocks labeled "summary of a previously shared document" are condensed to save space. If you need exact wording from a summarized document, ask the teacher to re-share the relevant part.\n\n<document>\n${context.documentText}\n</document>`
     );
+  } else if (context.searchableDocument) {
+    contextLines.push(
+      `The teacher has attached a reference document to help edit or extend this course. Its full text is NOT inlined here — instead, call the \`search_document\` tool with a focused query to retrieve the passages relevant to what you're writing or editing, then work from those fragments. Do not claim you cannot see the document; search it.`
+    );
   }
   if (context.existingSectionCount && context.existingSectionCount > 0) {
     contextLines.push(

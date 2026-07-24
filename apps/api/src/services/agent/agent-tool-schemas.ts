@@ -38,6 +38,13 @@ export const updateCourseTodoListParam = z.object({
 });
 
 export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string().default('en') });
+
+// RAG for edits (step 6): search relevant fragments of an attached document
+// instead of reading the whole thing. documentId is injected from context.
+export const searchDocumentParam = z.object({
+  query: z.string().min(1).max(300).describe('What to look for in the attached document (a topic, concept, or question).'),
+  limit: z.number().int().min(1).max(10).default(6)
+});
 export const exerciseReadParam = z.object({ exerciseId: z.string() });
 export const createSectionParam = z.object({ title: z.string().min(1), order: z.number().int().min(0) });
 export const updateSectionParam = z

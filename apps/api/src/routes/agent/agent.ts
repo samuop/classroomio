@@ -38,8 +38,14 @@ import {
   incrementStudentTutorCount
 } from '@api/services/agent/tutor-usage';
 import { buildStudentAgentTools } from '@api/services/agent/student-tools';
-import { parseAndStoreDocument, parseDocument, storeDraftDocument } from '@api/services/agent/document';
+import {
+  parseAndStoreDocument,
+  parseDocument,
+  storeDraftDocument,
+  getDocumentText
+} from '@api/services/agent/document';
 import { resolveDocumentCache } from '@api/services/agent/gemini-cache';
+import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
@@ -546,9 +552,45 @@ const agentCoreRouter = new Hono()
             })
           : {};
 
+      // RAG for edits (step 6): when a teacher attaches a document to EDIT/extend
+      // an ALREADY-BUILT course (existing sections) — i.e. not a fresh build and
+      // not cache-eligible — don't inline the whole doc. Instead index it once and
+      // expose search_document so the agent pulls only the fragments it needs for
+      // the edit. This is the cheap path for one-off edits (no cache storage, no
+      // giant inline). Fully defensive: if embeddings are unavailable, indexing is
+      // a no-op and we fall back to inlining the text as before.
+      let searchableDocumentId: string | null = null;
+      const isEditWithDocument =
+        role === AgentRole.TEACHER &&
+        !!context?.documentId &&
+        existingSections.length > 0 &&
+        !cacheEligiblePhase;
+      if (isEditWithDocument && context?.documentId) {
+        try {
+          const docText = await getDocumentText(context.documentId, user.id, redis);
+          if (docText) {
+            if (!(await isDocumentIndexed(context.documentId))) {
+              // Index synchronously the first time so search_document works on this
+              // very turn; subsequent turns hit the already-indexed fast path.
+              await indexDocument({ documentId: context.documentId, courseId, text: docText });
+            }
+            searchableDocumentId = context.documentId;
+          }
+        } catch (err) {
+          // Never block the chat on indexing — fall back to inline.
+          console.error('[agent.chat] edit-RAG indexing failed, falling back to inline:', err);
+        }
+      }
+
       const documentText =
         documentIds.length > 0
-          ? await loadDocumentsContext(documentIds, context?.documentId, user.id, documentCache.excludeDocumentId)
+          ? await loadDocumentsContext(
+              documentIds,
+              context?.documentId,
+              user.id,
+              // Exclude the doc's full text when it's cached OR searchable-via-RAG.
+              documentCache.excludeDocumentId ?? searchableDocumentId ?? undefined
+            )
           : undefined;
 
       let lessonTitle: string | undefined;
@@ -597,6 +639,7 @@ const agentCoreRouter = new Hono()
         exerciseTitle,
         documentId: context?.documentId,
         documentText,
+        searchableDocument: !!searchableDocumentId,
         existingSectionCount: existingSections.length
       };
 
@@ -702,7 +745,8 @@ const agentCoreRouter = new Hono()
             )
           : buildAgentTools(orgId, user.id, courseId, messages, {
               isOrgOnPaidPlan: isOrgPaid,
-              conversationId
+              conversationId,
+              searchableDocumentId
             });
 
       const contextManaged = await buildModelContextMessages({

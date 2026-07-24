@@ -1813,6 +1813,43 @@ export const lessonEmbedding = pgTable(
   ]
 );
 
+// Semantic index over UPLOADED documents (RAG for edits — step 6). Mirrors
+// lesson_embedding but keys on the document instead of a lesson, so when a
+// teacher attaches a doc to EDIT/extend an already-built course, the agent can
+// search relevant fragments (search_document tool) instead of inlining the whole
+// text. documentId is text (ai_chat_document.id is a nanoid, not a uuid); no
+// locale column since an uploaded document is a single language.
+export const documentEmbedding = pgTable(
+  'document_embedding',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedByDefaultAsIdentity({
+      name: 'document_embedding_id_seq',
+      startWith: 1,
+      increment: 1,
+      minValue: 1,
+      cache: 1
+    }),
+    documentId: text('document_id').notNull(),
+    courseId: uuid('course_id').notNull(),
+    chunkIndex: integer('chunk_index').notNull(),
+    content: text().notNull(),
+    embedding: vector('embedding').notNull(),
+    createdAt: timestamp('created_at', { mode: 'string' })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.documentId],
+      foreignColumns: [aiChatDocument.id],
+      name: 'document_embedding_document_id_fkey'
+    })
+      .onUpdate('cascade')
+      .onDelete('cascade'),
+    index('idx_document_embedding_document').on(table.documentId)
+  ]
+);
+
 export const organizationmember = pgTable(
   'organizationmember',
   {

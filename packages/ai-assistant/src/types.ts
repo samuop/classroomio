@@ -44,6 +44,12 @@ export interface AgentContext {
   exerciseTitle?: string;
   documentId?: string;
   documentText?: string;
+  /**
+   * True when a document is attached but served via RAG (search_document) instead
+   * of inline — edit/extend mode on an already-built course. The agent must call
+   * search_document to read from it, since documentText is intentionally omitted.
+   */
+  searchableDocument?: boolean;
   existingSectionCount?: number;
 }
 
