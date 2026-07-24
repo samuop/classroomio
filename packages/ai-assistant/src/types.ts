@@ -182,6 +182,31 @@ export interface AgentStatus {
   role: AgentRole;
   usage: TokenBalance;
   tutor: AgentTutorStatus;
+  /**
+   * Operational context budget (tokens) the UI measures usage against for the
+   * context indicator and the "context full" compaction prompt. This is NOT the
+   * model's physical window (Gemini flash is 1M): it's a budget chosen so the
+   * indicator is useful and compaction is offered before per-request cost climbs.
+   * Overridable via AGENT_CONTEXT_BUDGET; see DEFAULT_AGENT_CONTEXT_BUDGET.
+   */
+  contextWindow: number;
+}
+
+/**
+ * Default operational context budget (tokens). Not the model's physical window —
+ * a working ceiling for the UI's context guard. At ~90% (180k) the UI nudges the
+ * teacher to compact; well under Gemini's 1M so we never actually hit the wall,
+ * while keeping the indicator meaningful now that the context diet keeps typical
+ * requests small. Override with AGENT_CONTEXT_BUDGET.
+ */
+export const DEFAULT_AGENT_CONTEXT_BUDGET = 200_000;
+
+/** Resolve the operational context budget from env, falling back to the default. */
+export function resolveAgentContextBudget(): number {
+  const raw = process.env.AGENT_CONTEXT_BUDGET?.trim();
+  if (!raw) return DEFAULT_AGENT_CONTEXT_BUDGET;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_AGENT_CONTEXT_BUDGET;
 }
 
 // ─── Document Upload ─────────────────────────────────────────────────────────

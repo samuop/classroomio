@@ -50,6 +50,7 @@ import {
   AIProvider,
   MAX_STEPS_PER_ROUND,
   getCourseTemplate,
+  resolveAgentContextBudget,
   type AgentContext,
   type AgentStatus,
   type TeacherPromptMode
@@ -96,7 +97,8 @@ const agentCoreRouter = new Hono()
           enabled: false,
           role: AgentRole.STUDENT,
           usage: { used: 0, allowance: 0, creditBalance: 0, remaining: 0 },
-          tutor: { enabled: false, capRemaining: null, cap: null, enforced: false }
+          tutor: { enabled: false, capRemaining: null, cap: null, enforced: false },
+          contextWindow: resolveAgentContextBudget()
         };
 
         return c.json({ success: true, data: status });
@@ -116,7 +118,8 @@ const agentCoreRouter = new Hono()
         enabled: true,
         role,
         usage,
-        tutor
+        tutor,
+        contextWindow: resolveAgentContextBudget()
       };
 
       return c.json({ success: true, data: status });

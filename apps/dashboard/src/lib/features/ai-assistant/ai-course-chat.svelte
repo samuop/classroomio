@@ -4,6 +4,9 @@
   import ChatHeader from '$features/ai-assistant/chat-header.svelte';
   import ChatMessageList from '$features/ai-assistant/chat-message-list.svelte';
   import ChatInput from '$features/ai-assistant/chat-input.svelte';
+  import ContextIndicator from '$features/ai-assistant/context-indicator.svelte';
+  import ContextFullState from '$features/ai-assistant/context-full-state.svelte';
+  import { calculateContextUsage } from '$features/ai-assistant/utils/context-utils';
   import { resolve } from '$app/paths';
   import { getCompletedToolLine, getPendingToolLine, MUTATION_TOOLS } from '$features/ai-assistant/utils/tool-labels';
   import type { ProgressStep } from '$features/ai-assistant/utils/tool-labels';
@@ -611,6 +614,68 @@
   const isStudent = $derived(status?.role === 'student');
   const tutorStatus = $derived(status?.tutor);
 
+  // Context guard: measure the latest provider-reported request size against the
+  // operational budget the server exposes (AGENT_CONTEXT_BUDGET). Teachers only —
+  // students have short, capped tutor chats. Hidden until there's at least one
+  // real usage report so a fresh chat doesn't show a bogus estimate.
+  const contextUsage = $derived(
+    !isStudent && status?.contextWindow
+      ? calculateContextUsage(chat.messages as AiAssistantMessage[], status.contextWindow)
+      : null
+  );
+  const showContextIndicator = $derived(!!contextUsage && chat.messages.length > 0);
+  const showContextFull = $derived(!!contextUsage?.isFull && !isStreaming);
+
+  // 'compact' summarizes the current conversation in place; 'new_chat' starts a
+  // fresh conversation seeded with a handoff summary of this one.
+  let contextFullBusy: null | 'compact' | 'new_chat' = $state(null);
+
+  async function handleCompactConversation() {
+    if (!activeConversationId || contextFullBusy) return;
+    contextFullBusy = 'compact';
+    try {
+      const compacted = await aiAssistantApi.compactConversation(activeConversationId);
+      if (compacted) {
+        chat.messages = compacted as AiAssistantMessage[];
+      }
+    } finally {
+      contextFullBusy = null;
+    }
+  }
+
+  async function handleStartNewChatWithSummary() {
+    if (!courseId || contextFullBusy) return;
+    contextFullBusy = 'new_chat';
+    try {
+      // Carry a handoff summary of the current chat into the new one so the
+      // teacher doesn't lose context. Falls back to a plain new chat if
+      // summarization fails or there's nothing to summarize.
+      const summary =
+        activeConversationId && chat.messages.length > 0
+          ? await aiAssistantApi.summarizeConversation(chat.messages as AiAssistantMessage[], courseId)
+          : null;
+
+      const created = await aiAssistantApi.createConversation(courseId);
+      if (!created) return;
+
+      if (summary) {
+        const seed: AiAssistantMessage = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          parts: [{ type: 'text', text: summary }],
+          metadata: { compaction: { compactedAt: new Date().toISOString(), originalMessageCount: chat.messages.length } }
+        } as AiAssistantMessage;
+        chat.messages = [seed];
+        await persistFinishedChat(chat.messages as AiAssistantMessage[], created.id);
+      } else {
+        chat.messages = [];
+      }
+      setActiveConversationId(courseId, created.id);
+    } finally {
+      contextFullBusy = null;
+    }
+  }
+
   const tutorErrorCode = $derived.by(() => {
     if (!chat.error) return null;
     const message = chat.error.message ?? '';
@@ -871,6 +936,12 @@
     onRenameConversation={handleRenameConversation}
   />
 
+  {#if showContextIndicator && contextUsage}
+    <div class="flex items-center justify-end border-b px-3 py-1">
+      <ContextIndicator {contextUsage} />
+    </div>
+  {/if}
+
   <ChatMessageList
     messages={chat.messages}
     {isStreaming}
@@ -890,20 +961,29 @@
     onMentionClick={handleMentionClick}
   />
 
-  <ChatInput
-    bind:inputValue
-    {isStreaming}
-    {isExhausted}
-    {isUploading}
-    {uploadedDocument}
-    {mentionItems}
-    {isStudent}
-    {tutorBlocked}
-    focusSignal={focusInputSignal}
-    error={chat.error}
-    onSend={handleSend}
-    onStop={handleStop}
-    onFileSelect={handleFileSelect}
-    onRemoveDocument={handleRemoveDocument}
-  />
+  {#if showContextFull}
+    <ContextFullState
+      {contextFullBusy}
+      compactConversationDisabled={!activeConversationId}
+      onCompactConversation={handleCompactConversation}
+      onStartNewChat={handleStartNewChatWithSummary}
+    />
+  {:else}
+    <ChatInput
+      bind:inputValue
+      {isStreaming}
+      {isExhausted}
+      {isUploading}
+      {uploadedDocument}
+      {mentionItems}
+      {isStudent}
+      {tutorBlocked}
+      focusSignal={focusInputSignal}
+      error={chat.error}
+      onSend={handleSend}
+      onStop={handleStop}
+      onFileSelect={handleFileSelect}
+      onRemoveDocument={handleRemoveDocument}
+    />
+  {/if}
 </div>
