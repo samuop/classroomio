@@ -17,7 +17,7 @@ import {
   updateExerciseSectionMetadataService
 } from '@api/services/exercise/exercise';
 import { reorderCourseContent } from '@api/services/course/content';
-import { normalizeAgentLessonContent } from '@api/services/agent/lesson-content';
+import { normalizeAgentLessonContent, repairSvgGeometry } from '@api/services/agent/lesson-content';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
 import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
@@ -415,10 +415,15 @@ export function buildAgentTools(
             );
           }
 
+          // Repair SVG geometry on the replacement fragment (edit_lesson_content is
+          // often used to redo just a diagram); ensures the <svg> keeps viewBox +
+          // explicit width/height so it isn't clipped. No-op for non-SVG fragments.
+          const newString = args.newString.includes('<svg') ? repairSvgGeometry(args.newString) : args.newString;
+
           // String replace (no regex) so $&, $1, $$ etc. in newString are not interpreted.
           const updated = args.replaceAll
-            ? current.split(args.oldString).join(args.newString)
-            : current.replace(args.oldString, () => args.newString);
+            ? current.split(args.oldString).join(newString)
+            : current.replace(args.oldString, () => newString);
 
           if (updated === current) {
             throw new Error('The replacement produced no change (oldString and newString are equivalent).');
