@@ -2270,6 +2270,31 @@
     "creator": {
       "heading": "¿Qué curso quieres crear?",
       "placeholder": "Describe el curso que quieres: para quién es, el tema y el resultado. Ej: \"Un onboarding de 5 módulos para nuevos vendedores sobre nuestro CRM y el pitch.\"",
+      "guide": {
+        "title": "Construyamos tu curso",
+        "subtitle": "Describí lo que querés, soltá tu material y lo diseñamos con vos.",
+        "describe_placeholder": "Describí el curso: el tema, para quién es y qué deberían poder hacer al terminar. Ej: \"Un curso para nuevos empleados de finanzas sobre nuestra política de gastos y el flujo de reembolsos, para que puedan enviar un informe sin ayuda.\"",
+        "build_button": "Construir curso",
+        "source": {
+          "document_label": "Material de referencia (opcional)",
+          "dropzone": "Arrastrá y soltá archivos acá, o hacé clic para buscar",
+          "document_hint": "PDF, DOCX o PPTX — hasta 10 archivos. Los usaremos como fuente de tu curso.",
+          "uploading": "Subiendo…",
+          "count": "{count} de {max} archivos agregados",
+          "too_many": "Podés agregar hasta {max} archivos. Quitá uno para agregar otro.",
+          "too_large": "\"{name}\" es demasiado grande.",
+          "upload_failed": "No se pudo subir \"{name}\". Probá de nuevo.",
+          "url_label": "Páginas web para investigar (opcional)",
+          "url_hint": "Pegá enlaces y el asistente los va a leer para fundamentar tu curso.",
+          "url_placeholder": "https://docs.ejemplo.com/…",
+          "add_url": "Agregar otro enlace"
+        },
+        "handoff": {
+          "sources": "Enlaces de referencia para investigar",
+          "research_hint": "Por favor leé estas páginas (raíz + subpáginas relevantes) antes de planificar.",
+          "documents": "Documentos adjuntos"
+        }
+      },
       "examples": {
         "label": "O parte de un ejemplo — te haremos preguntas para afinarlo:",
         "sales_onboarding": "Onboarding para nuevos vendedores",

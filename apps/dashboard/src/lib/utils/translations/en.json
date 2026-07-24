@@ -2112,6 +2112,31 @@
     "creator": {
       "heading": "What course do you want to create?",
       "placeholder": "Describe the course you want — who it's for, the topic, and the outcome. e.g. \"A 5-module onboarding for new sales reps covering our CRM and pitch.\"",
+      "guide": {
+        "title": "Let's build your course",
+        "subtitle": "Describe what you want, drop in your material, and we'll design it with you.",
+        "describe_placeholder": "Describe the course — the topic, who it's for, and what learners should be able to do afterward. e.g. \"A course for new finance hires on our expense policy and reimbursement workflow, so they can submit a report without help.\"",
+        "build_button": "Build course",
+        "source": {
+          "document_label": "Reference material (optional)",
+          "dropzone": "Drag & drop files here, or click to browse",
+          "document_hint": "PDF, DOCX or PPTX — up to 10 files. We'll use them as the source for your course.",
+          "uploading": "Uploading…",
+          "count": "{count} of {max} files added",
+          "too_many": "You can add up to {max} files. Remove one to add another.",
+          "too_large": "\"{name}\" is too large.",
+          "upload_failed": "Couldn't upload \"{name}\". Try again.",
+          "url_label": "Web pages to research (optional)",
+          "url_hint": "Paste links and the assistant will read them to ground your course.",
+          "url_placeholder": "https://docs.example.com/…",
+          "add_url": "Add another link"
+        },
+        "handoff": {
+          "sources": "Reference links to research",
+          "research_hint": "Please read these pages (root + relevant sub-pages) before planning.",
+          "documents": "Attached documents"
+        }
+      },
       "examples": {
         "label": "Or start from an example — we'll ask follow-up questions:",
         "sales_onboarding": "Onboarding for new sales reps",
