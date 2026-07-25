@@ -87,19 +87,23 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
           HOST="${{ secrets.VPS_HOST }}"
+          # keyscan poblar known_hosts es best-effort: la conectividad
+          # runner→VPS es a veces intermitente. Reintentamos con timeout
+          # generoso, pero NO abortamos si falla — más abajo se usa
+          # StrictHostKeyChecking=accept-new como red de seguridad, así una
+          # falla puntual de keyscan no tumba el deploy entero.
           ok=0
-          for intento in 1 2 3 4 5 6; do
+          for intento in 1 2 3 4 5 6 7 8; do
             echo "==> keyscan intento $intento contra $HOST"
-            if ssh-keyscan -T 15 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null && [ -s ~/.ssh/known_hosts ]; then
+            if ssh-keyscan -T 30 -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null && [ -s ~/.ssh/known_hosts ]; then
               ok=1; break
             fi
-            espera=$((intento * 15))
+            espera=$((intento * 10))
             echo "    sin respuesta — reintento en ${espera}s"
             sleep $espera
           done
           if [ "$ok" != "1" ]; then
-            echo "::error::No se pudo contactar el SSH del VPS tras 6 intentos (posible ban de fail2ban)."
-            exit 1
+            echo "::warning::keyscan no respondió tras 8 intentos; se continúa con accept-new (host key se acepta en la primera conexión)."
           fi
 
           cat > ~/.ssh/config <<SSHCFG
