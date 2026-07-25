@@ -6,6 +6,8 @@
   import { shortenName } from '$lib/utils/functions/string';
   import { Spinner } from '@cio/ui/base/spinner';
   import * as Avatar from '@cio/ui/base/avatar';
+  import UsersIcon from '@lucide/svelte/icons/users';
+  import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import { trackingApi } from '$features/tracking/api/tracking.svelte';
   import type { TrackingAxis, TrackingStatus } from '$features/tracking/utils/types';
 
@@ -52,10 +54,12 @@
     <!-- axis switch -->
     <div class="axis-switch" role="group" aria-label={$t('tracking.title')}>
       <button type="button" aria-pressed={axis === 'student'} onclick={() => (axis = 'student')}>
-        👤 {$t('tracking.axis_student')}
+        <UsersIcon class="size-4" />
+        {$t('tracking.axis_student')}
       </button>
       <button type="button" aria-pressed={axis === 'course'} onclick={() => (axis = 'course')}>
-        📚 {$t('tracking.axis_course')}
+        <BookOpenIcon class="size-4" />
+        {$t('tracking.axis_course')}
       </button>
     </div>
 
@@ -233,6 +237,9 @@
     padding: 6px 14px;
     border-radius: 6px;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
   }
   .axis-switch button[aria-pressed='true'] {
     background: var(--background, #fff);
