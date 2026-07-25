@@ -1,5 +1,5 @@
 import {
-  ApiIcon,
+  // ApiIcon, // Automation (API) menu item hidden for now — see below.
   ChartColumnIcon,
   AttachmentIcon,
   CommunityIcon,
@@ -15,7 +15,7 @@ import {
 } from '@cio/ui/custom/moving-icons';
 
 import type { AccountOrg } from '$features/app/types';
-import BotIcon from '@lucide/svelte/icons/bot';
+// import BotIcon from '@lucide/svelte/icons/bot'; // Automation (MCP) hidden for now.
 import type { Component } from 'svelte';
 import { isActive } from '$lib/utils/functions/app';
 
@@ -166,24 +166,28 @@ export const baseNavConfig: NavItemConfig[] = [
     icon: PeopleIcon,
     matchPattern: '^/org/[^/]+/audience(/.*)?$' // Matches nested routes
   },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.mcp',
-    path: '/mcp',
-    icon: BotIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/mcp(/.*)?$'
-  },
-  {
-    group: 'automation',
-    titleKey: 'automation.tabs.api',
-    path: '/api',
-    icon: ApiIcon,
-    requiresAdmin: true,
-    disableWhenNotAdmin: true,
-    matchPattern: '^/org/[^/]+/api(/.*)?$'
-  },
+  // Automation section (MCP + API) hidden for now — focusing on the platform's
+  // core functionality first. Re-enable by uncommenting these two items; the
+  // "automation" group auto-hides from the sidebar while both are commented out.
+  // (Pages are still URL-blocked via their +layout.server.ts guards.)
+  // {
+  //   group: 'automation',
+  //   titleKey: 'automation.tabs.mcp',
+  //   path: '/mcp',
+  //   icon: BotIcon,
+  //   requiresAdmin: true,
+  //   disableWhenNotAdmin: true,
+  //   matchPattern: '^/org/[^/]+/mcp(/.*)?$'
+  // },
+  // {
+  //   group: 'automation',
+  //   titleKey: 'automation.tabs.api',
+  //   path: '/api',
+  //   icon: ApiIcon,
+  //   requiresAdmin: true,
+  //   disableWhenNotAdmin: true,
+  //   matchPattern: '^/org/[^/]+/api(/.*)?$'
+  // },
   // Zapier hidden for this deployment: the feature is a "coming soon"
   // placeholder (not implemented), so it's removed from the menu and blocked
   // by URL via routes/(app)/org/[slug]/zapier/+layout.server.ts.

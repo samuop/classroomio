@@ -1,21 +1,8 @@
-import type { ListAutomationKeysSuccess } from '$features/automation/utils/types';
-import { classroomio, getApiHeaders } from '$lib/utils/services/api';
-import { safeServerApi } from '$lib/utils/services/api/server';
+import { redirect } from '@sveltejs/kit';
 
-export const load = async ({ parent, cookies }) => {
-  const { orgId } = await parent();
-
-  if (!orgId) {
-    return { keys: [] };
-  }
-
-  const headers = getApiHeaders(cookies, orgId);
-
-  const keysResult = await safeServerApi<ListAutomationKeysSuccess>(() =>
-    classroomio.organization.automation.keys.$get({ query: { type: 'api' } }, headers)
-  );
-
-  return {
-    keys: keysResult.ok ? keysResult.body.data : []
-  };
+// Automation (API keys) is hidden for now — the focus is the platform's core
+// features. Direct URL access is bounced to the org home. Re-enable by restoring
+// the data loader below and uncommenting the API menu item in org-navigation.ts.
+export const load = async ({ params }) => {
+  redirect(307, `/org/${params.slug}`);
 };

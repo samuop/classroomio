@@ -1,27 +1,8 @@
-import type { GetAutomationUsageSuccess, ListAutomationKeysSuccess } from '$features/automation/utils/types';
-import { classroomio, getApiHeaders } from '$lib/utils/services/api';
-import { safeServerApi } from '$lib/utils/services/api/server';
+import { redirect } from '@sveltejs/kit';
 
-export const load = async ({ parent, cookies }) => {
-  const { orgId } = await parent();
-
-  if (!orgId) {
-    return { keys: [], usage: null };
-  }
-
-  const headers = getApiHeaders(cookies, orgId);
-
-  const [keysResult, usageResult] = await Promise.all([
-    safeServerApi<ListAutomationKeysSuccess>(() =>
-      classroomio.organization.automation.keys.$get({ query: { type: 'mcp' } }, headers)
-    ),
-    safeServerApi<GetAutomationUsageSuccess>(() =>
-      classroomio.organization.automation.usage.$get({ query: { type: 'mcp' } }, headers)
-    )
-  ]);
-
-  return {
-    keys: keysResult.ok ? keysResult.body.data : [],
-    usage: usageResult.ok ? usageResult.body.data : null
-  };
+// Automation (MCP) is hidden for now — the focus is the platform's core features.
+// Direct URL access is bounced to the org home. Re-enable by restoring the data
+// loader below and uncommenting the MCP menu item in org-navigation.ts.
+export const load = async ({ params }) => {
+  redirect(307, `/org/${params.slug}`);
 };

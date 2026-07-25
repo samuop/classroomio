@@ -2,55 +2,39 @@
   import { cn } from '../../tools';
 
   interface Props {
-    /** Course slug for attribution (passed as ?utm_content=...). */
-    courseSlug?: string | null;
-    /** Org siteName (or org name) for attribution. */
-    orgSlug?: string | null;
-    /** Localized label. */
+    /** Localized label (e.g. "Developed by"). */
     label?: string;
     /** Brand label shown after the label. */
     brand?: string;
-    /** Link target for the attribution. Defaults to '#'. */
-    brandHref?: string;
-    /** Logo-only footer (narrow sidebars). */
+    /** Brand-text-only footer (narrow sidebars). */
     compact?: boolean;
     /** Row alignment inside the attribution strip. */
     align?: 'center' | 'start';
-    /** Override default utm_source (default mirrors public-course pages). */
-    utmSource?: string;
     class?: string;
+    // Note: attribution is plain text (no logo, no link), so the former
+    // courseSlug/orgSlug/brandHref/utmSource props are no longer used. Kept out
+    // of the interface intentionally; callers may still pass them harmlessly.
+    [key: string]: unknown;
   }
 
   let {
-    courseSlug = null,
-    orgSlug = null,
     label = 'Powered by',
     brand = 'Tensor Tech',
-    brandHref = '#',
     compact = false,
     align = 'center',
-    utmSource = 'public-course',
     class: className
   }: Props = $props();
-
-  const href = $derived(brandHref);
 
   const rowAlignClass = $derived(align === 'start' ? 'ui:justify-start' : 'ui:justify-center');
 </script>
 
 {#if compact}
-  <div class={cn('ui:flex ui:items-center ui:gap-1 ui:w-full', rowAlignClass, className)}>
-    <a
-      {href}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="ui:leading-none ui:opacity-70 ui:hover:opacity-100"
-      aria-label={`${label} ${brand}`}
-    >
-      <img src="/logo-192.png" class="ui:size-6" alt="" />
-    </a>
+  <!-- Collapsed rail: plain brand text (no logo, no link). -->
+  <div class={cn('ui:flex ui:items-center ui:gap-1 ui:w-full ui:text-xs ui:text-muted-foreground', rowAlignClass, className)}>
+    <span class="ui:font-medium ui:leading-none">{brand}</span>
   </div>
 {:else}
+  <!-- Plain "<label> <brand>" attribution — no logo, no link. -->
   <div
     class={cn(
       'ui:px-3 ui:flex ui:items-center ui:gap-1 ui:text-xs ui:text-muted-foreground ui:w-full',
@@ -58,15 +42,7 @@
       className
     )}
   >
-    <img src="/logo-192.png" class="ui:size-6" alt={brand} />
     {label}
-    <a
-      {href}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="ui:font-medium ui:text-muted-foreground ui:underline-offset-2 ui:hover:text-foreground ui:underline"
-    >
-      {brand}
-    </a>
+    <span class="ui:font-medium">{brand}</span>
   </div>
 {/if}
