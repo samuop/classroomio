@@ -229,8 +229,8 @@ export async function createCourse(
 
       await createCourseNewsfeed(
         {
-          content: sanitizeHtml(`<h2>Welcome to this course 🎉&nbsp;</h2>
-<p>Thank you for joining this course and I hope you get the best out of it.</p>`),
+          content: sanitizeHtml(`<h2>Bienvenido a este curso 🎉&nbsp;</h2>
+<p>Gracias por unirte a este curso; espero que le saques el máximo provecho.</p>`),
           courseId: newCourse.id,
           isPinned: true,
           authorId: newMember.id

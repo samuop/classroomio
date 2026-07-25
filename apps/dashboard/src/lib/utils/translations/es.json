@@ -1168,7 +1168,7 @@
         }
       },
       "people": {
-        "title": "gente",
+        "title": "Personas",
         "add": "Añadir",
         "search": "buscar personas",
         "you": "tu",
@@ -2268,8 +2268,8 @@
       "nav_content": "Contenido",
       "nav_attendance": "Asistencia",
       "nav_submissions": "Envíos",
-      "nav_marks": "marcas",
-      "nav_people": "gente",
+      "nav_marks": "Calificaciones",
+      "nav_people": "Personas",
       "nav_analytics": "Analítica",
       "nav_certificates": "Certificados",
       "nav_landing_page": "Página de destino",
@@ -2761,7 +2761,7 @@
     "classroomio_home": "AulaIO Inicio",
     "dashboard": "Panel de control",
     "discussion": "Discusión",
-    "people": "gente",
+    "people": "Personas",
     "goto_lms": "Ir a LMS",
     "goto_home": "Ir a la página de inicio de [[brand]]",
     "login": "Iniciar sesión",
@@ -4072,9 +4072,9 @@
       "submit": "crear"
     },
     "sidebar": {
-      "newsfeed": "suministro de noticias",
+      "newsfeed": "Noticias",
       "courses": "Cursos",
-      "people": "gente",
+      "people": "Personas",
       "settings": "Configuración"
     },
     "status": {

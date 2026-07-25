@@ -48,10 +48,13 @@ import { syncComplianceProgressFromSubmission } from '@api/services/course/compl
 type SubmissionGradingState = 'queued' | 'processing' | 'awaiting_manual' | 'completed' | 'failed';
 type SubmissionOverallStatus = 'auto_graded' | 'manual_required' | 'hybrid';
 
+// Display labels for the instructor grading board (Spanish — the platform's
+// default language). Used only for column titles and email copy; all logic
+// keys off the numeric statusId, never these strings.
 const LEGACY_BOARD_STATUS_LABELS: Record<number, string> = {
-  1: 'Submitted',
-  2: 'In Progress',
-  3: 'Graded'
+  1: 'Enviado',
+  2: 'En progreso',
+  3: 'Calificado'
 };
 
 const LEGACY_STATUS_TO_GRADING_STATE: Record<number, SubmissionGradingState> = {
