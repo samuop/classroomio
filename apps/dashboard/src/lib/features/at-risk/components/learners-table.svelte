@@ -11,9 +11,11 @@
   interface Props {
     rows: AtRiskLearnerRow[];
     reasonFilter?: AtRiskReason | 'all';
+    /** When set, each row is clickable and opens that learner's 360 profile. */
+    onRowClick?: (profileId: string) => void;
   }
 
-  let { rows, reasonFilter = 'all' }: Props = $props();
+  let { rows, reasonFilter = 'all', onRowClick }: Props = $props();
 
   const filtered = $derived(
     reasonFilter === 'all' ? rows : rows.filter((row) => row.reasons.includes(reasonFilter as AtRiskReason))
@@ -60,7 +62,10 @@
         </Table.Header>
         <Table.Body>
           {#each filtered as row (row.profileId)}
-            <Table.Row>
+            <Table.Row
+              class={onRowClick ? 'ui:cursor-pointer' : ''}
+              onclick={onRowClick ? () => onRowClick(row.profileId) : undefined}
+            >
               <Table.Cell>
                 <div class="flex items-center gap-2">
                   <UserAvatar src={row.avatarUrl} alt={row.fullname ?? row.email ?? 'Learner'} class="h-7 w-7" />

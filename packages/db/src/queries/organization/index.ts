@@ -3,3 +3,4 @@ export * from './quiz';
 export * from './invite';
 export * from './automation-key';
 export * from './automation-usage';
+export * from './tracking';

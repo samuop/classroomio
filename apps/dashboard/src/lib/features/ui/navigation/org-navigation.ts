@@ -79,27 +79,15 @@ export const baseNavConfig: NavItemConfig[] = [
     matchPattern: '^/org/[^/]+/dash(/.*)?$'
   },
   {
+    // Unified student-tracking hub. Replaces the old "Estadísticas" drawer
+    // (Compliance + At-risk), which now live as tabs inside /seguimiento. The
+    // hub owns its own tab bar, so this is a single flat nav item.
     group: 'home',
-    titleKey: 'org_navigation.stats',
-    path: '/stats',
+    titleKey: 'org_navigation.tracking',
+    path: '/seguimiento',
     icon: ChartColumnIcon,
-    useHashUrl: true,
-    matchPattern: '^/org/[^/]+/(compliance|at-risk)(/.*)?$',
-    items: [
-      // Analytics is disabled for this deployment; only Compliance + At-risk remain.
-      {
-        titleKey: 'org_navigation.compliance',
-        path: '/compliance',
-        requiresAdmin: true,
-        matchPattern: '^/org/[^/]+/compliance(/.*)?$'
-      },
-      {
-        titleKey: 'org_navigation.at_risk',
-        path: '/at-risk',
-        requiresAdmin: true,
-        matchPattern: '^/org/[^/]+/at-risk(/.*)?$'
-      }
-    ]
+    requiresAdmin: true,
+    matchPattern: '^/org/[^/]+/(seguimiento|compliance|at-risk)(/.*)?$'
   },
   {
     group: 'home',
