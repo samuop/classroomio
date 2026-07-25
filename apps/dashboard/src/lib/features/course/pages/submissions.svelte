@@ -9,11 +9,33 @@
   import type { SubmissionIdData, SubmissionItem, SubmissionSection } from '$features/course/utils/types';
   import { t } from '$lib/utils/functions/translations';
 
-  import { Chip } from '@cio/ui/custom/chip';
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import MarkExerciseModal from '$features/course/components/exercise/mark-exercise-modal.svelte';
   import { STATUS } from '$features/course/components/exercise/constants';
   import { onMount } from 'svelte';
+  import BookOpenIcon from '@lucide/svelte/icons/book-open';
+  import InboxIcon from '@lucide/svelte/icons/inbox';
+
+  // Per-column visual treatment, mirroring the student exercises board so both
+  // Kanbans share one language. Keyed by the board statusId (1/2/3).
+  const columnStyle: Record<number, { dot: string; badge: string; accent: string }> = {
+    1: {
+      dot: 'bg-orange-500',
+      badge: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+      accent: 'bg-orange-500'
+    },
+    2: {
+      dot: 'bg-amber-400',
+      badge: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+      accent: 'bg-amber-400'
+    },
+    3: {
+      dot: 'bg-emerald-500',
+      badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+      accent: 'bg-emerald-500'
+    }
+  };
+  const styleFor = (id: number) => columnStyle[id] ?? columnStyle[1];
 
   interface Props {
     courseId: string;
@@ -212,82 +234,103 @@
   {isSaving}
 />
 
-<div class="flex items-center overflow-x-scroll">
+<!-- Instructor grading board — shares the student board's visual language
+     (accent bar, count badge, clean cards) while keeping drag&drop to move a
+     submission between statuses and click-to-open the grading modal. -->
+<div class="grid w-full grid-cols-1 gap-4 pb-4 md:grid-cols-3">
   {#each sections as { id, title, items }, idx (id)}
+    {@const style = styleFor(id)}
     <div
-      class="section ui:bg-muted mr-3 h-80 overflow-hidden rounded-md p-3"
+      class="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60 dark:border-neutral-800 dark:bg-neutral-900/40"
       animate:flip={{ duration: flipDurationMs }}
     >
-      <div class="mb-2 flex items-center">
-        <Chip value={items.length} />
-        <p class="ml-2 dark:text-white">{title}</p>
-      </div>
+      <!-- accent bar -->
+      <div class="h-1 w-full {style.accent}"></div>
+
+      <!-- column header -->
       <div
-        class="content mb-3 overflow-y-auto pr-2"
+        class="flex items-center justify-between gap-2 border-b border-gray-200 bg-white/70 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60"
+      >
+        <div class="flex items-center gap-2">
+          <span class="size-2 rounded-full {style.dot}"></span>
+          <p class="text-sm font-semibold text-gray-800 dark:text-neutral-100">{title}</p>
+        </div>
+        <span
+          class="inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold {style.badge}"
+        >
+          {items.length}
+        </span>
+      </div>
+
+      <!-- column body: dnd zone; grows with content (page scrolls, not column) -->
+      <div
+        class="min-h-32 flex-1 space-y-2.5 px-3 py-3"
         use:dndzone={{
           items,
           flipDurationMs,
-          dropTargetStyle: { outline: 'blue' }
+          dropTargetStyle: {
+            outline: 'none',
+            'background-color': 'rgba(59,91,255,0.06)',
+            'border-radius': '0.75rem'
+          }
         }}
         onconsider={handleDndConsiderCards(idx)}
         onfinalize={handleDndFinalizeCards(idx)}
       >
-        {#each items as item (item.id)}
-          <div
-            class="{item.isEarly
-              ? 'border-none'
-              : 'border border-red-700'} mx-0 my-2 w-full rounded-md bg-white px-3 py-3 dark:bg-neutral-800"
-            animate:flip={{ duration: flipDurationMs }}
-          >
-            <a
-              class="mb-2 flex w-full cursor-pointer items-center text-black"
-              href={`${page.url.pathname}?submissionId=${item.id}`}
-            >
-              <UserAvatar src={item.student.avatarUrl} alt="Student avatar" class="h-6 w-6" />
-              <p class="ml-2 text-sm dark:text-white">
-                {item.student.username}
-              </p>
-            </a>
-            <a class="ui:text-primary text-md" href="{page.url.pathname}?submissionId={item.id}">
-              {item.exercise.title}
-            </a>
-            <a
-              class="my-2 flex items-center text-black no-underline hover:underline"
-              href={`/courses/${courseApi.course?.id}/exercises/${item.exercise.id}`}
-            >
-              <p class="text-grey text-sm dark:text-white">{item.exercise.title}</p>
-            </a>
-            {#if item.lesson}
-              <p class="text-grey text-sm dark:text-white">#{item.lesson.title}</p>
-            {/if}
-            {#if getWorkflowHintKey(item)}
-              <p class="ui:text-muted-foreground text-xs">
-                {$t(getWorkflowHintKey(item))}
-              </p>
-            {/if}
-            <p class="text-xs text-gray-500 dark:text-white">
-              {item.submittedAt}
+        {#if items.length === 0}
+          <div class="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center">
+            <InboxIcon class="size-7 text-gray-300 dark:text-neutral-600" />
+            <p class="text-xs text-gray-400 dark:text-neutral-500">
+              {$t('exercises.empty_column')}
             </p>
           </div>
-        {/each}
+        {:else}
+          {#each items as item (item.id)}
+            <div
+              class="group cursor-grab rounded-lg border bg-white p-3 transition-all hover:shadow-sm active:cursor-grabbing dark:bg-neutral-800
+                {item.isEarly
+                ? 'border-gray-200 hover:border-primary/40 dark:border-neutral-700 dark:hover:border-primary/50'
+                : 'border-red-500/60 dark:border-red-500/50'}"
+              animate:flip={{ duration: flipDurationMs }}
+            >
+              <!-- student -->
+              <div class="mb-2 flex items-center gap-2">
+                <UserAvatar src={item.student.avatarUrl} alt={item.student.username} class="h-6 w-6" />
+                <p class="truncate text-xs font-medium text-gray-700 dark:text-neutral-300">
+                  {item.student.username}
+                </p>
+              </div>
+
+              <!-- exercise title → opens grading modal -->
+              <a
+                class="text-primary flex items-start gap-1 text-sm leading-snug font-medium hover:underline"
+                href="{page.url.pathname}?submissionId={item.id}"
+              >
+                {item.exercise.title}
+              </a>
+
+              <!-- lesson meta -->
+              {#if item.lesson}
+                <div class="mt-2 flex items-center gap-1.5 text-xs text-gray-500 dark:text-neutral-400">
+                  <BookOpenIcon class="size-3.5 shrink-0" />
+                  <span class="truncate">{item.lesson.title}</span>
+                </div>
+              {/if}
+
+              {#if getWorkflowHintKey(item)}
+                <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {$t(getWorkflowHintKey(item))}
+                </p>
+              {/if}
+
+              <!-- timestamp -->
+              <p class="mt-2 text-[11px] text-gray-400 dark:text-neutral-500">
+                {item.submittedAt}
+              </p>
+            </div>
+          {/each}
+        {/if}
       </div>
     </div>
   {/each}
 </div>
-
-<style>
-  .section {
-    max-width: 355px;
-    min-width: 355px;
-    height: 75vh;
-  }
-
-  .content {
-    height: 95%;
-  }
-  @media screen and (max-width: 768px) {
-    .section {
-      min-width: 250px;
-    }
-  }
-</style>

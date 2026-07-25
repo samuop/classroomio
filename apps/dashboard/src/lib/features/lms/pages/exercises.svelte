@@ -158,17 +158,17 @@
     </Empty.Header>
   </Empty.Root>
 {:else}
-  <div class="flex w-full gap-4 overflow-x-auto pb-4">
+  <div class="grid w-full grid-cols-1 gap-4 pb-4 md:grid-cols-2 xl:grid-cols-4">
     {#each sections as section (section.id)}
       <div
-        class="flex h-[72vh] w-[320px] min-w-[320px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60 dark:border-neutral-800 dark:bg-neutral-900/40"
+        class="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50/60 dark:border-neutral-800 dark:bg-neutral-900/40"
       >
         <!-- accent bar -->
         <div class="h-1 w-full {section.accent}"></div>
 
-        <!-- column header -->
+        <!-- column header (sticky so the label stays while the page scrolls) -->
         <div
-          class="flex items-center justify-between gap-2 border-b border-gray-200 bg-white/60 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900/60"
+          class="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-gray-200 bg-white/80 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/80"
         >
           <div class="flex items-center gap-2">
             <span class="size-2 rounded-full {section.dot}"></span>
@@ -181,8 +181,8 @@
           </span>
         </div>
 
-        <!-- column body -->
-        <div class="flex-1 space-y-2.5 overflow-y-auto px-3 py-3">
+        <!-- column body: grows with its content; the page scrolls, not the column -->
+        <div class="flex-1 space-y-2.5 px-3 py-3">
           {#if loading}
             {#each [0, 1, 2] as i (i)}
               <div class="rounded-lg border border-gray-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-800">
@@ -192,7 +192,7 @@
               </div>
             {/each}
           {:else if section.items.length === 0}
-            <div class="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+            <div class="flex min-h-32 flex-col items-center justify-center gap-2 px-4 text-center">
               <InboxIcon class="size-7 text-gray-300 dark:text-neutral-600" />
               <p class="text-xs text-gray-400 dark:text-neutral-500">{$t('exercises.empty_column')}</p>
             </div>
