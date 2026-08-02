@@ -3263,6 +3263,11 @@ export const aiChatDocument = pgTable(
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type').notNull(),
     text: text().notNull(),
+    /** SHA-256 of the extracted text (first 16 hex chars are enough for
+     * deduplication; full hash lives in the cache handle). Two users
+     * uploading the same PDF to the same course end up with the same
+     * contentHash and share the same cache handle. */
+    contentHash: text('content_hash'),
     wordCount: integer('word_count').notNull().default(0),
     pageCount: integer('page_count'),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
@@ -3273,7 +3278,8 @@ export const aiChatDocument = pgTable(
       foreignColumns: [aiChatConversation.id],
       name: 'ai_chat_document_conversation_id_fkey'
     }).onDelete('cascade'),
-    index('idx_ai_chat_document_conversation').on(table.conversationId)
+    index('idx_ai_chat_document_conversation').on(table.conversationId),
+    index('idx_ai_chat_document_course_hash').on(table.courseId, table.contentHash)
   ]
 );
 

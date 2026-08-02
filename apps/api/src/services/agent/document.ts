@@ -7,11 +7,11 @@ import {
   SUPPORTED_DOCUMENT_TYPES
 } from '@cio/ai-assistant';
 import type { DocumentUploadResult } from '@cio/ai-assistant';
-import { agentDocumentKey, agentDocumentSummaryKey } from '@api/utils/redis/key-generators';
+import { agentDocumentKey, agentDocumentSummaryKey, computeContentHash } from '@api/utils/redis/key-generators';
 import { summarizeDocument } from '@api/services/agent/summarize';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import type { RedisClient } from '@api/utils/redis/redis';
-import { createChatDocument, getChatDocument } from '@cio/db/queries/agent';
+import { createChatDocument, getChatDocument, findChatDocumentByContentHash } from '@cio/db/queries/agent';
 import { generateFileKey } from '@api/utils/upload';
 import { uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
@@ -119,6 +119,41 @@ export async function parseAndStoreDocument(
   const parsed = await parseDocument(file);
   const { text: extractedText, mimeType, pageCount, wordCount, textPreview, truncated } = parsed;
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Hash the extracted text so users in the same course can share cache
+  // entries for identical files. Same content → same hash → same cache key.
+  const contentHash = computeContentHash(extractedText);
+
+  // Multi-user dedup: if any user in the same course already uploaded a
+  // document with the same content, return that documentId instead of
+  // creating a duplicate row + S3 asset. The first user keeps the original
+  // reference; subsequent uploads only bump the conversation attachment.
+  const existing = await findChatDocumentByContentHash(courseId, contentHash);
+  if (existing) {
+    // Make the cached text available for this user via the standard Redis
+    // key, then return the existing id.
+    await redis.set(
+      agentDocumentKey(existing.id),
+      JSON.stringify({
+        text: existing.text,
+        fileName: existing.fileName,
+        mimeType: existing.mimeType,
+        userId: existing.userId,
+        uploadedAt: existing.createdAt
+      }),
+      { EX: DOCUMENT_REDIS_TTL }
+    );
+    return {
+      documentId: existing.id,
+      fileName: existing.fileName,
+      mimeType: existing.mimeType,
+      pageCount: existing.pageCount,
+      wordCount: existing.wordCount,
+      textPreview,
+      truncated
+    };
+  }
+
   const documentId = nanoid();
 
   // Persist the original file to S3 and register it as an asset so it shows
@@ -173,6 +208,7 @@ export async function parseAndStoreDocument(
     fileName: file.name,
     mimeType,
     text: extractedText,
+    contentHash,
     wordCount,
     pageCount
   });

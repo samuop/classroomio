@@ -12,7 +12,7 @@ import {
   listChatDocumentsByCourse,
   listChatDocumentsByConversation,
   deleteChatDocument,
-  getChatDocumentCourseId,
+  getChatDocumentCacheKey,
   type ChatDocumentRecord
 } from '@cio/db/queries/agent/chat-document';
 import {
@@ -208,17 +208,23 @@ export const agentDocumentsRouter = new Hono()
         const user = c.get('user')!;
         const { documentId } = c.req.valid('param');
 
-        // Auth: confirm the document belongs to this user.
-        const courseId = await getChatDocumentCourseId(documentId);
-        if (!courseId) {
+        // Auth: confirm the document belongs to this user OR is shared
+        // across users in the same course (multi-user shared cache).
+        const cacheKey = await getChatDocumentCacheKey(documentId);
+        if (!cacheKey) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
-        const owned = await listChatDocumentsByCourse(courseId, user.id);
+        const owned = await listChatDocumentsByCourse(cacheKey.courseId, user.id);
         if (!owned.some((d) => d.id === documentId)) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
 
-        const status = await getDocumentCacheStatus(documentId, redis);
+        const status = await getDocumentCacheStatus(
+          documentId,
+          redis,
+          cacheKey.courseId,
+          cacheKey.contentHash ?? undefined
+        );
         return c.json({ success: true as const, data: status });
       } catch (error) {
         return handleError(c, error, 'Failed to read cache status');
@@ -246,16 +252,21 @@ export const agentDocumentsRouter = new Hono()
         const user = c.get('user')!;
         const { documentId } = c.req.valid('param');
 
-        const courseId = await getChatDocumentCourseId(documentId);
-        if (!courseId) {
+        const cacheKey = await getChatDocumentCacheKey(documentId);
+        if (!cacheKey) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
-        const owned = await listChatDocumentsByCourse(courseId, user.id);
+        const owned = await listChatDocumentsByCourse(cacheKey.courseId, user.id);
         if (!owned.some((d) => d.id === documentId)) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
 
-        const status = await refreshDocumentCache(documentId, redis);
+        const status = await refreshDocumentCache(
+          documentId,
+          redis,
+          cacheKey.courseId,
+          cacheKey.contentHash ?? undefined
+        );
         return c.json({ success: true as const, data: status });
       } catch (error) {
         return handleError(c, error, 'Failed to refresh cache');

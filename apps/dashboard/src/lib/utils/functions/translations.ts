@@ -68,7 +68,7 @@ const {
   initialized,
   translations,
   loadTranslations
-} = new i18n(config);
+} = new i18n(config, { fallbackLocale: 'en' });
 
 /**
  * Replaces the brand placeholder with the configured brand name. Translations

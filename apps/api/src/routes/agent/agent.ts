@@ -523,28 +523,31 @@ const agentCoreRouter = new Hono()
       const documentIds = collectDocumentIds(messages, context?.documentId);
       const existingSections = await listCourseSections(courseId);
 
-      // Cache activation is PHASE-based, not "is a document attached?" (user
-      // policy: don't create a cache for a one-off edit — storage costs money).
-      // A Gemini cache is worth creating ONLY when the same material is read many
-      // times, which is exactly two situations:
-      //   1. Building an approved plan (hasApprovedPlan) — dozens of calls read
-      //      the material. Adding NEW sections to an existing course also lands
-      //      here, because bulk creation requires an approved plan first.
-      //   2. Planning a course FROM a document on an EMPTY course (a genuine
-      //      build-from-scratch). Requiring the course to be empty is what keeps
-      //      "next day I attach a file just to EDIT/extend the course" OUT of the
-      //      cache: on a course that already has content, a newly attached doc is
-      //      edit material → it goes inline now (and RAG later, step 6), not a cache.
-      // A single-lesson edit (lessonId present) is never cache-eligible.
+      // Cache activation: as long as a document is attached and the role is TEACHER
+      // (not student tutor) and we're not editing a single lesson, the cache is
+      // worth activating. Reasons:
+//   1. Building an approved plan (hasApprovedPlan) — dozens of tool calls read
+//      the same material. Cache hits compound.
+//   2. Planning a course FROM a document on an EMPTY course (genuine
+//      build-from-scratch). Cache helps the first chat turn too.
+//   3. EDITING an existing course that has a source attached — every edit
+//      turn reads the source material again. Without a cache, each turn
+//      re-bills the full ~100k-token prompt. With a cache, the material is
+//      paid once per 5-min window.
+//   4. Single-lesson edits (lessonId present) are NEVER cache-eligible —
+//      they're cheap inline reads and the cache doesn't pay back there.
+// The policy used to say "only on empty course" to avoid paying for one-off
+//      reads. That's obsolete now: the Sources panel pins documents to the
+//      course so the instructor WILL re-read them across edits, and the cache
+//      handle is keyed per-(org, course, contentHash) so it costs the org
+//      nothing to maintain.
       const hasApprovedPlanForCache =
         role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
-      const isPlanningEmptyCourseFromDoc =
-        role === AgentRole.TEACHER &&
-        !!context?.documentId &&
-        !context?.lessonId &&
-        !hasApprovedPlanForCache &&
-        existingSections.length === 0;
-      const cacheEligiblePhase = hasApprovedPlanForCache || isPlanningEmptyCourseFromDoc;
+      const hasDocumentAttached = !!context?.documentId;
+      const isSingleLessonEdit =
+        role === AgentRole.TEACHER && !!context?.lessonId;
+      const cacheEligiblePhase =
+        role === AgentRole.TEACHER && hasDocumentAttached && !isSingleLessonEdit;
 
       // Capa 2b: for a LARGE current document under Gemini, place it in an
       // explicit cache and reference it via providerOptions instead of re-sending

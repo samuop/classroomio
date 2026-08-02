@@ -5,6 +5,7 @@
 
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
+import { createHash } from 'node:crypto';
 
 function normalizeIp(value: string | null | undefined): string | null {
   const ip = value?.trim();
@@ -121,9 +122,35 @@ export const agentDocumentSummaryKey = (documentId: string): string => {
  * cache_control). Lets us reference an existing cache across turns instead of
  * re-creating it. TTL is aligned to the cache's own TTL so a stale handle
  * self-evicts.
+ *
+ * NOTE: this key is keyed by `documentId`. With multi-user sharing on the
+ * same course, prefer `agentDocumentCacheKeyByContent` (keyed by course +
+ * content hash) so two users uploading the same PDF share one cache.
+ * Kept as a fallback for single-user paths and for backward compat with
+ * handles written before the migration.
  */
 export const agentDocumentCacheKey = (documentId: string): string => {
   return `agent:document:cache:${documentId}`;
+};
+
+/**
+ * Multi-user shared cache key. Same idea as `agentDocumentCacheKey` but scoped
+ * to (courseId, contentHash) instead of documentId. Two users of the same
+ * course uploading the same PDF (byte-for-byte) end up sharing one cache
+ * entry — the second upload doesn't pay the cache-creation cost and the
+ * second user's chat turns read at the cache_read price.
+ *
+ * Format: `agent:document:cache:course:<courseId>:<hash>`.
+ * `hash` is the first 16 hex chars of SHA-256 (collision-resistant for our
+ * purposes; full 64 chars is overkill for a Redis key length budget).
+ */
+export const agentDocumentCacheKeyByContent = (
+  courseId: string,
+  contentHash: string
+): string => {
+  // Trim hash defensively so callers can't blow up the key length.
+  const safeHash = contentHash.replace(/[^a-f0-9]/gi, '').slice(0, 32);
+  return `agent:document:cache:course:${courseId}:${safeHash}`;
 };
 
 /**
@@ -132,6 +159,22 @@ export const agentDocumentCacheKey = (documentId: string): string => {
 export const agentChatKeyGenerator = (c: Context): string => {
   const baseKey = userKeyGenerator(c);
   return `${baseKey}:agent:chat`;
+};
+
+/**
+ * SHA-256 of the given string, returned as hex. Used by the Sources panel
+ * to deduplicate uploads across users of the same course: if Alice and Bob
+ * both upload the same PDF (byte-for-byte) to the same course, they end up
+ * with the same content hash and the same shared cache handle.
+ *
+ * Empty input returns an empty hash so callers can use it before the upload
+ * completes.
+ */
+export const computeContentHash = (text: string): string => {
+  if (!text) return '';
+  // Use Node's built-in crypto (sync — text is small enough; the PDF-parsed
+  // text is usually <1MB and hashing 1MB takes ~5ms).
+  return createHash('sha256').update(text, 'utf8').digest('hex');
 };
 
 // ─── Dashboard / analytics cache ─────────────────────────────────────────────

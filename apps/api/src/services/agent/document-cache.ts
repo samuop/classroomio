@@ -1,5 +1,8 @@
 import { resolveModelName, AIProvider } from '@cio/ai-assistant';
-import { agentDocumentCacheKey } from '@api/utils/redis/key-generators';
+import {
+  agentDocumentCacheKey,
+  agentDocumentCacheKeyByContent
+} from '@api/utils/redis/key-generators';
 import { getDocumentText } from '@api/services/agent/document';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -74,6 +77,9 @@ interface GeminiCacheHandle {
 interface AnthropicCacheHandle {
   type: 'anthropic';
   documentId: string;
+  /** Optional: when the handle is shared across users via contentHash. */
+  courseId?: string;
+  contentHash?: string;
   expireAt: number; // epoch ms
 }
 
@@ -272,7 +278,6 @@ async function ensureGeminiDocumentCache(params: {
 // ────────────────────────────────────────────────────────────────────────────
 // Anthropic-compatible backend (MiniMax-M3, Claude, etc.)
 // ────────────────────────────────────────────────────────────────────────────
-
 /**
  * The Anthropic-compatible backend is *implicit*: the cache lives server-side
  * and is created when the request carries a `cache_control: ephemeral` block.
@@ -282,51 +287,93 @@ async function ensureGeminiDocumentCache(params: {
  *
  * If the server already evicted the cache (e.g. > 5 min idle), the next call
  * simply creates a new one; the only "cost" is one extra cache_write charge.
+ *
+ * Multi-user sharing: when `courseId` + `contentHash` are passed, the cache
+ * handle is keyed on (courseId, contentHash) so two users uploading the same
+ * PDF to the same course share one cache. Falls back to the per-document
+ * key when those are missing (single-user / legacy paths).
  */
 async function ensureAnthropicDocumentCache(params: {
   documentId: string;
+  courseId?: string;
+  contentHash?: string;
   redis: RedisClient;
 }): Promise<AnthropicCacheHandle | null> {
-  const redisKey = agentDocumentCacheKey(params.documentId);
+  // Prefer the shared (courseId, contentHash) key — that's the future-proof
+  // path. Fall back to the per-documentId key for backward compat with
+  // handles written before this migration.
+  const sharedKey =
+    params.courseId && params.contentHash
+      ? agentDocumentCacheKeyByContent(params.courseId, params.contentHash)
+      : null;
+  const legacyKey = agentDocumentCacheKey(params.documentId);
 
+  // Try the shared key first.
+  if (sharedKey) {
+    try {
+      const raw = await params.redis.get(sharedKey);
+      if (raw) {
+        const handle = JSON.parse(raw) as CacheHandle;
+        if (
+          handle.type === 'anthropic' &&
+          handle.expireAt > Date.now() + 30_000
+        ) {
+          // Slide the local handle forward — it represents the freshness of
+          // the server-side cache as far as we're willing to trust it.
+          const renewed: AnthropicCacheHandle = {
+            ...handle,
+            expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
+          };
+          try {
+            await params.redis.set(sharedKey, JSON.stringify(renewed), {
+              EX: CACHE_TTL_SECONDS
+            });
+          } catch (err) {
+            console.error('[document-cache] anthropic redis renew-write error:', err);
+          }
+          return renewed;
+        }
+      }
+    } catch (err) {
+      console.error(
+        '[document-cache] anthropic redis read error (continuing to create handle):',
+        err
+      );
+    }
+  }
+
+  // Also check the legacy key — backward compat for handles written before
+  // the migration. Read-only: if found, return it as-is (no renew so we
+  // don't accidentally promote a legacy handle into the shared namespace).
   try {
-    const raw = await params.redis.get(redisKey);
-    if (raw) {
-      const handle = JSON.parse(raw) as CacheHandle;
+    const legacy = await params.redis.get(legacyKey);
+    if (legacy) {
+      const handle = JSON.parse(legacy) as CacheHandle;
       if (
         handle.type === 'anthropic' &&
         handle.documentId === params.documentId &&
         handle.expireAt > Date.now() + 30_000
       ) {
-        // Slide the local handle forward — it represents the freshness of the
-        // server-side cache as far as we're willing to trust it. Unlike the
-        // Gemini backend (which makes an HTTP PATCH to renew), this is just a
-        // Redis SET, so we always do it: even within the same tick a renew
-        // bumps expireAt and is a no-op semantically.
-        const renewed: AnthropicCacheHandle = {
-          ...handle,
-          expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
-        };
-        try {
-          await params.redis.set(redisKey, JSON.stringify(renewed), { EX: CACHE_TTL_SECONDS });
-        } catch (err) {
-          console.error('[document-cache] anthropic redis renew-write error:', err);
-        }
-        return renewed;
+        return handle;
       }
     }
-  } catch (err) {
-    console.error('[document-cache] anthropic redis read error (continuing to create handle):', err);
+  } catch {
+    // Ignore — fall through to create a new handle.
   }
 
+  // Create a fresh handle in the shared namespace if we have the
+  // (courseId, contentHash), otherwise fall back to per-document.
   const handle: AnthropicCacheHandle = {
     type: 'anthropic',
     documentId: params.documentId,
+    courseId: params.courseId,
+    contentHash: params.contentHash,
     expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
   };
+  const writeKey = sharedKey ?? legacyKey;
 
   try {
-    await params.redis.set(redisKey, JSON.stringify(handle), { EX: CACHE_TTL_SECONDS });
+    await params.redis.set(writeKey, JSON.stringify(handle), { EX: CACHE_TTL_SECONDS });
   } catch (err) {
     console.error('[document-cache] anthropic redis write error (handle not persisted):', err);
   }
@@ -348,19 +395,28 @@ async function ensureAnthropicDocumentCache(params: {
  * - Anthropic-compatible: the server-side cache expires on its own TTL; we
  *   just clear the local Redis handle.
  */
-export async function releaseDocumentCaches(documentIds: string[], redis: RedisClient): Promise<void> {
+export async function releaseDocumentCaches(
+  documentIds: string[],
+  redis: RedisClient,
+  courseId?: string,
+  contentHash?: string
+): Promise<void> {
   for (const documentId of documentIds) {
-    const redisKey = agentDocumentCacheKey(documentId);
+    const legacyKey = agentDocumentCacheKey(documentId);
+    const sharedKey =
+      courseId && contentHash ? agentDocumentCacheKeyByContent(courseId, contentHash) : null;
     try {
-      const raw = await redis.get(redisKey);
-      if (raw) {
-        const handle = JSON.parse(raw) as CacheHandle;
-        if (handle.type === 'gemini' && handle.cacheName) {
-          await deleteGeminiCache(handle.cacheName);
+      for (const redisKey of [legacyKey, sharedKey].filter(Boolean) as string[]) {
+        const raw = await redis.get(redisKey);
+        if (raw) {
+          const handle = JSON.parse(raw) as CacheHandle;
+          if (handle.type === 'gemini' && handle.cacheName) {
+            await deleteGeminiCache(handle.cacheName);
+          }
+          // Anthropic: nothing to delete on the server; the handle is local-only.
         }
-        // Anthropic: nothing to delete on the server; the handle is local-only.
+        await redis.del(redisKey);
       }
-      await redis.del(redisKey);
     } catch (err) {
       console.error(`[document-cache] release error for document ${documentId}:`, err);
     }
@@ -388,9 +444,11 @@ export interface DocumentCacheStatus {
 
 export async function getDocumentCacheStatus(
   documentId: string,
-  redis: RedisClient
+  redis: RedisClient,
+  courseId?: string,
+  contentHash?: string
 ): Promise<DocumentCacheStatus> {
-  const handle = await readCacheHandle(documentId, redis);
+  const handle = await readCacheHandle(documentId, redis, courseId, contentHash);
   if (!handle) {
     return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
   }
@@ -406,8 +464,21 @@ export async function getDocumentCacheStatus(
   };
 }
 
-async function readCacheHandle(documentId: string, redis: RedisClient): Promise<CacheHandle | null> {
+async function readCacheHandle(
+  documentId: string,
+  redis: RedisClient,
+  courseId?: string,
+  contentHash?: string
+): Promise<CacheHandle | null> {
   try {
+    // Prefer the shared (courseId, contentHash) key when available so multi-user
+    // paths read from the same handle. Fall back to per-document for legacy.
+    if (courseId && contentHash) {
+      const sharedRaw = await redis.get(
+        agentDocumentCacheKeyByContent(courseId, contentHash)
+      );
+      if (sharedRaw) return JSON.parse(sharedRaw) as CacheHandle;
+    }
     const raw = await redis.get(agentDocumentCacheKey(documentId));
     if (!raw) return null;
     return JSON.parse(raw) as CacheHandle;
@@ -426,21 +497,28 @@ async function readCacheHandle(documentId: string, redis: RedisClient): Promise<
  */
 export async function refreshDocumentCache(
   documentId: string,
-  redis: RedisClient
+  redis: RedisClient,
+  courseId?: string,
+  contentHash?: string
 ): Promise<DocumentCacheStatus> {
   // Drop the existing handle. For Gemini this also DELETEs the server-side
   // cachedContent so we don't keep paying for storage. For Anthropic the
   // server cache expires on its own TTL; we just clear our local handle.
-  await releaseDocumentCaches([documentId], redis);
+  await releaseDocumentCaches([documentId], redis, courseId, contentHash);
 
   // Create a fresh handle on the way out — the Sources UI needs to render
   // the new "cached" badge immediately without forcing a chat turn first.
-  const cached = await ensureAnthropicDocumentCache({ documentId, redis });
+  const cached = await ensureAnthropicDocumentCache({
+    documentId,
+    courseId,
+    contentHash,
+    redis
+  });
   if (!cached) {
     return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
   }
 
-  return getDocumentCacheStatus(documentId, redis);
+  return getDocumentCacheStatus(documentId, redis, courseId, contentHash);
 }
 
 /**
@@ -482,7 +560,7 @@ export interface ReconcileResult {
  *     (skipped if there was nothing to release)
  */
 export async function reconcileCourseSourceCache(
-  documents: Array<{ id: string; text: string; updatedAt?: string }>,
+  documents: Array<{ id: string; text: string; courseId?: string; contentHash?: string }>,
   redis: RedisClient
 ): Promise<ReconcileResult[]> {
   const results: ReconcileResult[] = [];
@@ -502,16 +580,16 @@ export async function reconcileCourseSourceCache(
 }
 
 async function reconcileOneDocument(
-  doc: { id: string; text: string; updatedAt?: string },
+  doc: { id: string; text: string; courseId?: string; contentHash?: string },
   redis: RedisClient
 ): Promise<ReconcileResult> {
   const eligibility = classifyDocumentForCache(doc.text);
-  const existingHandle = await readCacheHandle(doc.id, redis);
+  const existingHandle = await readCacheHandle(doc.id, redis, doc.courseId, doc.contentHash);
 
   // Document too small to cache → drop any handle we may have left over.
   if (eligibility === 'too_small' || eligibility === 'over_limit') {
     if (existingHandle) {
-      await releaseDocumentCaches([doc.id], redis);
+      await releaseDocumentCaches([doc.id], redis, doc.courseId, doc.contentHash);
       return { documentId: doc.id, action: 'released', reason: eligibility, status: null };
     }
     return { documentId: doc.id, action: 'skipped', reason: eligibility, status: null };
@@ -519,7 +597,12 @@ async function reconcileOneDocument(
 
   // No handle at all → create one.
   if (!existingHandle) {
-    const fresh = await ensureAnthropicDocumentCache({ documentId: doc.id, redis });
+    const fresh = await ensureAnthropicDocumentCache({
+      documentId: doc.id,
+      courseId: doc.courseId,
+      contentHash: doc.contentHash,
+      redis
+    });
     if (!fresh) {
       return { documentId: doc.id, action: 'skipped', reason: 'handle_create_failed', status: null };
     }
@@ -527,14 +610,19 @@ async function reconcileOneDocument(
       documentId: doc.id,
       action: 'rebuilt',
       reason: 'no_handle',
-      status: await getDocumentCacheStatus(doc.id, redis)
+      status: await getDocumentCacheStatus(doc.id, redis, doc.courseId, doc.contentHash)
     };
   }
 
   // Handle exists. If it's expired, rebuild.
   if (existingHandle.expireAt <= Date.now()) {
-    await releaseDocumentCaches([doc.id], redis);
-    const fresh = await ensureAnthropicDocumentCache({ documentId: doc.id, redis });
+    await releaseDocumentCaches([doc.id], redis, doc.courseId, doc.contentHash);
+    const fresh = await ensureAnthropicDocumentCache({
+      documentId: doc.id,
+      courseId: doc.courseId,
+      contentHash: doc.contentHash,
+      redis
+    });
     if (!fresh) {
       return { documentId: doc.id, action: 'skipped', reason: 'handle_create_failed', status: null };
     }
@@ -542,7 +630,7 @@ async function reconcileOneDocument(
       documentId: doc.id,
       action: 'rebuilt',
       reason: 'expired',
-      status: await getDocumentCacheStatus(doc.id, redis)
+      status: await getDocumentCacheStatus(doc.id, redis, doc.courseId, doc.contentHash)
     };
   }
 
@@ -553,7 +641,7 @@ async function reconcileOneDocument(
     documentId: doc.id,
     action: 'kept',
     reason: null,
-    status: await getDocumentCacheStatus(doc.id, redis)
+    status: await getDocumentCacheStatus(doc.id, redis, doc.courseId, doc.contentHash)
   };
 }
 

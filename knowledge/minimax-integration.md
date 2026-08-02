@@ -5,7 +5,7 @@
 > this end-to-end before touching the AI agent code — these are the gotchas that
 > cost us real debugging time.
 
-**Last major update**: 2026-08-01 (after the cache / sources-panel sprint)
+**Last major update**: 2026-08-02 (multi-user cache sharing sprint)
 
 ---
 
@@ -137,7 +137,7 @@ critical bit:
 
 ```typescript
 ...(isAnthropicCompatible && hasInlineDocumentContext
-  ? { providerOptions: { anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } } } }
+  ? { providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } } }
   : {})
 ```
 
@@ -150,25 +150,10 @@ shape. Lesson: omit `ttl` when targeting MiniMax.
 
 ### Conversation-id vs document-id scoping
 
-The cache is keyed on the **documentId**, not the conversationId. So opening
-a brand-new chat and re-sending the same PDF will hit the cache **if the
-PDF was uploaded within the last 5 minutes**. This is great for our flow
-because the Sources panel is shared across all conversations in a course.
-
-### Cache handle in Redis (Anthropic-compatible backend)
-
-For MiniMax/Claude we only store a **local handle** in Redis (a marker
-saying "this document is currently cacheable"). We do NOT call any
-server-side endpoint to create the cache — MiniMax creates it implicitly on
-the first request that includes the `cache_control` hint. See:
-
-- `apps/api/src/services/agent/document-cache.ts:286` —
-  `ensureAnthropicDocumentCache` (Redis-only, no HTTP call)
-- `apps/api/src/services/agent/document-cache.ts:415` —
-  `resolveDocumentCache` returns `providerOptions: { anthropic: { cacheControl: ... } }`
-  and (now) **does NOT** set `excludeDocumentId` for the Anthropic-compatible
-  backend (older code did, which silently broke the cache by removing the
-  document text from the prompt).
+The cache handle is keyed on **`(courseId, contentHash)`** (multi-user shared
+cache) **OR** `(documentId)` (legacy / single-user fallback). Same content
+uploaded to the same course shares one cache handle across users — see
+section 11 below for the full multi-user architecture.
 
 ---
 
@@ -200,6 +185,7 @@ asset_id          uuid FK → asset (S3 object)
 file_name         text
 mime_type         text
 text              text  (full extracted text)
+content_hash      text  (SHA-256 of text — for multi-user dedup, see §11)
 word_count        int
 page_count        int
 created_at        timestamp with timezone
@@ -207,9 +193,12 @@ created_at        timestamp with timezone
 
 The `course_id` denormalization is what makes the Sources panel query
 (`WHERE course_id = ? AND user_id = ?`) a single-index lookup instead of a join
-across conversations. **Don't drop the column** without also rewriting
-`listChatDocumentsByCourse` in
-`packages/db/src/queries/agent/chat-document.ts`.
+across conversations. The `content_hash` enables multi-user shared cache.
+
+Indexes:
+- `idx_ai_chat_document_conversation` on `conversation_id`
+- `idx_ai_chat_document_course_hash` on `(course_id, content_hash)` — used for
+  dedup lookup on upload
 
 ### Draft vs persisted documents
 
@@ -247,6 +236,31 @@ visible in the Sources panel.
 | `/agent/documents/:documentId/refresh-cache` | POST | Drop + rebuild cache handle     |
 | `/agent/documents/reconcile`             | POST   | Auto-sync agent: walk every doc, rebuild missing/expired handles |
 
+### Cache activation policy (Phase 4.1)
+
+For every teacher chat turn with a document attached and NOT a single-lesson
+edit, the cache is activated. The previous policy ("only on empty course")
+is obsolete — once the Sources panel pins documents to a course, the
+instructor WILL re-read them across edits, and the cache pays back fast.
+
+The activation check (in `apps/api/src/routes/agent/agent.ts:535-548`):
+
+```typescript
+const hasApprovedPlanForCache =
+  role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
+const hasDocumentAttached = !!context?.documentId;
+const isSingleLessonEdit =
+  role === AgentRole.TEACHER && !!context?.lessonId;
+const cacheEligiblePhase =
+  role === AgentRole.TEACHER && hasDocumentAttached && !isSingleLessonEdit;
+```
+
+This now covers all four cases:
+1. Building an approved plan (dozens of tool calls read the same material)
+2. Planning from a document on an empty course (genuine build-from-scratch)
+3. Editing an existing course that has a source attached (every edit re-reads)
+4. Single-lesson edits are NEVER cache-eligible
+
 ### Reconciliation policy (Phase 4)
 
 For every source in the course:
@@ -257,8 +271,7 @@ For every source in the course:
 5. **Document too small for cache** → release any leftover handle
    (`released`/`too_small`)
 
-Implementation: `apps/api/src/services/agent/document-cache.ts:481` —
-`reconcileCourseSourceCache(documents, redis)`.
+Implementation: `apps/api/src/services/agent/document-cache.ts:reconcileCourseSourceCache`
 
 Trigger points:
 - On Sources panel mount: `apps/dashboard/src/lib/features/ai-assistant/sources/sources-page.svelte:22` — `load()`
@@ -277,13 +290,20 @@ backend. Backend already supports `documentIds: string[]` in
 `loadDocumentsContext`. Multi-PDF in chat would require changing
 `uploadedDocument: UploadedDocument | null` to
 `uploadedDocuments: UploadedDocument[]` and injecting all IDs into the
-message metadata — not done yet.
+message metadata — see "Things we considered but didn't ship" below.
 
 ---
 
 ## 6. i18n gotchas (`es.json`)
 
-Three bugs that took real debugging time:
+### Always set `fallbackLocale: 'en'`
+
+In `apps/dashboard/src/lib/utils/functions/translations.ts` we always pass
+`{ fallbackLocale: 'en' }` to the i18n constructor. Without this, any
+missing key renders as a literal in production — the user's screenshot
+showed the sidebar full of `org_navigation.home`, `org_navigation.tracking`,
+etc. With the fallback, those keys gracefully fall back to the English
+translation instead of looking broken.
 
 ### Bug A: misplaced `sources` block
 
@@ -339,6 +359,24 @@ Symptom: literal key text rendered in the UI
 english-shaped value and translate. Use the additive `if (!j.X) j.X = {...}`
 script pattern, never a blanket replace.
 
+**Tools in `C:\Users\samu\AppData\Local\Temp\opencode\`** (not committed):
+
+```js
+// diff_keys.js — list every key in en.json that's missing in es.json
+const enKeys = collectKeys(en);
+const esKeys = collectKeys(es);
+const missing = enKeys.filter(k => !esKeys.has(k));
+```
+
+Use it before declaring an i18n job done.
+
+### Bug E: my org_navigation script only added 8 keys
+
+The `add_org_nav.js` script only copied 8 of 22 `org_navigation.*` keys because
+I used a hand-written map. The remaining keys rendered as literals.
+**Fix**: copy ALL keys from en.json with English fallback + fallbackLocale.
+Run `diff_keys.js` to find any remaining gaps.
+
 ---
 
 ## 7. Common pitfalls
@@ -388,6 +426,14 @@ backend then `collectDocumentIds()` walks the message history for that key.
 If you add multi-PDF support in the future, this is the spot that needs to
 become an array.
 
+### Accidentally deleting exports when re-editing
+
+When using `edit` with multiple `oldString` matches, double-check before
+confirming. In particular, when wrapping logic around an early-return
+(short-circuit) at the top of a function, it's easy to lose the function's
+"happy path" continuation. After a large edit, run `pnpm build` (or
+`pnpm --filter @cio/api build`) and grep for the expected exports.
+
 ---
 
 ## 8. The migration story (for context)
@@ -422,6 +468,8 @@ stored as `halfvec` in Postgres — see `packages/db/src/schema.ts`). The
 - `apps/api/src/routes/agent/agent.ts` — chat endpoint
 - `apps/api/src/routes/agent/documents.ts` — Sources panel endpoints
 - `apps/api/src/routes/agent/history.ts` — chat history
+- `apps/api/src/utils/redis/key-generators.ts` — Redis key helpers (incl.
+  `computeContentHash`, `agentDocumentCacheKey`, `agentDocumentCacheKeyByContent`)
 
 ### Environment variables
 
@@ -488,6 +536,135 @@ or speed:
   across all conversations. Cheap to add later; skipped for now.
 - **MiniMax file uploads (`mm_file://{file_id}`)** — needed only for
   videos >50 MB. We don't process videos today.
-- **Switching provider mid-conversation** — `pickAnyConfiguredProvider` is
-  read once at chat construction. Switching provider requires a new
-  conversation. Acceptable for now.
+
+---
+
+## 11. Multi-user cache sharing (the architecture we built)
+
+### The problem we solved
+
+Two instructors of the same org work on the same course. Both upload
+`apuntes.pdf`. Without sharing, each pays the full cache-creation cost
+(~5× input price for the first chat turn, then ~10% on subsequent turns).
+With sharing, the second user's upload is deduplicated — same content
+hash → same cache entry → second user reads from cache at 10% cost.
+
+### Key shape
+
+```
+agent:document:cache:course:<courseId>:<contentHash>   ← NEW shared key
+agent:document:cache:<documentId>                     ← LEGACY single-user
+```
+
+The shared key is the preferred path. The legacy key is read-only
+backward-compat — handles written before the migration can still be read
+but new handles always go to the shared key.
+
+### Storage flow
+
+1. User uploads PDF → `parseAndStoreDocument`
+2. `computeContentHash(extractedText)` → SHA-256 hex
+3. `findChatDocumentByContentHash(courseId, contentHash)`
+4. **Hit** → return existing `documentId`, copy text to per-user Redis cache.
+   **No S3 upload, no DB insert, no cache creation.**
+5. **Miss** → create new `documentId`, upload to S3, insert row with
+   `content_hash`, write per-user Redis cache.
+
+### Cache handle flow (Anthropic-compatible)
+
+`ensureAnthropicDocumentCache({ documentId, courseId, contentHash, redis })`:
+
+1. Try shared key `agent:document:cache:course:<courseId>:<contentHash>`
+   - Hit → slide TTL forward, return handle
+2. Fallback to legacy key `agent:document:cache:<documentId>` (read-only)
+3. Miss → create new handle in the **shared** key
+4. Return handle
+
+### Status / refresh / reconcile
+
+`getDocumentCacheStatus`, `refreshDocumentCache`,
+`reconcileCourseSourceCache` — all three accept optional
+`(courseId, contentHash)`. If present, the shared key is preferred.
+
+The `cache-status` endpoint now fetches the document's `(courseId, contentHash)`
+via `getChatDocumentCacheKey(documentId)` and passes both through, so the
+badge in the UI is reporting on the same key the chat will hit.
+
+### Multi-org / multi-course isolation
+
+| Same content uploaded to              | Same cache? | Why                                |
+|----------------------------------------|-------------|------------------------------------|
+| Different orgs                         | ❌ No       | Different cost allocation; future orgId key possible |
+| Same org, different courses           | ❌ No       | courseId part of the key           |
+| Same org, same course, different users | ✅ Yes      | share via contentHash              |
+| Same user, different conversations     | ✅ Yes      | same documentId → same key         |
+
+### Where to look in the code
+
+- `apps/api/src/utils/redis/key-generators.ts`
+  - `agentDocumentCacheKey(documentId)` — legacy
+  - `agentDocumentCacheKeyByContent(courseId, contentHash)` — new
+  - `computeContentHash(text)` — SHA-256
+- `apps/api/src/services/agent/document-cache.ts`
+  - `ensureAnthropicDocumentCache` — checks shared first, writes shared
+  - `getDocumentCacheStatus` / `refreshDocumentCache` — accept shared key
+  - `releaseDocumentCaches` — clears both legacy and shared
+  - `reconcileCourseSourceCache` — accepts `(courseId, contentHash)` per doc
+- `packages/db/src/schema.ts` — `ai_chat_document.contentHash` + index
+- `packages/db/src/queries/agent/chat-document.ts`
+  - `findChatDocumentByContentHash(courseId, contentHash)` — dedup lookup
+  - `getChatDocumentCacheKey(documentId)` — returns `{courseId, contentHash}`
+- `apps/api/src/services/agent/document.ts` — `parseAndStoreDocument` calls
+  `computeContentHash` + `findChatDocumentByContentHash` before creating a row
+- `apps/api/src/routes/agent/documents.ts` — `cache-status` and
+  `refresh-cache` endpoints use `getChatDocumentCacheKey`
+
+### Migration
+
+```
+ALTER TABLE ai_chat_document ADD COLUMN content_hash text;
+CREATE INDEX idx_ai_chat_document_course_hash ON ai_chat_document (course_id, content_hash);
+```
+
+Migration file: `packages/db/src/migrations/0004_add_content_hash.sql`.
+Already applied to the dev DB. Run with:
+
+```bash
+cat packages/db/src/migrations/0004_add_content_hash.sql | docker exec -i cio-postgres psql -U postgres -d classroomio
+```
+
+### Frontend follow-ups (not yet done)
+
+- Sources panel: group duplicate uploads visually, show "shared with N users"
+  badge when the same `contentHash` exists for users other than the current
+  one.
+- Chat: support `uploadedDocuments[]` (multi-PDF) so the user can attach
+  several sources to a single message.
+- Org-level cost dashboard: count cache_read vs cache_write tokens to show
+  how much money sharing is saving the org.
+
+---
+
+## 12. Open work / next session
+
+When we resume:
+
+1. **Frontend Sources UI: dedup grouping** — show "(shared with N users)" badge
+   on a source card when `count(distinct user_id where content_hash = ?) > 1`
+   for the same course.
+2. **Multi-PDF in chat** — change `uploadedDocument: UploadedDocument | null`
+   to `uploadedDocuments: UploadedDocument[]` and inject all IDs into
+   `metadata.attachment.documentIds` (array, not scalar). Backend already
+   supports `documentIds: string[]`.
+3. **Pre-existing `apps/dashboard/tsconfig.json` warning** — vite's
+   generated `.svelte-kit/tsconfig.json` has paths like `@cio/ui/*` mapped
+   to `../node_modules/@cio/ui/src/*/*` (double wildcard). TypeScript warns
+   but it doesn't break the dev server or the api build. Fix the upstream
+   alias config or add `tsBuildInfoFile` exclusion.
+4. **Cost dashboard** — surface cache_read tokens × (input - cache_read) as
+   "money saved this period" on the org settings page. Backend already has
+   `ai_token_usage` table with the breakdown.
+
+The TODOs at the top of the TODO list were the source of truth when the
+last session ended — check `git log --oneline | head -10` and the project's
+`.todos.json` (if present) to recover the rest.
