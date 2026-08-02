@@ -33,7 +33,7 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tsconfig.tsbuildinfo"],
+  "exclude": ["node_modules", "dist", "tsconfig.tsbuildinfo", "src/__tests__", "src/**/__tests__"],
   "references": [
     { "path": "../../packages/db" },
     { "path": "../../packages/utils" },

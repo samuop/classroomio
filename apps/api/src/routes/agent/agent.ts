@@ -44,7 +44,8 @@ import {
   storeDraftDocument,
   getDocumentText
 } from '@api/services/agent/document';
-import { resolveDocumentCache } from '@api/services/agent/gemini-cache';
+import { createChatConversation } from '@api/services/agent/chat-history';
+import { resolveDocumentCache } from '@api/services/agent/document-cache';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
@@ -89,6 +90,7 @@ import { buildModelContextMessages } from '@api/services/agent/model-context';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
+import { agentDocumentsRouter } from './documents';
 
 const agentCoreRouter = new Hono()
   .get('/status', authMiddleware, orgMemberMiddleware, zValidator('query', ZAgentStatusQuery), async (c) => {
@@ -143,19 +145,26 @@ const agentCoreRouter = new Hono()
         throw new AppError('Course ID is required', 'COURSE_ID_REQUIRED', 400);
       }
 
-      const conversationId = c.req.query('conversationId');
-      if (!conversationId) {
-        throw new AppError('Conversation ID is required', 'CONVERSATION_ID_REQUIRED', 400);
-      }
+      let conversationId = c.req.query('conversationId');
 
       const isTeamMember = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
       if (!isTeamMember) {
         throw new AppError('You must be a course team member to upload documents', 'NOT_COURSE_TEAM_MEMBER', 403);
       }
 
-      const conversation = await getChatConversation(conversationId, user.id);
-      if (!conversation || conversation.courseId !== courseId) {
-        throw new AppError('Conversation not found', 'CONVERSATION_NOT_FOUND', 404);
+      // When the upload comes from the Sources panel (no conversation yet),
+      // create a hidden "Sources" conversation for the document so it has
+      // somewhere to live. The chat UI can later adopt or re-parent the
+      // document — the document row in ai_chat_document just needs a non-null
+      // conversationId to satisfy the FK constraint.
+      if (!conversationId) {
+        const created = await createChatConversation(courseId, user.id, 'Course sources');
+        conversationId = created.id;
+      } else {
+        const conversation = await getChatConversation(conversationId, user.id);
+        if (!conversation || conversation.courseId !== courseId) {
+          throw new AppError('Conversation not found', 'CONVERSATION_NOT_FOUND', 404);
+        }
       }
 
       const isPaid = await isOrgOnPaidPlan(orgId);
@@ -685,6 +694,22 @@ const agentCoreRouter = new Hono()
         approvedPlan
       });
 
+      // The Anthropic-compatible document cache is "inline" — the document text
+      // MUST live inside a request content block (so the cache_control hint can
+      // mark THAT block as cached). When `documentText` is present, the build
+      // of `contextMessageText` embeds the full PDF text inside <document> tags,
+      // so the prepended context user message is the one we want to tag.
+      // (For Gemini the cache lives in a separate server-side resource and the
+      //  text is intentionally omitted from the inline context — see
+      //  `excludeDocumentId` in resolveDocumentCache — so we must NOT tag a
+      //  context block that doesn't contain the PDF, or MiniMax would cache a
+      //  block with no document inside.)
+      const hasInlineDocumentContext =
+        role === AgentRole.TEACHER &&
+        !!documentText &&
+        documentText.length > 0 &&
+        providerConfig.provider !== AIProvider.GOOGLE;
+
       // Coherence anchor: when a plan is being implemented, inject the REAL course
       // state (plan vs live structure — done/empty/missing per item) so the agent
       // can't lose track of progress when history is trimmed or falsely believe it
@@ -776,11 +801,13 @@ const agentCoreRouter = new Hono()
       let planIncomplete: { pendingCount: number; emptyCount: number } | undefined;
 
       const isAnthropic = providerConfig.provider === AIProvider.ANTHROPIC;
+      const isAnthropicCompatible = isAnthropic || providerConfig.provider === AIProvider.MINIMAX;
 
       // 1h TTL keeps the prefix warm across tool-execution gaps in long agent
       // runs. Break-even is 3 requests within the hour; well under most plan-
-      // execution loops.
-      const systemContent = isAnthropic
+      // execution loops. Applies to BOTH Anthropic and MiniMax — they share the
+      // same SDK and wire format, so cache_control is honored on both.
+      const systemContent = isAnthropicCompatible
         ? {
             role: 'system' as const,
             content: systemPrompt,
@@ -813,13 +840,28 @@ const agentCoreRouter = new Hono()
       // Prepend volatile context as a user-turn message so the stable system +
       // tools prefix stays cacheable even when the teacher navigates to a
       // different lesson or the agent creates sections mid-run.
-      const modelMessages =
+      const contextMessage =
         contextMessageText.length > 0
-          ? [
-              { role: 'user' as const, content: [{ type: 'text' as const, text: contextMessageText }] },
-              ...builderMessages
-            ]
-          : builderMessages;
+          ? ({
+              role: 'user' as const,
+              content: [{ type: 'text' as const, text: contextMessageText }],
+              // When the provider is Anthropic-compatible AND the context block
+              // carries the document text (i.e. the cache is the inline kind),
+              // tag THIS message with cache_control too. The cache hits read
+              // the system + this context-with-PDF prefix at ~10% on the next
+              // turn within the TTL window. Without this tag, the cache hint
+              // sits on the system + the trailing user turn and never covers
+              // the PDF block itself.
+              ...(isAnthropicCompatible && hasInlineDocumentContext
+                ? {
+                    providerOptions: {
+                      anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } }
+                    }
+                  }
+                : {})
+            })
+          : null;
+      const modelMessages = contextMessage ? [contextMessage, ...builderMessages] : builderMessages;
 
       if (isBuildSubagent) {
         console.log(
@@ -831,7 +873,7 @@ const agentCoreRouter = new Hono()
 
       // Cache the growing conversation prefix: each turn reads the prior
       // transcript at ~0.1x cost instead of reprocessing it at full price.
-      if (isAnthropic && modelMessages.length > 0) {
+      if (isAnthropicCompatible && modelMessages.length > 0) {
         const lastMessage = modelMessages[modelMessages.length - 1];
         const existingAnthropic = (lastMessage.providerOptions?.anthropic as Record<string, unknown> | undefined) ?? {};
         lastMessage.providerOptions = {
@@ -873,18 +915,30 @@ const agentCoreRouter = new Hono()
               ) as Array<keyof typeof agentTools & string>)
             : undefined;
 
-      // Capa 2b: reference the document's Gemini explicit cache (if one was
-      // created) so its ~large text is billed at ~10% instead of re-sent inline.
-      const providerOptions = documentCache.cachedContentName
-        ? { google: { cachedContent: documentCache.cachedContentName } }
-        : undefined;
-      if (documentCache.cachedContentName) {
-        console.log(`[agent.chat] using gemini cachedContent for document (${documentCache.excludeDocumentId})`);
+      // Capa 2b: reference the document's explicit cache (if one was created)
+      // so its ~large text is billed at ~10% instead of re-sent inline.
+      // Provider-agnostic: `documentCache.providerOptions` carries the
+      // provider-specific shape (google.cachedContent for Gemini, anthropic
+      // .cacheControl for MiniMax/Claude).
+      const providerOptions = documentCache.providerOptions as
+        | Parameters<typeof streamText>[0]['providerOptions']
+        | undefined;
+      if (documentCache.excludeDocumentId) {
+        console.log(`[agent.chat] using document cache for document (${documentCache.excludeDocumentId})`);
       }
 
       const result = streamText({
         model,
         maxRetries: 2,
+        // MiniMax-M3 isn't in the Anthropic SDK model registry, so without an
+        // explicit value the SDK defaults to 4096 output tokens and emits a
+        // "compatibility mode" warning — course generation routinely needs
+        // 10–20k output tokens (full lesson HTML for many sections), so we
+        // pin a generous cap. Anthropic Sonnet 4 maxes at 8192, but MiniMax
+        // MiniMax-M3 has a much higher ceiling, so 16384 is a safe upper bound
+        // for course-building turns. Other providers (Gemini Flash-Lite,
+        // OpenAI) just clamp this to their own max without harm.
+        maxOutputTokens: 16384,
         system: systemContent,
         messages: modelMessages,
         tools: agentTools,
@@ -1050,4 +1104,5 @@ export const agentRouter = new Hono()
   .use('*', agentContentTypeRewrite)
   .route('/', agentCoreRouter)
   .route('/history', agentHistoryRouter)
-  .route('/runs', agentRunsRouter);
+  .route('/runs', agentRunsRouter)
+  .route('/documents', agentDocumentsRouter);

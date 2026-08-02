@@ -25,7 +25,7 @@ import { compactConversation } from '@api/services/agent/compact';
 import { generateConversationTitle } from '@api/services/agent/title-generation';
 import { pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { collectDocumentIds } from '@api/services/agent/chat-context';
-import { releaseDocumentCaches } from '@api/services/agent/gemini-cache';
+import { releaseDocumentCaches } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
 
 export const agentHistoryRouter = new Hono()

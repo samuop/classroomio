@@ -117,12 +117,13 @@ export const agentDocumentSummaryKey = (documentId: string): string => {
 
 /**
  * Redis key holding the Gemini explicit-cache handle for a large uploaded
- * document: JSON { cacheName, model, expireAt }. Lets us reference an existing
- * cachedContent across turns instead of re-creating (and re-paying for) it.
- * TTL is aligned to the Gemini cache's own TTL so a stale handle self-evicts.
+ * document: JSON document-cache handle (gemini cachedContents or anthropic
+ * cache_control). Lets us reference an existing cache across turns instead of
+ * re-creating it. TTL is aligned to the cache's own TTL so a stale handle
+ * self-evicts.
  */
-export const agentDocumentGeminiCacheKey = (documentId: string): string => {
-  return `agent:document:gemini-cache:${documentId}`;
+export const agentDocumentCacheKey = (documentId: string): string => {
+  return `agent:document:cache:${documentId}`;
 };
 
 /**

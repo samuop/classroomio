@@ -40,6 +40,37 @@ function isForbiddenHostname(hostname: string): boolean {
     return true;
   }
 
+  // Private IP ranges (RFC 1918 + link-local + loopback + cloud metadata).
+  if (isIPv4(host)) {
+    const parts = host.split('.').map((p) => parseInt(p, 10));
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      const [a, b] = parts as [number, number, number, number];
+      if (
+        a === 10 ||
+        a === 127 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // Common storage / metadata service hostnames that look public but aren't.
+  const reservedHostnames = new Set([
+    'metadata.google.internal',
+    'metadata',
+    'kubernetes.default',
+    'kubernetes.default.svc',
+    'localhost.localdomain',
+    'host.docker.internal',
+    'gateway.docker.internal'
+  ]);
+  if (reservedHostnames.has(host)) {
+    return true;
+  }
+
   return false;
 }
 
