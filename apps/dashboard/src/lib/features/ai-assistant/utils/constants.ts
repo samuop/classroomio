@@ -5,7 +5,6 @@ export const AI_COURSE_CHAT_DEFAULT_WIDTH = 560;
 export const AI_COURSE_CHAT_MIN_WIDTH = 320;
 export const AI_COURSE_CHAT_MAX_WIDTH = 1100;
 export const AI_COURSE_CHAT_STORAGE_KEY = 'classroomio-ai-course-chat-width';
-export const AI_CHAT_MODEL_STORAGE_KEY = 'classroomio-ai-chat-model';
 
 /** Display via `$t(entry.key)`; `prompt` is sent to the model (English). */
 export const AI_ASSISTANT_QUICK_ACTION_ENTRIES = [
