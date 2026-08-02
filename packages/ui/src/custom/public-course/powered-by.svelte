@@ -30,19 +30,19 @@
 
 {#if compact}
   <!-- Collapsed rail: plain brand text (no logo, no link). -->
-  <div class={cn('ui:flex ui:items-center ui:gap-1 ui:w-full ui:text-xs ui:text-muted-foreground', rowAlignClass, className)}>
-    <span class="ui:font-medium ui:leading-none">{brand}</span>
+  <div class={cn('ui:flex ui:items-center ui:gap-1 ui:w-full ui:text-xs ui:text-muted-foreground ui:whitespace-nowrap ui:min-w-0', rowAlignClass, className)}>
+    <span class="ui:font-medium ui:leading-none ui:truncate">{brand}</span>
   </div>
 {:else}
   <!-- Plain "<label> <brand>" attribution — no logo, no link. -->
   <div
     class={cn(
-      'ui:px-3 ui:flex ui:items-center ui:gap-1 ui:text-xs ui:text-muted-foreground ui:w-full',
+      'ui:px-3 ui:flex ui:items-center ui:gap-1 ui:text-xs ui:text-muted-foreground ui:w-full ui:whitespace-nowrap ui:min-w-0',
       rowAlignClass,
       className
     )}
   >
-    {label}
-    <span class="ui:font-medium">{brand}</span>
+    <span class="ui:shrink-0">{label}</span>
+    <span class="ui:font-medium ui:truncate">{brand}</span>
   </div>
 {/if}
