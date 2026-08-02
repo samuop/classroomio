@@ -1158,23 +1158,33 @@ const agentCoreRouter = new Hono()
           // from cache". The API exposes no per-block breakdown. That is still
           // evidence of a real provider-side cache, which is what the badge
           // previously lacked entirely.
-          if (
-            isAnthropicCompatible &&
-            (hasInlineDocumentContext || hasSourcePackContext) &&
-            primaryDocumentId &&
-            cacheRead > 0
-          ) {
-            // Resolved here rather than before the stream: it is one DB read
-            // per turn and this runs after the response is already out, so it
-            // costs the user nothing. Only reached on a confirmed hit.
-            const keyInfo = await getChatDocumentCacheKey(primaryDocumentId).catch(() => null);
-            await recordAnthropicCacheHit({
-              documentId: primaryDocumentId,
-              courseId: keyInfo?.courseId,
-              contentHash: keyInfo?.contentHash ?? undefined,
-              cacheReadTokens: cacheRead,
-              redis
-            }).catch((err) => console.error('[agent.chat] recordAnthropicCacheHit failed:', err));
+          if (isAnthropicCompatible && (hasInlineDocumentContext || hasSourcePackContext) && cacheRead > 0) {
+            // EVERY source in the pack rides in the same cached block, so a
+            // confirmed read is evidence for all of them — not just the one
+            // attached to this message. Attributing the hit only to
+            // `primaryDocumentId` left the other sources showing "not cached"
+            // while they were provably being served from cache.
+            const hitDocumentIds = sourcePack?.entries.length
+              ? sourcePack.entries.map((entry) => entry.id)
+              : primaryDocumentId
+                ? [primaryDocumentId]
+                : [];
+
+            // Resolved here rather than before the stream: a handful of DB reads
+            // per turn, running after the response is already out, so it costs
+            // the user nothing. Only reached on a confirmed hit.
+            await Promise.all(
+              hitDocumentIds.map(async (documentId) => {
+                const keyInfo = await getChatDocumentCacheKey(documentId).catch(() => null);
+                return recordAnthropicCacheHit({
+                  documentId,
+                  courseId: keyInfo?.courseId,
+                  contentHash: keyInfo?.contentHash ?? undefined,
+                  cacheReadTokens: cacheRead,
+                  redis
+                });
+              })
+            ).catch((err) => console.error('[agent.chat] recordAnthropicCacheHit failed:', err));
           }
 
           if (totalUsage) {

@@ -59,9 +59,16 @@ export type ListCourseSourcesRequest = typeof classroomio.agent.documents.$get;
 export type DeleteCourseSourceRequest = (typeof classroomio.agent.documents)[':documentId']['$delete'];
 
 /**
- * Per-document cache status surfaced by the Sources panel. `cached` is true
- * when there's a live Redis handle (so the next chat turn will read at ~10%
- * cost); `secondsRemaining` tells the UI how much lifetime is left.
+ * Per-document cache status surfaced by the Sources panel.
+ *
+ * For the Anthropic-compatible provider the honest fields are `observedAt` /
+ * `lastCacheReadTokens`: when the provider last billed us for cached reads
+ * covering this material, and how big that read was. There is no cache-status
+ * endpoint to ask, so `secondsRemaining` there was only ever a guess about
+ * someone else's eviction policy — and it guessed short, hiding a cache that
+ * production data shows serving reads 20 minutes apart.
+ *
+ * `secondsRemaining` remains meaningful for Gemini, whose cache we own and rent.
  */
 export interface DocumentCacheStatus {
   documentId: string;
@@ -69,6 +76,9 @@ export interface DocumentCacheStatus {
   provider: 'gemini' | 'anthropic' | null;
   expireAt: string | null;
   secondsRemaining: number | null;
+  observedAt: string | null;
+  observedSecondsAgo: number | null;
+  lastCacheReadTokens: number | null;
 }
 
 export type GetCacheStatusRequest = (typeof classroomio.agent.documents)[':documentId']['cache-status']['$get'];

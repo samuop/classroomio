@@ -44,19 +44,22 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const CACHE_TTL_SECONDS = 900;
 
 /**
- * Anthropic-compatible handle TTL: 5 minutes — the provider's own window.
+ * How long a recorded cache observation stays worth showing: 1 hour, matching
+ * the `cacheControl: { ttl: '1h' }` we actually request on the cached blocks.
  *
- * It must NOT reuse the 15-minute Gemini value. Since `recordAnthropicCacheHit`
- * made the handle mean "the provider billed us for cached reads", its lifetime
- * is a claim about the provider's cache, and MiniMax evicts after 5 minutes of
- * inactivity. A 15-minute handle would keep the Sources badge green for ~10
- * minutes after the cache it attests to had already evaporated — over-claiming
- * exactly the way the fabricated handles it replaced used to.
+ * This was 300s, on the assumption that MiniMax evicts after the standard
+ * 5-minute Anthropic window. Production data says otherwise — a turn at 05:25
+ * read 110,464 cached tokens **19.8 minutes** after the previous turn, and no
+ * miss in the sample has the shape of an expiry (every `cacheRead = 0` row is a
+ * new conversation sending a fresh prefix). The short TTL made the Sources badge
+ * go dark while the cache was demonstrably still live.
  *
- * Nothing is rented on this path, so an expired handle costs nothing to lose:
- * the next cached read re-establishes it.
+ * Note this is now a retention window for *evidence*, not a claim about the
+ * provider's cache: the status object reports when the read was observed and how
+ * many tokens it covered, so the UI states a fact with its age instead of
+ * predicting a remaining lifetime we cannot actually see.
  */
-const ANTHROPIC_CACHE_TTL_SECONDS = 300;
+const ANTHROPIC_CACHE_TTL_SECONDS = 3600;
 
 /** Renew the TTL when a use finds less than this much lifetime remaining. */
 const CACHE_RENEW_THRESHOLD_MS = 5 * 60 * 1000;
@@ -347,8 +350,8 @@ export async function recordAnthropicCacheHit(params: {
     contentHash: params.contentHash,
     observedAt: Date.now(),
     lastCacheReadTokens: params.cacheReadTokens,
-    // Mirrors the provider's 5-minute window, which it refreshes on every hit —
-    // so the badge decays on its own once the material stops being read.
+    // How long this observation stays on display. Refreshed by every new hit, so
+    // material that stops being read fades out on its own.
     expireAt: Date.now() + ANTHROPIC_CACHE_TTL_SECONDS * 1000
   };
 
@@ -404,10 +407,17 @@ export async function releaseDocumentCaches(
 }
 
 /**
- * Public-facing cache status for the Sources panel. Tells the UI whether the
- * document is currently cached and how much time is left on the handle so the
- * user can see at a glance which sources are "hot" (will hit cache on the
- * next chat turn) vs "cold" (will rebuild and pay full input price).
+ * Public-facing cache status for the Sources panel.
+ *
+ * For the Anthropic-compatible provider this reports an **observation, not a
+ * prediction**: when the provider last billed us for cached reads covering this
+ * material, and how many tokens that was. We cannot see the provider's cache —
+ * there is no status endpoint — so "~N minutes remaining" was always a guess
+ * about someone else's eviction policy, and it guessed wrong (it assumed a
+ * 5-minute window while reads were landing 20 minutes apart).
+ *
+ * Gemini is different: that cache is a resource we create, own, and pay for, so
+ * `secondsRemaining` there is a real lease we control.
  */
 export interface DocumentCacheStatus {
   documentId: string;
@@ -420,6 +430,13 @@ export interface DocumentCacheStatus {
   /** Seconds until the handle expires. Negative means expired. null when
    * not cached. */
   secondsRemaining: number | null;
+  /** When the provider last served cached tokens for this material (ISO).
+   *  Anthropic-compatible only — this is the observed fact the badge states. */
+  observedAt: string | null;
+  /** Seconds since that observation. */
+  observedSecondsAgo: number | null;
+  /** cacheReadTokens the provider billed on that turn. */
+  lastCacheReadTokens: number | null;
 }
 
 export async function getDocumentCacheStatus(
@@ -430,17 +447,31 @@ export async function getDocumentCacheStatus(
 ): Promise<DocumentCacheStatus> {
   const handle = await readCacheHandle(documentId, redis, courseId, contentHash);
   if (!handle) {
-    return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
+    return {
+      documentId,
+      cached: false,
+      provider: null,
+      expireAt: null,
+      secondsRemaining: null,
+      observedAt: null,
+      observedSecondsAgo: null,
+      lastCacheReadTokens: null
+    };
   }
 
   const secondsRemaining = Math.round((handle.expireAt - Date.now()) / 1000);
   const cached = secondsRemaining > 30; // 30s slack so we don't report "cached" right at expiry
+  const observedAt = handle.type === 'anthropic' ? (handle.observedAt ?? null) : null;
+
   return {
     documentId,
     cached,
     provider: handle.type,
     expireAt: new Date(handle.expireAt).toISOString(),
-    secondsRemaining: Math.max(0, secondsRemaining)
+    secondsRemaining: Math.max(0, secondsRemaining),
+    observedAt: observedAt ? new Date(observedAt).toISOString() : null,
+    observedSecondsAgo: observedAt ? Math.max(0, Math.round((Date.now() - observedAt) / 1000)) : null,
+    lastCacheReadTokens: handle.type === 'anthropic' ? (handle.lastCacheReadTokens ?? null) : null
   };
 }
 
@@ -470,8 +501,8 @@ async function readCacheHandle(
 /**
  * Invalidate what we know about the document's cache. For Gemini this DELETEs
  * the server-side cachedContent so storage stops being billed. For the
- * Anthropic-compatible backend there is nothing to delete — the provider's
- * cache ages out on its own 5-min TTL — so this only drops our evidence of it.
+ * Anthropic-compatible backend there is nothing to delete — the provider's cache
+ * ages out on its own — so this only drops our evidence of it.
  *
  * It deliberately does NOT report `cached: true` on the way out. The badge can
  * only turn back on when a real chat turn reports cached reads again; claiming
@@ -485,7 +516,16 @@ export async function refreshDocumentCache(
 ): Promise<DocumentCacheStatus> {
   await releaseDocumentCaches([documentId], redis, courseId, contentHash);
 
-  return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
+  return {
+    documentId,
+    cached: false,
+    provider: null,
+    expireAt: null,
+    secondsRemaining: null,
+    observedAt: null,
+    observedSecondsAgo: null,
+    lastCacheReadTokens: null
+  };
 }
 
 /**

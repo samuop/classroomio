@@ -100,6 +100,37 @@
   const messageAttachment = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.attachment);
   const tokenUsage = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.tokenUsage);
 
+  /**
+   * Share of this round's input that the provider served from cache.
+   *
+   * The headline number is `totalTokens`, which AI SDK v7 aggregates over every
+   * step of the round — a build round hitting the 40-step cap legitimately
+   * reports millions. Shown bare it reads as a runaway bill, when in practice
+   * ~95% of it is the same cached prefix re-read at a tenth of the price. The
+   * percentage is what turns an alarming number into an explicable one.
+   */
+  const cachedSharePercent = $derived.by(() => {
+    const read = tokenUsage?.cacheReadTokens ?? 0;
+    const prompt = tokenUsage?.promptTokens ?? 0;
+    if (read <= 0 || prompt <= 0) return null;
+    return Math.min(100, Math.round((read / prompt) * 100));
+  });
+
+  const tokenUsageBreakdown = $derived.by(() => {
+    if (!tokenUsage) return undefined;
+    const parts = [
+      `${$t('ai_assistant.tokens_input')}: ${(tokenUsage.promptTokens ?? 0).toLocaleString()}`,
+      `${$t('ai_assistant.tokens_output')}: ${(tokenUsage.completionTokens ?? 0).toLocaleString()}`
+    ];
+    if (tokenUsage.cacheReadTokens) {
+      parts.push(`${$t('ai_assistant.tokens_cache_read')}: ${tokenUsage.cacheReadTokens.toLocaleString()}`);
+    }
+    if (tokenUsage.contextTokens) {
+      parts.push(`${$t('ai_assistant.tokens_context')}: ${tokenUsage.contextTokens.toLocaleString()}`);
+    }
+    return parts.join('\n');
+  });
+
   /** Tool parts rendered in a second pass so narrative text always appears above them (stream order often emits tools first). */
   function isDeferredPlanPart(part: Record<string, unknown>) {
     if (!isAgentToolPart(part)) {
@@ -324,9 +355,12 @@
 
       {#if message.role === 'assistant' && tokenUsage}
         <div class="mt-1 flex justify-end">
-          <span class="ui:text-muted-foreground text-[10px]">
+          <span class="ui:text-muted-foreground text-[10px]" title={tokenUsageBreakdown}>
             {tokenUsage.totalTokens.toLocaleString()}
             {$t('ai_assistant.tokens_label')}
+            {#if cachedSharePercent !== null}
+              · {$t('ai_assistant.tokens_from_cache', { percent: cachedSharePercent })}
+            {/if}
           </span>
         </div>
       {/if}

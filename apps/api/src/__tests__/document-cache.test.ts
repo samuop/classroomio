@@ -963,18 +963,18 @@ describe('recordAnthropicCacheHit', () => {
     expect(redis.set).toHaveBeenCalledTimes(1);
     const [key, raw, opts] = redis.set.mock.calls[0];
     expect(key).toBe('agent:document:cache:course:course-42:abc123');
-    // The provider's own window, NOT the 900s Gemini handle TTL. The handle
-    // asserts "MiniMax served cached reads"; MiniMax evicts after 5 min idle,
-    // so a longer TTL would keep the badge green over a cache that no longer
-    // exists — the exact over-claim this whole mechanism replaced.
-    expect(opts.EX).toBe(300);
+    // Matches the `ttl: '1h'` we request on the cached blocks. This asserted 300
+    // on the assumption that MiniMax evicts after the standard 5-minute window;
+    // production data disproved it (a turn read 110,464 cached tokens 19.8
+    // minutes after the previous one), and the short window was hiding a live
+    // cache rather than protecting against an over-claim.
+    expect(opts.EX).toBe(3600);
     const parsed = JSON.parse(raw);
     expect(parsed.type).toBe('anthropic');
     expect(parsed.documentId).toBe('doc-shared');
     expect(parsed.lastCacheReadTokens).toBe(11_264);
     expect(parsed.observedAt).toBeGreaterThan(0);
-    // Handle lifetime must track the provider window, not outlive it.
-    expect(parsed.expireAt - Date.now()).toBeLessThanOrEqual(300_000);
+    expect(parsed.expireAt - Date.now()).toBeLessThanOrEqual(3_600_000);
   });
 
   it('falls back to the per-document key for legacy rows with no contentHash', async () => {
@@ -988,6 +988,35 @@ describe('recordAnthropicCacheHit', () => {
     });
     const [key] = redis.set.mock.calls[0];
     expect(key).toBe('agent:document:cache:doc-legacy');
+  });
+
+  it('reports the observed read, not a predicted remaining lifetime', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-observed',
+      cacheReadTokens: 110_464,
+      redis: redis as any
+    });
+
+    const status = await getDocumentCacheStatus('doc-observed', redis as any);
+
+    // These three are the honest fields: the provider has no cache-status
+    // endpoint, so what the badge may claim is "it served us N cached tokens,
+    // this long ago" — never "the cache expires in N minutes".
+    expect(status.cached).toBe(true);
+    expect(status.lastCacheReadTokens).toBe(110_464);
+    expect(status.observedSecondsAgo).toBeGreaterThanOrEqual(0);
+    expect(status.observedAt).not.toBeNull();
+  });
+
+  it('leaves the observation fields null when nothing was ever read from cache', async () => {
+    const redis = makeFakeRedis();
+    const status = await getDocumentCacheStatus('doc-cold', redis as any);
+
+    expect(status.cached).toBe(false);
+    expect(status.observedAt).toBeNull();
+    expect(status.observedSecondsAgo).toBeNull();
+    expect(status.lastCacheReadTokens).toBeNull();
   });
 
   it('lets a second user in the same course read the first user\'s handle (§11 sharing)', async () => {

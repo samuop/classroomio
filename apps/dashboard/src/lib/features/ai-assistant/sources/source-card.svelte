@@ -50,13 +50,34 @@
     }
   });
 
+  /**
+   * States an observed fact, not a forecast.
+   *
+   * This used to read "Cache active · ~N min remaining", derived from a TTL we
+   * invented. The provider exposes no cache-status endpoint, so that number was a
+   * guess about someone else's eviction policy — and it guessed short, showing
+   * "not cached" while production data had the provider serving reads 20 minutes
+   * apart. What we can actually prove is when it last served cached tokens and
+   * how many, so that is what the card says.
+   *
+   * Gemini keeps the countdown: that cache is a lease we own and renew.
+   */
   const cacheLabel = $derived.by(() => {
-    if (!cacheStatus) return null;
-    if (cacheStatus.cached && cacheStatus.secondsRemaining !== null) {
+    if (!cacheStatus?.cached) return t.get('course.sources.cache_never_read');
+
+    if (cacheStatus.provider === 'gemini' && cacheStatus.secondsRemaining !== null) {
       const min = Math.round(cacheStatus.secondsRemaining / 60);
       return t.get('course.sources.cache_active_minutes', { minutes: Math.max(1, min) });
     }
-    return t.get('course.sources.cache_inactive');
+
+    if (cacheStatus.observedSecondsAgo === null) return t.get('course.sources.cache_never_read');
+
+    const minutesAgo = Math.floor(cacheStatus.observedSecondsAgo / 60);
+    const tokens = (cacheStatus.lastCacheReadTokens ?? 0).toLocaleString();
+
+    return minutesAgo < 1
+      ? t.get('course.sources.cache_read_just_now', { tokens })
+      : t.get('course.sources.cache_read_ago', { minutes: minutesAgo, tokens });
   });
 
   async function handleConfirmDelete() {
