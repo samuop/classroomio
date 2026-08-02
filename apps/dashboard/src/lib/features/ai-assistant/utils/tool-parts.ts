@@ -58,8 +58,7 @@ export function getAgentToolInput(part: AgentToolPart): unknown {
 const SELF_RENDERED_TOOLS = new Set([
   'generate_course_plan',
   'ask_template_questions',
-  'ask_discovery_questions',
-  'update_course_todo_list'
+  'ask_discovery_questions'
 ]);
 
 /**

@@ -74,6 +74,7 @@ export interface DocumentCacheStatus {
 export type GetCacheStatusRequest = (typeof classroomio.agent.documents)[':documentId']['cache-status']['$get'];
 export type RefreshCacheRequest = (typeof classroomio.agent.documents)[':documentId']['refresh-cache']['$post'];
 export type ReconcileSourcesRequest = typeof classroomio.agent.documents.reconcile.$post;
+export type AddUrlSourceRequest = typeof classroomio.agent.documents.url.$post;
 
 export interface AiAssistantMessageTokenUsage {
   // BILLING figures: aggregated across every step of the round, so a turn that
@@ -130,9 +131,36 @@ export interface AiAssistantPlanMetadata {
   payload?: unknown;
 }
 
+/**
+ * Build progress as measured by the server: the approved plan reconciled against
+ * the live course after the round's writes landed.
+ *
+ * This replaces the checklist that used to be drawn from the model's own
+ * `update_course_todo_list` output. That number was a self-report — it read 1/32
+ * while ten lessons already existed — because keeping it current cost the model a
+ * tool call per item out of a 40-step budget, so it stopped paying.
+ */
+export interface AiAssistantPlanProgressItem {
+  /** Plan-registry key (`s1`, `s1.2`); empty for plans created before the registry. */
+  key: string;
+  kind: 'section' | 'lesson' | 'exercise';
+  title: string;
+  /** `empty` = the row exists but has no content / no questions yet. */
+  status: 'done' | 'empty' | 'missing';
+}
+
+export interface AiAssistantPlanProgress {
+  total: number;
+  completed: number;
+  pendingCount: number;
+  emptyCount: number;
+  items: AiAssistantPlanProgressItem[];
+}
+
 export interface AiAssistantMessageMetadata {
   attachment?: AiAssistantMessageAttachment;
   tokenUsage?: AiAssistantMessageTokenUsage;
+  planProgress?: AiAssistantPlanProgress;
   continuation?: AiAssistantMessageContinuation;
   template?: AiAssistantTemplateMetadata;
   discovery?: AiAssistantDiscoveryMetadata;

@@ -109,10 +109,7 @@
     const name = getAgentToolName(part);
 
     return (
-      name === 'generate_course_plan' ||
-      name === 'ask_template_questions' ||
-      name === 'ask_discovery_questions' ||
-      name === 'update_course_todo_list'
+      name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions'
     );
   }
 
@@ -145,15 +142,20 @@
   const deferredPlanParts = $derived(
     (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
   );
-  // The build agent calls update_course_todo_list many times per turn; render only
-  // the LAST one so the checklist shows the current state, not a stack of stale copies.
-  const latestTodoPart = $derived(
-    (message.parts ?? [])
-      .filter((part) => isAgentToolPart(part) && getAgentToolName(part) === 'update_course_todo_list')
-      .at(-1)
+  // Build progress measured by the server (plan reconciled against the live course
+  // once the round's writes landed), carried on the finish metadata. Previously the
+  // checklist was drawn from the model's own update_course_todo_list output, which
+  // drifted badly — it read 1/32 with ten lessons already written.
+  const planProgress = $derived(
+    message.role === 'assistant' ? message.metadata?.planProgress : undefined
   );
+  const showPlanProgress = $derived(!!planProgress && planProgress.total > 0);
   const hasBubbleContent = $derived(
-    inlineParts.length > 0 || deferredPlanParts.length > 0 || !!messageAttachment || showAgentSteps
+    inlineParts.length > 0 ||
+      deferredPlanParts.length > 0 ||
+      !!messageAttachment ||
+      showAgentSteps ||
+      showPlanProgress
   );
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
   // Cards (plan, forms, tool status) need the full panel width to breathe; plain
@@ -236,27 +238,6 @@
               implemented={planAlreadyImplemented}
             />
           </div>
-        {:else if toolName === 'update_course_todo_list'}
-          <!-- Only the LAST todo update in this message renders (the model calls it
-               repeatedly during a build); earlier ones would show stale checklists. -->
-          {#if part === latestTodoPart && toolStatus === 'completed'}
-            {@const todoData = toolResult as {
-              todos: Array<{ key: string; content: string; status: 'pending' | 'in_progress' | 'completed'; priority?: 'low' | 'medium' | 'high' }>;
-              total: number;
-              completed: number;
-              remaining: number;
-              allDone: boolean;
-            }}
-            {#if todoData?.todos?.length}
-              <TodoChecklist
-                todos={todoData.todos}
-                total={todoData.total}
-                completed={todoData.completed}
-                remaining={todoData.remaining}
-                allDone={todoData.allDone}
-              />
-            {/if}
-          {/if}
         {:else if toolName === 'ask_template_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
           {@const merged = (toolResult ?? getAgentToolInput(part)) as
             | { templateId?: CourseTemplateId; fields?: TemplateFormField[] }
@@ -336,6 +317,10 @@
           </div>
         {/if}
       {/each}
+
+      {#if showPlanProgress && planProgress}
+        <TodoChecklist progress={planProgress} />
+      {/if}
 
       {#if message.role === 'assistant' && tokenUsage}
         <div class="mt-1 flex justify-end">

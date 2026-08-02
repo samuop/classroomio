@@ -68,6 +68,13 @@
 
   const CONTINUE_IMPLEMENTATION_PROMPT = 'Continue implementing the plan from where you left off.';
 
+  /** Automatic build continuation — see the $effect further down for the rules. */
+  const MAX_AUTO_CONTINUE_ROUNDS = 12;
+  let autoContinueDisabled = $state(false);
+  let autoContinueRounds = $state(0);
+  let autoResumedFromId = $state<string | null>(null);
+  let lastAutoProgress = $state<number | null>(null);
+
   // Read course id from the route. The chat panel is only mounted inside the
   // course content layout, so `page.params.id` is always the active course.
   const courseId = $derived(page.params?.id as string);
@@ -360,6 +367,11 @@
 
       refreshCourseStateAfterChat();
       void persistFinishedChat(chat.messages as AiAssistantMessage[], activeConversationId);
+    },
+    onError: () => {
+      // A failed round must not be retried automatically — that is how a single
+      // bad tool input turns into a loop that burns tokens. Hand control back.
+      autoContinueDisabled = true;
     }
   });
 
@@ -661,6 +673,9 @@
   }
 
   function handleStop() {
+    // Stopping is also the teacher's opt-out of the automatic build: without this
+    // the effect below would immediately start the next round.
+    autoContinueDisabled = true;
     chat.stop();
   }
 
@@ -671,6 +686,9 @@
     const conversationId = await ensureActiveConversation(courseId);
     if (!conversationId) return;
 
+    // A freshly approved plan is a new build: clear any brake left over from the
+    // previous one so it can run to completion on its own.
+    resetAutoContinue();
     inputValue = '';
 
     chat.sendMessage({
@@ -692,9 +710,65 @@
   }
 
   function handleResume() {
+    autoContinueDisabled = false;
     inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
     void handleSend();
   }
+
+  /**
+   * Automatic continuation of an approved build.
+   *
+   * A course of any size needs more tool calls than MAX_STEPS_PER_ROUND allows, so
+   * the round ends with `continuation` set and the teacher used to have to press
+   * "Continue" — repeatedly, for a single approved plan they had already accepted.
+   * This drives the next round itself.
+   *
+   * Three brakes, because a loop that spends tokens must not be able to run away:
+   *  - a hard cap on rounds;
+   *  - a stagnation check — if a whole round completes no new plan item, stop and
+   *    leave the button to the teacher;
+   *  - Stop (and any error) disables it until the teacher acts again.
+   *
+   * It only ever fires on server-measured progress (`planProgress`), never on the
+   * model's claim that it has more to do.
+   */
+  function resetAutoContinue() {
+    autoContinueDisabled = false;
+    autoContinueRounds = 0;
+    autoResumedFromId = null;
+    lastAutoProgress = null;
+  }
+
+  $effect(() => {
+    if (isStreaming || autoContinueDisabled) return;
+
+    const messages = chat.messages as AiAssistantMessage[];
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant' || last.id === autoResumedFromId) return;
+
+    const metadata = last.metadata as AiAssistantMessageMetadata | undefined;
+    if (!metadata?.continuation) return;
+
+    // Server truth only. No progress block means no approved plan in flight.
+    const progress = metadata.planProgress;
+    if (!progress || progress.total === 0 || progress.completed >= progress.total) return;
+
+    if (autoContinueRounds >= MAX_AUTO_CONTINUE_ROUNDS) {
+      autoContinueDisabled = true;
+      return;
+    }
+
+    if (lastAutoProgress !== null && progress.completed <= lastAutoProgress) {
+      autoContinueDisabled = true;
+      return;
+    }
+
+    autoResumedFromId = last.id;
+    lastAutoProgress = progress.completed;
+    autoContinueRounds += 1;
+    inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
+    void handleSend();
+  });
 
   function handleMentionClick(route: string) {
     goto(resolve(route, {}));
@@ -853,15 +927,14 @@
       isAgentToolPart(part)
     ) as AgentToolPart[];
 
-    // Self-rendered tools show their own card (PlanView, forms, todo checklist) —
-    // exclude them from the generic activity-card step list.
+    // Self-rendered tools show their own card (PlanView, forms) — exclude them
+    // from the generic activity-card step list.
     const toolParts = allToolParts.filter((part) => {
       const toolName = getAgentToolName(part);
       return (
         toolName !== 'generate_course_plan' &&
         toolName !== 'ask_template_questions' &&
-        toolName !== 'ask_discovery_questions' &&
-        toolName !== 'update_course_todo_list'
+        toolName !== 'ask_discovery_questions'
       );
     });
 

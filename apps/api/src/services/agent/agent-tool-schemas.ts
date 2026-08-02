@@ -14,29 +14,6 @@ import { ZCourseLandingPageUpdate, ZCourseLandingPageMetadataUpdate } from '@cio
 
 export const emptyParam = z.object({});
 
-// ─── Task Manager (course-build TODO list) ──────────────────────────────────
-// The model sends the FULL list every call (like Claude Code's TodoWrite). Each
-// item has a stable `key` used to upsert it in place across calls.
-export const courseTodoItemParam = z.object({
-  key: z
-    .string()
-    .min(1)
-    .max(128)
-    .describe('Stable identifier for this task (e.g. "sec-1-lesson-intro"). Reuse the same key to update a task.'),
-  content: z.string().min(1).max(300).describe('Short human-readable description of the task.'),
-  status: z
-    .enum(['pending', 'in_progress', 'completed'])
-    .describe('Exactly one task should be in_progress at a time. Mark completed before moving on.'),
-  priority: z.enum(['low', 'medium', 'high']).default('medium')
-});
-
-export const updateCourseTodoListParam = z.object({
-  todos: z
-    .array(courseTodoItemParam)
-    .min(1)
-    .describe('The COMPLETE task list, in build order. Send every task each time — omitted tasks are dropped.')
-});
-
 export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string().default('en') });
 
 // RAG for edits (step 6): search relevant fragments of an attached document
@@ -46,7 +23,30 @@ export const searchDocumentParam = z.object({
   limit: z.number().int().min(1).max(10).default(6)
 });
 export const exerciseReadParam = z.object({ exerciseId: z.string() });
-export const createSectionParam = z.object({ title: z.string().min(1), order: z.number().int().min(0) });
+
+/**
+ * Ties a create_* call back to the plan item it implements. Optional and free of
+ * validation constraints on purpose: a missing or unknown key must degrade to a
+ * plain create, never to a tool-input error.
+ *
+ * When present, the create becomes idempotent — a second call with the same key
+ * returns the row already built instead of inserting a duplicate. That is the
+ * hard stop for the duplication the title-matching anchor used to cause.
+ */
+const planKeyParam = z
+  .string()
+  .min(1)
+  .max(128)
+  .optional()
+  .describe(
+    'The planKey shown next to this item in the Plan Progress block (e.g. "s1", "s1.2"). Always pass it when building an approved plan — it prevents duplicates if this item was already created.'
+  );
+
+export const createSectionParam = z.object({
+  title: z.string().min(1),
+  order: z.number().int().min(0),
+  planKey: planKeyParam
+});
 export const updateSectionParam = z
   .object({
     sectionId: z.string(),
@@ -59,7 +59,8 @@ export const updateSectionParam = z
 export const createLessonParam = z.object({
   sectionId: z.string(),
   title: z.string().min(1),
-  order: z.number().int().min(0)
+  order: z.number().int().min(0),
+  planKey: planKeyParam
 });
 export const updateLessonParam = z
   .object({
@@ -139,7 +140,8 @@ export const createExerciseParam = z.object({
     .describe(
       'Display order within the section (0-based). Required when sectionId is provided. Lessons and exercises share the same order space within a section.'
     ),
-  questions: z.array(questionSchema)
+  questions: z.array(questionSchema),
+  planKey: planKeyParam
 });
 
 export const updateExerciseParam = z

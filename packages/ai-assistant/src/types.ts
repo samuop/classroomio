@@ -50,6 +50,18 @@ export interface AgentContext {
    * search_document to read from it, since documentText is intentionally omitted.
    */
   searchableDocument?: boolean;
+  /**
+   * How many course sources ride in the separate "Course Sources" message that
+   * precedes this context block.
+   *
+   * The material is NOT inlined here on purpose. This context block changes every
+   * turn (course structure, plan progress), and a prompt cache is a prefix match —
+   * embedding the sources in it meant the whole pack was re-written to the cache
+   * on every build turn instead of being read back at a tenth of the price.
+   */
+  courseSourceCount?: number;
+  /** Sources that had to be summarized because the pack budget ran out. */
+  truncatedSourceCount?: number;
   existingSectionCount?: number;
 }
 
@@ -133,7 +145,6 @@ export const ToolName = {
   GO_LIVE_COURSE: 'go_live_course',
   // Agent tools
   GENERATE_COURSE_PLAN: 'generate_course_plan',
-  UPDATE_COURSE_TODO_LIST: 'update_course_todo_list',
   ASK_TEMPLATE_QUESTIONS: 'ask_template_questions',
   ASK_DISCOVERY_QUESTIONS: 'ask_discovery_questions',
   FETCH_DOCUMENTATION_URL: 'fetch_documentation_url',

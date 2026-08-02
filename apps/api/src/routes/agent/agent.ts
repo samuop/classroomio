@@ -46,12 +46,18 @@ import {
 } from '@api/services/agent/document';
 import { createChatConversation } from '@api/services/agent/chat-history';
 import { recordAnthropicCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
+import { buildSourcePack } from '@api/services/agent/source-pack';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
-import { getChatConversation, getChatDocumentCacheKey, readCourseTodoList } from '@cio/db/queries/agent';
+import {
+  getChatConversation,
+  getChatDocumentCacheKey,
+  readPlanRegistry,
+  syncPlanRegistry
+} from '@cio/db/queries/agent';
 import {
   AgentRole,
   AIProvider,
@@ -77,7 +83,7 @@ import { getExercise } from '@api/services/exercise/exercise';
 import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-calls';
 import {
   buildPlanProgressAnchor,
-  buildTodoListAnchor,
+  type PlanProgress,
   collectDocumentIds,
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
@@ -603,8 +609,26 @@ const agentCoreRouter = new Hono()
         }
       }
 
+      // Source pack: for planning and building, the model needs EVERY source at
+      // once — you cannot decide a syllabus, or write lesson 9 without repeating
+      // lesson 3, from retrieved snippets. It ships as its own stable message so
+      // the provider can cache it; see source-pack.ts.
+      //
+      // Single-lesson edits keep the old per-message loader: they're cheap, scoped,
+      // and served better by RAG than by a hundred thousand tokens of context.
+      const useSourcePack = role === AgentRole.TEACHER && !isSingleLessonEdit && !searchableDocumentId;
+
+      const sourcePack = useSourcePack
+        ? await buildSourcePack({
+            courseId,
+            userId: user.id,
+            redis,
+            excludeFullTextForId: documentCache.excludeDocumentId ?? undefined
+          })
+        : undefined;
+
       const documentText =
-        documentIds.length > 0
+        !useSourcePack && documentIds.length > 0
           ? await loadDocumentsContext(
               documentIds,
               context?.documentId,
@@ -661,6 +685,8 @@ const agentCoreRouter = new Hono()
         documentId: context?.documentId,
         documentText,
         searchableDocument: !!searchableDocumentId,
+        courseSourceCount: sourcePack?.entries.length,
+        truncatedSourceCount: sourcePack?.truncatedCount,
         existingSectionCount: existingSections.length
       };
 
@@ -722,18 +748,45 @@ const agentCoreRouter = new Hono()
         documentText.length > 0 &&
         providerConfig.provider !== AIProvider.GOOGLE;
 
+      // Same idea for the source pack, which is the far bigger block and lives in
+      // its own message (see below).
+      const hasSourcePackContext =
+        role === AgentRole.TEACHER &&
+        !!sourcePack?.text &&
+        providerConfig.provider !== AIProvider.GOOGLE;
+
+      // Server-measured build progress, reused three ways: as the coherence anchor
+      // in the prompt, as the checklist the UI renders, and as the signal that
+      // decides whether the round should continue on its own.
+      let planProgress: PlanProgress | undefined;
+
       // Coherence anchor: when a plan is being implemented, inject the REAL course
       // state (plan vs live structure — done/empty/missing per item) so the agent
       // can't lose track of progress when history is trimmed or falsely believe it
       // finished. Only when there's an approved plan (skip the extra query otherwise).
       if (approvedPlan) {
         try {
+          // Reconcile the plan into the registry FIRST: it assigns each item a
+          // stable key and preserves the binding of everything already built, so
+          // a re-planned or teacher-edited plan doesn't orphan existing rows.
+          const registry = await syncPlanRegistry({
+            orgId,
+            courseId,
+            conversationId,
+            userId: user.id,
+            plan: approvedPlan
+          }).catch((err: unknown) => {
+            console.error('[agent.chat] failed to sync plan registry:', err);
+            return [];
+          });
+
           const [progressItems, progressSections] = await Promise.all([
             getCourseContentItems(courseId),
             listCourseSections(courseId)
           ]);
-          const progress = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems);
+          const progress = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems, registry);
           if (progress) {
+            planProgress = progress;
             contextMessageText = contextMessageText
               ? `${contextMessageText}\n\n${progress.anchorText}`
               : progress.anchorText;
@@ -741,21 +794,6 @@ const agentCoreRouter = new Hono()
         } catch (err) {
           // Never block the chat on the anchor — it's an enhancement, not required.
           console.error('[agent.chat] failed to build plan progress anchor:', err);
-        }
-      }
-
-      // Task Manager anchor: surface the model's own persisted TODO list every turn
-      // so it survives history trimming. Teachers only (students don't build courses).
-      if (role === AgentRole.TEACHER) {
-        try {
-          const todos = await readCourseTodoList({ orgId, courseId, conversationId, userId: user.id });
-          const todoAnchor = buildTodoListAnchor(todos);
-          if (todoAnchor) {
-            contextMessageText = contextMessageText ? `${contextMessageText}\n\n${todoAnchor}` : todoAnchor;
-          }
-        } catch (err) {
-          // Additive safety net — never block the chat if the list can't be read.
-          console.error('[agent.chat] failed to build todo list anchor:', err);
         }
       }
 
@@ -850,22 +888,43 @@ const agentCoreRouter = new Hono()
           })()
         : convertedMessages;
 
-      // Prepend volatile context as a user-turn message so the stable system +
-      // tools prefix stays cacheable even when the teacher navigates to a
-      // different lesson or the agent creates sections mid-run.
+      // Two prepended messages, in this order, and the order is the whole point:
+      //
+      //   A. The source pack — large and byte-identical for the life of the
+      //      course. Tagged with cache_control, so everything up to and including
+      //      it is served from cache on later turns.
+      //   B. Volatile context — course structure, plan progress, current lesson.
+      //      Changes every single turn, and is deliberately NOT tagged.
+      //
+      // These used to be one message carrying both, tagged as a unit. A prompt
+      // cache is a prefix match, so each new section the agent created changed the
+      // block and invalidated the sources with it: the pack was re-written at
+      // 1.25x on every build turn instead of being read back at 0.1x — the exact
+      // opposite of what the cache is for.
+      const sourcePackMessage = sourcePack?.text
+        ? ({
+            role: 'user' as const,
+            content: [{ type: 'text' as const, text: sourcePack.text }],
+            ...(isAnthropicCompatible && hasSourcePackContext
+              ? {
+                  providerOptions: {
+                    anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } }
+                  }
+                }
+              : {})
+          })
+        : null;
+
       const contextMessage =
         contextMessageText.length > 0
           ? ({
               role: 'user' as const,
               content: [{ type: 'text' as const, text: contextMessageText }],
-              // When the provider is Anthropic-compatible AND the context block
-              // carries the document text (i.e. the cache is the inline kind),
-              // tag THIS message with cache_control too. The cache hits read
-              // the system + this context-with-PDF prefix at ~10% on the next
-              // turn within the TTL window. Without this tag, the cache hint
-              // sits on the system + the trailing user turn and never covers
-              // the PDF block itself.
-              ...(isAnthropicCompatible && hasInlineDocumentContext
+              // Only tagged on the legacy inline-document path (single-lesson
+              // edits), where the material really does live in THIS block. When
+              // the source pack is in play the tag belongs on message A above;
+              // tagging here too would just pin a boundary that moves every turn.
+              ...(isAnthropicCompatible && hasInlineDocumentContext && !sourcePackMessage
                 ? {
                     providerOptions: {
                       anthropic: { cacheControl: { type: 'ephemeral', ttl: '1h' } }
@@ -874,7 +933,19 @@ const agentCoreRouter = new Hono()
                 : {})
             })
           : null;
-      const modelMessages = contextMessage ? [contextMessage, ...builderMessages] : builderMessages;
+
+      const modelMessages = [
+        ...(sourcePackMessage ? [sourcePackMessage] : []),
+        ...(contextMessage ? [contextMessage] : []),
+        ...builderMessages
+      ];
+
+      if (sourcePack?.text) {
+        console.log(
+          `[agent.chat] source pack: ${sourcePack.entries.length} source(s), ` +
+            `~${sourcePack.estimatedTokens} tokens, ${sourcePack.truncatedCount} summarized`
+        );
+      }
 
       if (isBuildSubagent) {
         console.log(
@@ -906,8 +977,17 @@ const agentCoreRouter = new Hono()
       //   this enforces it) — reads, planning tools, docs fetch, landing page
       //   (templates set it during the plan phase) and go-live check remain.
       // - build: everything except the two questionnaire tools (discovery and
-      //   template forms only run pre-plan). generate_course_plan STAYS — the
-      //   shared "re-show the plan" rule and mid-build revisions need it.
+      //   template forms only run pre-plan) and update_course_todo_list.
+      //   generate_course_plan STAYS — the shared "re-show the plan" rule and
+      //   mid-build revisions need it.
+      //
+      //   The todo list is dropped because it cost more than it bought. The prompt
+      //   asked for one bookkeeping call per built item; with MAX_STEPS_PER_ROUND
+      //   at 40 that is a third of the round spent narrating instead of building,
+      //   so the model rationally skipped it — which is how a checklist could read
+      //   1/32 with ten lessons already written. Progress is now measured by the
+      //   server (buildPlanProgressAnchor over the plan registry), so the model
+      //   does not have to spend steps reporting on itself.
       // - full (lesson-edit chat / students): no restriction.
       const activeToolNames =
         role === AgentRole.TEACHER && teacherPromptMode === 'plan'
@@ -924,7 +1004,10 @@ const agentCoreRouter = new Hono()
             ] as const)
           : role === AgentRole.TEACHER && teacherPromptMode === 'build'
             ? (Object.keys(agentTools).filter(
-                (name) => name !== 'ask_template_questions' && name !== 'ask_discovery_questions'
+                (name) =>
+                  name !== 'ask_template_questions' &&
+                  name !== 'ask_discovery_questions' &&
+                  name !== 'update_course_todo_list'
               ) as Array<keyof typeof agentTools & string>)
             : undefined;
 
@@ -1007,16 +1090,29 @@ const agentCoreRouter = new Hono()
           // whether the model stopped by choice or hit the step limit.
           if (approvedPlan) {
             try {
-              const [finalItems, finalSections] = await Promise.all([
+              const [finalItems, finalSections, finalRegistry] = await Promise.all([
                 getCourseContentItems(courseId),
-                listCourseSections(courseId)
+                listCourseSections(courseId),
+                readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => [])
               ]);
-              const finalProgress = buildPlanProgressAnchor(approvedPlan, finalSections, finalItems);
-              if (finalProgress && (finalProgress.pendingCount > 0 || finalProgress.emptyCount > 0)) {
-                planIncomplete = {
-                  pendingCount: finalProgress.pendingCount,
-                  emptyCount: finalProgress.emptyCount
-                };
+              const finalProgress = buildPlanProgressAnchor(
+                approvedPlan,
+                finalSections,
+                finalItems,
+                finalRegistry
+              );
+              if (finalProgress) {
+                // The checklist the UI renders comes from HERE — reconciled after the
+                // round's writes landed, so it reports what exists rather than what
+                // the model said it did.
+                planProgress = finalProgress;
+
+                if (finalProgress.pendingCount > 0 || finalProgress.emptyCount > 0) {
+                  planIncomplete = {
+                    pendingCount: finalProgress.pendingCount,
+                    emptyCount: finalProgress.emptyCount
+                  };
+                }
               }
             } catch (err) {
               console.error('[agent.chat] failed to recompute plan progress at finish:', err);
@@ -1062,7 +1158,12 @@ const agentCoreRouter = new Hono()
           // from cache". The API exposes no per-block breakdown. That is still
           // evidence of a real provider-side cache, which is what the badge
           // previously lacked entirely.
-          if (isAnthropicCompatible && hasInlineDocumentContext && primaryDocumentId && cacheRead > 0) {
+          if (
+            isAnthropicCompatible &&
+            (hasInlineDocumentContext || hasSourcePackContext) &&
+            primaryDocumentId &&
+            cacheRead > 0
+          ) {
             // Resolved here rather than before the stream: it is one DB read
             // per turn and this runs after the response is already out, so it
             // costs the user nothing. Only reached on a confirmed hit.
@@ -1166,6 +1267,19 @@ const agentCoreRouter = new Hono()
               // figures summed over every step of the round.
               contextTokens: lastStepInputTokens
             },
+            // Server-measured build progress: the plan reconciled against the live
+            // course. Replaces the checklist that used to be drawn from the model's
+            // own update_course_todo_list output, which drifted from reality because
+            // nothing forced the model to keep it current.
+            planProgress: planProgress
+              ? {
+                  total: planProgress.total,
+                  completed: planProgress.completed,
+                  pendingCount: planProgress.pendingCount,
+                  emptyCount: planProgress.emptyCount,
+                  items: planProgress.items
+                }
+              : undefined,
             continuation:
               completedStepCount >= MAX_STEPS_PER_ROUND
                 ? {

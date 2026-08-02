@@ -4,7 +4,7 @@ import { AppError } from '@api/utils/errors';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
-import { writeCourseTodoList } from '@cio/db/queries/agent';
+import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
 import { semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import { listCourseSections, createCourseSection, updateCourseSectionService } from '@api/services/course/section';
@@ -18,7 +18,7 @@ import {
   updateExerciseSectionMetadataService
 } from '@api/services/exercise/exercise';
 import { reorderCourseContent } from '@api/services/course/content';
-import { normalizeAgentLessonContent, repairSvgGeometry } from '@api/services/agent/lesson-content';
+import { normalizeAgentLessonContent, repairSvgGeometry, validateSvgDiagram } from '@api/services/agent/lesson-content';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
 import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
@@ -48,7 +48,6 @@ import {
   updateCourseLandingPageParam,
   updateExerciseParam,
   searchDocumentParam,
-  updateCourseTodoListParam,
   updateExerciseSectionParam,
   updateLessonParam,
   updateQuestionsParam,
@@ -202,6 +201,54 @@ export function buildAgentTools(
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
   const searchableDocumentId = _options?.searchableDocumentId ?? null;
+  const runScope = { orgId, courseId, conversationId, userId };
+
+  /**
+   * Idempotency guard for the create_* tools.
+   *
+   * Returns the id already built for `planKey`, or null if there is none (or the
+   * row it pointed at is gone — the teacher may have deleted it by hand). A
+   * non-null result means the caller must NOT insert: the plan item is already
+   * satisfied.
+   *
+   * This is deliberately the last line of defence rather than the only one. The
+   * Plan Progress anchor can still misjudge an item and tell the model to create
+   * it a second time; this makes that harmless instead of producing the duplicate
+   * sections and lessons teachers were seeing.
+   */
+  async function findBoundEntity(
+    planKey: string | undefined,
+    kind: 'section' | 'lesson' | 'exercise'
+  ): Promise<string | null> {
+    if (!planKey) return null;
+
+    try {
+      const binding = await resolvePlanBinding({ ...runScope, planKey });
+
+      if (!binding?.entityId) return null;
+
+      if (kind === 'section') await verifySectionBelongsToCourse(binding.entityId, courseId);
+      else if (kind === 'lesson') await verifyLessonBelongsToCourse(binding.entityId, courseId);
+      else await verifyExerciseBelongsToCourse(binding.entityId, courseId);
+
+      return binding.entityId;
+    } catch {
+      // Stale binding (row deleted, or moved to another course) — treat the plan
+      // item as unbuilt and let the create proceed.
+      return null;
+    }
+  }
+
+  /** Record the row a plan item was built into. Best-effort: never fails a create. */
+  async function recordBinding(planKey: string | undefined, entityId: string): Promise<void> {
+    if (!planKey) return;
+
+    try {
+      await bindPlanItem({ ...runScope, planKey, entityId });
+    } catch (error) {
+      console.error('[agent-tool] failed to bind plan item', planKey, error);
+    }
+  }
 
   return {
     search_document: tool({
@@ -225,39 +272,12 @@ export function buildAgentTools(
         });
       }
     }),
-    update_course_todo_list: tool({
-      description:
-        'Your persistent task list for building this course — it survives even when the chat history is trimmed. ' +
-        'Immediately AFTER a plan is approved, your FIRST action MUST be to call this with one task per section/lesson/exercise to build. ' +
-        'Send the COMPLETE list every time (tasks you omit are dropped). Keep exactly ONE task "in_progress"; ' +
-        'mark a task "completed" ONLY after you have actually created/filled it, then move to the next. ' +
-        'You are NOT done while any task is pending or in_progress. Reuse each task\'s `key` to update it in place.',
-      inputSchema: updateCourseTodoListParam,
-      execute: async (args) => {
-        return executeAgentTool('update_course_todo_list', { orgId, userId, courseId, args }, async () => {
-          const saved = await writeCourseTodoList({
-            orgId,
-            courseId,
-            conversationId,
-            userId,
-            items: args.todos.map((t) => ({
-              key: t.key,
-              content: t.content,
-              status: t.status,
-              priority: t.priority
-            }))
-          });
-          const remaining = saved.filter((t) => t.status !== 'completed').length;
-          return {
-            todos: saved,
-            total: saved.length,
-            completed: saved.length - remaining,
-            remaining,
-            allDone: remaining === 0
-          };
-        });
-      }
-    }),
+    // `update_course_todo_list` used to live here. It was the model's own build
+    // checklist, and it asked for a bookkeeping call after every created item —
+    // out of a 40-step round, roughly a third spent narrating instead of
+    // building. The model sensibly stopped paying it, so the checklist read 1/32
+    // while ten lessons already existed. Progress is now derived on the server
+    // from the plan registry (buildPlanProgressAnchor), which cannot drift.
 
     get_course_structure: tool({
       description:
@@ -306,7 +326,21 @@ export function buildAgentTools(
       inputSchema: createSectionParam,
       execute: async (args) => {
         return executeAgentTool('create_section', { orgId, userId, courseId, args }, async () => {
+          const boundId = await findBoundEntity(args.planKey, 'section');
+
+          if (boundId) {
+            const existing = (await listCourseSections(courseId)).find((s) => s.id === boundId);
+            return {
+              id: boundId,
+              title: existing?.title ?? args.title,
+              order: existing?.order ?? args.order,
+              reused: true,
+              note: 'This plan item was already built. Reusing the existing section instead of creating a duplicate.'
+            };
+          }
+
           const section = await createCourseSection(courseId, { title: args.title, courseId, order: args.order });
+          await recordBinding(args.planKey, section.id);
           return { id: section.id, title: section.title, order: section.order };
         });
       }
@@ -336,12 +370,29 @@ export function buildAgentTools(
       execute: async (args) => {
         return executeAgentTool('create_lesson', { orgId, userId, courseId, args }, async () => {
           await verifySectionBelongsToCourse(args.sectionId, courseId);
+
+          const boundId = await findBoundEntity(args.planKey, 'lesson');
+
+          if (boundId) {
+            // getLesson throws when missing; the binding was just verified, so a
+            // failure here is a race, not a real absence — fall back to the args.
+            const existing = await getLesson(boundId).catch(() => null);
+            return {
+              id: boundId,
+              title: existing?.title ?? args.title,
+              order: existing?.order ?? args.order,
+              reused: true,
+              note: 'This plan item was already built. Reusing the existing lesson — write its content with update_lesson_content instead of creating a duplicate.'
+            };
+          }
+
           const lesson = await createLesson(courseId, {
             title: args.title,
             courseId,
             sectionId: args.sectionId,
             order: args.order
           });
+          await recordBinding(args.planKey, lesson.id);
           return { id: lesson.id, title: lesson.title, order: lesson.order };
         });
       }
@@ -387,12 +438,25 @@ export function buildAgentTools(
             locale: args.locale as 'en',
             content: normalizedContent
           });
+          // Diagram problems the prompt forbids but nothing used to catch (labels
+          // below the readable size, rows stacked on top of each other). Reported
+          // rather than repaired: fixing an overlap means moving a label, which
+          // needs to know what the diagram is saying. Handing the warning back lets
+          // the model correct its own work instead of shipping a broken picture.
+          const svgWarnings = validateSvgDiagram(normalizedContent);
+
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
             locale: args.locale,
             contentLength: normalizedContent.length,
-            updated: true
+            updated: true,
+            ...(svgWarnings.length > 0
+              ? {
+                  svgWarnings,
+                  note: 'The lesson was saved, but the diagram(s) above will not render legibly. Fix them now with edit_lesson_content before moving on.'
+                }
+              : {})
           };
         });
       }
@@ -458,13 +522,24 @@ export function buildAgentTools(
             content: updated
           });
 
+          // Only inspect what this edit wrote — warning about a pre-existing
+          // diagram elsewhere in the lesson would send the model chasing something
+          // the teacher didn't ask it to touch.
+          const svgWarnings = newString.includes('<svg') ? validateSvgDiagram(newString) : [];
+
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
             locale: args.locale,
             replacements: args.replaceAll ? occurrences : 1,
             contentLength: updated.length,
-            updated: true
+            updated: true,
+            ...(svgWarnings.length > 0
+              ? {
+                  svgWarnings,
+                  note: 'The edit was saved, but the diagram will not render legibly. Fix it before moving on.'
+                }
+              : {})
           };
         });
       }
@@ -483,6 +558,19 @@ export function buildAgentTools(
             await verifySectionBelongsToCourse(args.sectionId, courseId);
           }
 
+          const boundId = await findBoundEntity(args.planKey, 'exercise');
+
+          if (boundId) {
+            const existing = await getExercise(boundId).catch(() => null);
+            return {
+              id: boundId,
+              title: existing?.title ?? args.title,
+              questionCount: existing?.questions?.length ?? 0,
+              reused: true,
+              note: 'This plan item was already built. Reusing the existing exercise — add questions with add_questions instead of creating a duplicate.'
+            };
+          }
+
           const exercise = await createExercise({
             title: args.title,
             description: args.description,
@@ -498,6 +586,7 @@ export function buildAgentTools(
               options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect }))
             }))
           });
+          await recordBinding(args.planKey, exercise.id);
           return { id: exercise.id, title: exercise.title, questionCount: args.questions.length };
         });
       }

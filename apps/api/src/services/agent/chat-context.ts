@@ -1,7 +1,12 @@
 import { AppError } from '@api/utils/errors';
 import { getDocumentText, getDocumentSummary } from '@api/services/agent/document';
 import { redis } from '@api/utils/redis/redis';
-import { getCourseSectionBinding, getExerciseCourseBinding, getLessonCourseBinding } from '@cio/db/queries/agent';
+import {
+  getCourseSectionBinding,
+  getExerciseCourseBinding,
+  getLessonCourseBinding,
+  type PlanRegistryEntry
+} from '@cio/db/queries/agent';
 import { z } from 'zod';
 import { CoursePlanFieldsSchema, type CourseTemplateId } from '@cio/ai-assistant';
 
@@ -196,6 +201,8 @@ export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof
  * without coupling the anchor to it.
  */
 type CourseItemState = {
+  /** Present on rows from getCourseContentItems; the plan registry resolves by it. */
+  id?: string;
   type: string;
   title: string | null;
   sectionId: string | null;
@@ -219,49 +226,106 @@ function normalizeTitle(title: string | null | undefined): string {
  * It always sees, per plan item, whether it is ✅ done, ⚠️ present-but-empty, or ⬜ missing,
  * plus an explicit "you are NOT done until every ⬜/⚠️ is resolved" instruction.
  *
- * Matching is by normalized title (the same heuristic the prompt already uses).
+ * Matching is by plan-registry binding: each plan item records the id of the row
+ * built from it, so reconciliation asks "does row <uuid> still exist?". Title
+ * matching survives only as a fallback for plans that predate the registry.
+ *
+ * That distinction is the whole point. While this compared titles, a lesson the
+ * model had renamed while writing it ("1.1 Introducción" for a plan item called
+ * "Introducción") read as ⬜ missing, and the anchor — in the strongest wording of
+ * the prompt — ordered it built again. The duplicates teachers reported were the
+ * server instructing the model to duplicate, not the model losing its place.
+ *
  * Returns undefined when there is no plan (nothing to anchor against).
  *
  * `pendingCount`/`emptyCount` are also surfaced so the API can tell the UI the plan
  * is not actually finished (⬜ missing + ⚠️ empty) even when the model wrongly claimed
  * completion — that's what powers the "Continue" button after a false "done".
+ * `items`/`total`/`completed` are the same reconciliation as structured data, so the
+ * UI checklist can render server truth instead of the model's self-report.
  */
+export type PlanProgressStatus = 'done' | 'empty' | 'missing';
+
+export interface PlanProgressItem {
+  /** Registry key (`s1`, `s1.2`); empty for legacy plans with no registry. */
+  key: string;
+  kind: 'section' | 'lesson' | 'exercise';
+  title: string;
+  status: PlanProgressStatus;
+}
+
 export interface PlanProgress {
   anchorText: string;
   pendingCount: number;
   emptyCount: number;
+  items: PlanProgressItem[];
+  total: number;
+  completed: number;
 }
 
 export function buildPlanProgressAnchor(
   plan: z.infer<typeof CoursePlanFieldsSchema> | undefined,
   sections: CourseSectionState[],
-  items: CourseItemState[]
+  items: CourseItemState[],
+  registry: PlanRegistryEntry[] = []
 ): PlanProgress | undefined {
   if (!plan || plan.sections.length === 0) return undefined;
+
+  const sectionById = new Map(sections.map((s) => [s.id, s] as const));
+  const itemById = new Map(
+    items.filter((it) => it.type !== 'section' && it.id).map((it) => [it.id as string, it] as const)
+  );
 
   const sectionIdByTitle = new Map<string, string>();
   for (const s of sections) {
     sectionIdByTitle.set(normalizeTitle(s.title), s.id);
   }
 
-  // Index real items by sectionId + normalized title for O(1) lookup.
+  // Index real items by sectionId + normalized title — the fallback path, used
+  // only when a plan item has no registry binding yet.
   const itemsBySectionAndTitle = new Map<string, CourseItemState>();
   for (const it of items) {
     if (it.type === 'section') continue;
     itemsBySectionAndTitle.set(`${it.sectionId ?? ''}::${normalizeTitle(it.title)}`, it);
   }
 
+  // Registry lookups mirror how syncPlanRegistry assigned the keys: sections by
+  // plan title, items by owning-section key + plan title.
+  const registrySectionByTitle = new Map<string, PlanRegistryEntry>();
+  const registryItemByPath = new Map<string, PlanRegistryEntry>();
+  for (const entry of registry) {
+    if (entry.kind === 'section') {
+      registrySectionByTitle.set(normalizeTitle(entry.title), entry);
+    } else {
+      registryItemByPath.set(`${entry.sectionKey ?? ''}::${normalizeTitle(entry.title)}`, entry);
+    }
+  }
+
   const lines: string[] = [];
+  const progressItems: PlanProgressItem[] = [];
   let pendingCount = 0;
   let emptyCount = 0;
 
+  /** `[s1.2] ` prefix so the model can echo the key back in its create_* call. */
+  const tag = (key: string) => (key ? `[${key}] ` : '');
+
   for (const planSection of plan.sections) {
-    const realSectionId = sectionIdByTitle.get(normalizeTitle(planSection.title));
+    const regSection = registrySectionByTitle.get(normalizeTitle(planSection.title));
+    const sectionKey = regSection?.key ?? '';
+
+    // Bound id first; title only as a fallback for pre-registry plans.
+    const boundSectionId =
+      regSection?.entityId && sectionById.has(regSection.entityId) ? regSection.entityId : undefined;
+    const realSectionId = boundSectionId ?? sectionIdByTitle.get(normalizeTitle(planSection.title));
+
     if (!realSectionId) {
-      lines.push(`Section "${planSection.title}" ⬜ NOT CREATED — create it and everything below.`);
+      lines.push(`${tag(sectionKey)}Section "${planSection.title}" ⬜ NOT CREATED — create it and everything below.`);
+      progressItems.push({ key: sectionKey, kind: 'section', title: planSection.title, status: 'missing' });
       for (const item of planSection.items) {
         pendingCount += 1;
-        lines.push(`  - ${item.type} "${item.title}" ⬜ missing`);
+        const itemKey = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`)?.key ?? '';
+        lines.push(`  - ${tag(itemKey)}${item.type} "${item.title}" ⬜ missing`);
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });
       }
       continue;
     }
@@ -270,35 +334,59 @@ export function buildPlanProgressAnchor(
     let sectionComplete = true;
 
     for (const item of planSection.items) {
-      const real = itemsBySectionAndTitle.get(`${realSectionId}::${normalizeTitle(item.title)}`);
+      const regItem = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`);
+      const itemKey = regItem?.key ?? '';
+      const boundItem = regItem?.entityId ? itemById.get(regItem.entityId) : undefined;
+      const real = boundItem ?? itemsBySectionAndTitle.get(`${realSectionId}::${normalizeTitle(item.title)}`);
+
       if (!real) {
         pendingCount += 1;
         sectionComplete = false;
-        itemStatuses.push(`  - ${item.type} "${item.title}" ⬜ missing — create it`);
+        itemStatuses.push(`  - ${tag(itemKey)}${item.type} "${item.title}" ⬜ missing — create it`);
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });
         continue;
       }
       // Lesson present but no written content, or exercise with no questions → not done.
       if (real.type === 'lesson' && real.hasNoteContent === false) {
         emptyCount += 1;
         sectionComplete = false;
-        itemStatuses.push(`  - lesson "${item.title}" ⚠️ EXISTS BUT EMPTY — write its content`);
+        itemStatuses.push(
+          `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (id ${real.id ?? '?'}) BUT EMPTY — write its content, do NOT create it again`
+        );
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else if (real.type === 'exercise' && (real.questionCount ?? 0) === 0) {
         emptyCount += 1;
         sectionComplete = false;
-        itemStatuses.push(`  - exercise "${item.title}" ⚠️ EXISTS BUT HAS NO QUESTIONS — add questions`);
+        itemStatuses.push(
+          `  - ${tag(itemKey)}exercise "${real.title ?? item.title}" ⚠️ EXISTS (id ${real.id ?? '?'}) BUT HAS NO QUESTIONS — add questions, do NOT create it again`
+        );
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else {
-        itemStatuses.push(`  - ${item.type} "${item.title}" ✅`);
+        itemStatuses.push(`  - ${tag(itemKey)}${item.type} "${real.title ?? item.title}" ✅`);
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'done' });
       }
     }
 
-    lines.push(`Section "${planSection.title}" ${sectionComplete ? '✅ complete' : '⬜ incomplete'}`);
+    lines.push(`${tag(sectionKey)}Section "${planSection.title}" ${sectionComplete ? '✅ complete' : '⬜ incomplete'}`);
     lines.push(...itemStatuses);
+    progressItems.push({
+      key: sectionKey,
+      kind: 'section',
+      title: planSection.title,
+      status: sectionComplete ? 'done' : 'empty'
+    });
   }
+
+  const total = progressItems.length;
+  const completed = progressItems.filter((entry) => entry.status === 'done').length;
 
   if (pendingCount === 0 && emptyCount === 0) {
     return {
       pendingCount,
       emptyCount,
+      items: progressItems,
+      total,
+      completed,
       anchorText: `## Plan Progress (source of truth)
 
 Every item in the approved plan is present and has content. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`
@@ -308,46 +396,19 @@ Every item in the approved plan is present and has content. The course matches t
   return {
     pendingCount,
     emptyCount,
+    items: progressItems,
+    total,
+    completed,
     anchorText: `## Plan Progress — YOU ARE NOT DONE (source of truth)
 
 This is the REAL state of the course right now (from the live structure), compared against the approved plan. Trust THIS, not your memory of what you did — the chat history may be trimmed.
 
 ${lines.join('\n')}
 
-${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.`
+${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.
+
+When you create an item, pass the \`[key]\` shown beside it as \`planKey\` (e.g. planKey: "s1.2"). Items marked ⚠️ already exist — fill them in by id, never create them again.`
   };
-}
-
-/**
- * Render the persisted course-build TODO list (Task Manager) as a context block so
- * the model always sees its own task list — even after history trimming. This is the
- * model's self-declared plan of record; the Plan Progress anchor above is the
- * server's independent verification against the live course (double safety net).
- */
-export function buildTodoListAnchor(
-  todos: Array<{ content: string; status: 'pending' | 'in_progress' | 'completed'; priority: string }>
-): string | undefined {
-  if (!todos || todos.length === 0) return undefined;
-
-  const icon = (s: string) => (s === 'completed' ? '✅' : s === 'in_progress' ? '🔄' : '⬜');
-  const lines = todos.map((t) => `- ${icon(t.status)} ${t.content}`);
-  const remaining = todos.filter((t) => t.status !== 'completed').length;
-
-  if (remaining === 0) {
-    return `## Your Task List (Task Manager)
-
-Every task you registered is completed:
-${lines.join('\n')}
-
-If the teacher hasn't asked for anything new, your task list is done.`;
-  }
-
-  return `## Your Task List (Task Manager) — ${remaining} task(s) remaining
-
-This is YOUR task list, saved outside the chat so you never lose it:
-${lines.join('\n')}
-
-Keep working through it: exactly one task 🔄 in_progress at a time, mark it ✅ completed the moment it's actually built, then start the next ⬜. Call update_course_todo_list to update this list. You are NOT finished while any ⬜ or 🔄 remains.`;
 }
 
 const COURSE_TEMPLATE_ID_SET = new Set<CourseTemplateId>(['product_101', 'product_onboarding', 'expert_on_x']);
