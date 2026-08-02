@@ -5,7 +5,15 @@
 > this end-to-end before touching the AI agent code — these are the gotchas that
 > cost us real debugging time.
 
-**Last major update**: 2026-08-02 (multi-user cache sharing sprint)
+**Last major update**: 2026-08-02. Two sprints in this file now: multi-user cache
+sharing, then a debugging session that corrected several claims it used to make.
+If you read an older copy, re-check these — they were **wrong**:
+- `ttl: '1h'` does NOT prevent MiniMax from caching (§3)
+- the badge did NOT report on the key the chat writes (§11)
+- `fallbackLocale` as a second constructor argument was silently discarded (§6)
+
+New this session: §5b (agent + AI SDK gotchas), the Anthropic vs Gemini handle
+TTL split, and what stays alive when the system is idle.
 
 ---
 
@@ -141,12 +149,77 @@ critical bit:
   : {})
 ```
 
-⚠️ **Don't include `ttl: '1h'`** when talking to MiniMax. The SDK uses the
-Anthropic default of 1h, but MiniMax enforces its own 5m. Either way, the
-`ttl` field is silently ignored (or rejected). The first version of this code
-sent `ttl: '1h'` and it worked at the wire level (no error) but **the cache
-was never actually created** because MiniMax didn't recognize the parameter
-shape. Lesson: omit `ttl` when targeting MiniMax.
+⚠️ **`ttl: '1h'` is ignored, not fatal** — corrected 2026-08-02. This section
+used to claim that sending `ttl: '1h'` meant "the cache was never actually
+created". That is **wrong**, and the code has been sending it all along
+(`agent.ts:875` on the context message, `agent.ts:900` on the last message).
+Measured counter-evidence from `ai_token_usage`:
+
+```
+prompt=65259  cache_read=49408   ← a real hit, with ttl:'1h' present
+```
+
+What MiniMax actually does is enforce its own 5-minute window and disregard the
+field. So `ttl` is harmless clutter, not a cache killer. Don't go "fixing" it
+expecting a behaviour change; if you remove it, do so for tidiness only.
+
+The real reason cache reads look absent is almost always **the 5-minute window**,
+not the request shape. Turns spaced further apart than that always miss:
+
+```
+01:40:20  110318  read=128
+01:46:31  110320  read=128    ← 6m11s later: outside the window
+04:54:30  109775  read=0      ← hours later
+```
+
+### Handle TTL must mirror the provider window (5 min), not Gemini's (15 min)
+
+`document-cache.ts` keeps two constants, and they must stay apart:
+
+```typescript
+const CACHE_TTL_SECONDS = 900;            // Gemini: a resource we own, renew and PAY for
+const ANTHROPIC_CACHE_TTL_SECONDS = 300;  // MiniMax: mirrors the provider's own window
+```
+
+They used to be one 900s value, with a comment shrugging that "our Redis handle
+can outlive" the provider's 5 minutes. Harmless while a handle only meant "a
+cache might exist" — but once `recordAnthropicCacheHit` made it mean *"the
+provider billed us for cached reads"*, a 15-minute handle kept the Sources badge
+green for ~10 minutes over a cache that had already evaporated. Same class of
+over-claim as the fabricated handles it replaced, just smaller.
+
+Losing the handle costs nothing on this path: the next cached read re-establishes
+it. Regression test: `expect(opts.EX).toBe(300)`.
+
+### What stays alive when nobody is using the chat
+
+Answer to "if nobody chats or builds, what keeps running?" — with
+`CHAT_PROVIDER=minimax`, **nothing, and nothing bills for idling**:
+
+| Resource | Lifetime | Costs money while idle? |
+|---|---|---|
+| MiniMax cache (provider side) | 5 min idle; free refresh on every hit | **No** — implicit, nothing is rented |
+| Our Redis handle (Anthropic) | 5 min (`ANTHROPIC_CACHE_TTL_SECONDS`) | No — a local record |
+| Document text in Redis | 1 h (`DOCUMENT_REDIS_TTL = 3600`) | No |
+| Gemini `cachedContent` | 15 min sliding | **Yes** — hourly storage, hence the explicit DELETE in `releaseDocumentCaches`. Dormant under MiniMax |
+| `ai_chat_document.text` in Postgres | permanent | Storage only |
+
+The asymmetry is the whole point: Gemini's cache is a resource we create and must
+release; MiniMax's is a hint the server may honour. There is nothing to shut down.
+
+### Measured: the cache genuinely works
+
+From `ai_token_usage` on a real plan session (2026-08-02):
+
+```
+05:25:16  prompt 221605  cache_read 110464    ← 2 steps, document inline
+05:34:53  prompt 221987  cache_read 110464    ← whole document served from cache
+05:36:16  prompt  10429  cache_read      0    ← document GONE from context
+```
+
+Two lessons in one table. The cache does serve a 110k-token document at read
+price. And turns spaced beyond the 5-minute window always miss — `read=128`
+readings are that, not a broken prefix.
 
 ### Conversation-id vs document-id scoping
 
@@ -236,6 +309,44 @@ visible in the Sources panel.
 | `/agent/documents/:documentId/refresh-cache` | POST | Drop + rebuild cache handle     |
 | `/agent/documents/reconcile`             | POST   | Auto-sync agent: walk every doc, rebuild missing/expired handles |
 
+### ⚠️ There is NO way to ask MiniMax whether something is cached
+
+The Anthropic-compatible API has no `cachedContents` resource and no status
+endpoint. You attach `cache_control: ephemeral` and the server decides. The
+**only** ground truth is `usage.inputTokenDetails.cacheReadTokens > 0` on a real
+response (logged as `[agent.chat] cache hit=…`, persisted to `ai_token_usage`).
+
+Grep proves it — every network call in `document-cache.ts` is Gemini's:
+
+```
+document-cache.ts:138  fetch(`${GEMINI_API_BASE}/cachedContents?key=…`)
+document-cache.ts:183  fetch(`${GEMINI_API_BASE}/${cacheName}`, { method: 'DELETE' })
+document-cache.ts:202  fetch(`${GEMINI_API_BASE}/${handle.cacheName}?key=…`)
+```
+
+The Anthropic path does `redis.get` / `redis.set` and nothing else.
+
+**The bug this caused.** A Redis "handle" used to be created speculatively — by
+`resolveDocumentCache` at chat time, by `refreshDocumentCache`, and by
+`reconcileCourseSourceCache`. Reconcile runs when the Sources panel mounts, so
+**opening the panel turned the badge green**, asserting a MiniMax-side cache
+that had never been requested, let alone confirmed. `expireAt` was just
+`Date.now() + TTL`, not anything the provider said.
+
+Now `recordAnthropicCacheHit` is the **only** writer, called from `agent.ts`
+after the stream with the turn's real `cacheReadTokens`; it no-ops on 0. A
+handle therefore means "the provider billed us for cached reads at
+`observedAt`". Reconcile only reports and releases; refresh only invalidates.
+
+Caveat kept deliberately: `cacheReadTokens` covers the whole cached prefix
+(system prompt + context message with the document inside), so it attests "a
+cached read happened on a turn carrying this document", not "these exact bytes
+came from cache". The API exposes no per-block breakdown.
+
+**If you ever see a green badge without a chat turn, something started
+fabricating handles again.** The regression test is `honest cache badge >
+reconcile does not create a handle for an eligible document`.
+
 ### Cache activation policy (Phase 4.1)
 
 For every teacher chat turn with a document attached and NOT a single-lesson
@@ -261,15 +372,20 @@ This now covers all four cases:
 3. Editing an existing course that has a source attached (every edit re-reads)
 4. Single-lesson edits are NEVER cache-eligible
 
-### Reconciliation policy (Phase 4)
+### Reconciliation policy (revised 2026-08-02)
 
+Reconcile **reports and releases; it never creates** — see the warning above.
 For every source in the course:
-1. **No handle in Redis** → create one (`rebuilt`/`no_handle`)
-2. **Handle expired** → rebuild (`rebuilt`/`expired`)
-3. **Handle valid + text unchanged** → keep (`kept`)
-4. **Handle valid + text changed** → rebuild (`rebuilt`/`text_updated`)
-5. **Document too small for cache** → release any leftover handle
-   (`released`/`too_small`)
+1. **No handle in Redis** → `skipped`/`awaiting_cache_hit` (badge stays dark
+   until a real turn confirms a cached read)
+2. **Handle expired** → `released`/`expired` (the provider's window lapsed)
+3. **Handle live** → `kept`
+4. **Document too small / over limit** → release any leftover handle
+   (`released`/`too_small` | `over_limit`)
+
+`rebuilt` is no longer produced on this path. The dashboard's
+`ReconcileSummary.rebuilt` counter therefore reads 0; it is not rendered
+anywhere today.
 
 Implementation: `apps/api/src/services/agent/document-cache.ts:reconcileCourseSourceCache`
 
@@ -294,58 +410,147 @@ message metadata — see "Things we considered but didn't ship" below.
 
 ---
 
+## 5b. Agent + AI SDK gotchas (2026-08-02 session)
+
+Four failures that each looked like something else. All cost real debugging time.
+
+### `toUIMessageStreamResponse` swallows every stream error by default
+
+The SDK's default handler is literally `() => 'An error occurred.'` — it replaces
+the real error **and logs nothing**. A broken tool call is then invisible in the
+browser console *and* in the API log, so you end up hunting frontend ghosts.
+Always pass `onError`. For `InvalidToolInputError`, print `toolName`,
+`toolInput` (the raw JSON the model emitted) and `cause`; the generic message
+tells you nothing about which property was wrong. Collapse the cause to one line
+before returning it — it is multi-line and the chat bubble shows only the first,
+useless line.
+
+### MiniMax fails `z.discriminatedUnion`; flatten it
+
+`ask_discovery_questions` failed validation five turns in a row (~666k tokens),
+with the model narrating that it could not build a valid card. Cause: the field
+schema was a `z.discriminatedUnion('type', …)`, which serialises to JSON Schema
+as `anyOf` + `const` discriminators. The prompt and schema were tuned on Gemini;
+MiniMax-M3 could not reproduce the shape.
+
+Fix (`packages/ai-assistant/src/templates/index.ts`): a flat object with
+`z.enum([...])` plus a `superRefine` that requires `options` only when
+`type === 'select'`, and a `z.preprocess` that coerces `["A","B"]` into
+`[{value,label}]` — models emit that constantly and the intent is unambiguous.
+Strictly a *widening*: everything previously valid still validates, so the Gemini
+path cannot regress. Failure messages now name the exact path, which is what the
+model reads to correct itself on retry.
+
+**If a tool keeps failing validation, suspect the schema shape before the prompt.**
+
+### `totalUsage` is a BILLING figure, not context occupancy
+
+AI SDK v7 aggregates `totalUsage` across every step of a round. One turn that
+called a tool over a 110k-token document reported ~222k, and the context gauge —
+which used `totalTokens` — read 100% on a brand-new conversation.
+
+Occupancy is the input size of the **last** request. Capture it in
+`onStepFinish` (`step.usage.inputTokens`) and ship it as a separate
+`contextTokens` field; keep `totalTokens` as fallback for older messages.
+
+Worse than the wrong number: the "context full" panel was the `{:else}` branch of
+the composer, so hitting 100% **removed the input entirely** and the only exits
+(compact / new chat) both spend tokens. A gauge must warn, never lock — the panel
+now renders above the input.
+
+### The document silently falls out of context after turn 1
+
+`loadDocumentsContext` injects full text only for `currentDocumentId`; documents
+seen only in history degrade to a short summary. `currentDocumentId` comes from
+the chat's `uploadedDocument`, which was cleared on every `onFinish` and only
+re-adopted when `isFirstMessage`. So by the time the teacher finished the
+discovery form, the agent was asked to plan "from the apuntes" holding no apuntes
+(measured: the plan turn sent 10,429 tokens).
+
+Fix: `UploadedDocument.origin` — `course_source` is sticky across turns,
+`one_off` keeps the old per-message behaviour. Also dropped the `isFirstMessage`
+guard on auto-adoption: the attachment lives in component state, so a page reload
+mid-conversation cleared it and it was never re-attached.
+
+Trade-off to keep in mind: stickiness raises the floor to ~110k input per turn
+(mostly cache-served) — and it *multiplies* the cost of a failing retry loop.
+
 ## 6. i18n gotchas (`es.json`)
 
-### Always set `fallbackLocale: 'en'`
+### ⚠️ `fallbackLocale` goes INSIDE the config object — `new i18n()` takes one argument
 
-In `apps/dashboard/src/lib/utils/functions/translations.ts` we always pass
-`{ fallbackLocale: 'en' }` to the i18n constructor. Without this, any
-missing key renders as a literal in production — the user's screenshot
-showed the sidebar full of `org_navigation.home`, `org_navigation.tracking`,
-etc. With the fallback, those keys gracefully fall back to the English
-translation instead of looking broken.
-
-### ⚠️ `fallbackLocale` alone is NOT enough — you must also pre-load it
-
-**This is the bug we paid to debug for an extra session.** `@sveltekit-i18n/base`'s
-`loadTranslations(locale, route)` only fetches the active locale — it does
-NOT auto-load the `fallbackLocale` even when configured. So setting
-`fallbackLocale: 'en'` in the i18n constructor is necessary but **not
-sufficient**. You also have to call `loadTranslations('en', …)` once at
-boot, otherwise the fallback has no translations to fall back to.
-
-In `apps/dashboard/src/routes/+layout.ts`:
+**This is the bug that cost us two sessions, including one where we shipped a
+wrong fix.** The base i18n class is declared
+`constructor(config?: Config.T<ParserParams>)` — a **single** parameter
+(`node_modules/@sveltekit-i18n/base/dist/index.d.ts:192`). So this:
 
 ```typescript
-const initLocale = getInitialLocale(userLocale);
-await loadTranslations(initLocale, pathname);
-
-// Pre-load the fallback locale so any missing key in the active locale
-// resolves to the English translation instead of rendering the key as a
-// literal. Cheap: ~30KB JSON, parses once per route change.
-if (initLocale !== FALLBACK_LOCALE) {
-  await loadTranslations(FALLBACK_LOCALE, pathname);
-  await loadTranslations(initLocale, pathname);
-}
+new i18n(config, { fallbackLocale: 'en' })   // ❌ second arg silently discarded
 ```
 
-The second `loadTranslations(initLocale)` at the end is mandatory:
-`@sveltekit-i18n/base`'s `loadTranslations(locale)` ALSO calls
-`setLocale(locale)` — without the second call, the active locale would
-flip to `'en'` (the fallback we just loaded) and Spanish users would see
-all-English UI. We pay two parses for correctness.
+...never configures a fallback at all. Every key missing from the active
+locale then renders as a literal (`courses.heading`, `app.search.placeholder`).
+The correct shape:
 
-**Symptom to look for**: an i18n key like `foo.bar` rendered literally in
-production even after adding `fallbackLocale: 'en'` to the config.
-Diagnosis: write a one-liner test (see `C:\Users\samu\AppData\Local\Temp\opencode\test_i18n.mjs`)
-that subscribes to the `translations` store and checks whether the
-fallback locale's data is loaded. If `Object.keys(translations.get())`
-returns just `['es']`, you forgot the pre-load. If it returns
-`['es', 'en']` but the active locale is `'en'` instead of `'es'`, you
-forgot the second `loadTranslations(initLocale)` call to restore the
-active locale.
+```typescript
+export const config = {
+  parser: parser(),
+  fallbackLocale: 'en',   // ✅ a property of the config
+  loaders: [ … ]
+};
+const { t, … } = new i18n(config);
+```
 
-### Bug A: misplaced `sources` block
+**Declaring it in the config is sufficient — do NOT pre-load the fallback
+manually.** `getTranslationProps` filters loaders with
+`(locale === active && …) || (fallbackLocale && locale === fallback && …)`,
+so a single `loadTranslations('es', route)` fetches **both** `es` and `en`.
+An earlier "fix" added a manual `loadTranslations('en')` + a second
+`loadTranslations(initLocale)` to undo the locale flip it caused; that was
+treating a symptom of the discarded-argument bug and has been reverted.
+Never call `loadTranslations()` with the fallback locale — it also calls
+`setLocale()` and flips the whole UI to English.
+
+**How to verify** (30 seconds, no build needed — write the probe inside
+`apps/dashboard/` so pnpm resolves the package):
+
+```javascript
+const { t, locale, translations, loadTranslations } = new i18n(config);
+await loadTranslations('es', '/courses');
+console.log(Object.keys(translations.get()), locale.get(), t.get('courses.heading'));
+// want: [ 'en', 'es' ] es Cursos
+// only ['es'] → fallback not configured (check the constructor argument)
+// active 'en' → something force-loaded the fallback locale
+```
+
+### Bug A: whole blocks nested under `course` in `es.json`
+
+**Root cause of "no carga ningún idioma".** A bad search/replace swallowed 36
+top-level blocks into `course.*` in `es.json` — `course.settings` (450 keys),
+`course.widgets`, `course.programs`, `course.app`, `course.courses`… `es.json`
+had 23 root keys where `en.json` had 56, so ~1150 keys resolved only via the
+English fallback and, while the fallback was broken, rendered as literals.
+
+**Detection** — the orphan-block scan is the fast tell: any `es` key path with
+no counterpart in `en` is almost always misnesting, not a genuine extra key.
+
+```javascript
+const orphans = [...esKeys].filter(k => !enKeys.has(k));
+// group by first two segments; a group with hundreds of keys = a hoisted block
+```
+
+**Repair** — deep-merge `es.course[k]` into root `es[k]` for every `k` that is
+top-level in `en.json` and NOT under `en.course`, with **root values winning**.
+The root copies are the hand-curated rioplatense ones ("Compartí", "invertí");
+the nested duplicates are machine-translated formal-usted and even carried a
+bogus `"AulaIO"` brand. The 11 legitimately nested blocks (`navItem`, `search`,
+`header`, `sidebar`, `creator`, `sources`, …) must stay put — that's why the
+filter checks `en.course` too.
+
+Root keys are now sorted alphabetically in `es.json` so this class of drift
+shows up in diffs.
+
+### Bug A2: misplaced `sources` block
 
 The `course.sources.*` block ended up nested inside `course.snackbar.*`
 because the search/replace pattern matched the wrong `submissions` block
@@ -361,6 +566,12 @@ j.ai_assistant = j.course.ai_assistant;  // root
 delete j.course.ai_assistant;
 fs.writeFileSync(path, JSON.stringify(j, null, 2) + '\n', 'utf8');
 ```
+
+The **same block was misplaced in `en.json` too**, as `snackbar.sources`
+(34 keys) — so the whole Sources panel rendered literals for English users
+even after `es.json` was fixed. Moved to `course.sources`. Lesson: when you
+find a misnested block, check *every* locale file, not just the one you were
+looking at.
 
 ### Bug B: trailing `}` missing
 
@@ -416,6 +627,32 @@ The `add_org_nav.js` script only copied 8 of 22 `org_navigation.*` keys because
 I used a hand-written map. The remaining keys rendered as literals.
 **Fix**: copy ALL keys from en.json with English fallback + fallbackLocale.
 Run `diff_keys.js` to find any remaining gaps.
+
+### The audit to run before declaring any i18n job done
+
+Diffing `en.json` against `es.json` is the *wrong* question — it flags 1000+
+keys nobody uses and misses keys absent from both. Audit against the **keys the
+code actually asks for** instead. Run from `apps/dashboard/`:
+
+```javascript
+// collect every $t('a.b') / t.get('a.b') literal under src/
+const used = new Set();
+for (const m of source.matchAll(/\$?t(?:\.get)?\(\s*['"`]([a-z0-9_]+(?:\.[a-z0-9_]+)+)['"`]/gi))
+  used.add(m[1]);
+
+// three buckets, in severity order
+[...used].filter(k => esKeys.has(k));                    // Spanish  ✅
+[...used].filter(k => !esKeys.has(k) && enKeys.has(k));  // English fallback ⚠️
+[...used].filter(k => !esKeys.has(k) && !enKeys.has(k)); // LITERAL  ❌
+```
+
+Baseline after the 2026-08-02 repair: **2444 / 2444 / 0 / 0** — every key the
+code uses resolves in Spanish, nothing falls back, nothing renders literal.
+If a later change makes bucket 2 or 3 non-zero, that's a regression.
+
+The regex only catches string literals; keys built dynamically
+(`$t(\`course.${x}.title\`)`) are invisible to it, so a clean audit is a
+necessary condition, not a sufficient one.
 
 ---
 
@@ -626,9 +863,27 @@ but new handles always go to the shared key.
 `reconcileCourseSourceCache` — all three accept optional
 `(courseId, contentHash)`. If present, the shared key is preferred.
 
-The `cache-status` endpoint now fetches the document's `(courseId, contentHash)`
-via `getChatDocumentCacheKey(documentId)` and passes both through, so the
-badge in the UI is reporting on the same key the chat will hit.
+⚠️ **`agentDocumentCacheKeyByContent` strips every non-hex character from the
+hash** (`contentHash.replace(/[^a-f0-9]/gi, '').slice(0, 32)`). Real hashes are
+SHA-256 hex so this never bites in production, but a test fixture like
+`contentHash: 'h1'` silently becomes `'1'` and your seeded Redis key will not
+match. Use hex-shaped fixtures.
+
+**Key unification (fixed 2026-08-02).** This section used to claim "the badge is
+reporting on the same key the chat will hit". It was false: `resolveDocumentCache`
+never accepted `courseId`/`contentHash`, so the chat wrote the **legacy**
+per-document key while the Sources panel wrote the **shared** key. Reads happened
+to paper over it (`readCacheHandle` falls back to legacy), but two handles could
+exist for one document and the shared one was never read by anything.
+
+There is now exactly one writer — `recordAnthropicCacheHit` — and `agent.ts`
+resolves `(courseId, contentHash)` via `getChatDocumentCacheKey(documentId)`
+before the stream, so the key written is the key the panel reads.
+
+Note the shared key matters less than it looks: dedup already returns the *same
+documentId* to the second user, so the legacy key was shared too. It earns its
+keep for legacy rows whose `content_hash` is NULL and for content that landed
+under different documentIds.
 
 ### Multi-org / multi-course isolation
 
@@ -704,6 +959,19 @@ When we resume:
 4. **Cost dashboard** — surface cache_read tokens × (input - cache_read) as
    "money saved this period" on the org settings page. Backend already has
    `ai_token_usage` table with the breakdown.
+5. **Does the agent reach `generate_course_plan`?** — it narrated "voy a generar
+   el plan" and stopped without calling the tool. The tool WAS offered (it is in
+   the `plan`-mode `activeToolNames` list), and that turn had no document in
+   context, so starvation is the leading hypothesis but unconfirmed. The
+   `[agent.chat] phase=… finish=… toolCalls=[…] docInline=…` log line added this
+   session answers it in one run. If `docInline=true` and `toolCalls=[NONE]`,
+   the problem is model adherence, not context.
+6. **`ai-credits-usage.test.ts` does not load** — vitest cannot resolve
+   `@cio/db/queries/agent` from `usage.ts`. Verified pre-existing (fails on a
+   clean HEAD too), so it is an alias-config gap, not a regression.
+7. **No typecheck for `apps/dashboard`** — `svelte-check` is not installed and
+   there is no `check` script, so dashboard changes are only verified by Vite
+   compiling them. Worth adding.
 
 The TODOs at the top of the TODO list were the source of truth when the
 last session ended — check `git log --oneline | head -10` and the project's

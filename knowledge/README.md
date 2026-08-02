@@ -8,7 +8,11 @@ where we left off.
 
 - [`minimax-integration.md`](./minimax-integration.md) — everything about the
   MiniMax-M3 Anthropic-compatible API: caching, document handling, the
-  Sources panel, the gotchas that took us a day to debug.
+  Sources panel, the gotchas that took us a day to debug. Also §6: i18n
+  (`fallbackLocale`, misnested blocks, the key-coverage audit).
+- [`dashboard-csp-and-ssr.md`](./dashboard-csp-and-ssr.md) — broken uploaded
+  images (CSP vs `PUBLIC_MEDIA_HOST`, absolute URLs frozen in the DB) and the
+  `$features/ui` barrel that 500s every server-rendered route.
 
 ## Conventions
 
