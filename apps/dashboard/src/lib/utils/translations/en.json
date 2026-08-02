@@ -2329,7 +2329,8 @@
       "nav_landing_page": "Landing Page",
       "nav_settings": "Settings",
       "nav_ai_assistant": "Assistant",
-      "nav_ai_tutor": "AI Tutor"
+      "nav_ai_tutor": "AI Tutor",
+      "nav_sources": "Sources"
     },
     "sidebar": {
       "back_to_course": "Back to course",
@@ -2494,6 +2495,8 @@
         "no_tutor": "No tutor added",
         "body_header": "No lessons yet",
         "body_content": "Share your knowledge with the world by creating engaging lessons. Start by clicking on the Add button.",
+        "regenerate": "Regenerate course",
+        "regenerate_tooltip": "Re-sends the last request to the AI assistant so it tries to generate the course again",
         "lesson_nav": {
           "materials": "Materials",
           "exercises": "Exercises"
@@ -4433,6 +4436,42 @@
         "grading": "Grading saved and student notified"
       }
     },
+    "sources": {
+      "heading": "Course sources",
+      "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), or Word files (DOCX). The agent will use them as the source of truth when generating lessons, exercises, and assessments.",
+      "upload_cta": "Add source",
+      "uploading": "Uploading source…",
+      "empty_title": "No sources yet",
+      "empty_description": "Upload a PDF, slide deck, or Word file to give the AI assistant material to base the course on. Sources persist across conversations and are cached so each chat turn reads them at ~10% of the regular input cost.",
+      "delete_confirm_title": "Delete source?",
+      "delete_confirm_body": "This will remove \"{fileName}\" from the course. The AI assistant will no longer be able to read it, and any cached copy will be discarded. This cannot be undone.",
+      "delete_confirm_yes": "Delete",
+      "delete_confirm_no": "Cancel",
+      "snackbar_uploaded": "Source uploaded",
+      "snackbar_deleted": "Source deleted",
+      "snackbar_delete_failed": "Could not delete the source",
+      "snackbar_load_failed": "Could not load sources",
+      "preview_unavailable": "Preview not available",
+      "open_external": "Open in new tab",
+      "downloading": "Preparing download…",
+      "meta_pages": "{count, plural, one {# page} other {# pages}}",
+      "meta_words": "{count, plural, one {# word} other {# words}}",
+      "meta_pdf": "PDF",
+      "meta_docx": "DOCX",
+      "meta_pptx": "PPTX",
+      "drop_zone_title": "Drop files to upload as sources",
+      "drop_zone_hint": "PDF, DOCX, or PPTX up to {maxSize}MB each",
+      "indicator_single": "1 source attached from this course",
+      "indicator_multiple": "{count} sources attached from this course",
+      "count": "{count, plural, one {# source} other {# sources}}",
+      "cached_count": "{count, plural, one {# cached} other {# cached}}",
+      "cache_active_minutes": "Cache active · ~{minutes} min remaining",
+      "cache_inactive": "Not cached — next turn rebuilds",
+      "snackbar_cache_refreshed": "Cache refreshed",
+      "snackbar_cache_refresh_failed": "Could not refresh the cache",
+      "refresh_cache_aria": "Refresh cache for this source",
+      "reconciling": "Syncing cache…"
+    },
     "invite": {
       "failed_join": "Joining failed, please contact your admin"
     },
@@ -4811,6 +4850,7 @@
     "error_rate_limit_with_wait": "The AI service is temporarily busy. Please try again in {seconds} seconds.",
     "error_context_too_long": "The conversation is too long. Try starting a new chat or shortening your message.",
     "error_network": "Network error. Please check your connection and try again.",
+    "error_retry": "Retry",
     "context_usage_tooltip": "{used} / {max} tokens used",
     "context_full_title": "Context window is full",
     "context_full_description": "The assistant will summarize older messages automatically so you can keep working in this chat.",
