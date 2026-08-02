@@ -328,7 +328,9 @@
           "page": "Page"
         }
       }
-    }
+    },
+    "next": "Next",
+    "previous": "Previous"
   },
   "at_risk": {
     "title": "At-risk students",
@@ -486,7 +488,8 @@
       "title": "Signup Disabled",
       "invite_only_message": "Signup is invite-only. Please use an invite link to create an account.",
       "go_to_login": "Go to Login"
-    }
+    },
+    "or_continue_with": "Or continue with"
   },
   "profileMenu": {
     "profile": "PROFILE",
@@ -1108,6 +1111,10 @@
         "preview": "{quantity} pack(s) · {tokens} credits · ${dollars}",
         "buy_button": "Buy for ${dollars}"
       }
+    },
+    "account": {
+      "language": "Language",
+      "select_language": "Select a language"
     }
   },
   "hls_upload": {
@@ -1681,7 +1688,8 @@
       "type_answer": "Type answer",
       "label": "Please enter a label",
       "no_quizz": "No Quiz Created",
-      "interactive": "Create interactive quizzes with scoreboard for your students."
+      "interactive": "Create interactive quizzes with scoreboard for your students.",
+      "placehoolder": "Quiz name"
     },
     "settings": {
       "domains": {
@@ -2149,6 +2157,9 @@
       "create_button": "Create",
       "error": {
         "failed_to_clone": "Failed to clone course"
+      },
+      "success": {
+        "course_cloned": "Course cloned successfully"
       }
     }
   },
@@ -3459,7 +3470,8 @@
           "members": "Members",
           "invite_sent": "Invite Sent",
           "you": "You",
-          "remove": "Remove"
+          "remove": "Remove",
+          "select_role": "Select a role"
         }
       },
       "certificates": {
@@ -3769,6 +3781,42 @@
       "header": "No Permission",
       "body": "Unfortunately you don't have access to this course.",
       "button": "Go home"
+    },
+    "sources": {
+      "heading": "Course sources",
+      "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), or Word files (DOCX). The agent will use them as the source of truth when generating lessons, exercises, and assessments.",
+      "upload_cta": "Add source",
+      "uploading": "Uploading source…",
+      "empty_title": "No sources yet",
+      "empty_description": "Upload a PDF, slide deck, or Word file to give the AI assistant material to base the course on. Sources persist across conversations and are cached so each chat turn reads them at ~10% of the regular input cost.",
+      "delete_confirm_title": "Delete source?",
+      "delete_confirm_body": "This will remove \"{fileName}\" from the course. The AI assistant will no longer be able to read it, and any cached copy will be discarded. This cannot be undone.",
+      "delete_confirm_yes": "Delete",
+      "delete_confirm_no": "Cancel",
+      "snackbar_uploaded": "Source uploaded",
+      "snackbar_deleted": "Source deleted",
+      "snackbar_delete_failed": "Could not delete the source",
+      "snackbar_load_failed": "Could not load sources",
+      "preview_unavailable": "Preview not available",
+      "open_external": "Open in new tab",
+      "downloading": "Preparing download…",
+      "meta_pages": "{count, plural, one {# page} other {# pages}}",
+      "meta_words": "{count, plural, one {# word} other {# words}}",
+      "meta_pdf": "PDF",
+      "meta_docx": "DOCX",
+      "meta_pptx": "PPTX",
+      "drop_zone_title": "Drop files to upload as sources",
+      "drop_zone_hint": "PDF, DOCX, or PPTX up to {maxSize}MB each",
+      "indicator_single": "1 source attached from this course",
+      "indicator_multiple": "{count} sources attached from this course",
+      "count": "{count, plural, one {# source} other {# sources}}",
+      "cached_count": "{count, plural, one {# cached} other {# cached}}",
+      "cache_active_minutes": "Cache active · ~{minutes} min remaining",
+      "cache_inactive": "Not cached — next turn rebuilds",
+      "snackbar_cache_refreshed": "Cache refreshed",
+      "snackbar_cache_refresh_failed": "Could not refresh the cache",
+      "refresh_cache_aria": "Refresh cache for this source",
+      "reconciling": "Syncing cache…"
     }
   },
   "community": {
@@ -3874,6 +3922,14 @@
       "resend_snackbar_success": "Invitation email sent",
       "resend_snackbar_email_failed": "Invite was renewed but the email could not be sent",
       "revoke_snackbar_success": "Pending invitation revoked"
+    },
+    "delete": {
+      "title": "Remove member",
+      "description": "This member will lose access to the organization and all its courses.",
+      "confirmation": "Are you sure you want to remove {name} ({email})? This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Remove member",
+      "action": "Remove"
     }
   },
   "legal": {
@@ -4435,42 +4491,6 @@
       "success": {
         "grading": "Grading saved and student notified"
       }
-    },
-    "sources": {
-      "heading": "Course sources",
-      "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), or Word files (DOCX). The agent will use them as the source of truth when generating lessons, exercises, and assessments.",
-      "upload_cta": "Add source",
-      "uploading": "Uploading source…",
-      "empty_title": "No sources yet",
-      "empty_description": "Upload a PDF, slide deck, or Word file to give the AI assistant material to base the course on. Sources persist across conversations and are cached so each chat turn reads them at ~10% of the regular input cost.",
-      "delete_confirm_title": "Delete source?",
-      "delete_confirm_body": "This will remove \"{fileName}\" from the course. The AI assistant will no longer be able to read it, and any cached copy will be discarded. This cannot be undone.",
-      "delete_confirm_yes": "Delete",
-      "delete_confirm_no": "Cancel",
-      "snackbar_uploaded": "Source uploaded",
-      "snackbar_deleted": "Source deleted",
-      "snackbar_delete_failed": "Could not delete the source",
-      "snackbar_load_failed": "Could not load sources",
-      "preview_unavailable": "Preview not available",
-      "open_external": "Open in new tab",
-      "downloading": "Preparing download…",
-      "meta_pages": "{count, plural, one {# page} other {# pages}}",
-      "meta_words": "{count, plural, one {# word} other {# words}}",
-      "meta_pdf": "PDF",
-      "meta_docx": "DOCX",
-      "meta_pptx": "PPTX",
-      "drop_zone_title": "Drop files to upload as sources",
-      "drop_zone_hint": "PDF, DOCX, or PPTX up to {maxSize}MB each",
-      "indicator_single": "1 source attached from this course",
-      "indicator_multiple": "{count} sources attached from this course",
-      "count": "{count, plural, one {# source} other {# sources}}",
-      "cached_count": "{count, plural, one {# cached} other {# cached}}",
-      "cache_active_minutes": "Cache active · ~{minutes} min remaining",
-      "cache_inactive": "Not cached — next turn rebuilds",
-      "snackbar_cache_refreshed": "Cache refreshed",
-      "snackbar_cache_refresh_failed": "Could not refresh the cache",
-      "refresh_cache_aria": "Refresh cache for this source",
-      "reconciling": "Syncing cache…"
     },
     "invite": {
       "failed_join": "Joining failed, please contact your admin"

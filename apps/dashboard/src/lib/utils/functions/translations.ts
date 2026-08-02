@@ -6,6 +6,13 @@ import { brandName } from '$lib/utils/branding';
 
 export const config = {
   parser: parser(),
+  // MUST live inside the config object: `new i18n(config, opts)` only takes ONE
+  // argument (see @sveltekit-i18n/base `constructor(config?: Config.T)`), so a
+  // second options argument is silently discarded and the fallback never gets
+  // configured — every key missing from the active locale then renders as a
+  // literal. Declaring it here also makes the library auto-load the fallback
+  // locale's loaders alongside the active one, so no manual pre-load is needed.
+  fallbackLocale: 'en',
   loaders: [
     {
       locale: 'en',
@@ -68,7 +75,7 @@ const {
   initialized,
   translations,
   loadTranslations
-} = new i18n(config, { fallbackLocale: 'en' });
+} = new i18n(config);
 
 /**
  * Replaces the brand placeholder with the configured brand name. Translations
