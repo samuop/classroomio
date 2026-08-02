@@ -145,11 +145,32 @@ function sanitizeToolError(toolName: string, error: unknown): Error {
   return error instanceof Error ? error : new Error(raw);
 }
 
+/**
+ * Shape returned to the MODEL when a tool fails.
+ *
+ * These errors used to be thrown, and a throw inside `execute` aborts the whole
+ * stream: the round died, the teacher saw a red bubble, and had to re-send the
+ * instruction — which re-ran every action that had already succeeded. The irony
+ * was that the messages are written FOR the model ("call get_course_structure to
+ * fetch real IDs and retry") and the model never got to read a single one.
+ *
+ * Returned as a result instead, the failure becomes an ordinary tool output the
+ * model can act on: it reads the complaint and retries within the same round.
+ * Runaway retries are bounded by `stopWhen: stepCountIs(MAX_STEPS_PER_ROUND)`.
+ *
+ * `ok: false` is the marker the dashboard keys on to paint the step as failed —
+ * without it a returned error would render as a completed step.
+ */
+export interface AgentToolFailure {
+  ok: false;
+  error: string;
+}
+
 async function executeAgentTool<TArgs, TResult>(
   toolName: string,
   params: { orgId: string; userId: string; courseId: string; args?: TArgs },
   execute: () => Promise<TResult>
-): Promise<TResult> {
+): Promise<TResult | AgentToolFailure> {
   trackAgentEvent(AgentEvent.TOOL_CALLED, {
     orgId: params.orgId,
     userId: params.userId,
@@ -188,7 +209,21 @@ async function executeAgentTool<TArgs, TResult>(
       error
     });
 
-    throw sanitizeToolError(toolName, error);
+    trackAgentEvent(AgentEvent.TOOL_COMPLETED, {
+      orgId: params.orgId,
+      userId: params.userId,
+      courseId: params.courseId,
+      toolName,
+      success: false
+    });
+
+    // Logged at error level even though it is no longer thrown — a failure the
+    // model quietly recovers from must still be visible in the API log, or the
+    // only trace of a systematically broken tool is that rounds take more steps.
+    const failure = sanitizeToolError(toolName, error);
+    console.error(`[agent-tool:failed] ${toolName}: ${failure.message}`);
+
+    return { ok: false, error: failure.message };
   }
 }
 

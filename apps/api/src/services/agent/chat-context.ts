@@ -210,7 +210,12 @@ type CourseItemState = {
   questionCount?: number | null;
 };
 
-type CourseSectionState = { id: string; title: string | null };
+/**
+ * `order` is read explicitly rather than trusting array position:
+ * `getCourseSectionsByCourseId` has no ORDER BY, so the rows arrive in whatever
+ * order Postgres happens to return.
+ */
+type CourseSectionState = { id: string; title: string | null; order?: number | null };
 
 function normalizeTitle(title: string | null | undefined): string {
   return (title ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -258,6 +263,17 @@ export interface PlanProgress {
   anchorText: string;
   pendingCount: number;
   emptyCount: number;
+  /**
+   * Sections that exist but sit in a different position than the plan puts them.
+   *
+   * Existence and content were the only things checked before, so nothing in the
+   * system could contradict the model when it announced a reordering it never
+   * performed — it reported the order it intended while the course kept the old
+   * one. Deliberately NOT wired into the auto-continue condition: a wrong order
+   * the model cannot fix would spin rounds forever. It belongs in the anchor,
+   * where it stops the model from claiming a reorder happened.
+   */
+  misorderedCount: number;
   items: PlanProgressItem[];
   total: number;
   completed: number;
@@ -305,11 +321,13 @@ export function buildPlanProgressAnchor(
   const progressItems: PlanProgressItem[] = [];
   let pendingCount = 0;
   let emptyCount = 0;
+  /** Plan position → live section, for the order check after the loop. */
+  const placedSections: Array<{ planIndex: number; title: string; liveOrder: number }> = [];
 
   /** `[s1.2] ` prefix so the model can echo the key back in its create_* call. */
   const tag = (key: string) => (key ? `[${key}] ` : '');
 
-  for (const planSection of plan.sections) {
+  for (const [planIndex, planSection] of plan.sections.entries()) {
     const regSection = registrySectionByTitle.get(normalizeTitle(planSection.title));
     const sectionKey = regSection?.key ?? '';
 
@@ -328,6 +346,11 @@ export function buildPlanProgressAnchor(
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });
       }
       continue;
+    }
+
+    const liveSection = sectionById.get(realSectionId);
+    if (typeof liveSection?.order === 'number') {
+      placedSections.push({ planIndex, title: planSection.title, liveOrder: liveSection.order });
     }
 
     const itemStatuses: string[] = [];
@@ -380,22 +403,44 @@ export function buildPlanProgressAnchor(
   const total = progressItems.length;
   const completed = progressItems.filter((entry) => entry.status === 'done').length;
 
-  if (pendingCount === 0 && emptyCount === 0) {
+  // Order check: walk the sections as the COURSE has them and see whether their
+  // plan positions come out ascending. Comparing live `order` values to plan
+  // indexes directly would false-positive on any gap in the numbering (deleted
+  // sections leave holes), and only the relative sequence actually matters.
+  const liveSequence = [...placedSections].sort((a, b) => a.liveOrder - b.liveOrder);
+  const orderLines: string[] = [];
+  for (let i = 1; i < liveSequence.length; i += 1) {
+    if (liveSequence[i].planIndex < liveSequence[i - 1].planIndex) {
+      orderLines.push(
+        `  - "${liveSequence[i].title}" sits after "${liveSequence[i - 1].title}" in the course, but the plan puts it before.`
+      );
+    }
+  }
+  const misorderedCount = orderLines.length;
+
+  if (pendingCount === 0 && emptyCount === 0 && misorderedCount === 0) {
     return {
       pendingCount,
       emptyCount,
+      misorderedCount,
       items: progressItems,
       total,
       completed,
       anchorText: `## Plan Progress (source of truth)
 
-Every item in the approved plan is present and has content. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`
+Every item in the approved plan is present, has content, and sits in plan order. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`
     };
   }
+
+  const orderSection =
+    misorderedCount > 0
+      ? `\n\n### Section order does NOT match the plan\n${orderLines.join('\n')}\n\nThis is the course's REAL order, read from the database just now. Do not describe the order you intend — call \`reorder_content\` and fix it. Never report a reordering you have not performed.`
+      : '';
 
   return {
     pendingCount,
     emptyCount,
+    misorderedCount,
     items: progressItems,
     total,
     completed,
@@ -403,7 +448,7 @@ Every item in the approved plan is present and has content. The course matches t
 
 This is the REAL state of the course right now (from the live structure), compared against the approved plan. Trust THIS, not your memory of what you did — the chat history may be trimmed.
 
-${lines.join('\n')}
+${lines.join('\n')}${orderSection}
 
 ${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.
 
@@ -434,4 +479,36 @@ export function getActiveCourseTemplateId(messages: unknown[]): CourseTemplateId
   }
 
   return undefined;
+}
+
+/**
+ * Which slice of the teacher prompt — and which tools — this turn gets.
+ *
+ * - `build`: a plan was approved in this conversation. Implementation rules.
+ * - `plan`:  nothing exists to edit yet. Planning rules, and READ-ONLY tools,
+ *            which is what enforces "propose before you build".
+ * - `full`:  there is already something to edit. Everything, including the
+ *            content-writing rules and tools.
+ *
+ * `existingSectionCount` is the part that is easy to get wrong. The phase used
+ * to be derived from the transcript alone, so a NEW conversation about an
+ * already-built course found no approved plan and fell into `plan` — read-only.
+ * The agent then told the teacher, correctly for the tools it had been given,
+ * that it could not write lesson content, on a course full of lessons. A course
+ * with sections is being maintained, not planned from a blank page.
+ */
+export function resolveTeacherPromptMode(params: {
+  isTeacher: boolean;
+  hasApprovedPlan: boolean;
+  lessonId?: string;
+  existingSectionCount: number;
+}): 'plan' | 'build' | 'full' {
+  const { isTeacher, hasApprovedPlan, lessonId, existingSectionCount } = params;
+
+  // Students always get the unrestricted tutor prompt; phases are a teacher concept.
+  if (!isTeacher) return 'full';
+  if (hasApprovedPlan) return 'build';
+  if (lessonId || existingSectionCount > 0) return 'full';
+
+  return 'plan';
 }

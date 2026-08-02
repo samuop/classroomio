@@ -159,3 +159,104 @@ describe('buildPlanProgressAnchor — resolution by registry binding', () => {
     expect(buildPlanProgressAnchor(undefined, sections, [], [])).toBeUndefined();
   });
 });
+
+/**
+ * Section ORDER.
+ *
+ * A teacher asked for the final exam to close the course. The agent replied with
+ * the corrected list, ticked it, and called no tool at all — the log for that turn
+ * reads `toolCalls=[NONE]`. Nothing contradicted it, because the anchor only ever
+ * checked that items EXIST and have content. These lock the order check that does.
+ */
+describe('buildPlanProgressAnchor — section order', () => {
+  const orderedPlan = {
+    title: 'Estadística aplicada',
+    sections: [
+      { title: 'Teoría de la Decisión', order: 0, items: [] },
+      { title: 'Examen Final', order: 1, items: [] }
+    ]
+  };
+
+  const orderRegistry: PlanRegistryEntry[] = [
+    { key: 's1', kind: 'section', title: 'Teoría de la Decisión', sectionKey: null, position: 0, entityId: 'dec-uuid' },
+    { key: 's2', kind: 'section', title: 'Examen Final', sectionKey: null, position: 1, entityId: 'exam-uuid' }
+  ];
+
+  it('flags sections that sit in a different position than the plan', () => {
+    const progress = buildPlanProgressAnchor(
+      orderedPlan,
+      [
+        { id: 'exam-uuid', title: 'Examen Final', order: 6 },
+        { id: 'dec-uuid', title: 'Teoría de la Decisión', order: 7 }
+      ],
+      [],
+      orderRegistry
+    );
+
+    expect(progress?.misorderedCount).toBe(1);
+    expect(progress?.anchorText).toContain('Section order does NOT match the plan');
+    expect(progress?.anchorText).toContain('reorder_content');
+  });
+
+  it('is silent when the course already matches plan order', () => {
+    const progress = buildPlanProgressAnchor(
+      orderedPlan,
+      [
+        { id: 'dec-uuid', title: 'Teoría de la Decisión', order: 6 },
+        { id: 'exam-uuid', title: 'Examen Final', order: 7 }
+      ],
+      [],
+      orderRegistry
+    );
+
+    expect(progress?.misorderedCount).toBe(0);
+    expect(progress?.anchorText).not.toContain('Section order does NOT match');
+  });
+
+  it('reads the order column rather than trusting row arrival order', () => {
+    // getCourseSectionsByCourseId has no ORDER BY, so the rows can arrive in any
+    // order. Correct sections listed "backwards" must NOT be reported as wrong.
+    const progress = buildPlanProgressAnchor(
+      orderedPlan,
+      [
+        { id: 'exam-uuid', title: 'Examen Final', order: 7 },
+        { id: 'dec-uuid', title: 'Teoría de la Decisión', order: 6 }
+      ],
+      [],
+      orderRegistry
+    );
+
+    expect(progress?.misorderedCount).toBe(0);
+  });
+
+  it('tolerates gaps in the order numbering', () => {
+    // Deleting a section leaves a hole; only the relative sequence matters.
+    const progress = buildPlanProgressAnchor(
+      orderedPlan,
+      [
+        { id: 'dec-uuid', title: 'Teoría de la Decisión', order: 2 },
+        { id: 'exam-uuid', title: 'Examen Final', order: 40 }
+      ],
+      [],
+      orderRegistry
+    );
+
+    expect(progress?.misorderedCount).toBe(0);
+  });
+
+  it('does not drive the continue button, which stays on missing/empty work', () => {
+    const progress = buildPlanProgressAnchor(
+      orderedPlan,
+      [
+        { id: 'exam-uuid', title: 'Examen Final', order: 6 },
+        { id: 'dec-uuid', title: 'Teoría de la Decisión', order: 7 }
+      ],
+      [],
+      orderRegistry
+    );
+
+    // A wrong order the model cannot fix would otherwise spin rounds forever.
+    expect(progress?.pendingCount).toBe(0);
+    expect(progress?.emptyCount).toBe(0);
+  });
+});

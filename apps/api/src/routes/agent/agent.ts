@@ -6,7 +6,15 @@ import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
-import { streamText, stepCountIs, convertToModelMessages, pruneMessages, InvalidToolInputError } from 'ai';
+import {
+  streamText,
+  generateText,
+  stepCountIs,
+  convertToModelMessages,
+  pruneMessages,
+  InvalidToolInputError,
+  NoSuchToolError
+} from 'ai';
 import {
   ZAgentChatBody,
   ZAgentCreditPurchase,
@@ -81,6 +89,7 @@ import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getLesson } from '@api/services/lesson/lesson';
 import { getExercise } from '@api/services/exercise/exercise';
 import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-calls';
+import { measureContextBreakdown } from '@api/services/agent/context-window';
 import {
   buildPlanProgressAnchor,
   type PlanProgress,
@@ -88,6 +97,7 @@ import {
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
   loadDocumentsContext,
+  resolveTeacherPromptMode,
   verifyExerciseBelongsToCourse,
   verifyLessonBelongsToCourse
 } from '@api/services/agent/chat-context';
@@ -631,6 +641,18 @@ const agentCoreRouter = new Hono()
       //
       // Single-lesson edits keep the old per-message loader: they're cheap, scoped,
       // and served better by RAG than by a hundred thousand tokens of context.
+      //
+      // NOTE (measured, not hypothetical): `isSingleLessonEdit` is just
+      // `context.lessonId`, i.e. whether a lesson page happens to be OPEN — not
+      // what the teacher asked for. Building a whole course with a lesson tab
+      // open therefore runs WITHOUT the pack, and the same request with the tab
+      // closed runs with it. Across one real session the pack was present on 1
+      // turn out of 9, and every switch between the two shapes is a prompt-cache
+      // miss on ~71k tokens (that is the "cache anomaly": a 16% hit right after
+      // the pack reappeared, not a caching fault).
+      //
+      // Left as-is deliberately: flipping it costs ~71k tokens on every lesson
+      // turn, so it is a cost decision, not a bug fix.
       const useSourcePack = role === AgentRole.TEACHER && !isSingleLessonEdit && !searchableDocumentId;
 
       const sourcePack = useSourcePack
@@ -723,14 +745,23 @@ const agentCoreRouter = new Hono()
       // Paso 3 (prompt por fase): scope the system prompt to the conversation's
       // phase instead of always sending the 12.6k-token monolith.
       // - build: a plan was approved → implementation/content rules (~9.3k tokens).
-      // - plan: no plan AND the teacher is not viewing a lesson → pure planning
-      //   conversation (wizard/discovery) → planning rules only (~6.6k tokens).
-      // - full: no plan but a lesson is open — likely a single-lesson edit chat,
-      //   which needs the content-writing rules; keep everything (safe fallback).
+      // - plan: no plan AND nothing to edit yet → pure planning conversation
+      //   (wizard/discovery) → planning rules only (~6.6k tokens).
+      // - full: there is already something to edit — a lesson is open, or the
+      //   course has sections — so the content-writing rules are required.
+      //
+      // See resolveTeacherPromptMode for why `existingSections` participates:
+      // deriving the phase from the transcript alone made every fresh chat on an
+      // already-built course read-only.
+      //
       // Each mode yields a stable, cacheable prefix; the one cache miss happens
       // at the plan→build transition, then the build prefix caches for the run.
-      const teacherPromptMode: TeacherPromptMode =
-        role === AgentRole.TEACHER ? (approvedPlan ? 'build' : context?.lessonId ? 'full' : 'plan') : 'full';
+      const teacherPromptMode: TeacherPromptMode = resolveTeacherPromptMode({
+        isTeacher: role === AgentRole.TEACHER,
+        hasApprovedPlan: !!approvedPlan,
+        lessonId: context?.lessonId,
+        existingSectionCount: existingSections.length
+      });
 
       // Stable across requests — safe to cache as a long-lived Anthropic prefix.
       // Volatile per-request context (lesson/exercise/document/section count/
@@ -991,6 +1022,8 @@ const agentCoreRouter = new Hono()
       // - plan: no write tools (the prompt forbids building pre-approval anyway;
       //   this enforces it) — reads, planning tools, docs fetch, landing page
       //   (templates set it during the plan phase) and go-live check remain.
+      //   Only reachable for a course with NO sections yet, so "no write tools"
+      //   can never strand a teacher on a course that already has content.
       // - build: everything except the two questionnaire tools (discovery and
       //   template forms only run pre-plan) and update_course_todo_list.
       //   generate_course_plan STAYS — the shared "re-show the plan" rule and
@@ -1003,7 +1036,8 @@ const agentCoreRouter = new Hono()
       //   1/32 with ten lessons already written. Progress is now measured by the
       //   server (buildPlanProgressAnchor over the plan registry), so the model
       //   does not have to spend steps reporting on itself.
-      // - full (lesson-edit chat / students): no restriction.
+      // - full (lesson-edit chat, chat on an existing course, students): no
+      //   restriction.
       const activeToolNames =
         role === AgentRole.TEACHER && teacherPromptMode === 'plan'
           ? ([
@@ -1077,6 +1111,64 @@ const agentCoreRouter = new Hono()
       const result = streamText({
         model,
         maxRetries: 2,
+        /**
+         * Rewrite a tool call whose arguments failed schema validation.
+         *
+         * Without this an InvalidToolInputError aborts the entire round: the
+         * teacher watched a build die because `create_exercise` arrived missing
+         * `sectionId` and `title`, having already written several lessons in the
+         * same round. Nothing was wrong with the work — only with one JSON body.
+         *
+         * The failure happens while PARSING the model's arguments, before any
+         * tool runs, so the returned-failure path in `executeAgentTool` cannot
+         * catch it and the UI never marks a step failed (there is no step yet).
+         * Repair is the only place to intervene.
+         *
+         * One attempt, with the schema and the rejected JSON in hand. Returning
+         * null on any problem falls back to the previous behaviour rather than
+         * risking a repair loop.
+         */
+        repairToolCall: async ({ toolCall, inputSchema, error }) => {
+          // A hallucinated tool NAME is not repairable — there is no schema to
+          // repair against, and inventing one would just move the failure.
+          if (NoSuchToolError.isInstance(error)) return null;
+
+          try {
+            const schema = await inputSchema({ toolName: toolCall.toolName });
+            const { text } = await generateText({
+              model,
+              maxOutputTokens: 4096,
+              system:
+                'You repair malformed tool arguments. Reply with the corrected JSON object ONLY — ' +
+                'no prose, no markdown fence. Preserve every value the original already had; ' +
+                'your job is to satisfy the schema, not to rewrite the content.',
+              prompt:
+                `Tool: ${toolCall.toolName}\n\n` +
+                `JSON Schema:\n${JSON.stringify(schema)}\n\n` +
+                `Rejected arguments:\n${toolCall.input}\n\n` +
+                `Validation error:\n${error.message}`
+            });
+
+            // Models fence JSON even when told not to; strip it before parsing
+            // so a cosmetic wrapper doesn't waste the one repair attempt.
+            const cleaned = text
+              .trim()
+              .replace(/^```(?:json)?\s*/i, '')
+              .replace(/\s*```$/, '');
+
+            JSON.parse(cleaned); // Throw here rather than hand the SDK bad JSON.
+
+            console.log(`[agent.chat] repaired tool input for "${toolCall.toolName}"`);
+
+            return { ...toolCall, input: cleaned };
+          } catch (repairError) {
+            console.error(
+              `[agent.chat] tool input repair failed for "${toolCall.toolName}":`,
+              repairError instanceof Error ? repairError.message : repairError
+            );
+            return null;
+          }
+        },
         // MiniMax-M3 isn't in the Anthropic SDK model registry, so without an
         // explicit value the SDK defaults to 4096 output tokens and emits a
         // "compatibility mode" warning — course generation routinely needs
@@ -1333,7 +1425,17 @@ const agentCoreRouter = new Hono()
               // How full the context window actually is, for the UI gauge.
               // Distinct from promptTokens/totalTokens, which are BILLING
               // figures summed over every step of the round.
-              contextTokens: lastStepInputTokens
+              contextTokens: lastStepInputTokens,
+              // What that occupancy is MADE OF, so the teacher (and the compact
+              // affordance) can tell reclaimable transcript from the fixed cost
+              // of the sources, which compaction cannot touch.
+              contextBreakdown: measureContextBreakdown({
+                totalContextTokens: lastStepInputTokens ?? 0,
+                systemPrompt,
+                sourcePackTokens: sourcePack?.estimatedTokens,
+                turnContextText: contextMessageText,
+                conversationMessages: builderMessages
+              })
             },
             // Server-measured build progress: the plan reconciled against the live
             // course. Replaces the checklist that used to be drawn from the model's
