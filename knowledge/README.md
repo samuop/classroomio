@@ -13,6 +13,10 @@ where we left off.
 - [`dashboard-csp-and-ssr.md`](./dashboard-csp-and-ssr.md) — broken uploaded
   images (CSP vs `PUBLIC_MEDIA_HOST`, absolute URLs frozen in the DB) and the
   `$features/ui` barrel that 500s every server-rendered route.
+- [`agent-build-harness.md`](./agent-build-harness.md) — how sources become a
+  built course: the plan registry (why the agent duplicated sections),
+  server-measured progress, autonomous rounds, and the source pack / cache split.
+  Read this before touching the plan → build flow.
 
 ## Conventions
 
