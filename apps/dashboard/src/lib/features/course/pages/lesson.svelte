@@ -10,6 +10,7 @@
   import { fade } from 'svelte/transition';
   import Save from '@lucide/svelte/icons/save';
   import Pencil from '@lucide/svelte/icons/pencil';
+  import XIcon from '@lucide/svelte/icons/x';
   import HistoryIcon from '@lucide/svelte/icons/history';
   import VideoIcon from '@lucide/svelte/icons/video';
 
@@ -95,6 +96,25 @@
     }
     hasUnsavedChanges = false;
     setModeQueryParam(mode === MODES.edit ? MODES.view : MODES.edit);
+  }
+
+  /**
+   * Leave the editor without committing anything.
+   *
+   * The save icon is a "save AND exit", so it was the only way out: a teacher
+   * who opened the editor just to look around had no exit that didn't write to
+   * the lesson. This one publishes nothing.
+   *
+   * The local draft is deliberately KEPT — discarding it is what the existing
+   * "Discard draft" action is for, and silently binning typed work behind a
+   * button labelled "stop editing" would be the worse surprise. A pending
+   * autosave is cancelled, or it would land after the exit and save anyway.
+   */
+  function exitEditMode() {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = undefined;
+    hasUnsavedChanges = false;
+    setModeQueryParam(MODES.view);
   }
 
   const refetchDataAfterVersionRestore = async () => {
@@ -397,13 +417,29 @@
               {/if}
             </span>
           {/if}
-          <IconButton onclick={toggleMode} disabled={lessonApi.isSaving}>
+          <IconButton
+            onclick={toggleMode}
+            disabled={lessonApi.isSaving}
+            title={mode === MODES.edit
+              ? $t('course.navItem.lessons.save_and_exit')
+              : $t('course.navItem.lessons.edit')}
+          >
             {#if mode === MODES.edit}
               <Save size={20} />
             {:else}
               <Pencil size={20} />
             {/if}
           </IconButton>
+          {#if mode === MODES.edit}
+            <IconButton
+              onclick={exitEditMode}
+              disabled={lessonApi.isSaving}
+              title={$t('course.navItem.lessons.exit_edit')}
+              aria-label={$t('course.navItem.lessons.exit_edit')}
+            >
+              <XIcon size={20} />
+            </IconButton>
+          {/if}
         </div>
 
         <RefreshPageData onRefresh={() => lessonApi.get(courseId, lessonId)} />
