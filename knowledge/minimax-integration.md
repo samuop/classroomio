@@ -325,21 +325,25 @@ await loadTranslations(initLocale, pathname);
 // literal. Cheap: ~30KB JSON, parses once per route change.
 if (initLocale !== FALLBACK_LOCALE) {
   await loadTranslations(FALLBACK_LOCALE, pathname);
+  await loadTranslations(initLocale, pathname);
 }
 ```
 
-Without this second `loadTranslations` call, the user sees keys like
-`courses.heading`, `courses.page_subtitle`, `courses.search_placeholder`,
-`courses.heading_button` rendered as literals (because the `courses.*`
-subtree is mostly missing from `es.json` and the active locale has no
-fallback data to consult).
+The second `loadTranslations(initLocale)` at the end is mandatory:
+`@sveltekit-i18n/base`'s `loadTranslations(locale)` ALSO calls
+`setLocale(locale)` — without the second call, the active locale would
+flip to `'en'` (the fallback we just loaded) and Spanish users would see
+all-English UI. We pay two parses for correctness.
 
 **Symptom to look for**: an i18n key like `foo.bar` rendered literally in
 production even after adding `fallbackLocale: 'en'` to the config.
 Diagnosis: write a one-liner test (see `C:\Users\samu\AppData\Local\Temp\opencode\test_i18n.mjs`)
 that subscribes to the `translations` store and checks whether the
 fallback locale's data is loaded. If `Object.keys(translations.get())`
-returns just `['es']`, you forgot the pre-load.
+returns just `['es']`, you forgot the pre-load. If it returns
+`['es', 'en']` but the active locale is `'en'` instead of `'es'`, you
+forgot the second `loadTranslations(initLocale)` call to restore the
+active locale.
 
 ### Bug A: misplaced `sources` block
 

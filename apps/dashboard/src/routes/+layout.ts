@@ -24,8 +24,16 @@ export const load = async ({ url, data }) => {
   // Pre-load the fallback locale so any missing key in the active locale
   // resolves to the English translation instead of rendering the key as a
   // literal. Cheap: ~30KB JSON, parses once per route change.
+  //
+  // Caveat: @sveltekit-i18n/base's loadTranslations(locale, route) ALSO
+  // calls setLocale(locale) — so calling loadTranslations('en') here would
+  // flip the active locale to English and break translations for everyone
+  // whose profile is set to 'es'. We work around it by calling
+  // loadTranslations(initLocale) a second time at the end so the active
+  // locale stays as the user wants.
   if (initLocale !== FALLBACK_LOCALE) {
     await loadTranslations(FALLBACK_LOCALE, pathname);
+    await loadTranslations(initLocale, pathname);
   }
 
   return data ?? {};
