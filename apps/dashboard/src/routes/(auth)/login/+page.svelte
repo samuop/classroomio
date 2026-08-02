@@ -1,6 +1,6 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { LOGIN_FIELDS } from '$lib/utils/constants/authentication';
   import { t } from '$lib/utils/functions/translations';
   import { authValidation } from '$lib/utils/functions/validator';

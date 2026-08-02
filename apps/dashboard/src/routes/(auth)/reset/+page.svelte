@@ -4,7 +4,7 @@
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { getConfirmPasswordError } from '$lib/utils/functions/validator';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { resetApi } from '$features/auth/api/reset.svelte';
   import type { TResetPasswordForm } from '$features/auth/utils/types';
   import { snackbar } from '$features/ui/snackbar/store';

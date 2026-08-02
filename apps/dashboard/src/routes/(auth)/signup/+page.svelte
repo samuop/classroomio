@@ -1,7 +1,8 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
   import { untrack } from 'svelte';
-  import { AuthUI, SenjaEmbed } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
+  import SenjaEmbed from '$features/ui/senja-embed.svelte';
   import { SIGNUP_FIELDS } from '$lib/utils/constants/authentication';
   import { t } from '$lib/utils/functions/translations';
   import { authValidation, getConfirmPasswordError, getDisableSubmit } from '$lib/utils/functions/validator';

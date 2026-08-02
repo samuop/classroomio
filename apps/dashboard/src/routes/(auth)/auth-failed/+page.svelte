@@ -1,7 +1,7 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
   import { page } from '$app/state';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { Button } from '@cio/ui/base/button';
   import * as Card from '@cio/ui/base/card';
   import { currentOrg } from '$lib/utils/store/org';

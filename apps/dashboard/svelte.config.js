@@ -16,11 +16,13 @@ const csp = getCspDomains(isSelfHosted, process.env.PUBLIC_SERVER_URL, process.e
 // inline scripts only in dev; production keeps the strict policy.
 const isDev = process.env.NODE_ENV !== 'production';
 const devScriptSrc = isDev ? ['unsafe-inline'] : [];
-// Local MinIO (docker) only exists in dev; in prod media comes from PUBLIC_MEDIA_HOST
-// (baked into csp.mediaSrc). Keeping localhost:9000 in prod would leave the storage
-// domain out of img-src and CSP would block uploaded images (broken avatar/logo).
-const devMediaSrc = isDev ? ['http://localhost:9000'] : [];
-const devConnectSrc = isDev ? ['http://localhost:3002', 'http://localhost:9000'] : [];
+// The object-storage origin comes from PUBLIC_MEDIA_HOST alone (csp.mediaSrc) — set it
+// per environment (http://localhost:9000 for local MinIO, the storage domain in prod).
+// It is deliberately NOT gated on NODE_ENV: svelte.config.js is evaluated before Vite
+// normalizes NODE_ENV, so a polluted env silently dropped localhost:9000 from img-src
+// and every uploaded image rendered as "Failed to load" with no CSP error in the logs.
+// connect-src picks the same origin up via csp.connectSrc, and the API origin via
+// csp.apiOrigin (PUBLIC_SERVER_URL), so neither needs a hardcoded localhost entry.
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -50,16 +52,10 @@ const config = {
         'style-src': ['self', 'unsafe-inline', ...csp.styleSrc],
         'style-src-elem': ['self', 'unsafe-inline', ...csp.styleSrc],
         'font-src': ['self', ...csp.fontSrc],
-        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', ...devMediaSrc],
-        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', ...devMediaSrc],
+        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:'],
+        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:'],
         'frame-src': ['self', ...csp.frameSrc],
-        'connect-src': [
-          'self',
-          'blob:',
-          ...devConnectSrc,
-          ...(csp.apiOrigin ? [csp.apiOrigin] : []),
-          ...csp.connectSrc
-        ],
+        'connect-src': ['self', 'blob:', ...(csp.apiOrigin ? [csp.apiOrigin] : []), ...csp.connectSrc],
         'worker-src': ['self', 'blob:'],
         'object-src': ['none'],
         'base-uri': ['self'],
@@ -74,16 +70,10 @@ const config = {
         'style-src': ['self', 'unsafe-inline', ...csp.styleSrc],
         'style-src-elem': ['self', 'unsafe-inline', ...csp.styleSrc],
         'font-src': ['self', ...csp.fontSrc],
-        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:', ...devMediaSrc],
-        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:', ...devMediaSrc],
+        'img-src': ['self', 'data:', ...csp.mediaSrc, 'blob:'],
+        'media-src': ['self', ...csp.mediaSrc, 'data:', 'blob:'],
         'frame-src': ['self', ...csp.frameSrc],
-        'connect-src': [
-          'self',
-          'blob:',
-          ...devConnectSrc,
-          ...(csp.apiOrigin ? [csp.apiOrigin] : []),
-          ...csp.connectSrc
-        ],
+        'connect-src': ['self', 'blob:', ...(csp.apiOrigin ? [csp.apiOrigin] : []), ...csp.connectSrc],
         'worker-src': ['self', 'blob:'],
         'object-src': ['none'],
         'base-uri': ['self'],

@@ -3,7 +3,7 @@
   import { resolve } from '$app/paths';
   import { onMount } from 'svelte';
   import { Button } from '@cio/ui/base/button';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { currentOrg, mergeAccountOrgFromServer } from '$lib/utils/store/org';
   import { setTheme } from '$lib/utils/functions/theme';
   import { classroomio } from '$lib/utils/services/api';

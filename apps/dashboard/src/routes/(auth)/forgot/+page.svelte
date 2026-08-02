@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { ROUTE } from '$lib/utils/constants/routes';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { EmailSentIcon } from '$features/ui/icons';
   import { forgotApi } from '$features/auth/api/forgot.svelte';
   import type { TForgotPasswordForm } from '$features/auth/utils/types';

@@ -2,7 +2,13 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
 
-  import { Snackbar } from '$features/ui';
+  // Import the component file directly, NOT the `$features/ui` barrel: the barrel
+  // re-exports CourseLandingPage → `@cio/ui` → base/chart → layerchart, which drags
+  // a charting library into the SSR graph of every route and makes Vite's dev SSR
+  // runner throw "not yet fully initialized due to circular dependency" on
+  // layerchart/dist/components/graph/Dagre.svelte. This is the root layout, so the
+  // barrel would poison every server-rendered page.
+  import Snackbar from '$features/ui/snackbar/snackbar.svelte';
   import { appInitApi } from '$features/app/init.svelte';
   import { setupCloudAnalytics } from '$lib/utils/functions/appSetup';
   import { globalStore } from '$lib/utils/store/app';

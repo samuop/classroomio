@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { Button } from '@cio/ui/base/button';
-  import { AuthUI } from '$features/ui';
+  import AuthUI from '$features/ui/auth-ui.svelte';
   import { currentOrg } from '$lib/utils/store/org';
   import { setTheme } from '$lib/utils/functions/theme';
   import { courseApi } from '$features/course/api';
