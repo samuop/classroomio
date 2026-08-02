@@ -9,6 +9,7 @@
   import { renderMentions } from '$features/ai-assistant/utils/mentions';
   import PlanView from '$features/ai-assistant/plan-view.svelte';
   import TodoChecklist from '$features/ai-assistant/todo-checklist.svelte';
+  import ThinkingBlock from '$features/ai-assistant/thinking-block.svelte';
   import AgentSteps from '$features/ai-assistant/agent-steps.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
   import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
@@ -169,7 +170,62 @@
   const agentSteps = $derived(message.role === 'assistant' ? getAgentStepsForMessage(message) : []);
   const showAgentSteps = $derived(agentSteps.length > 0 && !(isLast && liveProgressActive));
 
-  const inlineParts = $derived((message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text'));
+  /**
+   * Split the assistant's prose into "narration while working" and "the reply".
+   *
+   * Everything the model wrote BEFORE its last tool call was said mid-task —
+   * "Both items are now in place. Now let me verify the final state…" — and used
+   * to be hoisted to the top of the bubble, so a build turn read as a wall of the
+   * model thinking out loud. What comes after the last tool call is the answer.
+   *
+   * Structural, not keyword-based: MiniMax emits this as plain `text` parts
+   * (zero `reasoning` parts exist in the stored history), sometimes in English
+   * mid-Spanish conversation, so no phrase list would hold. Any real `reasoning`
+   * part is folded in too, for whenever extended thinking gets enabled.
+   */
+  const partsSplit = $derived.by(() => {
+    const parts = (message.parts ?? []) as Array<Record<string, unknown>>;
+    let lastToolIndex = -1;
+
+    parts.forEach((part, index) => {
+      // Self-rendered tools (the plan card, the question forms) are the
+      // deliverable, not work in progress. Counting them here would file the
+      // model's intro — "Here's the plan I put together:" — as narration and
+      // hide it above its own card.
+      if (isAgentToolPart(part) && !isDeferredPlanPart(part)) lastToolIndex = index;
+    });
+
+    const thinking: string[] = [];
+    const reply: Array<Record<string, unknown>> = [];
+
+    parts.forEach((part, index) => {
+      const type = typeof part.type === 'string' ? part.type : '';
+
+      if (type === 'reasoning' && typeof part.text === 'string') {
+        thinking.push(part.text);
+        return;
+      }
+
+      if (type !== 'text') return;
+
+      if (index < lastToolIndex) thinking.push(part.text as string);
+      else reply.push(part);
+    });
+
+    // A round cut short by the step limit can end on narration with no reply at
+    // all. Promote the last block so the bubble is never blank.
+    if (reply.length === 0 && thinking.length > 0) {
+      const promoted = thinking.pop() as string;
+      return { thinking, reply: [{ type: 'text', text: promoted }] };
+    }
+
+    return { thinking, reply };
+  });
+
+  const thinkingBlocks = $derived(
+    message.role === 'assistant' ? partsSplit.thinking.filter((block) => block?.trim()) : []
+  );
+  const inlineParts = $derived(message.role === 'assistant' ? partsSplit.reply : (message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text'));
   const deferredPlanParts = $derived(
     (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
   );
@@ -186,7 +242,8 @@
       deferredPlanParts.length > 0 ||
       !!messageAttachment ||
       showAgentSteps ||
-      showPlanProgress
+      showPlanProgress ||
+      thinkingBlocks.length > 0
   );
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
   // Cards (plan, forms, tool status) need the full panel width to breathe; plain
@@ -240,6 +297,10 @@
         <div class="mb-2">
           <AgentSteps steps={agentSteps} {courseId} onNavigate={onMentionClick} />
         </div>
+      {/if}
+
+      {#if thinkingBlocks.length > 0}
+        <ThinkingBlock blocks={thinkingBlocks} isStreaming={isStreaming && isLast} />
       {/if}
 
       {#each inlineParts as part, partIndex (partIndex)}

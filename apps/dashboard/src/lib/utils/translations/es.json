@@ -171,6 +171,8 @@
     "new_chat": "Nuevo chat",
     "tokens_label": "fichas",
     "tokens_from_cache": "{percent}% desde caché",
+    "thinking_active": "Pensando…",
+    "thinking_collapsed": "{count, plural, one {Razonamiento (# paso)} other {Razonamiento (# pasos)}}",
     "tokens_input": "Entrada",
     "tokens_output": "Salida",
     "tokens_cache_read": "Leídas de caché",

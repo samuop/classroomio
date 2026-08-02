@@ -4749,6 +4749,8 @@
     "rename_chat_failed": "Could not rename this conversation. Try again.",
     "tokens_label": "tokens",
     "tokens_from_cache": "{percent}% from cache",
+    "thinking_active": "Thinking…",
+    "thinking_collapsed": "{count, plural, one {Reasoning (# step)} other {Reasoning (# steps)}}",
     "tokens_input": "Input",
     "tokens_output": "Output",
     "tokens_cache_read": "Read from cache",
