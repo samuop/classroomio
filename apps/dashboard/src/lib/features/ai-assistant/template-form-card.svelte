@@ -194,6 +194,16 @@
             rows={4}
           />
         {:else if field.type === 'select'}
+          <!--
+            Fields whose id is in the template registry get canonical options,
+            but mergeTemplateFieldsWithRegistry passes agent-invented ids
+            through untouched — and this card renders while the tool input is
+            still streaming, so `options` may not be an array yet. Normalise
+            for the same reason as discovery-form-card.
+          -->
+          {@const options = (Array.isArray(field.options) ? field.options : []).filter(
+            (option) => typeof option?.value === 'string' && typeof option?.label === 'string'
+          )}
           <Field.Field>
             <Field.Label>
               {resolveFieldLabel(field)}
@@ -203,10 +213,10 @@
             </Field.Label>
             <Select.Root type="single" bind:value={answers[field.id]} disabled={disableFormInputs}>
               <Select.Trigger class="ui:w-full">
-                {(field.options ?? []).find((option) => option.value === answers[field.id])?.label ?? ''}
+                {options.find((option) => option.value === answers[field.id])?.label ?? ''}
               </Select.Trigger>
               <Select.Content style="z-index: 251">
-                {#each field.options ?? [] as option (option.value)}
+                {#each options as option (option.value)}
                   <Select.Item value={option.value} label={option.label}>
                     {option.label}
                   </Select.Item>

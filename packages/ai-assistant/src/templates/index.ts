@@ -8,15 +8,47 @@ const fieldBase = z.object({
   placeholder: z.string().optional()
 });
 
-export const TemplateFormFieldSchema = z.discriminatedUnion('type', [
-  fieldBase.extend({ type: z.literal('text') }),
-  fieldBase.extend({ type: z.literal('textarea') }),
-  fieldBase.extend({ type: z.literal('url') }),
-  fieldBase.extend({
-    type: z.literal('select'),
-    options: z.array(z.object({ value: z.string().min(1), label: z.string().min(1) })).min(1)
+const optionSchema = z.object({ value: z.string().min(1), label: z.string().min(1) });
+
+/**
+ * Models routinely emit select options as a plain list of strings
+ * (`["Principiante", "Avanzado"]`) instead of `{value,label}` pairs. That is an
+ * unambiguous intent, so normalise it rather than rejecting the whole tool call.
+ */
+const optionsSchema = z.preprocess((raw) => {
+  if (!Array.isArray(raw)) return raw;
+
+  return raw.map((option) => (typeof option === 'string' ? { value: option, label: option } : option));
+}, z.array(optionSchema));
+
+/**
+ * Deliberately NOT a `z.discriminatedUnion` on `type`.
+ *
+ * A discriminated union serialises to JSON Schema as `anyOf` + `const`
+ * discriminators, which several providers reproduce unreliably — MiniMax-M3
+ * failed `ask_discovery_questions` validation five turns in a row (~666k tokens)
+ * and even narrated that it could not build a valid card. A flat object with an
+ * enum and a conditional refinement expresses the same contract in a shape that
+ * is far easier for a model to hit, and it stays strict where it matters:
+ * `select` still requires at least one option.
+ *
+ * Consequence for consumers: `options` is now optional on every variant rather
+ * than only present on `select`, so read it defensively.
+ */
+export const TemplateFormFieldSchema = fieldBase
+  .extend({
+    type: z.enum(['text', 'textarea', 'url', 'select']),
+    options: optionsSchema.optional()
   })
-]);
+  .superRefine((field, ctx) => {
+    if (field.type === 'select' && !field.options?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'A field of type "select" needs at least one option ({ value, label }).'
+      });
+    }
+  });
 
 export type TemplateFormField = z.infer<typeof TemplateFormFieldSchema>;
 

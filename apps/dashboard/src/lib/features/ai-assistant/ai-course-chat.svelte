@@ -243,7 +243,7 @@
     // no per-message file upload UI for in-course chats anymore).
     if (sourcesLoadedForCourseId !== courseId) {
       sourcesLoadedForCourseId = courseId;
-      void loadCourseSources(listForCourseId);
+      void loadCourseSources(courseId);
     }
   });
 
@@ -346,8 +346,17 @@
       fetch: (input, init) => apiClient.request(input, init)
     }),
     onFinish: () => {
-      // Clear document attachment after message is processed
-      uploadedDocument = null;
+      // Keep course sources attached; only one-off per-message uploads are
+      // cleared. The backend injects the FULL document text only for the id in
+      // `context.documentId` — everything else in history degrades to a short
+      // summary. Clearing unconditionally meant the material vanished after
+      // turn 1, so by the time the teacher finished the discovery form the
+      // agent was asked to plan "from the apuntes" with no apuntes in context.
+      // Re-sending is cheap now: the provider serves the block from cache
+      // (measured: 110,464 cached-read tokens on a plan turn).
+      if (uploadedDocument?.origin !== 'course_source') {
+        uploadedDocument = null;
+      }
 
       refreshCourseStateAfterChat();
       void persistFinishedChat(chat.messages as AiAssistantMessage[], activeConversationId);
@@ -407,7 +416,7 @@
     // `uploadedDocument` chip yet — adopt its id so the attachment + context
     // resolve to the draft (full-text injection on turn 1).
     if (isFirstMessage && !uploadedDocument && pendingInitialDocumentIds.length > 0) {
-      uploadedDocument = { id: pendingInitialDocumentIds[0], name: 'document' };
+      uploadedDocument = { id: pendingInitialDocumentIds[0], name: 'document', origin: 'course_source' };
     }
 
     // Auto-adopt the most-recently-uploaded source from the Sources panel when
@@ -415,14 +424,14 @@
     // the home page wizard). The Sources panel is the canonical place where
     // sources are managed; the chat input no longer has a per-message file
     // upload for in-course chats.
-    if (
-      isFirstMessage &&
-      !uploadedDocument &&
-      pendingInitialDocumentIds.length === 0 &&
-      sourcesApi.sources.length > 0
-    ) {
+    //
+    // Deliberately NOT gated on `isFirstMessage`: the attachment lives in
+    // component state, so a page reload mid-conversation resets it to null and
+    // a first-message-only rule would never re-attach the source for the rest
+    // of the chat — the exact hole that starved the plan phase of its material.
+    if (!uploadedDocument && pendingInitialDocumentIds.length === 0 && sourcesApi.sources.length > 0) {
       const latest = sourcesApi.sources[0];
-      uploadedDocument = { id: latest.id, name: latest.fileName };
+      uploadedDocument = { id: latest.id, name: latest.fileName, origin: 'course_source' };
     }
 
     const messageAttachment = uploadedDocument
@@ -634,7 +643,11 @@
     isUploading = false;
 
     if (result) {
-      uploadedDocument = { id: result.documentId, name: result.fileName };
+      // A file the teacher attached to this specific message keeps the previous
+      // behaviour (cleared once answered). Only the course's pinned sources are
+      // sticky — widening it here would also change the chip's lifecycle in the
+      // home-page wizard chat, which is not what this fix is about.
+      uploadedDocument = { id: result.documentId, name: result.fileName, origin: 'one_off' };
     }
   }
 
@@ -1045,6 +1058,16 @@
     onMentionClick={handleMentionClick}
   />
 
+  <!--
+    The "context full" panel is a WARNING shown above the composer, never a
+    replacement for it. It used to be an {:else} branch, so a context reading at
+    100% removed the input entirely and the only ways out (compact / new chat)
+    both spend tokens. That turned any over-reading into a hard lock — and the
+    reading was over-reporting, because it used the round's aggregated billing
+    total as occupancy. Even with an accurate gauge, the teacher must keep the
+    ability to type: if the window genuinely overflows, the provider errors and
+    onError now surfaces that.
+  -->
   {#if showContextFull}
     <ContextFullState
       {contextFullBusy}
@@ -1052,8 +1075,9 @@
       onCompactConversation={handleCompactConversation}
       onStartNewChat={handleStartNewChatWithSummary}
     />
-  {:else}
-    <ChatInput
+  {/if}
+
+  <ChatInput
       bind:inputValue
       {isStreaming}
       {isExhausted}
@@ -1072,5 +1096,4 @@
       onFileSelect={handleFileSelect}
       onRemoveDocument={handleRemoveDocument}
     />
-  {/if}
 </div>

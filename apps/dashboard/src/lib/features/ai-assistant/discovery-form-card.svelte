@@ -26,12 +26,34 @@
 
   let answers = $state<Record<string, string>>({});
 
+  /**
+   * The card renders while the `ask_discovery_questions` tool input is still
+   * STREAMING, so `fields` is whatever has arrived so far: entries with no
+   * `id` yet, and sometimes duplicates. `{#each … (field.id)}` keyed on an
+   * undefined id throws on the second such entry and takes the whole card
+   * down — which is what surfaced as one "An error occurred" per question.
+   *
+   * mergeTemplateFieldsWithRegistry does this same cleanup for the template
+   * card; the discovery card never got it. Filter here so every consumer
+   * below (render, validation, submit) sees the same well-formed list.
+   */
+  const safeFields = $derived.by(() => {
+    const seen = new Set<string>();
+
+    return (fields ?? []).filter((field): field is TemplateFormField => {
+      if (typeof field?.id !== 'string' || field.id.length === 0) return false;
+      if (seen.has(field.id)) return false;
+      seen.add(field.id);
+
+      return true;
+    });
+  });
+
   $effect.pre(() => {
     void formId;
-    void fields;
     const next: Record<string, string> = {};
 
-    for (const field of fields ?? []) {
+    for (const field of safeFields) {
       if (!field?.id) {
         continue;
       }
@@ -95,11 +117,7 @@
       return false;
     }
 
-    for (const field of fields ?? []) {
-      if (!field?.id) {
-        continue;
-      }
-
+    for (const field of safeFields) {
       const raw = answers[field.id] ?? '';
       const trimmed = raw.trim();
 
@@ -124,7 +142,7 @@
       return;
     }
 
-    onSubmit({ formId, answers: { ...answers }, fields });
+    onSubmit({ formId, answers: { ...answers }, fields: safeFields });
   }
 </script>
 
@@ -143,7 +161,7 @@
     </p>
   {:else}
     <div class="flex flex-col gap-4">
-      {#each fields as field (field.id)}
+      {#each safeFields as field (field.id)}
         {#if field.type === 'text'}
           <InputField
             label={field.label}
@@ -162,6 +180,17 @@
             rows={4}
           />
         {:else if field.type === 'select'}
+          <!--
+            The card also renders while the tool input is still STREAMING
+            (message-bubble passes toolStatus 'in_progress'), so `options` is
+            whatever has arrived so far — frequently not an array yet. `?? []`
+            only guards null/undefined, so `.find` used to throw a TypeError
+            and take the whole card down with it. Normalise instead: show an
+            empty select until well-formed options land.
+          -->
+          {@const options = (Array.isArray(field.options) ? field.options : []).filter(
+            (option) => typeof option?.value === 'string' && typeof option?.label === 'string'
+          )}
           <Field.Field>
             <Field.Label>
               {field.label}
@@ -171,10 +200,10 @@
             </Field.Label>
             <Select.Root type="single" bind:value={answers[field.id]} disabled={disableFormInputs}>
               <Select.Trigger class="ui:w-full">
-                {(field.options ?? []).find((option) => option.value === answers[field.id])?.label ?? ''}
+                {options.find((option) => option.value === answers[field.id])?.label ?? ''}
               </Select.Trigger>
               <Select.Content style="z-index: 251">
-                {#each field.options ?? [] as option (option.value)}
+                {#each options as option (option.value)}
                   <Select.Item value={option.value} label={option.label}>
                     {option.label}
                   </Select.Item>
