@@ -209,3 +209,18 @@ export const ZAgentRunInstructionBody = z.object({
 });
 
 export type TAgentRunInstructionBody = z.infer<typeof ZAgentRunInstructionBody>;
+
+// ─── Sources (course documents attached to chat conversations) ────────────────
+
+export const ZAgentDocumentsQuery = z.object({
+  courseId: ZAgentCourseId,
+  conversationId: z.string().uuid().optional()
+});
+
+export type TAgentDocumentsQuery = z.infer<typeof ZAgentDocumentsQuery>;
+
+export const ZAgentDocumentParam = z.object({
+  documentId: z.string().min(1)
+});
+
+export type TAgentDocumentParam = z.infer<typeof ZAgentDocumentParam>;

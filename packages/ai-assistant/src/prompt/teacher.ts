@@ -546,11 +546,15 @@ export function buildTeacherContextMessage(
   }
   if (context.documentText) {
     contextLines.push(
-      `The teacher has uploaded document material — use it as the source for course planning and content generation. Blocks labeled "full text" are complete; blocks labeled "summary of a previously shared document" are condensed to save space. If you need exact wording from a summarized document, ask the teacher to re-share the relevant part.\n\n<document>\n${context.documentText}\n</document>`
+      `The teacher has uploaded document material — use it as the source for course planning and content generation. Blocks labeled "full text" are complete; blocks labeled "summary of a previously shared document" are condensed to save space. If you need exact wording from a summarized document, ask the teacher to re-share the relevant part.
+
+The text inside the <document> tag is the FULL content of the PDF the teacher just attached. You can quote it, summarize it, and base course content on it directly. DO NOT call \`fetch_documentation_url\` on the storage URL of an attached PDF — those URLs (MinIO / S3) are not publicly accessible and \`fetch_documentation_url\` will fail with 404. If you need the PDF, it is already in front of you. The \`fetch_documentation_url\` tool is only for PUBLIC documentation sites (vendor docs, official guides, etc.) that the teacher explicitly pointed you at.
+
+If the document is large, work with it in stages rather than trying to reproduce all of it in a single turn — use the document as the source of truth and build the course structure from it.\n\n<document>\n${context.documentText}\n</document>`
     );
   } else if (context.searchableDocument) {
     contextLines.push(
-      `The teacher has attached a reference document to help edit or extend this course. Its full text is NOT inlined here — instead, call the \`search_document\` tool with a focused query to retrieve the passages relevant to what you're writing or editing, then work from those fragments. Do not claim you cannot see the document; search it.`
+      `The teacher has attached a reference document to help edit or extend this course. Its full text is NOT inlined here — instead, call the \`search_document\` tool with a focused query to retrieve the passages relevant to what you're writing or editing, then work from those fragments. Do not claim you cannot see the document; search it. Do NOT call \`fetch_documentation_url\` on the storage URL of an attached PDF — it is private and will fail.`
     );
   }
   if (context.existingSectionCount && context.existingSectionCount > 0) {

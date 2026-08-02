@@ -44,8 +44,38 @@ const PROVIDER_MODEL_ENV: Record<AIProvider, string> = {
   [AIProvider.MINIMAX]: 'MINIMAX_MODEL'
 };
 
-/** MiniMax exposes an OpenAI-compatible endpoint, so we reuse @ai-sdk/openai with this base URL. */
-const MINIMAX_BASE_URL = 'https://api.minimax.io/v1';
+/**
+ * MiniMax exposes an Anthropic-compatible endpoint we consume through the
+ * Anthropic SDK via a custom baseURL. We use the Anthropic adapter (not the
+ * OpenAI one) because the MiniMax docs recommend it for prompt-cache benefits,
+ * and the dashboard only exposes MiniMax to instructors.
+ *
+ * **Note on the path:** the Vercel Anthropic SDK (`@ai-sdk/anthropic@4.x`)
+ * builds the request URL as `${baseURL}/messages` WITHOUT prepending `/v1`.
+ * So if the baseURL is `https://api.minimax.io/anthropic`, the final URL
+ * becomes `https://api.minimax.io/anthropic/messages` and MiniMax returns
+ * 404. The baseURL must therefore include the `/v1` segment so the SDK
+ * produces `https://api.minimax.io/anthropic/v1/messages`, which is the
+ * path MiniMax actually serves.
+ */
+const MINIMAX_BASE_URL = 'https://api.minimax.io/anthropic/v1';
+
+/**
+ * Anthropic-compatible providers — consume MiniMax-M3 and Claude through the
+ * Anthropic SDK with the same wire format (`/messages`, `cache_control`, etc.).
+ * Used wherever the agent needs to know whether to send Anthropic-style
+ * request shaping (cache_control tags, beta headers, etc.) — the two providers
+ * are interchangeable at the protocol level even though the API keys and
+ * base URLs differ.
+ */
+export const ANTHROPIC_COMPATIBLE_PROVIDERS: readonly AIProvider[] = [
+  AIProvider.ANTHROPIC,
+  AIProvider.MINIMAX
+] as const;
+
+export function isAnthropicCompatibleProvider(provider: AIProvider): boolean {
+  return ANTHROPIC_COMPATIBLE_PROVIDERS.includes(provider);
+}
 
 /**
  * Built-in fallbacks used when the env override is unset.
@@ -60,7 +90,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   [AIProvider.ANTHROPIC]: 'claude-sonnet-4-20250514',
   [AIProvider.GOOGLE]: 'gemini-flash-lite-latest',
   [AIProvider.MOONSHOT]: 'kimi-k2.6',
-  [AIProvider.MINIMAX]: 'MiniMax-M2.7'
+  [AIProvider.MINIMAX]: 'MiniMax-M3'
 };
 
 const PROVIDER_API_KEY_ENV: Record<AIProvider, string> = {
@@ -106,8 +136,8 @@ export function createModel(config: AIProviderConfig): LanguageModel {
       return moonshot(modelName);
     }
     case AIProvider.MINIMAX: {
-      // MiniMax is OpenAI-compatible; point the OpenAI provider at its base URL.
-      const minimax = createOpenAI({ apiKey: config.apiKey, baseURL: MINIMAX_BASE_URL });
+      // MiniMax is consumed through the Anthropic SDK with a custom base URL.
+      const minimax = createAnthropic({ apiKey: config.apiKey, baseURL: MINIMAX_BASE_URL });
       return minimax(modelName);
     }
     default:
@@ -131,13 +161,30 @@ export function getProviderConfigForProvider(provider: AIProvider): AIProviderCo
  * Used by routes that don't take an explicit model (status check, title generation).
  */
 export function pickAnyConfiguredProvider(): AIProviderConfig | null {
-  const order: AIProvider[] = [
-    AIProvider.GOOGLE,
-    AIProvider.OPENAI,
-    AIProvider.ANTHROPIC,
-    AIProvider.MOONSHOT,
-    AIProvider.MINIMAX
-  ];
+  // Chat provider is operator-controlled via the `CHAT_PROVIDER` env var.
+  // This deployment is locked to two providers — MiniMax (Anthropic-
+  // compatible) and Google. The flag is the source of truth for which one
+  // is the *preferred* provider, but with soft fallback to the other one
+  // when the preferred key is missing (so a misconfigured deploy reports
+  // `enabled: true` on the other key instead of silently disabling the
+  // agent). Anthropic, OpenAI and Moonshot are not considered at chat time
+  // even if their env vars are set — the AGENT_MODELS registry still
+  // describes them for historical conversation records.
+  //
+  // Embeddings (RAG) are NOT routed through this function — they always
+  // come from Google via `getEmbeddingModel()` (the only provider that
+  // exposes an embedding endpoint).
+  //
+  // Valid flag values: "minimax" (default), "google". Empty/undefined
+  // defaults to "minimax". Any other value logs a one-time warning and
+  // falls back to "minimax".
+  const raw = process.env.CHAT_PROVIDER?.toLowerCase().trim();
+  const preferred: AIProvider = resolveChatProviderPreference(raw);
+
+  const order: AIProvider[] =
+    preferred === AIProvider.GOOGLE
+      ? [AIProvider.GOOGLE, AIProvider.MINIMAX]
+      : [AIProvider.MINIMAX, AIProvider.GOOGLE];
 
   for (const provider of order) {
     const config = getProviderConfigForProvider(provider);
@@ -145,4 +192,21 @@ export function pickAnyConfiguredProvider(): AIProviderConfig | null {
   }
 
   return null;
+}
+
+/**
+ * Parses the CHAT_PROVIDER env var into an AIProvider. Logs a warning when
+ * the value is unrecognized (typo, deprecated name, etc.) so the operator
+ * notices in the API logs that their flag is being ignored. The warning is
+ * intentionally emitted on every call (no one-shot latch) — misconfiguration
+ * should be loud, not silent.
+ */
+function resolveChatProviderPreference(raw: string | undefined): AIProvider {
+  if (raw === undefined || raw === '') return AIProvider.MINIMAX;
+  if (raw === 'minimax') return AIProvider.MINIMAX;
+  if (raw === 'google') return AIProvider.GOOGLE;
+  console.warn(
+    `[providers] Unknown CHAT_PROVIDER="${raw}", falling back to "minimax". Valid values: "minimax", "google".`
+  );
+  return AIProvider.MINIMAX;
 }

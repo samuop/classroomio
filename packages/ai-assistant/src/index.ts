@@ -39,7 +39,9 @@ export {
   resolveModelName,
   getEmbeddingModel,
   EMBEDDING_MODEL_NAME,
-  EMBEDDING_PROVIDER_OPTIONS
+  EMBEDDING_PROVIDER_OPTIONS,
+  isAnthropicCompatibleProvider,
+  ANTHROPIC_COMPATIBLE_PROVIDERS
 } from './providers';
 
 // Tools
