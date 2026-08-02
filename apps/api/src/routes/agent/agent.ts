@@ -98,6 +98,20 @@ import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
 import { agentDocumentsRouter } from './documents';
 
+/**
+ * Read an extended-thinking budget from the environment.
+ *
+ * Returns 0 — i.e. thinking off — for anything unset, unparseable, or negative,
+ * so a typo in the env silently degrades to today's behaviour instead of sending
+ * a malformed request to the provider.
+ */
+function resolveThinkingBudget(envVar: string, fallback: number): number {
+  const raw = process.env[envVar]?.trim();
+  if (raw === undefined || raw === '') return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 const agentCoreRouter = new Hono()
   .get('/status', authMiddleware, orgMemberMiddleware, zValidator('query', ZAgentStatusQuery), async (c) => {
     try {
@@ -1016,11 +1030,47 @@ const agentCoreRouter = new Hono()
       // Provider-agnostic: `documentCache.providerOptions` carries the
       // provider-specific shape (google.cachedContent for Gemini, anthropic
       // .cacheControl for MiniMax/Claude).
-      const providerOptions = documentCache.providerOptions as
+      const cacheProviderOptions = documentCache.providerOptions as
         | Parameters<typeof streamText>[0]['providerOptions']
         | undefined;
       if (documentCache.excludeDocumentId) {
         console.log(`[agent.chat] using document cache for document (${documentCache.excludeDocumentId})`);
+      }
+
+      // Extended thinking. MiniMax accepts `thinking` blocks on every model (its
+      // own capability table lists them), and the Anthropic adapter exposes the
+      // budget through providerOptions.
+      //
+      // Enabled per phase because the two phases want opposite things:
+      //  - plan: pure judgement — how many sections, what depth, what the sources
+      //    actually support. Worth a generous budget; it runs a handful of steps.
+      //  - build: mostly mechanical execution of a plan already agreed. It runs up
+      //    to 40 steps, and every thinking block bills as output, so the budget is
+      //    deliberately small.
+      // Both are env-tunable, and setting a budget to 0 turns thinking off for
+      // that phase without a deploy.
+      const thinkingBudget =
+        isAnthropicCompatible && role === AgentRole.TEACHER
+          ? teacherPromptMode === 'plan'
+            ? resolveThinkingBudget('AGENT_THINKING_BUDGET_PLAN', 4096)
+            : teacherPromptMode === 'build'
+              ? resolveThinkingBudget('AGENT_THINKING_BUDGET_BUILD', 2048)
+              : 0
+          : 0;
+
+      const providerOptions: Parameters<typeof streamText>[0]['providerOptions'] =
+        thinkingBudget > 0
+          ? {
+              ...(cacheProviderOptions ?? {}),
+              anthropic: {
+                ...((cacheProviderOptions?.anthropic as Record<string, unknown>) ?? {}),
+                thinking: { type: 'enabled', budgetTokens: thinkingBudget }
+              }
+            }
+          : cacheProviderOptions;
+
+      if (thinkingBudget > 0) {
+        console.log(`[agent.chat] extended thinking enabled phase=${teacherPromptMode} budget=${thinkingBudget}`);
       }
 
       const result = streamText({
@@ -1053,6 +1103,13 @@ const agentCoreRouter = new Hono()
             messages: pruneMessages({
               messages: stepMessages,
               toolCalls: 'before-last-4-messages',
+              // With thinking on, every step adds a reasoning block that
+              // `pruneMessages` keeps by default (`reasoning: 'none'`), so a
+              // 40-step build would carry ~40 of them by the end and undo the
+              // context diet this pruning exists for. Keeping only the latest is
+              // also what Anthropic's tool-use protocol requires: the thinking
+              // that precedes the tool_use being continued must survive.
+              ...(thinkingBudget > 0 ? { reasoning: 'before-last-message' as const } : {}),
               emptyMessages: 'remove'
             })
           };

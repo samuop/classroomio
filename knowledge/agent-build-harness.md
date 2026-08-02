@@ -138,6 +138,41 @@ Es **advertencia, no reparación**. La geometría sí se repara sola
 dice el diagrama. Las advertencias vuelven en el resultado de la herramienta y el
 modelo corrige su propio trabajo.
 
+## Pensamiento extendido (thinking)
+
+Activado el 2026-08-02, **por fase** y controlado por env:
+
+| Fase | Variable | Default | Por qué |
+|---|---|---|---|
+| plan | `AGENT_THINKING_BUDGET_PLAN` | 4096 | Puro criterio, pocos pasos |
+| build | `AGENT_THINKING_BUDGET_BUILD` | 2048 | Ejecuta un plan ya acordado, hasta 40 pasos |
+
+Poner cualquiera en `0` lo apaga sin deploy.
+
+Dos cosas que hubo que atar:
+
+- **La poda tuvo que cambiar.** `pruneMessages` conserva el `reasoning` por defecto
+  (`reasoning: 'none'`), así que una ronda de 40 pasos terminaría arrastrando 40
+  bloques de pensamiento y anulando la dieta de contexto. Ahora usa
+  `reasoning: 'before-last-message'`, que además es lo que el protocolo de
+  tool-use de Anthropic exige: el pensamiento que precede al `tool_use` que se
+  está continuando tiene que sobrevivir.
+- **`maxOutputTokens` (16384) tiene que ser mayor que el presupuesto**, porque el
+  pensamiento se factura como salida y sale del mismo techo.
+
+### Lo que NO es thinking
+
+Antes de esto, lo que el profesor veía como "los pensamientos del modelo" era otra
+cosa: **texto plano entre llamadas a herramientas** ("Now let me verify the final
+state of the course…"), a veces en inglés en medio de una conversación en español.
+Verificado contra el historial: 147 partes `text` y **cero** `reasoning`.
+
+La UI ahora las pliega bajo "Razonamiento (N pasos)". El criterio es **posicional,
+no de palabras clave**: lo escrito antes de la última llamada a herramienta es
+narración; lo de después es la respuesta. Las herramientas que dibujan su propia
+tarjeta (plan, formularios) quedan excluidas de ese límite, si no un "Armé este
+plan para tu curso:" se ocultaría arriba de su propia tarjeta.
+
 ## Gotchas para la próxima vez
 
 - **`interface` no satisface un index signature.** Las columnas `jsonb` de Drizzle
@@ -167,3 +202,11 @@ Nada de esto se probó todavía contra un curso real. La prueba que importa:
    separación estable/volátil no está funcionando.
 5. Contra-prueba: con el curso a medio construir, pedir una sección extra y
    confirmar que la agrega **sin recrear nada**.
+6. Con thinking activado: que el log diga
+   `[agent.chat] extended thinking enabled phase=… budget=…`, que aparezcan
+   `reasoning_tokens` no nulos en `ai_token_usage`, y —lo importante— que
+   `cache_read_tokens` **no se derrumbe**. Anthropic invalida el prefijo cacheado
+   cuando cambia el presupuesto de pensamiento; como lo fijamos por fase debería
+   coincidir con el corte plan→build que ya existía, pero hay que confirmarlo.
+   Si los tool calls se vuelven poco confiables, `AGENT_THINKING_BUDGET_BUILD=0`
+   revierte sólo la fase de construcción.
