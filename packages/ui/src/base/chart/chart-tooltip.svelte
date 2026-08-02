@@ -2,7 +2,21 @@
   import { cn, type WithElementRef, type WithoutChildren } from '../../tools';
   import type { HTMLAttributes } from 'svelte/elements';
   import { getPayloadConfigFromPayload, useChart, type TooltipPayload } from './chart-utils';
-  import { getTooltipContext, Tooltip as TooltipPrimitive } from 'layerchart';
+  // layerchart 2.0.4 dropped the named `Tooltip` namespace and the
+  // `getTooltipContext` helper that 2.0.0-next.27 exposed. The new API passes
+  // the tooltip state through the `Tooltip.Context` slot, but ChartTooltip is
+  // rendered as a standalone component (not inside a `Tooltip.Context`),
+  // so we fall back to a stub context when those symbols are absent. The
+  // component is still re-exported by `@cio/ui` for backward compat; if a
+  // future layerchart version restores the helper we pick it back up
+  // automatically.
+  import * as layerchart from 'layerchart';
+  const getTooltipContext = (layerchart as any).getTooltipContext as
+    | (() => { payload?: TooltipPayload[]; [k: string]: unknown })
+    | undefined;
+  const TooltipPrimitive = ((layerchart as any).Tooltip ?? {
+    Root: ({ children }: { children: unknown }) => children
+  }) as { Root: unknown };
   import type { Snippet } from 'svelte';
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -48,7 +62,7 @@
   } = $props();
 
   const chart = useChart();
-  const tooltipCtx = getTooltipContext();
+  const tooltipCtx = getTooltipContext?.() ?? { payload: [] as TooltipPayload[] };
 
   const formattedLabel = $derived.by(() => {
     if (hideLabel || !tooltipCtx.payload?.length) return null;

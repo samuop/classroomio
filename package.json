@@ -53,9 +53,7 @@
       "@tailwindcss/oxide",
       "esbuild"
     ],
-    "patchedDependencies": {
-      "layerchart@2.0.0-next.27": "patches/layerchart@2.0.0-next.27.patch"
-    },
+    "patchedDependencies": {},
     "overrides": {
       "zod": "^4.1.8",
       "miniflare>zod": "3.22.3",
