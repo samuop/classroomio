@@ -6,7 +6,6 @@
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import UploadCloudIcon from '@lucide/svelte/icons/upload-cloud';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
-  import { snackbar } from '$features/ui/snackbar/store';
   import { aiAssistantApi } from '../api/ai-assistant.svelte';
   import { sourcesApi } from '../api/sources.svelte';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
@@ -27,6 +26,20 @@
   let dragOver = $state(false);
   let localError = $state<string | null>(null);
 
+  /**
+   * A web page is a source too. It used to reach the agent only as a
+   * `fetch_documentation_url` tool result inside the transcript — and build mode
+   * discards the transcript, so the page was gone exactly when the course was
+   * written from it. Added here it is stored like a PDF and rides in the cached
+   * source pack.
+   */
+  let mode = $state<'file' | 'url'>('file');
+  let urlValue = $state('');
+  let isAddingUrl = $state(false);
+
+  const canSubmit = $derived(mode === 'file' ? !!selectedFile : urlValue.trim().length > 0);
+  const isBusy = $derived(isUploading || isAddingUrl);
+
   const ALLOWED_MIME_TYPES = [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -41,6 +54,9 @@
     if (fileInputRef) fileInputRef.value = '';
     localError = null;
     isUploading = false;
+    urlValue = '';
+    isAddingUrl = false;
+    mode = 'file';
   }
 
   function handleOpenChange(isOpen: boolean) {
@@ -108,6 +124,34 @@
       isUploading = false;
     }
   }
+
+  async function handleAddUrl() {
+    const url = urlValue.trim();
+    if (!url || isAddingUrl) return;
+
+    isAddingUrl = true;
+    localError = null;
+
+    try {
+      const ok = await sourcesApi.addUrlSource(courseId, url);
+      if (ok) {
+        open = false;
+        resetState();
+      } else {
+        localError = 'url_failed';
+      }
+    } catch (err) {
+      console.error('[sources] add url failed:', err);
+      localError = 'url_failed';
+    } finally {
+      isAddingUrl = false;
+    }
+  }
+
+  function handleSubmit() {
+    if (mode === 'file') void handleUpload();
+    else void handleAddUrl();
+  }
 </script>
 
 <Dialog.Root {open} onOpenChange={handleOpenChange}>
@@ -119,37 +163,80 @@
       </Dialog.Description>
     </Dialog.Header>
 
-    <div
-      role="button"
-      tabindex="-1"
-      ondragover={(e) => {
+    <div class="ui:bg-muted mb-3 flex gap-1 rounded-md p-1">
+      <button
+        type="button"
+        class="flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors {mode === 'file'
+          ? 'ui:bg-background shadow-sm'
+          : 'ui:text-muted-foreground'}"
+        onclick={() => {
+          mode = 'file';
+          localError = null;
+        }}
+      >
+        {$t('course.sources.tab_file')}
+      </button>
+      <button
+        type="button"
+        class="flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors {mode === 'url'
+          ? 'ui:bg-background shadow-sm'
+          : 'ui:text-muted-foreground'}"
+        onclick={() => {
+          mode = 'url';
+          localError = null;
+        }}
+      >
+        {$t('course.sources.tab_url')}
+      </button>
+    </div>
+
+    {#if mode === 'url'}
+      <div class="flex flex-col gap-2">
+        <Input
+          type="url"
+          placeholder="https://…"
+          bind:value={urlValue}
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter' && canSubmit && !isBusy) handleSubmit();
+          }}
+        />
+        <p class="ui:text-muted-foreground text-xs">
+          {$t('course.sources.url_hint')}
+        </p>
+      </div>
+    {:else}
+      <div
+        role="button"
+        tabindex="-1"
+        ondragover={(e) => {
         e.preventDefault();
         dragOver = true;
       }}
       ondragleave={() => (dragOver = false)}
       ondrop={handleDrop}
       onclick={() => fileInputRef?.click()}
-      onkeydown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') fileInputRef?.click();
-      }}
-      class="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center transition-colors {dragOver
-        ? 'border-primary ui:bg-muted/40'
-        : 'ui:border-border'}"
-    >
-      <UploadCloudIcon size={28} class="ui:text-muted-foreground" />
-      <span class="text-sm font-medium">
-        {$t('course.sources.drop_zone_title')}
-      </span>
-      <Input
-        bind:ref={fileInputRef}
-        type="file"
-        accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        onchange={handleFileInput}
-        class="hidden"
-      />
-    </div>
+        onkeydown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') fileInputRef?.click();
+        }}
+        class="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center transition-colors {dragOver
+          ? 'border-primary ui:bg-muted/40'
+          : 'ui:border-border'}"
+      >
+        <UploadCloudIcon size={28} class="ui:text-muted-foreground" />
+        <span class="text-sm font-medium">
+          {$t('course.sources.drop_zone_title')}
+        </span>
+        <Input
+          bind:ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          onchange={handleFileInput}
+          class="hidden"
+        />
+      </div>
+    {/if}
 
-    {#if selectedFile}
+    {#if selectedFile && mode === 'file'}
       <div class="mt-3 flex items-center gap-2 rounded border p-3 text-sm">
         <FileTextIcon size={14} class="ui:text-primary shrink-0" />
         <div class="flex min-w-0 flex-col">
@@ -175,14 +262,16 @@
       </p>
     {:else if localError === 'upload_failed'}
       <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.snackbar_delete_failed')}</p>
+    {:else if localError === 'url_failed'}
+      <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.url_failed')}</p>
     {/if}
 
     <Dialog.Footer class="ui:gap-2">
       <Button variant="outline" onclick={() => handleOpenChange(false)}>
         {$t('course.sources.delete_confirm_no')}
       </Button>
-      <Button onclick={handleUpload} disabled={!selectedFile || isUploading}>
-        {#if isUploading}
+      <Button onclick={handleSubmit} disabled={!canSubmit || isBusy}>
+        {#if isBusy}
           <LoaderIcon size={14} class="animate-spin" />
           {$t('course.sources.uploading')}
         {:else}

@@ -234,6 +234,105 @@ export async function parseAndStoreDocument(
   };
 }
 
+/** MIME type used for sources captured from a web page (Jina returns markdown). */
+export const URL_SOURCE_MIME_TYPE = 'text/markdown';
+
+/**
+ * Persist a fetched web page as a course source, alongside uploaded PDFs.
+ *
+ * A URL used to reach the model only as a `fetch_documentation_url` tool result
+ * living in the chat transcript — and build mode drops the transcript, so the page
+ * vanished at exactly the moment the course was written from it. Stored as a
+ * document instead, it shows up in the Sources panel, joins the cached source
+ * pack, and survives the build.
+ *
+ * There is no S3 asset (`assetId: null`): the original lives at its URL. Dedup is
+ * by content hash within the course, so re-adding the same page is a no-op and two
+ * teachers adding it share one cache entry.
+ */
+export async function storeUrlDocument(params: {
+  url: string;
+  pageTitle: string;
+  markdown: string;
+  orgId: string;
+  userId: string;
+  courseId: string;
+  conversationId: string;
+  redis: RedisClient;
+}): Promise<DocumentUploadResult & { reused: boolean }> {
+  const { url, pageTitle, markdown, orgId, userId, courseId, conversationId, redis } = params;
+
+  const text = markdown.slice(0, MAX_DOCUMENT_TEXT_LENGTH);
+  const truncated = markdown.length > MAX_DOCUMENT_TEXT_LENGTH;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  // Title first, falling back to the URL, so the Sources list is readable.
+  const fileName = pageTitle?.trim() ? `${pageTitle.trim()} (${new URL(url).hostname})` : url;
+  const contentHash = computeContentHash(text);
+
+  const existing = await findChatDocumentByContentHash(courseId, contentHash);
+  if (existing) {
+    return {
+      documentId: existing.id,
+      fileName: existing.fileName,
+      mimeType: existing.mimeType,
+      pageCount: existing.pageCount,
+      wordCount: existing.wordCount,
+      textPreview: text.slice(0, 500),
+      truncated,
+      reused: true
+    };
+  }
+
+  const documentId = nanoid();
+
+  await redis.set(
+    agentDocumentKey(documentId),
+    JSON.stringify({
+      text,
+      fileName,
+      mimeType: URL_SOURCE_MIME_TYPE,
+      userId,
+      uploadedAt: new Date().toISOString()
+    }),
+    { EX: DOCUMENT_REDIS_TTL }
+  );
+
+  await createChatDocument({
+    id: documentId,
+    conversationId,
+    courseId,
+    userId,
+    assetId: null,
+    fileName,
+    mimeType: URL_SOURCE_MIME_TYPE,
+    text,
+    contentHash,
+    wordCount,
+    pageCount: null
+  });
+
+  trackAgentEvent(AgentEvent.DOCUMENT_UPLOADED, {
+    orgId,
+    userId,
+    courseId,
+    mimeType: URL_SOURCE_MIME_TYPE,
+    fileSize: text.length,
+    wordCount,
+    truncated
+  });
+
+  return {
+    documentId,
+    fileName,
+    mimeType: URL_SOURCE_MIME_TYPE,
+    pageCount: null,
+    wordCount,
+    textPreview: text.slice(0, 500),
+    truncated,
+    reused: false
+  };
+}
+
 /**
  * Retrieve stored document text. Tries the Redis hot cache first; on miss
  * falls back to Postgres and rehydrates Redis for next time.

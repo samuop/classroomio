@@ -224,3 +224,14 @@ export const ZAgentDocumentParam = z.object({
 });
 
 export type TAgentDocumentParam = z.infer<typeof ZAgentDocumentParam>;
+
+/** Body for adding a web page as a course source (POST /agent/documents/url). */
+export const ZAgentDocumentUrlBody = z.object({
+  courseId: ZAgentCourseId,
+  /** Omitted when added from the Sources panel — the route creates the hidden
+   *  "Course sources" conversation, matching how POST /agent/upload behaves. */
+  conversationId: z.string().uuid().optional(),
+  url: z.string().url()
+});
+
+export type TAgentDocumentUrlBody = z.infer<typeof ZAgentDocumentUrlBody>;

@@ -3,13 +3,10 @@ import { isIPv4, isIPv6 } from 'node:net';
 import { AppError } from '@api/utils/errors';
 import { env } from '@api/config/env';
 import { redis, logRedisUnavailableOnce } from '@api/utils/redis/redis';
-import { isOrgOnPaidPlan } from '@api/services/agent/usage';
-import { ErrorCodes } from '@cio/utils/constants/error-codes';
 
 const JINA_READER_PREFIX = 'https://r.jina.ai/';
 const MAX_MARKDOWN_BYTES = 150 * 1024;
 const CACHE_TTL_SEC = 7 * 24 * 3600;
-const QUOTA_TTL_SEC = 25 * 3600;
 
 export type FetchDocumentationUrlResult = {
   url: string;
@@ -229,37 +226,6 @@ async function redisSafeSet(key: string, value: string, ttlSec: number): Promise
   }
 }
 
-async function incrementOrgDailyFetchQuota(orgId: string, maxPerDay: number): Promise<void> {
-  const dayKey = new Date().toISOString().slice(0, 10);
-  const key = `agent:fetch_url:quota:${orgId}:${dayKey}`;
-
-  try {
-    if (!redis.isOpen) {
-      return;
-    }
-
-    const count = await redis.incr(key);
-
-    if (count === 1) {
-      await redis.expire(key, QUOTA_TTL_SEC);
-    }
-
-    if (count > maxPerDay) {
-      throw new AppError(
-        'Daily documentation fetch quota exceeded for this organization',
-        'AGENT_FETCH_QUOTA_EXCEEDED',
-        429
-      );
-    }
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-
-    logRedisUnavailableOnce('fetch-url quota redis failed', error);
-  }
-}
-
 async function fetchMarkdownFromJina(url: string): Promise<{ markdown: string; status: number }> {
   const readerHref = `${JINA_READER_PREFIX}${url}`;
   const headers: Record<string, string> = {};
@@ -312,12 +278,12 @@ export async function fetchDocumentationUrl(params: {
     throw new AppError('Maximum documentation fetches per conversation reached', 'AGENT_FETCH_CONVERSATION_LIMIT', 429);
   }
 
-  const paid = await isOrgOnPaidPlan(orgId);
-
-  if (!paid) {
-    throw new AppError('Documentation fetching requires a paid plan', ErrorCodes.UPGRADE_REQUIRED, 403);
-  }
-
+  // No paid-plan gate and no per-org daily quota: on a self-hosted install the
+  // operator supplies (and pays for) the Jina and model keys directly, so metering
+  // here only blocked the instructor from using material they already own. The
+  // per-conversation limit above stays — that one is a runaway-loop guard, not
+  // monetization, and a teacher adding a source from the Sources panel bypasses it
+  // naturally because that path has no prior fetches to count.
   const cacheKeyRaw = `${orgId}:${normalizedHref}`;
   const cacheKey = `agent:fetch_url:${createHash('sha256').update(cacheKeyRaw).digest('hex')}`;
 
@@ -341,8 +307,6 @@ export async function fetchDocumentationUrl(params: {
       // fall through to refetch
     }
   }
-
-  await incrementOrgDailyFetchQuota(orgId, env.AGENT_MAX_FETCHES_PER_ORG_PER_DAY);
 
   const { markdown } = await fetchMarkdownFromJina(normalizedHref);
   const truncated = truncateMarkdown(markdown);

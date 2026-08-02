@@ -4,7 +4,8 @@ import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { zValidator } from '@hono/zod-validator';
 import {
   ZAgentDocumentsQuery,
-  ZAgentDocumentParam
+  ZAgentDocumentParam,
+  ZAgentDocumentUrlBody
 } from '@cio/utils/validation/agent';
 import { handleError, AppError } from '@api/utils/errors';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
@@ -15,6 +16,7 @@ import {
   getChatDocumentCacheKey,
   type ChatDocumentRecord
 } from '@cio/db/queries/agent/chat-document';
+import { createChatConversation, getChatConversation } from '@cio/db/queries/agent';
 import {
   releaseDocumentCaches,
   getDocumentCacheStatus,
@@ -23,7 +25,8 @@ import {
   type ReconcileResult
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
-import { getDocumentText } from '@api/services/agent/document';
+import { getDocumentText, storeUrlDocument } from '@api/services/agent/document';
+import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 
 /**
  * Sources / documents sub-router.
@@ -130,6 +133,71 @@ export const agentDocumentsRouter = new Hono()
         });
       } catch (error) {
         return handleError(c, error, 'Failed to delete document');
+      }
+    }
+  )
+
+  /**
+   * POST /agent/documents/url
+   *
+   * Add a web page as a course source. Fetches the page through the same reader
+   * `fetch_documentation_url` uses (so the 7-day Jina cache is shared) and stores
+   * the markdown as an ai_chat_document.
+   *
+   * This exists because a URL used to reach the model only as a tool result inside
+   * the chat transcript, and build mode drops the transcript wholesale — the page
+   * disappeared at precisely the moment the course was being written from it.
+   * Persisted as a source it lands in the Sources panel and in the cached source
+   * pack, exactly like an uploaded PDF.
+   */
+  .post(
+    '/url',
+    authMiddleware,
+    orgMemberMiddleware,
+    zValidator('json', ZAgentDocumentUrlBody),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const orgId = c.req.header('cio-org-id')!;
+        const { courseId, url } = c.req.valid('json');
+        let conversationId = c.req.valid('json').conversationId;
+
+        const allowed = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
+        if (!allowed) {
+          throw new AppError('Not authorized for this course', 'COURSE_FORBIDDEN', 403);
+        }
+
+        // Added from the Sources panel, where there may be no conversation yet.
+        // ai_chat_document.conversation_id is NOT NULL, so give it the same hidden
+        // "Course sources" conversation an upload from that panel gets.
+        if (!conversationId) {
+          const created = await createChatConversation(courseId, user.id, 'Course sources');
+          conversationId = created.id;
+        } else {
+          const conversation = await getChatConversation(conversationId, user.id);
+          if (!conversation || conversation.courseId !== courseId) {
+            throw new AppError('Conversation not found', 'CONVERSATION_NOT_FOUND', 404);
+          }
+        }
+
+        // `priorMessages: []` — a teacher deliberately adding a source is not the
+        // runaway-agent case the per-conversation fetch limit guards against.
+        const page = await fetchDocumentationUrl({ url, orgId, courseId, priorMessages: [] });
+
+        const stored = await storeUrlDocument({
+          url,
+          pageTitle: page.pageTitle,
+          markdown: page.content,
+          orgId,
+          userId: user.id,
+          courseId,
+          conversationId,
+          redis
+        });
+
+        return c.json({ success: true as const, data: stored });
+      } catch (error) {
+        return handleError(c, error, 'Failed to add URL source');
       }
     }
   )

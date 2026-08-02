@@ -1,5 +1,6 @@
 import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
 import type {
+  AddUrlSourceRequest,
   CourseSource,
   ListCourseSourcesRequest,
   DeleteCourseSourceRequest,
@@ -26,6 +27,7 @@ export interface ReconcileSummary {
 class SourcesApi extends BaseApiWithErrors {
   sources: CourseSource[] = $state([]);
   isUploading = $state(false);
+  isAddingUrl = $state(false);
   deletingId: string | null = $state(null);
   refreshingId: string | null = $state(null);
   reconciling = $state(false);
@@ -55,6 +57,36 @@ class SourcesApi extends BaseApiWithErrors {
         this.sources = result.data as CourseSource[];
       }
     });
+  }
+
+  /**
+   * Add a web page as a course source.
+   *
+   * The page is fetched server-side and stored like an uploaded PDF, so it shows
+   * up in this list and rides in the cached source pack. Pasting a URL into the
+   * chat instead only put it in the transcript — which build mode discards, so the
+   * page was gone by the time the course got written.
+   */
+  async addUrlSource(courseId: string, url: string, conversationId?: string): Promise<boolean> {
+    this.isAddingUrl = true;
+    let success = false;
+    await this.execute<AddUrlSourceRequest>({
+      requestFn: () =>
+        classroomio.agent.documents.url.$post({
+          json: { courseId, url, conversationId }
+        }),
+      logContext: 'adding URL source',
+      onSuccess: () => {
+        success = true;
+      }
+    });
+    this.isAddingUrl = false;
+
+    // The response carries only the stored document; re-listing keeps ordering and
+    // the dedup case (same page added twice) consistent with the server.
+    if (success) await this.listSources(courseId);
+
+    return success;
   }
 
   /**
