@@ -71,33 +71,31 @@
       <Separator orientation="vertical" />
     </div>
 
-    <div class="flex w-[60%] min-w-0 flex-1 flex-col justify-center gap-0.5">
-      <div class="flex min-w-0 items-center gap-2">
-        <p class="max-w-xs truncate text-sm font-medium">
-          {activeNavKey ? $t(activeNavKey) : ''}
-        </p>
+    <div class="flex min-w-0 flex-1 items-center gap-2">
+      <p class="max-w-[40ch] truncate text-sm font-medium">
+        {activeNavKey ? $t(activeNavKey) : ''}
+      </p>
 
-        {#if isPublicCourse}
-          <CoursePublicBadge class="shrink-0" />
-        {/if}
+      {#if isPublicCourse}
+        <CoursePublicBadge class="shrink-0" />
+      {/if}
 
-        {#if showCoursePublishBadge}
-          <CoursePublishBadge isPublished={courseApi.course?.isPublished ?? false} />
-        {/if}
-      </div>
+      {#if showCoursePublishBadge}
+        <CoursePublishBadge isPublished={courseApi.course?.isPublished ?? false} />
+      {/if}
     </div>
 
-    <span class="grow"></span>
+    <span class="shrink"></span>
 
     {#if isDraftCourse}
       <Button
         variant="ghost"
         size="sm"
-        class="ui:text-muted-foreground hover:ui:text-destructive"
+        class="ui:text-muted-foreground hover:ui:text-destructive shrink-0"
         onclick={() => (discardModalOpen = true)}
       >
         <Trash2Icon size={14} />
-        {$t('course.header.discard_draft')}
+        <span class="hidden md:inline">{$t('course.header.discard_draft')}</span>
       </Button>
     {/if}
 

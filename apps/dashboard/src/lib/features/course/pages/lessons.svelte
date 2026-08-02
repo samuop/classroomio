@@ -5,6 +5,7 @@
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import LockOpenIcon from '@lucide/svelte/icons/lock-open';
   import LockIcon from '@lucide/svelte/icons/lock';
+  import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
   import { Button } from '@cio/ui/base/button';
   import ContentList from '$features/course/components/lesson/content-list.svelte';
   import ContentSectionList from '$features/course/components/lesson/content-section-list.svelte';
@@ -17,6 +18,7 @@
   import { t } from '$lib/utils/functions/translations';
   import { getCourseContent } from '$features/course/utils/content';
   import { ContentType } from '@cio/utils/constants/content';
+  import { getLastSentText, requestRetry } from '$features/ai-assistant/utils/store';
 
   interface Props {
     courseId: string;
@@ -165,4 +167,17 @@
     icon={BookOpenIcon}
     variant="page"
   />
+  {#if getLastSentText()}
+    <div class="mt-4 flex justify-center">
+      <Button
+        variant="default"
+        size="sm"
+        onclick={requestRetry}
+        title={$t('course.navItem.lessons.regenerate_tooltip')}
+      >
+        <RotateCwIcon size={14} class="mr-1.5" />
+        {$t('course.navItem.lessons.regenerate')}
+      </Button>
+    </div>
+  {/if}
 {/if}

@@ -9,6 +9,7 @@
 
   import TableOfContentsIcon from '@lucide/svelte/icons/table-of-contents';
   import BotIcon from '@lucide/svelte/icons/bot';
+  import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import {
     AnalyticsIcon,
     AttendanceIcon,
@@ -88,6 +89,13 @@
           (path || page.url.pathname) === getLessonsRoute(id),
         isLesson: true,
         icon: getNavIcon(NAV_IDS.LESSONS)
+      },
+      {
+        id: NAV_IDS.SOURCES,
+        title: $t('course.navItems.nav_sources'),
+        url: getNavItemRoute(id, 'sources'),
+        isActive: (path || page.url.pathname) === getNavItemRoute(id, 'sources'),
+        icon: getNavIcon(NAV_IDS.SOURCES)
       },
       {
         id: NAV_IDS.ANALYTICS,
@@ -241,6 +249,8 @@
       return NewsFeedIcon;
     } else if (id === NAV_IDS.LESSONS) {
       return ContentIcon;
+    } else if (id === NAV_IDS.SOURCES) {
+      return BookOpenIcon;
     } else if (id === NAV_IDS.ATTENDANCE) {
       return AttendanceIcon;
     } else if (id === NAV_IDS.SUBMISSIONS) {
