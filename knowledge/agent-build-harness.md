@@ -189,9 +189,43 @@ plan para tu curso:" se ocultaría arriba de su propia tarjeta.
 - **Rebuildear los paquetes** (`@cio/db`, `@cio/ai-assistant`, `@cio/utils`) antes
   de typecheckear la API: importa desde `dist`, no desde las fuentes.
 
+## Verificado end-to-end (2026-08-02, local)
+
+Se manejó la API directamente (sesión con `db:login-link`, `POST /agent/chat`)
+para construir un curso real de punta a punta. Resultado:
+
+| Qué | Resultado |
+|---|---|
+| 2 URLs como fuentes | ✅ persistidas, con título correcto |
+| Paquete de fuentes | ✅ `source pack: 2 source(s), ~17191 tokens, 0 summarized` |
+| Thinking en plan | ✅ `budget=4096`, 73 `reasoning-delta` en el stream |
+| Plan generado | ✅ 2 secciones + examen, sin errores |
+| Construcción | ✅ **una sola ronda**, `finish=stop` en 8 pasos |
+| Estructura final | ✅ 3 secciones, 4 lecciones (8,5–11,4k chars), examen de 8 preguntas |
+| Registro de plan | ✅ los 8 ítems vinculados a su fila real |
+| Duplicados | ✅ **cero** |
+| Contra-prueba sección extra | ✅ +1 sección +1 lección, nada recreado |
+| Caché en build | ✅ 83% y 84% (`read=269568`, `read=214144`) |
+
+Dos bugs salieron de esta corrida y están arreglados (commit `78c05e6f3`): el
+`discriminatedUnion` que había quedado en el esquema **que ve el modelo**, y el
+título de página de Jina.
+
+### Lo que queda abierto
+
+- **La caché dio 0% en un turno de plan** (`read=242 uncached=60791`) cuando lo
+  único que cambió respecto del turno anterior fue el texto del usuario — que va
+  *después* del bloque tageado, así que el prefijo debería haber coincidido. En
+  las rondas de build el comportamiento fue el esperado (83–84%), así que no es
+  general. Hay que aislarlo mandando dos veces la misma petición de plan.
+- **MiniMax no reporta `reasoning` ni `cacheWrite` en `usage`**: siempre 0, aunque
+  el stream traiga 73 bloques de razonamiento. Sólo se puede medir la lectura.
+- Falta verificación visual de la UI (bloque de razonamiento plegable, checklist,
+  badge de fuentes, auto-continuar). Eso necesita navegador.
+
 ## Pendiente de verificar en producción
 
-Nada de esto se probó todavía contra un curso real. La prueba que importa:
+La prueba que importa:
 
 1. Subir un PDF **y** una URL, pedir un curso, aceptar el plan.
 2. Verificar en la base que secciones y lecciones coinciden **1:1** con el plan
