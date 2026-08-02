@@ -3,10 +3,9 @@
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import CircleIcon from '@lucide/svelte/icons/circle';
   import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
-  import SquareIcon from '@lucide/svelte/icons/square';
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-  import { Button } from '@cio/ui/base/button';
+  import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
   import ToolLine from '$features/ai-assistant/utils/tool-line.svelte';
   import type { ProgressStep, ToolLineUi } from '$features/ai-assistant/utils/tool-labels';
   import { t } from '$lib/utils/functions/translations';
@@ -18,12 +17,25 @@
     /** Same handler as `@mention` clicks (SPA navigation into lesson / exercise). */
     onNavigate: (route: string) => void;
     currentActionLine?: ToolLineUi;
-    onStop?: () => void;
     isStopped?: boolean;
     error?: string;
+    /** True while the agent is mid-turn — retry is hidden so it can't race a live run. */
+    isStreaming?: boolean;
+    /** Re-run a single failed action. Omit to hide the per-step retry. */
+    onRetryStep?: (step: ProgressStep) => void;
   }
 
-  let { titleKey, steps, courseId, onNavigate, currentActionLine, onStop, isStopped = false, error }: Props = $props();
+  let {
+    titleKey,
+    steps,
+    courseId,
+    onNavigate,
+    currentActionLine,
+    isStopped = false,
+    error,
+    isStreaming = false,
+    onRetryStep
+  }: Props = $props();
 
   function stepRowKey(step: ProgressStep, index: number): string {
     if (step.line.shape === 'i18n') {
@@ -92,9 +104,31 @@
           {:else}
             <CircleIcon size={12} class="ui:text-muted-foreground shrink-0" />
           {/if}
-          <span class={step.status === 'completed' ? '' : step.status === 'pending' ? 'ui:text-muted-foreground' : ''}>
+          <span
+            class="min-w-0 {step.status === 'completed'
+              ? ''
+              : step.status === 'pending'
+                ? 'ui:text-muted-foreground'
+                : ''}"
+          >
             <ToolLine line={step.line} {courseId} {onNavigate} />
           </span>
+
+          <!--
+            Retry the ONE action that failed. Re-sending the whole turn was the
+            only option before, and it re-runs everything that already worked —
+            on a build round that means rewriting lessons to fix one exercise.
+          -->
+          {#if step.status === 'failed' && onRetryStep && !isStreaming}
+            <button
+              type="button"
+              onclick={() => onRetryStep(step)}
+              class="ui:text-muted-foreground hover:ui:bg-muted ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] transition-colors"
+            >
+              <RotateCwIcon size={11} />
+              {$t('ai_assistant.retry_step')}
+            </button>
+          {/if}
         </div>
       {/each}
     </div>
@@ -116,12 +150,12 @@
       <p class="ui:text-muted-foreground text-xs">{$t('ai_assistant.stopped_content_kept')}</p>
     {/if}
 
-    {#if onStop && !isStopped && completedCount < totalCount}
-      <Button size="sm" variant="outline" onclick={onStop} class="w-full">
-        <SquareIcon size={12} class="mr-1" />
-        {$t('ai_assistant.stop')}
-      </Button>
-    {/if}
+    <!--
+      No Stop button here. The composer already shows one while streaming, three
+      centimetres below and always in the same place; a second one inside the
+      progress card duplicated it and pushed the step list around as it appeared
+      and vanished. The card reports progress, the composer holds the controls.
+    -->
     </div>
   {/if}
 </div>

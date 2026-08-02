@@ -8,11 +8,23 @@
   interface Props {
     contextFullBusy: null | 'compact' | 'new_chat';
     compactConversationDisabled?: boolean;
+    /**
+     * False when the window is full of course material rather than transcript.
+     * Compacting only summarizes the transcript, so recommending it there sends
+     * the teacher to spend a model call that cannot move the gauge.
+     */
+    isCompactionWorthwhile?: boolean;
     onCompactConversation: () => void;
     onStartNewChat: () => void;
   }
 
-  let { contextFullBusy, compactConversationDisabled = false, onCompactConversation, onStartNewChat }: Props = $props();
+  let {
+    contextFullBusy,
+    compactConversationDisabled = false,
+    isCompactionWorthwhile = true,
+    onCompactConversation,
+    onStartNewChat
+  }: Props = $props();
 
   const compactBusy = $derived(contextFullBusy === 'compact');
   const busy = $derived(contextFullBusy !== null);
@@ -26,12 +38,22 @@
       {$t('ai_assistant.context_full_title')}
     </p>
     <p class="ui:text-muted-foreground text-xs">
-      {$t('ai_assistant.context_full_description')}
+      {$t(
+        isCompactionWorthwhile
+          ? 'ai_assistant.context_full_description'
+          : 'ai_assistant.context_compaction_wont_help'
+      )}
     </p>
 
     <div class="flex w-full max-w-xs flex-col gap-2 pt-1 sm:max-w-sm">
+      <!--
+        When the transcript is not what filled the window, compaction stays
+        available but stops being the highlighted action — a new chat carries the
+        same sources, so the real fix is splitting the material, and the copy
+        above says so.
+      -->
       <Button
-        variant="default"
+        variant={isCompactionWorthwhile ? 'default' : 'outline'}
         size="sm"
         onclick={onCompactConversation}
         disabled={busy || compactConversationDisabled}

@@ -102,13 +102,27 @@
   const tokenUsage = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.tokenUsage);
 
   /**
+   * The headline is the CONTEXT figure — the input size of the last request —
+   * because that is the number a teacher can act on: it is what the gauge shows
+   * and what decides when to compact.
+   *
+   * It used to be `totalTokens`, which AI SDK v7 aggregates over every step of
+   * the round. A two-step turn re-reads the same 110k prefix twice and reports
+   * ~229k, so the footer read "229,418" beside a gauge reading 59% and the two
+   * looked contradictory. Both were right; only one answers "how full is it?".
+   * `totalTokens` is still the fallback for messages persisted before the field,
+   * and stays visible in the tooltip as the billing figure it is.
+   */
+  const headlineIsContext = $derived(!!tokenUsage?.contextTokens);
+  const headlineTokens = $derived(tokenUsage?.contextTokens ?? tokenUsage?.totalTokens ?? 0);
+
+  /**
    * Share of this round's input that the provider served from cache.
    *
-   * The headline number is `totalTokens`, which AI SDK v7 aggregates over every
-   * step of the round — a build round hitting the 40-step cap legitimately
-   * reports millions. Shown bare it reads as a runaway bill, when in practice
-   * ~95% of it is the same cached prefix re-read at a tenth of the price. The
-   * percentage is what turns an alarming number into an explicable one.
+   * A build round hitting the 40-step cap legitimately bills millions of tokens.
+   * Shown bare that reads as a runaway bill, when in practice ~95% of it is the
+   * same cached prefix re-read at a tenth of the price. The percentage is what
+   * turns an alarming number into an explicable one.
    */
   const cachedSharePercent = $derived.by(() => {
     const read = tokenUsage?.cacheReadTokens ?? 0;
@@ -246,9 +260,61 @@
       thinkingBlocks.length > 0
   );
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
-  // Cards (plan, forms, tool status) need the full panel width to breathe; plain
-  // text bubbles stay narrower for readability.
-  const isWideBubble = $derived(deferredPlanParts.length > 0);
+  /**
+   * Cards (plan, forms) need the full panel width to breathe.
+   *
+   * Assistant bubbles are full width too, and that is a streaming fix, not a
+   * style choice: a bubble that hugs its content is re-measured on every token,
+   * so during generation it visibly grows and snaps sideways line after line.
+   * Pinning the width means only the height changes as text arrives. User
+   * messages still hug — they appear complete, in one go, and never resize.
+   */
+  const isWideBubble = $derived(deferredPlanParts.length > 0 || message.role === 'assistant');
+
+  /**
+   * Markdown is re-parsed and its entire subtree replaced on every token. At
+   * MiniMax's rate that is dozens of full re-layouts a second, and each one can
+   * change the shape of the block: a list forms, a code fence opens, a heading
+   * appears and pushes everything down. That churn is what reads as the box
+   * "deforming" while the agent writes.
+   *
+   * So while THIS message is streaming, sample the parts on a fixed cadence
+   * instead of rendering every token. The same text arrives at the same speed;
+   * it just stops re-laying out between frames. Once streaming ends we render
+   * `inlineParts` directly, so the final content is never a stale sample.
+   */
+  const STREAM_RENDER_INTERVAL_MS = 90;
+  const isStreamingThisMessage = $derived(isStreaming && isLast);
+
+  let sampledParts = $state<typeof inlineParts>([]);
+  let lastSampleAt = 0;
+
+  $effect(() => {
+    const parts = inlineParts;
+
+    if (!isStreamingThisMessage) return;
+
+    const waitMs = STREAM_RENDER_INTERVAL_MS - (Date.now() - lastSampleAt);
+
+    // First token of a turn commits immediately — otherwise the bubble would sit
+    // empty for the length of one interval before anything appears.
+    if (waitMs <= 0) {
+      lastSampleAt = Date.now();
+      sampledParts = parts;
+      return;
+    }
+
+    // Trailing commit: without it the last tokens before a pause would wait for
+    // a token that never comes.
+    const timer = setTimeout(() => {
+      lastSampleAt = Date.now();
+      sampledParts = parts;
+    }, waitMs);
+
+    return () => clearTimeout(timer);
+  });
+
+  const partsToRender = $derived(isStreamingThisMessage ? sampledParts : inlineParts);
 
   // A plan is "already implemented" once a later user message requested its
   // implementation — hide the plan card's Implement/Request-changes buttons.
@@ -303,7 +369,7 @@
         <ThinkingBlock blocks={thinkingBlocks} isStreaming={isStreaming && isLast} />
       {/if}
 
-      {#each inlineParts as part, partIndex (partIndex)}
+      {#each partsToRender as part, partIndex (partIndex)}
         {#if part.type === 'text'}
           <div
             class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-words {message.role === 'user' &&
@@ -417,8 +483,8 @@
       {#if message.role === 'assistant' && tokenUsage}
         <div class="mt-1 flex justify-end">
           <span class="ui:text-muted-foreground text-[10px]" title={tokenUsageBreakdown}>
-            {tokenUsage.totalTokens.toLocaleString()}
-            {$t('ai_assistant.tokens_label')}
+            {headlineTokens.toLocaleString()}
+            {$t(headlineIsContext ? 'ai_assistant.tokens_context_label' : 'ai_assistant.tokens_label')}
             {#if cachedSharePercent !== null}
               · {$t('ai_assistant.tokens_from_cache', { percent: cachedSharePercent })}
             {/if}

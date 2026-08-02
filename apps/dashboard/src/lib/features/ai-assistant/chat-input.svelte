@@ -19,6 +19,8 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import { currentOrgPath, isFreePlan } from '$lib/utils/store/org';
   import { openUpgradeModal } from '$lib/utils/functions/org';
   import { AI_AGENT_RUNNING_WARNING_DISMISSED_KEY } from '$features/ai-assistant/utils/constants';
+  import ContextIndicator from '$features/ai-assistant/context-indicator.svelte';
+  import type { ContextUsage } from '$features/ai-assistant/utils/context-utils';
 
   interface UploadedDocument {
     id: string;
@@ -44,6 +46,8 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
      * a small chip that lets the user know how many documents the agent is
      * reading on their behalf. */
     courseSourcesCount?: number;
+    /** Context-window occupancy, shown beside Send/Stop. Omit to hide the gauge. */
+    contextUsage?: ContextUsage;
     onSend: () => void;
     onRetry?: () => void;
     onStop: () => void;
@@ -64,6 +68,7 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
     tutorBlocked = null,
     focusSignal = 0,
     courseSourcesCount = 0,
+    contextUsage,
     onSend,
     onRetry,
     onStop,
@@ -328,6 +333,11 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
             {/if}
 
             <div class="flex-1"></div>
+
+            <!-- Beside the button, where the cost of the next turn is decided. -->
+            {#if contextUsage}
+              <ContextIndicator {contextUsage} />
+            {/if}
 
             {#if isStreaming}
               <Button size="icon" variant="outline" onclick={onStop} class="size-7 shrink-0">

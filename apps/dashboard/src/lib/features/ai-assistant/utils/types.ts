@@ -99,6 +99,18 @@ export interface AiAssistantMessageTokenUsage {
    * Optional: absent on messages persisted before this field existed.
    */
   contextTokens?: number;
+  /**
+   * What `contextTokens` is made of. Only `conversationTokens` can be reclaimed
+   * by compacting — the sources are re-sent in full every turn by design, so a
+   * near-full gauge does not on its own mean compaction will help.
+   */
+  contextBreakdown?: {
+    systemTokens: number;
+    sourcesTokens: number;
+    turnContextTokens: number;
+    conversationTokens: number;
+    overheadTokens: number;
+  };
   // Optional breakdown reported by the provider (present for Gemini/Anthropic).
   reasoningTokens?: number;
   cacheReadTokens?: number;

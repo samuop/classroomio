@@ -4,13 +4,13 @@
   import ChatHeader from '$features/ai-assistant/chat-header.svelte';
   import ChatMessageList from '$features/ai-assistant/chat-message-list.svelte';
   import ChatInput from '$features/ai-assistant/chat-input.svelte';
-  import ContextIndicator from '$features/ai-assistant/context-indicator.svelte';
   import ContextFullState from '$features/ai-assistant/context-full-state.svelte';
   import { calculateContextUsage } from '$features/ai-assistant/utils/context-utils';
   import { resolve } from '$app/paths';
   import { getCompletedToolLine, getPendingToolLine, MUTATION_TOOLS } from '$features/ai-assistant/utils/tool-labels';
   import type { ProgressStep } from '$features/ai-assistant/utils/tool-labels';
   import {
+    getAgentToolErrorText,
     getAgentToolInput,
     getAgentToolName,
     getAgentToolResult,
@@ -679,6 +679,32 @@
     chat.stop();
   }
 
+  /**
+   * Re-run a single failed action.
+   *
+   * The alternative the teacher had was Retry on the whole turn, which re-sends
+   * the same instruction and re-does everything that already succeeded — on a
+   * build round that can mean rewriting several lessons to fix one exercise.
+   *
+   * This sends a scoped instruction instead, naming the tool that failed and
+   * quoting the error back, and says explicitly not to redo the rest. The plan
+   * registry is what makes that safe: work already done is bound to real rows,
+   * so re-entering the build cannot duplicate it.
+   */
+  function handleRetryStep(step: ProgressStep) {
+    if (chat.status === 'streaming') return;
+    if (!step.toolName) return;
+
+    const detail = step.errorText ? ` El error fue: "${step.errorText}".` : '';
+
+    inputValue =
+      `La llamada a ${step.toolName} falló.${detail} ` +
+      'Reintentá SOLO esa acción, corrigiendo lo que causó el error. ' +
+      'No rehagas nada de lo que ya quedó completo en este turno.';
+
+    void handleSend();
+  }
+
   async function handleImplementPlan(editedPlan: unknown) {
     if (chat.status === 'streaming') return;
     if (!courseId) return;
@@ -971,7 +997,16 @@
           ? getCompletedToolLine(toolName, result)
           : getPendingToolLine(toolName, getAgentToolInput(part));
 
-      return [{ line, status }];
+      // toolName/errorText ride along so a failed row can offer a scoped retry
+      // instead of forcing a re-send of the whole turn.
+      return [
+        {
+          line,
+          status,
+          toolName,
+          ...(status === 'failed' ? { errorText: getAgentToolErrorText(part) } : {})
+        }
+      ];
     });
 
     const allDone = steps.every((s) => s.status === 'completed');
@@ -1106,12 +1141,12 @@
     onRenameConversation={handleRenameConversation}
   />
 
-  {#if showContextIndicator && contextUsage}
-    <div class="flex items-center justify-end border-b px-3 py-1">
-      <ContextIndicator {contextUsage} />
-    </div>
-  {/if}
-
+  <!--
+    The context gauge lives in the composer (passed to ChatInput below), beside
+    Send/Stop. It used to sit in its own strip under the header, far from any
+    decision it informs; next to the button it is in view exactly when the
+    teacher is about to spend more of the window.
+  -->
   <ChatMessageList
     messages={chat.messages}
     {isStreaming}
@@ -1126,7 +1161,7 @@
     onSkipTemplateForm={handleSkipTemplateForm}
     onSubmitDiscoveryAnswers={handleSubmitDiscoveryAnswers}
     onSkipDiscoveryForm={handleSkipDiscoveryForm}
-    onStop={handleStop}
+    onRetryStep={handleRetryStep}
     onResume={handleResume}
     onMentionClick={handleMentionClick}
   />
@@ -1145,6 +1180,7 @@
     <ContextFullState
       {contextFullBusy}
       compactConversationDisabled={!activeConversationId}
+      isCompactionWorthwhile={contextUsage?.isCompactionWorthwhile ?? true}
       onCompactConversation={handleCompactConversation}
       onStartNewChat={handleStartNewChatWithSummary}
     />
@@ -1163,6 +1199,7 @@
       error={chat.error}
       canRetry={!!lastSentText && !isStreaming}
       courseSourcesCount={sourcesApi.sources.length}
+      contextUsage={showContextIndicator ? contextUsage : undefined}
       onSend={handleSend}
       onRetry={handleRetry}
       onStop={handleStop}

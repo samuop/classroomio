@@ -20,6 +20,25 @@
       max: formatTokenCount(contextUsage.maxTokens)
     })
   );
+
+  /**
+   * Occupancy alone is not actionable: the sources are re-sent in full every
+   * turn, so most of a near-full window is usually untouchable by compaction.
+   * Splitting the number is what tells the teacher whether compacting is the
+   * lever, or whether the course simply carries too much material.
+   */
+  const breakdownLines = $derived.by(() => {
+    if (contextUsage.compactableTokens === undefined || contextUsage.fixedTokens === undefined) {
+      return [];
+    }
+
+    return [
+      t.get('ai_assistant.context_fixed', { tokens: formatTokenCount(contextUsage.fixedTokens) }),
+      t.get('ai_assistant.context_conversation', {
+        tokens: formatTokenCount(contextUsage.compactableTokens)
+      })
+    ];
+  });
 </script>
 
 <Provider>
@@ -41,6 +60,9 @@
     </Trigger>
     <Content side="top">
       <p class="text-xs">{tooltipText}</p>
+      {#each breakdownLines as line (line)}
+        <p class="ui:text-muted-foreground text-xs">{line}</p>
+      {/each}
     </Content>
   </Tooltip>
 </Provider>

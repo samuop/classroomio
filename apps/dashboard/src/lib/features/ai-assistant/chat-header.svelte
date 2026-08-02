@@ -270,12 +270,14 @@
         ></div>
       </div>
     </div>
-  {:else if !isStudent && isSelfHosted && tokenUsage && tokenUsage.used > 0}
-    <div class="mt-2">
-      <span class="ui:text-muted-foreground text-[10px]">
-        {$t('ai_assistant.tokens_used_label', { count: tokenUsage.used })}
-      </span>
-    </div>
+    <!--
+      Self-hosted deliberately shows NO token counter here. The figure available
+      is the conversation's lifetime billing total, which runs to millions on a
+      normal build and is not a number the instructor can act on: it is not a
+      budget (self-hosted has none) and it is not occupancy (the context gauge in
+      the composer is). All it did was alarm. Hosted plans keep their counter
+      below, where the number really is a quota being spent.
+    -->
   {:else if !isStudent && !isSelfHosted && tokenUsage && tokenUsage.used + tokenUsage.remaining > 0}
     {@const totalBudget = tokenUsage.used + tokenUsage.remaining}
     {@const usagePercent = Math.min(100, Math.round((tokenUsage.used / totalBudget) * 100))}

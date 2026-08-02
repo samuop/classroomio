@@ -86,13 +86,49 @@ export function getAgentStepsForMessage(message: { parts?: unknown[] }): Progres
         ? getCompletedToolLine(toolName, getAgentToolResult(part))
         : getPendingToolLine(toolName, getAgentToolInput(part));
 
-    return [{ line, status } satisfies ProgressStep];
+    return [
+      {
+        line,
+        status,
+        toolName,
+        ...(status === 'failed' ? { errorText: getAgentToolErrorText(part) } : {})
+      } satisfies ProgressStep
+    ];
   });
+}
+
+/**
+ * Error text for a failed call, trimmed to something quotable back to the agent.
+ * Covers both shapes: a thrown error (`errorText`) and a failure the tool
+ * returned so the model could recover from it (`output.error`).
+ */
+export function getAgentToolErrorText(part: AgentToolPart): string | undefined {
+  const thrown = (part as { errorText?: unknown }).errorText;
+  const returned = (getAgentToolResult(part) as { error?: unknown } | undefined)?.error;
+  const raw = typeof thrown === 'string' && thrown.trim() ? thrown : returned;
+
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    return undefined;
+  }
+
+  return raw.replace(/\s+/g, ' ').slice(0, 400);
+}
+
+/**
+ * A tool that failed but returned instead of throwing, so the model could read
+ * the error and retry in the same round (see `AgentToolFailure` in the API). The
+ * transport calls that a successful result, so without this check a failure
+ * would render as a completed step with a tick beside it.
+ */
+function isReturnedFailure(part: AgentToolPart): boolean {
+  const output = getAgentToolResult(part) as { ok?: unknown } | undefined;
+
+  return !!output && typeof output === 'object' && output.ok === false;
 }
 
 export function getAgentToolStatus(part: AgentToolPart): ProgressStep['status'] {
   if (part.state === 'result' || part.state === 'output-available') {
-    return 'completed';
+    return isReturnedFailure(part) ? 'failed' : 'completed';
   }
 
   if (part.state === 'output-error') {

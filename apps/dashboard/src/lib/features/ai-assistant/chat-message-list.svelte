@@ -47,7 +47,7 @@
       fields: TemplateFormField[];
     }) => void;
     onSkipDiscoveryForm: (payload: { formId: string }) => void;
-    onStop: () => void;
+    onRetryStep?: (step: ProgressStep) => void;
     onResume: () => void;
     onMentionClick: (route: string) => void;
   }
@@ -66,7 +66,7 @@
     onSkipTemplateForm,
     onSubmitDiscoveryAnswers,
     onSkipDiscoveryForm,
-    onStop,
+    onRetryStep,
     onResume,
     onMentionClick
   }: Props = $props();
@@ -229,8 +229,9 @@
             currentActionLine={planExecutionState.currentActionLine}
             {courseId}
             onNavigate={onMentionClick}
-            onStop={isStreaming ? onStop : undefined}
             isStopped={planExecutionState.isStopped}
+            {isStreaming}
+            {onRetryStep}
           />
           {#if planExecutionState.isStopped}
             {#if planExecutionState.pendingSummary}

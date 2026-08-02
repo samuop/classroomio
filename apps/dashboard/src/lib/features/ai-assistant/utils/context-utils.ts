@@ -14,6 +14,19 @@ export interface ContextUsage {
   isNearlyFull: boolean;
   /** Whether the context is completely full (>= 100%) */
   isFull: boolean;
+  /**
+   * Tokens compacting would actually reclaim: the transcript, and nothing else.
+   * Undefined when the server did not report a breakdown (older messages).
+   */
+  compactableTokens?: number;
+  /** Sources + system prompt + tool schemas: re-sent every turn, immune to compaction. */
+  fixedTokens?: number;
+  /**
+   * Whether compaction is worth offering. False when the window is full of
+   * material rather than conversation — there, the honest advice is to split
+   * the course, not to summarize a short chat.
+   */
+  isCompactionWorthwhile: boolean;
 }
 
 /** Threshold percentage at which we consider context "nearly full" */
@@ -21,6 +34,13 @@ export const CONTEXT_NEARLY_FULL_THRESHOLD = 90;
 
 /** Threshold percentage at which we consider context "full" and block input */
 export const CONTEXT_FULL_THRESHOLD = 95;
+
+/**
+ * Minimum share of the window the transcript must occupy before compaction is
+ * worth proposing. Summarizing costs a model call and loses detail; below this
+ * it cannot move the gauge enough to be worth either.
+ */
+export const COMPACTABLE_SHARE_THRESHOLD = 15;
 
 function getSerializedLength(value: unknown): number {
   if (value == null) {
@@ -98,12 +118,26 @@ export function calculateContextUsage(messages: AiAssistantMessage[], contextWin
 
   const percentage = contextWindow > 0 ? Math.min(100, Math.round((usedTokens / contextWindow) * 100)) : 0;
 
+  const breakdown = latestTokenUsage?.contextBreakdown;
+  const compactableTokens = breakdown?.conversationTokens;
+  const fixedTokens = breakdown
+    ? breakdown.sourcesTokens + breakdown.systemTokens + breakdown.turnContextTokens + breakdown.overheadTokens
+    : undefined;
+
+  // Without a breakdown we cannot tell transcript from material, so fall back to
+  // the old behaviour and let the teacher decide.
+  const compactableShare =
+    compactableTokens !== undefined && contextWindow > 0 ? (compactableTokens / contextWindow) * 100 : undefined;
+
   return {
     usedTokens,
     maxTokens: contextWindow,
     percentage,
     isNearlyFull: percentage >= CONTEXT_NEARLY_FULL_THRESHOLD,
-    isFull: percentage >= CONTEXT_FULL_THRESHOLD
+    isFull: percentage >= CONTEXT_FULL_THRESHOLD,
+    compactableTokens,
+    fixedTokens,
+    isCompactionWorthwhile: compactableShare === undefined || compactableShare >= COMPACTABLE_SHARE_THRESHOLD
   };
 }
 

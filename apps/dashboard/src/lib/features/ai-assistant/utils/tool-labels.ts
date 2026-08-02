@@ -18,6 +18,15 @@ export interface ProgressStep {
   status: AgentToolProgressStatus;
   indent?: boolean;
   line: ToolLineUi;
+  /**
+   * Which tool produced this step. Carried so a FAILED step can be retried on
+   * its own: without it the card knows something broke but not what to ask for
+   * again, and the only recourse is re-sending the whole turn — which re-does
+   * every action that already succeeded.
+   */
+  toolName?: string;
+  /** Error text from the failed call, quoted back to the agent on retry. */
+  errorText?: string;
 }
 
 const TOOLS_WITH_PENDING_COPY = new Set([
