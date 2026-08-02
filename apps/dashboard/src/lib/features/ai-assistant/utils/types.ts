@@ -12,6 +12,58 @@ export interface AiAssistantMessageAttachment {
   name: string;
 }
 
+// ─── Sources (course documents attached to chat conversations) ────────────────
+
+/**
+ * Metadata-only record for a document attached to the AI assistant for this
+ * course. Returned by GET /agent/documents — the full text body is NOT
+ * included; the chat loader reads it directly from DB when it actually needs
+ * to inject the context.
+ */
+export interface CourseSource {
+  id: string;
+  conversationId: string;
+  courseId: string;
+  assetId: string | null;
+  fileName: string;
+  mimeType: string;
+  wordCount: number;
+  pageCount: number | null;
+  createdAt: string;
+}
+
+export type CourseSourceMimeType = 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+export interface CourseSourcesListSuccess {
+  success: true;
+  data: CourseSource[];
+}
+
+export interface CourseSourceDeleteSuccess {
+  success: true;
+  data: { id: string; assetId: string | null };
+}
+
+export type ListCourseSourcesRequest = typeof classroomio.agent.documents.$get;
+export type DeleteCourseSourceRequest = (typeof classroomio.agent.documents)[':documentId']['$delete'];
+
+/**
+ * Per-document cache status surfaced by the Sources panel. `cached` is true
+ * when there's a live Redis handle (so the next chat turn will read at ~10%
+ * cost); `secondsRemaining` tells the UI how much lifetime is left.
+ */
+export interface DocumentCacheStatus {
+  documentId: string;
+  cached: boolean;
+  provider: 'gemini' | 'anthropic' | null;
+  expireAt: string | null;
+  secondsRemaining: number | null;
+}
+
+export type GetCacheStatusRequest = (typeof classroomio.agent.documents)[':documentId']['cache-status']['$get'];
+export type RefreshCacheRequest = (typeof classroomio.agent.documents)[':documentId']['refresh-cache']['$post'];
+export type ReconcileSourcesRequest = typeof classroomio.agent.documents.reconcile.$post;
+
 export interface AiAssistantMessageTokenUsage {
   promptTokens: number;
   completionTokens: number;

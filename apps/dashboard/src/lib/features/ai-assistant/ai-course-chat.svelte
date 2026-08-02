@@ -25,11 +25,13 @@
     initialChatTemplateId,
     initialChatDocumentIds,
     initialChatTemplateAnswers,
-    clearInitialChatModel,
     clearInitialChatPrompt,
     clearInitialChatTemplateId,
     clearInitialChatDocumentIds,
-    clearInitialChatTemplateAnswers
+    clearInitialChatTemplateAnswers,
+    getLastSentText,
+    setLastSentText,
+    consumeRetry
   } from '$features/ai-assistant/utils/store';
   import { get } from 'svelte/store';
   import { page } from '$app/state';
@@ -43,6 +45,7 @@
   import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
   import { t } from '$lib/utils/functions/translations';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
+  import { sourcesApi } from '$features/ai-assistant/api/sources.svelte';
   import { profile } from '$lib/utils/store/user';
   import type {
     AiAssistantMessage,
@@ -83,7 +86,29 @@
 
   let statusFetchedForCourseId: string | null = $state(null);
   let conversationsLoadedForCourseId: string | null = $state(null);
+  let sourcesLoadedForCourseId: string | null = $state(null);
   let activeConversationId: string | null = $state(null);
+
+  /**
+   * The last user-typed text the agent actually tried to send. Backed by a
+   * module-level store (`setLastSentText` / `getLastSentText`) so other
+   * components — notably the empty-course "Regenerate" button in
+   * `lessons.svelte` — can read the same value and even issue a retry via
+   * `requestRetry()` without needing the chat panel to be mounted.
+   */
+  const lastSentText: string | null = $derived(getLastSentText());
+
+  /**
+   * When another component (e.g. `lessons.svelte`) calls `requestRetry()`,
+   * the flag flips to `true`. This effect consumes it and re-sends the
+   * last text, so a "Regenerate" button on the empty course view works
+   * even before the user has opened the chat.
+   */
+  $effect(() => {
+    if (consumeRetry()) {
+      void handleRetry();
+    }
+  });
   // The AI model/provider is chosen entirely server-side from the .env API key,
   // so the dashboard neither selects nor displays it. The request omits `model`
   // and the API resolves the provider itself.
@@ -210,7 +235,30 @@
         }
       });
     }
+
+    // Auto-load the course's Sources panel so the chat knows which documents
+    // are available to inject into the prompt. On the first message of a
+    // conversation we adopt the most recently uploaded source as the
+    // attachment (the Sources panel is the single source of truth — there's
+    // no per-message file upload UI for in-course chats anymore).
+    if (sourcesLoadedForCourseId !== courseId) {
+      sourcesLoadedForCourseId = courseId;
+      void loadCourseSources(listForCourseId);
+    }
   });
+
+  async function loadCourseSources(courseId: string) {
+    // Hit the Sources panel API to mirror its state in the chat. The Sources
+    // panel is the single place where sources are managed, so the chat just
+    // observes what's available there instead of accepting its own uploads.
+    await sourcesApi.listSources(courseId);
+    // Fire the auto-sync reconciler in the background so any cache handles
+    // that went stale between visits are rebuilt before the user sends their
+    // first message. The reconciler is idempotent and best-effort.
+    if (sourcesApi.sources.length > 0) {
+      void sourcesApi.reconcileSources(courseId);
+    }
+  }
 
   function refreshCourseStateAfterChat() {
     const profileId = $profile.id;
@@ -346,11 +394,11 @@
     return lines.join('\n');
   }
 
-  async function handleSend() {
-    if (!inputValue.trim() || chat.status === 'streaming') return;
+  async function handleSend(textOverride?: string) {
+    const text = (textOverride ?? inputValue).trim();
+    if (!text || chat.status === 'streaming') return;
     if (!courseId) return;
 
-    const text = inputValue;
     const userMessageCount = chat.messages.filter((message) => message.role === 'user').length;
     const isFirstMessage = userMessageCount === 0;
     const templateForFirstMessage = isFirstMessage ? pendingInitialTemplateId : null;
@@ -360,6 +408,21 @@
     // resolve to the draft (full-text injection on turn 1).
     if (isFirstMessage && !uploadedDocument && pendingInitialDocumentIds.length > 0) {
       uploadedDocument = { id: pendingInitialDocumentIds[0], name: 'document' };
+    }
+
+    // Auto-adopt the most-recently-uploaded source from the Sources panel when
+    // the chat was opened directly on the course (no draft was passed in from
+    // the home page wizard). The Sources panel is the canonical place where
+    // sources are managed; the chat input no longer has a per-message file
+    // upload for in-course chats.
+    if (
+      isFirstMessage &&
+      !uploadedDocument &&
+      pendingInitialDocumentIds.length === 0 &&
+      sourcesApi.sources.length > 0
+    ) {
+      const latest = sourcesApi.sources[0];
+      uploadedDocument = { id: latest.id, name: latest.fileName };
     }
 
     const messageAttachment = uploadedDocument
@@ -402,12 +465,32 @@
       pendingInitialDocumentIds = [];
     }
 
-    inputValue = '';
+    // Only mutate the textarea when the user actually typed (not on a retry
+    // call where `textOverride` carried the value).
+    if (textOverride === undefined) {
+      inputValue = '';
+    }
+
+    setLastSentText(text);
 
     chat.sendMessage({
       text,
       ...(Object.keys(metadata).length > 0 ? { metadata } : {})
     });
+  }
+
+  /**
+   * Re-sends the last user message. Used by the error banner's "Retry"
+   * button so the user can recover from a transient failure (rate limit,
+   * network blip, server restart) without retyping the prompt. No-op when
+   * there is nothing to retry or the agent is currently streaming.
+   */
+  async function handleRetry() {
+    const text = getLastSentText();
+    if (!text) return;
+    if (chat.status === 'streaming') return;
+    setLastSentText(null);
+    await handleSend(text);
   }
 
   async function handleSubmitTemplateAnswers(payload: {
@@ -881,7 +964,6 @@
     const documentIdsFromHome = $initialChatDocumentIds;
     const templateAnswersFromHome = $initialChatTemplateAnswers;
     clearInitialChatPrompt();
-    clearInitialChatModel();
     clearInitialChatTemplateId();
     clearInitialChatDocumentIds();
     clearInitialChatTemplateAnswers();
@@ -982,7 +1064,10 @@
       {tutorBlocked}
       focusSignal={focusInputSignal}
       error={chat.error}
+      canRetry={!!lastSentText && !isStreaming}
+      courseSourcesCount={sourcesApi.sources.length}
       onSend={handleSend}
+      onRetry={handleRetry}
       onStop={handleStop}
       onFileSelect={handleFileSelect}
       onRemoveDocument={handleRemoveDocument}

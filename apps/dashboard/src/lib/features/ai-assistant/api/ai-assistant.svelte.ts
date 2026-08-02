@@ -187,6 +187,41 @@ class AiAssistantApi extends BaseApiWithErrors {
     return null;
   }
 
+  /**
+   * Upload from the Sources panel: same endpoint as the chat upload but
+   * without a conversationId. The backend will create a hidden "Course
+   * sources" conversation if needed so the document has somewhere to live.
+   */
+  async uploadSourceDocument(
+    file: File,
+    courseId: string
+  ): Promise<{ documentId: string; fileName: string; wordCount: number; truncated: boolean } | null> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const url = `${getRequestBaseUrl()}/agent/upload?courseId=${encodeURIComponent(courseId)}`;
+      const response = await apiClient.request(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+      const result = (await response.json()) as {
+        success: boolean;
+        data?: { documentId: string; fileName: string; wordCount: number; truncated: boolean };
+      };
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+    } catch (error) {
+      console.error('Error uploading source document:', error);
+      this.error = 'Failed to upload document';
+    }
+
+    return null;
+  }
+
   async generateTitle(conversationId: string, firstMessageText: string): Promise<string | null> {
     let generatedTitle: string | null = null;
 
