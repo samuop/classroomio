@@ -55,7 +55,8 @@ export {
   buildStudentSystemPrompt,
   buildContextMessage,
   buildTeacherContextMessage,
-  buildStudentContextMessage
+  buildStudentContextMessage,
+  SVG_DIAGRAM_RULES
 } from './prompt';
 export type { TeacherPromptMode } from './prompt/teacher';
 

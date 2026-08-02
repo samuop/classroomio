@@ -235,3 +235,22 @@ export const ZAgentDocumentUrlBody = z.object({
 });
 
 export type TAgentDocumentUrlBody = z.infer<typeof ZAgentDocumentUrlBody>;
+
+// ─── POST /agent/lessons/:lessonId/diagram ───────────────────────────────────
+
+export const ZAgentDiagramParam = z.object({
+  lessonId: z.string().uuid()
+});
+
+export type TAgentDiagramParam = z.infer<typeof ZAgentDiagramParam>;
+
+export const ZAgentDiagramBody = z.object({
+  courseId: ZAgentCourseId,
+  locale: z.string().min(2).max(10),
+  /** Position of the diagram within the lesson body, as enumerated by splitHtmlAndSvg. */
+  index: z.number().int().min(0),
+  /** Plain-language change request. Omitted means "redraw it better". */
+  instruction: z.string().max(500).optional()
+});
+
+export type TAgentDiagramBody = z.infer<typeof ZAgentDiagramBody>;

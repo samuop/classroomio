@@ -133,6 +133,9 @@ export type GetLessonHistoryResponse = InferResponseType<GetLessonHistoryRequest
 export type GetLessonHistorySuccess = Extract<InferResponseType<GetLessonHistoryRequest>, { success: true }>;
 export type LessonHistory = GetLessonHistorySuccess['data'];
 
+/** Redraw one SVG diagram inside a lesson (instructor-only, view mode). */
+export type RegenerateDiagramRequest = (typeof classroomio.agent.lessons)[':lessonId']['diagram']['$post'];
+
 // Lesson language types
 export type GetLessonLanguageRequest =
   (typeof classroomio.course)[':courseId']['lesson'][':lessonId']['language']['$get'];

@@ -3782,6 +3782,13 @@
       "body": "Unfortunately you don't have access to this course.",
       "button": "Go home"
     },
+    "diagram": {
+      "regenerate": "Regenerate",
+      "ask_change": "Ask for a change",
+      "ask_change_placeholder": "e.g. the labels overlap, space them out",
+      "apply": "Apply",
+      "save_first": "Save your lesson changes first"
+    },
     "sources": {
       "heading": "Course sources",
       "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), or Word files (DOCX). The agent will use them as the source of truth when generating lessons, exercises, and assessments.",

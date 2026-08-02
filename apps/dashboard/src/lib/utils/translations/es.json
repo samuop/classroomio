@@ -2593,6 +2593,13 @@
         "skipped_summary": "Cambiado a preguntas por chat"
       }
     },
+    "diagram": {
+      "regenerate": "Regenerar",
+      "ask_change": "Pedir un cambio",
+      "ask_change_placeholder": "Ej: los rótulos se pisan, separalos",
+      "apply": "Aplicar",
+      "save_first": "Guardá los cambios de la lección primero"
+    },
     "sources": {
       "heading": "Fuentes del curso",
       "description": "Documentos que el asistente de IA puede leer al planificar y construir este curso. Subí PDFs, presentaciones (PPTX) o archivos Word (DOCX). El agente los usará como fuente de verdad al generar lecciones, ejercicios y evaluaciones.",

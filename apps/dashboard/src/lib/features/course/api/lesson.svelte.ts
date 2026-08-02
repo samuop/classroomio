@@ -15,6 +15,7 @@ import type {
   Lesson,
   LessonComments,
   PromoteUngroupedSectionRequest,
+  RegenerateDiagramRequest,
   ReorderCourseSectionsRequest,
   ReorderLessonsRequest,
   UpdateCourseSectionRequest,
@@ -671,6 +672,54 @@ export class LessonApi extends BaseApiWithErrors {
         [locale]: content
       }
     };
+  }
+
+  /** Position of the diagram currently being redrawn, or null when idle. */
+  regeneratingDiagramIndex = $state<number | null>(null);
+  /** Problems the validator still reports after a redraw, keyed by diagram position. */
+  diagramWarnings = $state<Record<number, string[]>>({});
+
+  /**
+   * Redraw one diagram inside the lesson, optionally following a plain-language
+   * instruction ("the labels overlap, space them out").
+   *
+   * The server owns the splice: it cuts the SVG at `index` and pastes the new one
+   * into the same slot, so no other part of the lesson can be disturbed and the
+   * model never has to reproduce the old markup. It writes to the SAVED content,
+   * which is why the caller blocks this while there are unsaved edits.
+   */
+  async regenerateDiagram(params: {
+    lessonId: string;
+    courseId: string;
+    locale: TLocale;
+    index: number;
+    instruction?: string;
+  }): Promise<boolean> {
+    this.regeneratingDiagramIndex = params.index;
+    let ok = false;
+
+    await this.execute<RegenerateDiagramRequest>({
+      requestFn: () =>
+        classroomio.agent.lessons[':lessonId'].diagram.$post({
+          param: { lessonId: params.lessonId },
+          json: {
+            courseId: params.courseId,
+            locale: params.locale,
+            index: params.index,
+            instruction: params.instruction
+          }
+        }),
+      logContext: 'regenerating lesson diagram',
+      onSuccess: (result) => {
+        const data = result.data as { content: string; warnings: string[] };
+        this.updateTranslation(params.lessonId, params.locale, data.content);
+        this.diagramWarnings = { ...this.diagramWarnings, [params.index]: data.warnings ?? [] };
+        ok = true;
+      }
+    });
+
+    this.regeneratingDiagramIndex = null;
+    return ok;
   }
 
   getCommentFromResponse(response: CreateLessonComment): LessonComments[number] {
