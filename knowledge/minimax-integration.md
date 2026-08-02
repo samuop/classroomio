@@ -305,6 +305,42 @@ showed the sidebar full of `org_navigation.home`, `org_navigation.tracking`,
 etc. With the fallback, those keys gracefully fall back to the English
 translation instead of looking broken.
 
+### ⚠️ `fallbackLocale` alone is NOT enough — you must also pre-load it
+
+**This is the bug we paid to debug for an extra session.** `@sveltekit-i18n/base`'s
+`loadTranslations(locale, route)` only fetches the active locale — it does
+NOT auto-load the `fallbackLocale` even when configured. So setting
+`fallbackLocale: 'en'` in the i18n constructor is necessary but **not
+sufficient**. You also have to call `loadTranslations('en', …)` once at
+boot, otherwise the fallback has no translations to fall back to.
+
+In `apps/dashboard/src/routes/+layout.ts`:
+
+```typescript
+const initLocale = getInitialLocale(userLocale);
+await loadTranslations(initLocale, pathname);
+
+// Pre-load the fallback locale so any missing key in the active locale
+// resolves to the English translation instead of rendering the key as a
+// literal. Cheap: ~30KB JSON, parses once per route change.
+if (initLocale !== FALLBACK_LOCALE) {
+  await loadTranslations(FALLBACK_LOCALE, pathname);
+}
+```
+
+Without this second `loadTranslations` call, the user sees keys like
+`courses.heading`, `courses.page_subtitle`, `courses.search_placeholder`,
+`courses.heading_button` rendered as literals (because the `courses.*`
+subtree is mostly missing from `es.json` and the active locale has no
+fallback data to consult).
+
+**Symptom to look for**: an i18n key like `foo.bar` rendered literally in
+production even after adding `fallbackLocale: 'en'` to the config.
+Diagnosis: write a one-liner test (see `C:\Users\samu\AppData\Local\Temp\opencode\test_i18n.mjs`)
+that subscribes to the `translations` store and checks whether the
+fallback locale's data is loaded. If `Object.keys(translations.get())`
+returns just `['es']`, you forgot the pre-load.
+
 ### Bug A: misplaced `sources` block
 
 The `course.sources.*` block ended up nested inside `course.snackbar.*`
