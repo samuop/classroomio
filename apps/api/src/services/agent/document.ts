@@ -265,8 +265,12 @@ export async function storeUrlDocument(params: {
   const text = markdown.slice(0, MAX_DOCUMENT_TEXT_LENGTH);
   const truncated = markdown.length > MAX_DOCUMENT_TEXT_LENGTH;
   const wordCount = text.split(/\s+/).filter(Boolean).length;
-  // Title first, falling back to the URL, so the Sources list is readable.
-  const fileName = pageTitle?.trim() ? `${pageTitle.trim()} (${new URL(url).hostname})` : url;
+  // Title first, falling back to the URL, so the Sources list is readable. The
+  // equality guard avoids "es.wikipedia.org (es.wikipedia.org)" when the title
+  // could not be extracted and already degraded to the hostname.
+  const hostname = new URL(url).hostname;
+  const title = pageTitle?.trim();
+  const fileName = title ? (title === hostname ? url : `${title} (${hostname})`) : url;
   const contentHash = computeContentHash(text);
 
   const existing = await findChatDocumentByContentHash(courseId, contentHash);

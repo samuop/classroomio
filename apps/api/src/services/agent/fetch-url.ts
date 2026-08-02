@@ -124,7 +124,8 @@ function extractSameOriginLinks(markdown: string, origin: URL): string[] {
 
 function guessPageTitle(markdown: string, fallbackUrl: string): string {
   const trimmed = markdown.trim();
-  const firstLine = trimmed.split('\n')[0] ?? '';
+  const lines = trimmed.split('\n');
+  const firstLine = lines[0] ?? '';
 
   if (firstLine.startsWith('# ')) {
     return firstLine.slice(2).trim();
@@ -132,6 +133,18 @@ function guessPageTitle(markdown: string, fallbackUrl: string): string {
 
   if (firstLine.startsWith('#')) {
     return firstLine.replace(/^#+\s*/, '').trim();
+  }
+
+  // Jina Reader leads with a `Title: …` preamble rather than a markdown heading,
+  // so the heading checks above never matched and every page fell through to the
+  // hostname. Two Wikipedia articles saved as sources both came back named
+  // "es.wikipedia.org", which is useless in the Sources list and worse in the
+  // source pack, where the model uses these names to tell material apart.
+  for (const line of lines.slice(0, 5)) {
+    const match = line.match(/^Title:\s*(.+)$/i);
+    if (match?.[1]?.trim()) {
+      return match[1].trim();
+    }
   }
 
   try {

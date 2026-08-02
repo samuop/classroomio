@@ -289,15 +289,40 @@ const agentTemplateFormFieldBase = z.object({
   placeholder: z.string().optional()
 });
 
-const agentTemplateFormFieldParam = z.discriminatedUnion('type', [
-  agentTemplateFormFieldBase.extend({ type: z.literal('text') }),
-  agentTemplateFormFieldBase.extend({ type: z.literal('textarea') }),
-  agentTemplateFormFieldBase.extend({ type: z.literal('url') }),
-  agentTemplateFormFieldBase.extend({
-    type: z.literal('select'),
-    options: z.array(z.object({ value: z.string().min(1), label: z.string().min(1) })).min(1)
+/**
+ * Deliberately NOT a `z.discriminatedUnion` on `type` — the same reasoning as
+ * `TemplateFormFieldSchema` in `@cio/ai-assistant`, which was flattened for this
+ * exact reason. A union serialises to JSON Schema as `anyOf` + `const`
+ * discriminators, and MiniMax cannot reliably produce that shape.
+ *
+ * The earlier fix only reached the dashboard-facing schema; this is the one the
+ * MODEL actually sees, and it stayed a union. Observed consequence: rather than
+ * emit a malformed `fields` array, the model dropped the key entirely and sent
+ * `{title, intro, formId}` — twice in a row — so `ask_discovery_questions` failed
+ * validation and the plan never got generated.
+ *
+ * Flat enum + a conditional refinement expresses the same contract in a shape a
+ * model can hit, and stays strict where it matters: `select` still needs options.
+ */
+const agentTemplateFormFieldParam = agentTemplateFormFieldBase
+  .extend({
+    type: z
+      .enum(['text', 'textarea', 'url', 'select'])
+      .describe('Input kind. Use "select" only when you also supply `options`.'),
+    options: z
+      .array(z.object({ value: z.string().min(1), label: z.string().min(1) }))
+      .optional()
+      .describe('Required when type is "select"; omit otherwise.')
   })
-]);
+  .superRefine((field, ctx) => {
+    if (field.type === 'select' && !field.options?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'A field of type "select" needs at least one option ({ value, label }).'
+      });
+    }
+  });
 
 export const askTemplateQuestionsParam = z.object({
   templateId: courseTemplateIdParam,
@@ -310,7 +335,16 @@ export const askDiscoveryQuestionsParam = z.object({
   title: z.string().min(1).optional(),
   intro: z.string().optional(),
   formId: z.string().min(1),
-  fields: z.array(agentTemplateFormFieldParam).min(1).max(6)
+  // Described explicitly because it carries the entire point of the call and was
+  // the field the model kept omitting. An untyped bare array gave it no signal
+  // that the questions themselves go here.
+  fields: z
+    .array(agentTemplateFormFieldParam)
+    .min(1)
+    .max(6)
+    .describe(
+      'REQUIRED — the questions to render, 1 to 6 of them. Each needs an `id`, a `label` (the question as the teacher reads it) and a `type`. Without this the card has nothing to show and the call fails.'
+    )
 });
 
 export const fetchDocumentationUrlParam = z.object({
