@@ -1,0 +1,30 @@
+/**
+ * CommonJS on purpose. Jest parses its config with ts-node in CJS mode, and the
+ * previous `jest.config.ts` mixed an ESM `export default` with a CommonJS
+ * `module.exports`: under `verbatimModuleSyntax` that is a parse error, so
+ * `pnpm test` failed before running a single test and the dashboard suite was
+ * effectively dead. A `.cjs` config sidesteps the module-format argument.
+ *
+ * @type {import('ts-jest').JestConfigWithTsJest}
+ */
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  transform: {
+    '^.+\\.svelte$': 'svelte-jester',
+    '^.+\\.ts$': 'ts-jest',
+    '\\.[jt]sx?$': 'babel-jest'
+  },
+  moduleNameMapper: {
+    // Mirrors the `@cio/ui` alias in svelte.config.js: the package ships source,
+    // not a build, so Jest has to resolve it the way Vite does.
+    '^@cio/ui/(.*)$': '<rootDir>/node_modules/@cio/ui/src/$1',
+    '^@cio/ui$': '<rootDir>/node_modules/@cio/ui/src',
+    // `@cio/utils` publishes an ESM build that Jest cannot parse in CJS mode.
+    // Point at the TypeScript source so ts-jest compiles it like any other file.
+    '^@cio/utils/(.*)$': '<rootDir>/../../packages/utils/src/$1',
+    '^@cio/utils$': '<rootDir>/../../packages/utils/src',
+    // Same reason, reached transitively through `@cio/utils`.
+    '^@cio/question-types$': '<rootDir>/../../packages/question-types/src'
+  }
+};

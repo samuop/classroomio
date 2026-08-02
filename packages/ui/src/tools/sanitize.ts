@@ -78,7 +78,43 @@ function fallbackSanitize(html: string): string {
   return html;
 }
 
-export type ContentSegment = { type: 'html'; content: string } | { type: 'svg'; content: string };
+export type LessonMediaKind = 'video' | 'slide' | 'document';
+
+export type ContentSegment =
+  | { type: 'html'; content: string }
+  | { type: 'svg'; content: string }
+  /**
+   * A placeholder for one of the lesson's own media items, positioned inside the
+   * note by the teacher.
+   *
+   * The note never carries the player itself. `iframe` is in FORBID_TAGS and
+   * `ALLOW_DATA_ATTR` is false, so an embedded YouTube player written into the
+   * note is stripped on render — which is exactly the protection that stops an
+   * AI-written note from embedding third-party content. Instead the note stores
+   * an inert marker and the viewer swaps in the real Svelte player, the same
+   * trade already made for SVG diagrams.
+   */
+  | { type: 'media'; kind: LessonMediaKind; mediaId: string };
+
+/** Attribute names the marker uses. Must be mirrored in ADD_ATTR (@cio/utils) or DOMPurify drops them. */
+export const LESSON_MEDIA_ATTR = { kind: 'data-cio-media', id: 'data-cio-media-id' } as const;
+
+const LESSON_MEDIA_KINDS: readonly LessonMediaKind[] = ['video', 'slide', 'document'];
+
+/**
+ * Matches a marker element regardless of attribute order, and requires BOTH
+ * attributes — a half-written marker renders as ordinary HTML rather than
+ * silently swallowing content.
+ */
+const LESSON_MEDIA_REGEX = new RegExp(
+  `<([a-z]+)\\b[^>]*\\b${LESSON_MEDIA_ATTR.kind}\\s*=\\s*["']([a-z]+)["'][^>]*>(?:<\\/\\1>)?`,
+  'gi'
+);
+
+function readMarkerAttr(tag: string, attr: string): string | undefined {
+  const match = tag.match(new RegExp(`\\b${attr}\\s*=\\s*["']([^"']*)["']`, 'i'));
+  return match?.[1];
+}
 
 function fallbackSanitizeSvg(svg: string): string {
   let output = svg.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
@@ -120,17 +156,59 @@ export function splitHtmlAndSvg(html: string): ContentSegment[] {
 
   while ((match = svgRegex.exec(html)) !== null) {
     if (match.index > lastIndex) {
-      segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex, match.index)) });
+      pushHtmlWithMedia(segments, html.slice(lastIndex, match.index));
     }
     segments.push({ type: 'svg', content: sanitizeSvgForSandbox(match[0]) });
     lastIndex = svgRegex.lastIndex;
   }
 
   if (lastIndex < html.length) {
-    segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex)) });
+    pushHtmlWithMedia(segments, html.slice(lastIndex));
   }
 
   return segments;
+}
+
+/**
+ * Splits a non-SVG stretch further, on lesson-media markers.
+ *
+ * Runs INSIDE the SVG pass rather than as a separate scan so both kinds of
+ * placeholder keep their document order — and so the SVG ordinals the diagram
+ * tools depend on are unaffected by any markers around them.
+ */
+function pushHtmlWithMedia(segments: ContentSegment[], html: string): void {
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  LESSON_MEDIA_REGEX.lastIndex = 0;
+
+  while ((match = LESSON_MEDIA_REGEX.exec(html)) !== null) {
+    const kind = match[2]?.toLowerCase() as LessonMediaKind;
+    const mediaId = readMarkerAttr(match[0], LESSON_MEDIA_ATTR.id);
+
+    // An unknown kind or a missing id is not a marker we can render. Leaving it
+    // in the HTML stream means it shows as (sanitized) markup instead of
+    // vanishing, which is the debuggable failure.
+    if (!LESSON_MEDIA_KINDS.includes(kind) || !mediaId) continue;
+
+    if (match.index > lastIndex) {
+      segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex, match.index)) });
+    }
+
+    segments.push({ type: 'media', kind, mediaId });
+    lastIndex = LESSON_MEDIA_REGEX.lastIndex;
+  }
+
+  if (lastIndex < html.length) {
+    segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex)) });
+  }
+}
+
+/** Every lesson-media reference in a note, in document order. */
+export function listLessonMediaRefs(html: string): Array<{ kind: LessonMediaKind; mediaId: string }> {
+  return splitHtmlAndSvg(html).flatMap((segment) =>
+    segment.type === 'media' ? [{ kind: segment.kind, mediaId: segment.mediaId }] : []
+  );
 }
 
 /**

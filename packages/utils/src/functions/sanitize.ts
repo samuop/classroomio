@@ -28,7 +28,16 @@ export const FORBID_ATTR = [
   'onunload'
 ] as const;
 
-export const ADD_ATTR = ['data-type', 'data-latex', 'colwidth'] as const;
+/**
+ * `ALLOW_DATA_ATTR` is false, so every data attribute that must survive is
+ * listed here explicitly.
+ *
+ * `data-cio-media*` mark where in a note one of the lesson's own media items
+ * should appear. They are inert — the viewer reads them and renders the real
+ * player itself — which is what lets iframes stay forbidden while still
+ * allowing a teacher to place a video mid-paragraph.
+ */
+export const ADD_ATTR = ['data-type', 'data-latex', 'colwidth', 'data-cio-media', 'data-cio-media-id'] as const;
 
 export const ALLOWED_URI_REGEXP =
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
