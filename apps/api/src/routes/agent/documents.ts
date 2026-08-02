@@ -35,11 +35,14 @@ import { getDocumentText } from '@api/services/agent/document';
  * text in ai_chat_document, and a cache handle in Redis). This sub-router owns
  * the READ-side and DELETE-side of that flow.
  *
- * Auto-sync (Phase 4): the create / delete handlers here also invalidate the
- * document cache so the cache handle always reflects the current source set.
- * Right now we just call releaseDocumentCaches on delete; the upload path in
- * agent.ts already writes a fresh cache handle on insert via parseAndStoreDocument
- * (via resolveDocumentCache → ensureAnthropicDocumentCache / ensureGeminiDocumentCache).
+ * Auto-sync (Phase 4): the delete handler invalidates the document cache via
+ * releaseDocumentCaches so stale handles don't outlive their source.
+ *
+ * Nothing here CREATES a cache handle for the Anthropic-compatible provider,
+ * and nothing may: that API has no cache-status endpoint, so the only proof a
+ * cache exists is `usage.cacheReadTokens` on a real chat turn, recorded by
+ * agent.ts via recordAnthropicCacheHit. Endpoints that fabricated a handle are
+ * what made the Sources badge light up merely from opening the panel.
  */
 export const agentDocumentsRouter = new Hono()
   /**

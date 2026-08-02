@@ -5,6 +5,17 @@ import type { CourseTemplateId } from '@cio/ai-assistant';
 export interface UploadedDocument {
   id: string;
   name: string;
+  /**
+   * Where the attachment came from, which decides whether it survives a turn.
+   *
+   * - `course_source`: pinned in the course's Sources panel. STICKY — it stays
+   *   attached across turns so the material is in context for the whole plan →
+   *   build flow. Dropping it after turn 1 meant the agent reached
+   *   `generate_course_plan` holding only a short summary of the document.
+   * - `one_off`: a file the teacher attached to a single message. Cleared once
+   *   that message is answered, as before.
+   */
+  origin: 'course_source' | 'one_off';
 }
 
 export interface AiAssistantMessageAttachment {
@@ -65,9 +76,18 @@ export type RefreshCacheRequest = (typeof classroomio.agent.documents)[':documen
 export type ReconcileSourcesRequest = typeof classroomio.agent.documents.reconcile.$post;
 
 export interface AiAssistantMessageTokenUsage {
+  // BILLING figures: aggregated across every step of the round, so a turn that
+  // made 3 tool calls over a big document reports ~3x the document.
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * Input size of the LAST request sent to the provider — i.e. how full the
+   * context window is. Must not be confused with `promptTokens`: using the
+   * billing total as occupancy made a fresh conversation read 100% full.
+   * Optional: absent on messages persisted before this field existed.
+   */
+  contextTokens?: number;
   // Optional breakdown reported by the provider (present for Gemini/Anthropic).
   reasoningTokens?: number;
   cacheReadTokens?: number;

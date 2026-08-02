@@ -31,14 +31,21 @@ vi.mock('@api/services/agent/document', () => ({
 
 import {
   classifyDocumentForCache,
+  getDocumentCacheStatus,
   isDocumentCacheEnabled,
   MAX_CACHE_CHARS,
   MAX_CACHE_TOKENS,
   MIN_CACHE_DOCUMENT_CHARS,
+  reconcileCourseSourceCache,
+  recordAnthropicCacheHit,
+  refreshDocumentCache,
   releaseDocumentCaches,
   resolveDocumentCache
 } from '@api/services/agent/document-cache';
-import { agentDocumentCacheKey } from '@api/utils/redis/key-generators';
+import {
+  agentDocumentCacheKey,
+  agentDocumentCacheKeyByContent
+} from '@api/utils/redis/key-generators';
 
 const mockedGetDocumentText = vi.mocked(getDocumentText);
 
@@ -285,13 +292,10 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
     expect(result.excludeDocumentId).toBeUndefined();
     // No fetch — Anthropic-compatible is implicit / hint-based.
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Persisted a handle so subsequent turns can dedupe.
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [key, raw] = redis.set.mock.calls[0];
-    expect(key).toBe('agent:document:cache:doc-anthropic-1');
-    const parsed = JSON.parse(raw);
-    expect(parsed.type).toBe('anthropic');
-    expect(parsed.documentId).toBe('doc-anthropic-1');
+    // And NO handle is written. Asking for a cache is not evidence of one:
+    // only usage.cacheReadTokens on the response proves the provider cached
+    // anything, and that is recorded later via recordAnthropicCacheHit.
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
   it('treats the Anthropic provider identically to MiniMax (same backend)', async () => {
@@ -315,12 +319,13 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
     expect(b.excludeDocumentId).toBeUndefined();
   });
 
-  it('reuses an existing fresh handle and slides the local TTL forward (sliding-window behavior)', async () => {
+  it('leaves an existing fresh handle untouched (it is evidence, not a lease to renew)', async () => {
     const redis = makeFakeRedis();
-    // Pre-seed a fresh handle with 10 min remaining.
     const preHandle = {
       type: 'anthropic',
       documentId: 'doc-anthropic-2',
+      observedAt: Date.now() - 60_000,
+      lastCacheReadTokens: 11_264,
       expireAt: Date.now() + 10 * 60 * 1000
     };
     redis.state.set('agent:document:cache:doc-anthropic-2', {
@@ -341,41 +346,15 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
     expect(result.providerOptions).toEqual({
       anthropic: { cacheControl: { type: 'ephemeral' } }
     });
-    // Sliding TTL: the handle is renewed to 15 min from now on every use.
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [, , opts] = redis.set.mock.calls[0];
-    expect(opts.EX).toBe(900);
+    // The handle records an observation that already happened. Sliding it
+    // forward here would keep the badge lit forever off a single old hit.
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(JSON.parse(redis.state.get('agent:document:cache:doc-anthropic-2')!.value)).toEqual(
+      preHandle
+    );
   });
 
-  it('slides the local handle forward on reuse (within 5 min of expiry)', async () => {
-    const redis = makeFakeRedis();
-    // Pre-seed a handle that is about to expire.
-    const preHandle = {
-      type: 'anthropic',
-      documentId: 'doc-anthropic-3',
-      expireAt: Date.now() + 30_000 // 30 s remaining
-    };
-    redis.state.set('agent:document:cache:doc-anthropic-3', {
-      value: JSON.stringify(preHandle),
-      expiresAt: preHandle.expireAt
-    });
-
-    await resolveDocumentCache({
-      provider: AIProvider.MINIMAX,
-      currentDocumentId: 'doc-anthropic-3',
-      userId: 'user-1',
-      redis: redis as any
-    });
-
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [key, raw, opts] = redis.set.mock.calls[0];
-    expect(key).toBe('agent:document:cache:doc-anthropic-3');
-    expect(opts.EX).toBe(900); // CACHE_TTL_SECONDS
-    const parsed = JSON.parse(raw);
-    expect(parsed.expireAt).toBeGreaterThan(preHandle.expireAt);
-  });
-
-  it('replaces an expired handle with a fresh one', async () => {
+  it('does not resurrect an expired handle', async () => {
     const redis = makeFakeRedis();
     const expired = {
       type: 'anthropic',
@@ -384,7 +363,7 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
     };
     redis.state.set('agent:document:cache:doc-anthropic-4', {
       value: JSON.stringify(expired),
-      expiresAt: expired.expireAt
+      expiresAt: 0
     });
 
     const result = await resolveDocumentCache({
@@ -394,39 +373,12 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
       redis: redis as any
     });
 
-    expect(result.excludeDocumentId).toBeUndefined();
     expect(result.providerOptions).toEqual({
       anthropic: { cacheControl: { type: 'ephemeral' } }
     });
-    expect(redis.set).toHaveBeenCalledTimes(1);
-  });
-
-  it('replaces a handle whose documentId no longer matches (defensive)', async () => {
-    const redis = makeFakeRedis();
-    // Stale handle for a DIFFERENT document sharing the same key (shouldn't
-    // happen in practice, but the read must validate the field).
-    const wrongDocHandle = {
-      type: 'anthropic',
-      documentId: 'some-other-doc',
-      expireAt: Date.now() + 10 * 60 * 1000
-    };
-    redis.state.set('agent:document:cache:doc-anthropic-5', {
-      value: JSON.stringify(wrongDocHandle),
-      expiresAt: wrongDocHandle.expireAt
-    });
-
-    const result = await resolveDocumentCache({
-      provider: AIProvider.MINIMAX,
-      currentDocumentId: 'doc-anthropic-5',
-      userId: 'user-1',
-      redis: redis as any
-    });
-
-    expect(result.excludeDocumentId).toBeUndefined();
-    expect(result.providerOptions).toEqual({
-      anthropic: { cacheControl: { type: 'ephemeral' } }
-    });
-    expect(redis.set).toHaveBeenCalledTimes(1);
+    // Expiry means "the provider's window lapsed". Only a fresh cached read
+    // may re-light it, and that comes from the response, not from asking.
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
   it('ignores a Gemini handle in the same key (does not try to read .cacheName as a real name)', async () => {
@@ -956,69 +908,219 @@ describe('agentDocumentCacheKey', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Sliding TTL — granular scenarios
+// recordAnthropicCacheHit — the ONLY writer of an Anthropic handle
 //
-// The handle's expireAt is bumped to (now + 900s) on every use. These tests
-// pin down the exact behavior at different "ages" of the handle so a future
-// refactor (e.g. switching to a fixed TTL or a non-renewing policy) breaks
-// loudly instead of silently.
+// The Anthropic-compatible API exposes no cache-status endpoint, so the only
+// evidence a cache exists is usage.inputTokenDetails.cacheReadTokens on a real
+// turn. These tests pin that down: nothing else may light the badge, and the
+// (courseId, contentHash) shared key must be preferred so two users who
+// uploaded the same PDF to the same course read one handle (§11).
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('Anthropic sliding TTL — granular scenarios', () => {
-  async function callWithHandle(redis: ReturnType<typeof makeFakeRedis>, preExpireAt: number) {
-    redis.state.set('agent:document:cache:doc-ttl', {
-      value: JSON.stringify({
-        type: 'anthropic',
-        documentId: 'doc-ttl',
-        expireAt: preExpireAt
-      }),
-      expiresAt: preExpireAt
-    });
-    await resolveDocumentCache({
-      provider: AIProvider.MINIMAX,
-      currentDocumentId: 'doc-ttl',
-      userId: 'user-1',
+describe('recordAnthropicCacheHit', () => {
+  it('writes nothing when the turn reported no cached reads (a cache MISS)', async () => {
+    const redis = makeFakeRedis();
+    const handle = await recordAnthropicCacheHit({
+      documentId: 'doc-miss',
+      cacheReadTokens: 0,
       redis: redis as any
     });
-    return redis;
-  }
-
-  it('slides forward a handle with 14 min remaining (close to max)', async () => {
-    const redis = await callWithHandle(makeFakeRedis(), Date.now() + 14 * 60 * 1000);
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [, , opts] = redis.set.mock.calls[0];
-    expect(opts.EX).toBe(900);
+    expect(handle).toBeNull();
+    expect(redis.set).not.toHaveBeenCalled();
   });
 
-  it('slides forward a handle with 1 minute remaining (about to expire)', async () => {
-    const redis = await callWithHandle(makeFakeRedis(), Date.now() + 60_000);
-    expect(redis.set).toHaveBeenCalledTimes(1);
+  it('writes nothing on the first turn of a conversation (read=0 is the normal miss)', async () => {
+    // Regression guard for the bug this replaced: the badge used to light up
+    // from a speculative handle, so a first turn — which ALWAYS misses —
+    // looked identical to a confirmed hit.
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-first-turn',
+      courseId: 'course-1',
+      contentHash: 'hash-1',
+      cacheReadTokens: 0,
+      redis: redis as any
+    });
+    const status = await getDocumentCacheStatus(
+      'doc-first-turn',
+      redis as any,
+      'course-1',
+      'hash-1'
+    );
+    expect(status.cached).toBe(false);
   });
 
-  it('slides forward a handle with 31 seconds remaining (just over the 30s grace)', async () => {
-    const redis = await callWithHandle(makeFakeRedis(), Date.now() + 31_000);
-    expect(redis.set).toHaveBeenCalledTimes(1);
-  });
+  it('writes the handle to the SHARED (courseId, contentHash) key when both are known', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-shared',
+      courseId: 'course-42',
+      contentHash: 'abc123',
+      cacheReadTokens: 11_264,
+      redis: redis as any
+    });
 
-  it('treats a handle with 29 seconds remaining as expired (under the 30s grace)', async () => {
-    const redis = await callWithHandle(makeFakeRedis(), Date.now() + 29_000);
-    // The new-handle path also writes to Redis, so we check the expireAt
-    // value rather than the call count: a fresh handle has expireAt ≈ now,
-    // while a slid-forward one has expireAt ≈ now + 15min.
-    const [, raw] = redis.set.mock.calls[0];
+    expect(redis.set).toHaveBeenCalledTimes(1);
+    const [key, raw, opts] = redis.set.mock.calls[0];
+    expect(key).toBe('agent:document:cache:course:course-42:abc123');
+    // The provider's own window, NOT the 900s Gemini handle TTL. The handle
+    // asserts "MiniMax served cached reads"; MiniMax evicts after 5 min idle,
+    // so a longer TTL would keep the badge green over a cache that no longer
+    // exists — the exact over-claim this whole mechanism replaced.
+    expect(opts.EX).toBe(300);
     const parsed = JSON.parse(raw);
-    // Fresh handle: expireAt is in the future but within 16 minutes.
-    const minutesAhead = (parsed.expireAt - Date.now()) / 60_000;
-    expect(minutesAhead).toBeGreaterThan(14);
-    expect(minutesAhead).toBeLessThan(16);
+    expect(parsed.type).toBe('anthropic');
+    expect(parsed.documentId).toBe('doc-shared');
+    expect(parsed.lastCacheReadTokens).toBe(11_264);
+    expect(parsed.observedAt).toBeGreaterThan(0);
+    // Handle lifetime must track the provider window, not outlive it.
+    expect(parsed.expireAt - Date.now()).toBeLessThanOrEqual(300_000);
   });
 
-  it('treats a handle with 0 ms remaining as expired', async () => {
-    const redis = await callWithHandle(makeFakeRedis(), Date.now());
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [, raw] = redis.set.mock.calls[0];
-    const parsed = JSON.parse(raw);
-    expect(parsed.documentId).toBe('doc-ttl');
+  it('falls back to the per-document key for legacy rows with no contentHash', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-legacy',
+      courseId: 'course-42',
+      contentHash: undefined,
+      cacheReadTokens: 500,
+      redis: redis as any
+    });
+    const [key] = redis.set.mock.calls[0];
+    expect(key).toBe('agent:document:cache:doc-legacy');
+  });
+
+  it('lets a second user in the same course read the first user\'s handle (§11 sharing)', async () => {
+    const redis = makeFakeRedis();
+    // Alice's chat turn confirms a cached read.
+    await recordAnthropicCacheHit({
+      documentId: 'doc-alice',
+      courseId: 'course-shared',
+      contentHash: 'same-content',
+      cacheReadTokens: 9_000,
+      redis: redis as any
+    });
+
+    // Bob uploaded the same file: dedup gave him Alice's documentId, and even
+    // if it hadn't, the (course, hash) key is what the status read resolves.
+    const status = await getDocumentCacheStatus(
+      'doc-bob',
+      redis as any,
+      'course-shared',
+      'same-content'
+    );
+    expect(status.cached).toBe(true);
+    expect(status.provider).toBe('anthropic');
+  });
+
+  it('does NOT share across different courses with identical content', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-a',
+      courseId: 'course-A',
+      contentHash: 'identical',
+      cacheReadTokens: 9_000,
+      redis: redis as any
+    });
+    const other = await getDocumentCacheStatus('doc-b', redis as any, 'course-B', 'identical');
+    expect(other.cached).toBe(false);
+  });
+
+  it('refreshes the window on every confirmed hit (the provider refreshes its cache for free)', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-slide',
+      courseId: 'c',
+      contentHash: 'h',
+      cacheReadTokens: 100,
+      redis: redis as any
+    });
+    const firstExpire = JSON.parse(redis.set.mock.calls[0][1]).expireAt;
+
+    await new Promise((r) => setTimeout(r, 5));
+    await recordAnthropicCacheHit({
+      documentId: 'doc-slide',
+      courseId: 'c',
+      contentHash: 'h',
+      cacheReadTokens: 250,
+      redis: redis as any
+    });
+    const secondCall = JSON.parse(redis.set.mock.calls[1][1]);
+    expect(secondCall.expireAt).toBeGreaterThan(firstExpire);
+    expect(secondCall.lastCacheReadTokens).toBe(250);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// The badge must not light up without provider evidence
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('honest cache badge', () => {
+  // contentHash must look like real SHA-256 hex: agentDocumentCacheKeyByContent
+  // strips every non-hex char, so 'h1' would silently become '1'.
+  const HASH = 'deadbeef0123abcd';
+  const bigDoc = { id: 'doc-honest', text: BIG_DOC, courseId: 'c1', contentHash: HASH };
+
+  it('reconcile does not create a handle for an eligible document (this was the bug)', async () => {
+    // Opening the Sources panel triggers reconcile. It used to fabricate a
+    // handle here, so the badge went green with zero traffic to the model.
+    const redis = makeFakeRedis();
+    const [result] = await reconcileCourseSourceCache([bigDoc], redis as any);
+
+    expect(result.action).toBe('skipped');
+    expect(result.reason).toBe('awaiting_cache_hit');
+    expect(redis.set).not.toHaveBeenCalled();
+
+    const status = await getDocumentCacheStatus('doc-honest', redis as any, 'c1', HASH);
+    expect(status.cached).toBe(false);
+  });
+
+  it('reconcile keeps a handle that a real cached read produced', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-honest',
+      courseId: 'c1',
+      contentHash: HASH,
+      cacheReadTokens: 8_000,
+      redis: redis as any
+    });
+
+    const [result] = await reconcileCourseSourceCache([bigDoc], redis as any);
+    expect(result.action).toBe('kept');
+    expect(result.status?.cached).toBe(true);
+  });
+
+  it('reconcile releases an expired handle instead of rebuilding it', async () => {
+    const redis = makeFakeRedis();
+    redis.state.set(agentDocumentCacheKeyByContent('c1', HASH), {
+      value: JSON.stringify({
+        type: 'anthropic',
+        documentId: 'doc-honest',
+        expireAt: Date.now() - 1
+      }),
+      expiresAt: 0
+    });
+
+    const [result] = await reconcileCourseSourceCache([bigDoc], redis as any);
+    expect(result.action).toBe('released');
+    expect(result.reason).toBe('expired');
+    expect(result.status).toBeNull();
+  });
+
+  it('refresh clears the evidence and reports uncached (no instant green badge)', async () => {
+    const redis = makeFakeRedis();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-honest',
+      courseId: 'c1',
+      contentHash: HASH,
+      cacheReadTokens: 8_000,
+      redis: redis as any
+    });
+
+    const status = await refreshDocumentCache('doc-honest', redis as any, 'c1', HASH);
+    expect(status.cached).toBe(false);
+    expect(status.expireAt).toBeNull();
+    expect(redis.state.has(agentDocumentCacheKeyByContent('c1', HASH))).toBe(false);
   });
 });
 
@@ -1040,7 +1142,8 @@ describe('Anthropic end-to-end lifecycle', () => {
     const redis = makeFakeRedis();
     mockedGetDocumentText.mockResolvedValue(text);
 
-    // First call: ensure creates the handle.
+    // Turn 1: ask for the cache. This ALWAYS misses (nothing is stored yet),
+    // so no handle is written and the badge stays dark.
     const first = await resolveDocumentCache({
       provider: AIProvider.MINIMAX,
       currentDocumentId: 'doc-e2e',
@@ -1050,9 +1153,16 @@ describe('Anthropic end-to-end lifecycle', () => {
     expect(first.providerOptions).toEqual({
       anthropic: { cacheControl: { type: 'ephemeral' } }
     });
-    expect(redis.set).toHaveBeenCalledTimes(1);
+    expect(redis.set).not.toHaveBeenCalled();
+    await recordAnthropicCacheHit({
+      documentId: 'doc-e2e',
+      cacheReadTokens: 0,
+      redis: redis as any
+    });
+    expect(await getDocumentCacheStatus('doc-e2e', redis as any)).toMatchObject({ cached: false });
 
-    // Second call: reuse the handle, slide TTL forward.
+    // Turn 2: same prefix, so the provider now bills a cached read. THAT is
+    // what lights the badge.
     const second = await resolveDocumentCache({
       provider: AIProvider.MINIMAX,
       currentDocumentId: 'doc-e2e',
@@ -1060,7 +1170,15 @@ describe('Anthropic end-to-end lifecycle', () => {
       redis: redis as any
     });
     expect(second.providerOptions).toEqual(first.providerOptions);
-    expect(redis.set).toHaveBeenCalledTimes(2);
+    await recordAnthropicCacheHit({
+      documentId: 'doc-e2e',
+      cacheReadTokens: 11_264,
+      redis: redis as any
+    });
+    expect(await getDocumentCacheStatus('doc-e2e', redis as any)).toMatchObject({
+      cached: true,
+      provider: 'anthropic'
+    });
 
     // Document is deleted (conversation closed) → release clears the handle.
     await releaseDocumentCaches(['doc-e2e'], redis as any);

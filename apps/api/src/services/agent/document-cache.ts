@@ -36,16 +36,27 @@ import type { RedisClient } from '@api/utils/redis/redis';
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**
- * Cache TTL: 15 minutes, sliding. Build/edit sessions hammer the model in
- * bursts, so a short TTL renewed on use (see maybeRenewGeminiCache /
- * Anthropic implicit renewal) keeps the cache alive exactly while it's being
- * worked with and lets it die minutes after the instructor walks away.
- *
- * Anthropic server-side cache lifetime is 5 min, but our Redis handle can
- * outlive that — the next call simply recreates the cache if the server
- * already evicted it.
+ * Gemini cache TTL: 15 minutes, sliding. We own that cache as a real
+ * server-side resource, renew it on use (maybeRenewGeminiCache), and pay
+ * storage while it lives — so a short sliding TTL keeps it alive exactly
+ * during a build burst and lets it die minutes after the instructor walks away.
  */
 const CACHE_TTL_SECONDS = 900;
+
+/**
+ * Anthropic-compatible handle TTL: 5 minutes — the provider's own window.
+ *
+ * It must NOT reuse the 15-minute Gemini value. Since `recordAnthropicCacheHit`
+ * made the handle mean "the provider billed us for cached reads", its lifetime
+ * is a claim about the provider's cache, and MiniMax evicts after 5 minutes of
+ * inactivity. A 15-minute handle would keep the Sources badge green for ~10
+ * minutes after the cache it attests to had already evaporated — over-claiming
+ * exactly the way the fabricated handles it replaced used to.
+ *
+ * Nothing is rented on this path, so an expired handle costs nothing to lose:
+ * the next cached read re-establishes it.
+ */
+const ANTHROPIC_CACHE_TTL_SECONDS = 300;
 
 /** Renew the TTL when a use finds less than this much lifetime remaining. */
 const CACHE_RENEW_THRESHOLD_MS = 5 * 60 * 1000;
@@ -74,12 +85,22 @@ interface GeminiCacheHandle {
   expireAt: number; // epoch ms
 }
 
+/**
+ * Evidence that the provider served cached tokens for a document's material.
+ * Written only by `recordAnthropicCacheHit` from observed usage — never
+ * speculatively. There is no Anthropic-compatible endpoint to query cache
+ * state, so this is the only signal we have.
+ */
 interface AnthropicCacheHandle {
   type: 'anthropic';
   documentId: string;
   /** Optional: when the handle is shared across users via contentHash. */
   courseId?: string;
   contentHash?: string;
+  /** Epoch ms of the chat turn whose usage reported the cached read. */
+  observedAt?: number;
+  /** cacheReadTokens the provider billed on that turn. */
+  lastCacheReadTokens?: number;
   expireAt: number; // epoch ms
 }
 
@@ -279,101 +300,60 @@ async function ensureGeminiDocumentCache(params: {
 // Anthropic-compatible backend (MiniMax-M3, Claude, etc.)
 // ────────────────────────────────────────────────────────────────────────────
 /**
- * The Anthropic-compatible backend is *implicit*: the cache lives server-side
- * and is created when the request carries a `cache_control: ephemeral` block.
- * We don't talk to the model here — we just track in Redis that we expect a
- * cache to be alive for this document, so subsequent calls can keep marking
- * the same content and the server reuses the cache within its 5-min window.
+ * The Anthropic-compatible backend is *implicit* and, unlike Gemini, exposes
+ * **no way to query cache state**. There is no `cachedContents` resource and no
+ * status endpoint: you attach `cache_control: ephemeral` to a block and the
+ * server decides. The only ground truth that a cache exists is
+ * `usage.inputTokenDetails.cacheReadTokens > 0` coming back on a real turn.
  *
- * If the server already evicted the cache (e.g. > 5 min idle), the next call
- * simply creates a new one; the only "cost" is one extra cache_write charge.
+ * So an Anthropic handle in Redis means exactly one thing:
  *
- * Multi-user sharing: when `courseId` + `contentHash` are passed, the cache
- * handle is keyed on (courseId, contentHash) so two users uploading the same
- * PDF to the same course share one cache. Falls back to the per-document
- * key when those are missing (single-user / legacy paths).
+ *   "the provider billed us for cached reads of this material at `observedAt`"
+ *
+ * It is written ONLY by `recordAnthropicCacheHit`, from observed usage. Nothing
+ * else may fabricate one. The previous implementation created a handle
+ * speculatively (on chat, on reconcile, on refresh), which made the Sources
+ * panel light up its "cached" badge merely because the panel had been opened —
+ * asserting a MiniMax-side cache that had never been requested, let alone
+ * confirmed. See knowledge/minimax-integration.md §5.
+ *
+ * Multi-user sharing: when `courseId` + `contentHash` are known the handle is
+ * keyed on (courseId, contentHash) so two users who uploaded the same PDF to
+ * the same course read one handle. Falls back to the per-document key for
+ * legacy rows whose `content_hash` is NULL.
  */
-async function ensureAnthropicDocumentCache(params: {
+export async function recordAnthropicCacheHit(params: {
   documentId: string;
   courseId?: string;
   contentHash?: string;
+  cacheReadTokens: number;
   redis: RedisClient;
 }): Promise<AnthropicCacheHandle | null> {
-  // Prefer the shared (courseId, contentHash) key — that's the future-proof
-  // path. Fall back to the per-documentId key for backward compat with
-  // handles written before this migration.
-  const sharedKey =
+  // No confirmed read → no handle. A cache MISS (the first turn, always) must
+  // not light the badge: the cached prefix may or may not have been stored,
+  // and MiniMax frequently reports cacheWriteTokens=0 even when it did store
+  // it, so a write count cannot be used as evidence either.
+  if (!(params.cacheReadTokens > 0)) return null;
+
+  const key =
     params.courseId && params.contentHash
       ? agentDocumentCacheKeyByContent(params.courseId, params.contentHash)
-      : null;
-  const legacyKey = agentDocumentCacheKey(params.documentId);
+      : agentDocumentCacheKey(params.documentId);
 
-  // Try the shared key first.
-  if (sharedKey) {
-    try {
-      const raw = await params.redis.get(sharedKey);
-      if (raw) {
-        const handle = JSON.parse(raw) as CacheHandle;
-        if (
-          handle.type === 'anthropic' &&
-          handle.expireAt > Date.now() + 30_000
-        ) {
-          // Slide the local handle forward — it represents the freshness of
-          // the server-side cache as far as we're willing to trust it.
-          const renewed: AnthropicCacheHandle = {
-            ...handle,
-            expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
-          };
-          try {
-            await params.redis.set(sharedKey, JSON.stringify(renewed), {
-              EX: CACHE_TTL_SECONDS
-            });
-          } catch (err) {
-            console.error('[document-cache] anthropic redis renew-write error:', err);
-          }
-          return renewed;
-        }
-      }
-    } catch (err) {
-      console.error(
-        '[document-cache] anthropic redis read error (continuing to create handle):',
-        err
-      );
-    }
-  }
-
-  // Also check the legacy key — backward compat for handles written before
-  // the migration. Read-only: if found, return it as-is (no renew so we
-  // don't accidentally promote a legacy handle into the shared namespace).
-  try {
-    const legacy = await params.redis.get(legacyKey);
-    if (legacy) {
-      const handle = JSON.parse(legacy) as CacheHandle;
-      if (
-        handle.type === 'anthropic' &&
-        handle.documentId === params.documentId &&
-        handle.expireAt > Date.now() + 30_000
-      ) {
-        return handle;
-      }
-    }
-  } catch {
-    // Ignore — fall through to create a new handle.
-  }
-
-  // Create a fresh handle in the shared namespace if we have the
-  // (courseId, contentHash), otherwise fall back to per-document.
   const handle: AnthropicCacheHandle = {
     type: 'anthropic',
     documentId: params.documentId,
     courseId: params.courseId,
     contentHash: params.contentHash,
-    expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
+    observedAt: Date.now(),
+    lastCacheReadTokens: params.cacheReadTokens,
+    // Mirrors the provider's 5-minute window, which it refreshes on every hit —
+    // so the badge decays on its own once the material stops being read.
+    expireAt: Date.now() + ANTHROPIC_CACHE_TTL_SECONDS * 1000
   };
-  const writeKey = sharedKey ?? legacyKey;
 
   try {
-    await params.redis.set(writeKey, JSON.stringify(handle), { EX: CACHE_TTL_SECONDS });
+    await params.redis.set(key, JSON.stringify(handle), { EX: ANTHROPIC_CACHE_TTL_SECONDS });
   } catch (err) {
     console.error('[document-cache] anthropic redis write error (handle not persisted):', err);
   }
@@ -488,12 +468,14 @@ async function readCacheHandle(
 }
 
 /**
- * Force-rebuild a cache handle for the document. Equivalent to calling
- * resolveDocumentCache() at chat time: drops any existing handle and creates
- * a fresh one on the next chat turn. The actual server-side cache (Gemini
- * cachedContent or Anthropic's implicit cache_control) is created lazily when
- * the agent actually sends a request — we just clear our handle so the next
- * chat rebuilds it.
+ * Invalidate what we know about the document's cache. For Gemini this DELETEs
+ * the server-side cachedContent so storage stops being billed. For the
+ * Anthropic-compatible backend there is nothing to delete — the provider's
+ * cache ages out on its own 5-min TTL — so this only drops our evidence of it.
+ *
+ * It deliberately does NOT report `cached: true` on the way out. The badge can
+ * only turn back on when a real chat turn reports cached reads again; claiming
+ * otherwise is what made the indicator meaningless in the first place.
  */
 export async function refreshDocumentCache(
   documentId: string,
@@ -501,24 +483,9 @@ export async function refreshDocumentCache(
   courseId?: string,
   contentHash?: string
 ): Promise<DocumentCacheStatus> {
-  // Drop the existing handle. For Gemini this also DELETEs the server-side
-  // cachedContent so we don't keep paying for storage. For Anthropic the
-  // server cache expires on its own TTL; we just clear our local handle.
   await releaseDocumentCaches([documentId], redis, courseId, contentHash);
 
-  // Create a fresh handle on the way out — the Sources UI needs to render
-  // the new "cached" badge immediately without forcing a chat turn first.
-  const cached = await ensureAnthropicDocumentCache({
-    documentId,
-    courseId,
-    contentHash,
-    redis
-  });
-  if (!cached) {
-    return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
-  }
-
-  return getDocumentCacheStatus(documentId, redis, courseId, contentHash);
+  return { documentId, cached: false, provider: null, expireAt: null, secondsRemaining: null };
 }
 
 /**
@@ -595,43 +562,19 @@ async function reconcileOneDocument(
     return { documentId: doc.id, action: 'skipped', reason: eligibility, status: null };
   }
 
-  // No handle at all → create one.
+  // No handle at all → the material is eligible but the provider has not yet
+  // served a cached read for it. We cannot create that state from here: only a
+  // real chat turn can, and only the usage it reports proves it happened.
+  // Reporting `skipped` keeps the badge dark until there is evidence.
   if (!existingHandle) {
-    const fresh = await ensureAnthropicDocumentCache({
-      documentId: doc.id,
-      courseId: doc.courseId,
-      contentHash: doc.contentHash,
-      redis
-    });
-    if (!fresh) {
-      return { documentId: doc.id, action: 'skipped', reason: 'handle_create_failed', status: null };
-    }
-    return {
-      documentId: doc.id,
-      action: 'rebuilt',
-      reason: 'no_handle',
-      status: await getDocumentCacheStatus(doc.id, redis, doc.courseId, doc.contentHash)
-    };
+    return { documentId: doc.id, action: 'skipped', reason: 'awaiting_cache_hit', status: null };
   }
 
-  // Handle exists. If it's expired, rebuild.
+  // Handle expired → the provider's 5-min window lapsed with no further reads.
+  // Drop our stale evidence; the next cached read re-establishes it.
   if (existingHandle.expireAt <= Date.now()) {
     await releaseDocumentCaches([doc.id], redis, doc.courseId, doc.contentHash);
-    const fresh = await ensureAnthropicDocumentCache({
-      documentId: doc.id,
-      courseId: doc.courseId,
-      contentHash: doc.contentHash,
-      redis
-    });
-    if (!fresh) {
-      return { documentId: doc.id, action: 'skipped', reason: 'handle_create_failed', status: null };
-    }
-    return {
-      documentId: doc.id,
-      action: 'rebuilt',
-      reason: 'expired',
-      status: await getDocumentCacheStatus(doc.id, redis, doc.courseId, doc.contentHash)
-    };
+    return { documentId: doc.id, action: 'released', reason: 'expired', status: null };
   }
 
   // Handle is live — assume it's still good. The text-updated check would
@@ -717,8 +660,9 @@ export async function resolveDocumentCache(params: {
   // with cache_control, so the cached prefix is: system + context-with-PDF +
   // user-message. On the next turn within the TTL window the PDF block is
   // served from cache at ~10% cost.
-  const cache = await ensureAnthropicDocumentCache({ documentId: currentDocumentId, redis });
-  if (!cache) return {};
+  // No handle is written here. Asking for the cache is just the hint below;
+  // whether a cache actually exists is only knowable from the usage numbers on
+  // the response, which the caller feeds back via `recordAnthropicCacheHit`.
   return {
     providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }
   };

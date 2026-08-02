@@ -133,9 +133,11 @@ class SourcesApi extends BaseApiWithErrors {
   }
 
   /**
-   * Auto-sync the cache state for every source in the course. Walks the
-   * list, builds cache handles that are missing or expired, and returns
-   * a per-document summary so the UI can show "rebuilt 2 of 5 caches".
+   * Re-read the cache state for every source in the course and drop evidence
+   * that has aged out. It deliberately does NOT create cache handles: for the
+   * Anthropic-compatible provider a handle means "the provider billed us for
+   * cached reads", which only a real chat turn can establish. Sources with no
+   * confirmed hit yet come back as `skipped` / `awaiting_cache_hit`.
    *
    * Idempotent: pass after any upload / delete / refresh that may have left
    * the cache set out of sync.

@@ -6,7 +6,7 @@ import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
-import { streamText, stepCountIs, convertToModelMessages, pruneMessages } from 'ai';
+import { streamText, stepCountIs, convertToModelMessages, pruneMessages, InvalidToolInputError } from 'ai';
 import {
   ZAgentChatBody,
   ZAgentCreditPurchase,
@@ -45,13 +45,13 @@ import {
   getDocumentText
 } from '@api/services/agent/document';
 import { createChatConversation } from '@api/services/agent/chat-history';
-import { resolveDocumentCache } from '@api/services/agent/document-cache';
+import { recordAnthropicCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
-import { getChatConversation, readCourseTodoList } from '@cio/db/queries/agent';
+import { getChatConversation, getChatDocumentCacheKey, readCourseTodoList } from '@cio/db/queries/agent';
 import {
   AgentRole,
   AIProvider,
@@ -564,6 +564,15 @@ const agentCoreRouter = new Hono()
             })
           : {};
 
+      // The document whose material rides in this turn's cached prefix. Note
+      // this is NOT gated on `documentCache` / cacheEligiblePhase: that policy
+      // only controls the request-level providerOptions, while the tags that
+      // actually make MiniMax cache anything are applied further down from
+      // `hasInlineDocumentContext` (context message) and unconditionally on the
+      // last message. Gating the badge on the policy meant real cache hits went
+      // unrecorded.
+      const primaryDocumentId = context?.documentId ?? documentIds[0];
+
       // RAG for edits (step 6): when a teacher attaches a document to EDIT/extend
       // an ALREADY-BUILT course (existing sections) — i.e. not a fresh build and
       // not cache-eligible — don't inline the whole doc. Instead index it once and
@@ -797,6 +806,7 @@ const agentCoreRouter = new Hono()
         emptyMessages: 'remove'
       });
       let completedStepCount = 0;
+      let lastStepInputTokens: number | undefined;
       let finishReason: string | undefined;
       // Set in onFinish (async) so the sync messageMetadata callback can report to the
       // UI whether the plan is still incomplete — this drives the "Continue" button
@@ -964,13 +974,33 @@ const agentCoreRouter = new Hono()
             })
           };
         },
-        onStepFinish: () => {
+        onStepFinish: (step) => {
           completedStepCount += 1;
+          // Size of the LAST request actually sent to the provider. This — not
+          // `totalUsage` — is what "how full is the context window" means.
+          // `totalUsage` aggregates every step of the round, so a 2-step turn
+          // over a 110k-token document reports ~220k and makes a brand-new
+          // conversation look 100% full against the 200k budget.
+          lastStepInputTokens = step.usage?.inputTokens ?? lastStepInputTokens;
         },
         onFinish: async ({ totalUsage, finishReason: resultFinishReason, steps }) => {
           completedStepCount = steps.length;
           finishReason = resultFinishReason;
           const durationMs = Date.now() - startTime;
+
+          // What the model actually DID this round. Without this, a turn where
+          // it narrates an action ("voy a generar el plan") and then stops
+          // without calling the tool is indistinguishable from a turn that
+          // worked — both just end. `phase` and `toolsOffered` are here because
+          // the first question is always "was the tool even available?".
+          const toolCalls = steps.flatMap((step) =>
+            step.toolCalls.map((call) => call.toolName)
+          );
+          console.log(
+            `[agent.chat] phase=${teacherPromptMode} finish=${resultFinishReason} steps=${steps.length} ` +
+              `toolsOffered=${activeToolNames?.length ?? 'all'} toolCalls=[${toolCalls.join(', ') || 'NONE'}] ` +
+              `docInline=${hasInlineDocumentContext}`
+          );
 
           // Re-check the plan vs the (now-updated) live course. If items are still
           // missing/empty, flag it so the UI can offer "Continue" — regardless of
@@ -1018,6 +1048,34 @@ const agentCoreRouter = new Hono()
             `[agent.chat] cache hit=${hitRate}% read=${cacheRead} write=${cacheWrite} uncached=${uncached} output=${outputTokens} reasoning=${reasoning}`
           );
 
+          // The ONLY evidence that the provider is really caching this
+          // material. The Anthropic-compatible API has no cache-status
+          // endpoint, so the Sources panel badge is driven from here: a handle
+          // is written only when cacheRead > 0. Guarded on the provider because
+          // the Gemini backend owns the same Redis key with a real, explicitly
+          // created cachedContent handle that must not be overwritten.
+          //
+          // Precision caveat, deliberately accepted: `cacheRead` covers the
+          // whole cached prefix (system prompt + context message with the
+          // document inside), so it attests "the provider served cached input
+          // on a turn carrying this document", not "these exact bytes came
+          // from cache". The API exposes no per-block breakdown. That is still
+          // evidence of a real provider-side cache, which is what the badge
+          // previously lacked entirely.
+          if (isAnthropicCompatible && hasInlineDocumentContext && primaryDocumentId && cacheRead > 0) {
+            // Resolved here rather than before the stream: it is one DB read
+            // per turn and this runs after the response is already out, so it
+            // costs the user nothing. Only reached on a confirmed hit.
+            const keyInfo = await getChatDocumentCacheKey(primaryDocumentId).catch(() => null);
+            await recordAnthropicCacheHit({
+              documentId: primaryDocumentId,
+              courseId: keyInfo?.courseId,
+              contentHash: keyInfo?.contentHash ?? undefined,
+              cacheReadTokens: cacheRead,
+              redis
+            }).catch((err) => console.error('[agent.chat] recordAnthropicCacheHit failed:', err));
+          }
+
           if (totalUsage) {
             await recordTokenUsage(
               orgId,
@@ -1052,6 +1110,43 @@ const agentCoreRouter = new Hono()
       });
 
       return result.toUIMessageStreamResponse({
+        // Without this, the AI SDK's default handler (`() => 'An error occurred.'`)
+        // replaces every in-stream failure with that string and logs NOTHING —
+        // the actual cause is discarded, so a broken tool call is invisible in
+        // both the browser console and the API log. Log it in full here; it is
+        // the only place the real error still exists.
+        onError: (error) => {
+          // InvalidToolInputError carries the RAW JSON the model emitted plus the
+          // validation cause. Without printing both, "invalid input for tool X"
+          // says nothing about WHICH property the model got wrong — and the model
+          // will keep making the same mistake every retry.
+          if (InvalidToolInputError.isInstance(error)) {
+            console.error(
+              `[agent.chat] invalid tool input for "${error.toolName}"\n` +
+                `  cause: ${error.cause instanceof Error ? error.cause.message : JSON.stringify(error.cause)}\n` +
+                `  raw input: ${error.toolInput}`
+            );
+
+            // The validation detail is multi-line ("Type validation failed:\n
+            // Value: …\nError: …") and the chat bubble shows only the first
+            // line, which is the useless one. Collapse to a single line so the
+            // actual failing path survives into the UI.
+            const cause = (error.cause instanceof Error ? error.cause.message : String(error.cause ?? ''))
+              .replace(/\s+/g, ' ')
+              .slice(0, 600);
+
+            return `Error del agente: entrada inválida para "${error.toolName}". ${cause}`;
+          }
+
+          console.error('[agent.chat] stream error:', error);
+
+          const message = error instanceof Error ? error.message : String(error);
+
+          // Self-hosted instructor tooling: surfacing the real message makes the
+          // failure actionable instead of a dead end. Keep it to the message —
+          // never the stack.
+          return `Error del agente: ${message}`;
+        },
         messageMetadata: ({ part }) => {
           if (part.type !== 'finish') {
             return undefined;
@@ -1065,7 +1160,11 @@ const agentCoreRouter = new Hono()
               totalTokens: part.totalUsage.totalTokens,
               reasoningTokens: part.totalUsage.outputTokenDetails?.reasoningTokens,
               cacheReadTokens: part.totalUsage.inputTokenDetails?.cacheReadTokens,
-              cacheWriteTokens: part.totalUsage.inputTokenDetails?.cacheWriteTokens
+              cacheWriteTokens: part.totalUsage.inputTokenDetails?.cacheWriteTokens,
+              // How full the context window actually is, for the UI gauge.
+              // Distinct from promptTokens/totalTokens, which are BILLING
+              // figures summed over every step of the round.
+              contextTokens: lastStepInputTokens
             },
             continuation:
               completedStepCount >= MAX_STEPS_PER_ROUND

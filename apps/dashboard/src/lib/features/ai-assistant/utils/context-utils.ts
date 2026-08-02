@@ -80,13 +80,21 @@ function estimateContextTokens(messages: AiAssistantMessage[]): number {
  * Do not sum historical usage: every assistant turn can include a full prompt
  * replay, so summing turns overstates current context. The character estimate
  * is only a fallback before the first provider usage report exists.
+ *
+ * Prefer `contextTokens` (input size of the last request) over `totalTokens`.
+ * `totalTokens` is a BILLING figure that AI SDK v7 aggregates over every step
+ * of the round: one turn that called a tool over a 110k-token document reported
+ * ~222k and pushed a brand-new conversation to "context full" against the 200k
+ * budget, prompting the teacher to compact a chat with two messages in it.
+ * `totalTokens` remains the fallback for messages persisted before the field.
  */
 export function calculateContextUsage(messages: AiAssistantMessage[], contextWindow: number): ContextUsage {
   const latestTokenUsage = [...messages]
     .reverse()
     .map((message) => (message.metadata as AiAssistantMessageMetadata | undefined)?.tokenUsage)
     .find((tokenUsage) => tokenUsage !== undefined);
-  const usedTokens = latestTokenUsage?.totalTokens ?? estimateContextTokens(messages);
+  const usedTokens =
+    latestTokenUsage?.contextTokens ?? latestTokenUsage?.totalTokens ?? estimateContextTokens(messages);
 
   const percentage = contextWindow > 0 ? Math.min(100, Math.round((usedTokens / contextWindow) * 100)) : 0;
 
