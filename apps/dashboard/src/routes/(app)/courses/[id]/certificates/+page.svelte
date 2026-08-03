@@ -135,7 +135,8 @@
 
 <UnsavedChanges bind:hasUnsavedChanges />
 
-<Page.Root class="mx-auto flex w-[calc(95vw-var(--sidebar-width))]!">
+<!-- Same viewport-vs-container bug as the sources page: see the note there. -->
+<Page.Root class="mx-auto flex w-full">
   <Page.Header>
     <Page.HeaderContent>
       <Page.Title>

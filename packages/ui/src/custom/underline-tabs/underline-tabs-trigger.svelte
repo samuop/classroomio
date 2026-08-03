@@ -25,7 +25,12 @@
   });
 </script>
 
-<div class="ui:relative ui:h-full">
+<!--
+  `h-9`, not `h-full`: the active underline below is positioned against this
+  wrapper, and once the list can wrap, `h-full` would stretch a first-row tab
+  over both rows and drop its underline to the bottom of the second one.
+-->
+<div class="ui:relative ui:h-9">
   <TabsPrimitive.Trigger
     bind:ref
     data-slot="underline-tabs-trigger"

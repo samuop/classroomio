@@ -28,8 +28,19 @@
     if (!open) onClose();
   }}
 >
+  <!--
+    `size` rather than a max-width class: `ui:sm:max-w-2xl` written here was never
+    generated (this app has no `ui` prefix) while still displacing the component's
+    own default, so the dialog had no width constraint at all.
+
+    `overflow-y-auto`, not `overflow-hidden`: with a max height, hidden means the
+    bottom of a tall tab (the media library list) is unreachable rather than
+    scrollable. The old `flex flex-col` was dead — the shared content is
+    `ui:grid`, which wins from output.css — so it is gone rather than misleading.
+  -->
   <Dialog.Content
-    class="ui:sm:max-w-2xl flex max-h-[680px] w-full flex-col overflow-hidden"
+    size="lg"
+    class="max-h-[680px] w-full overflow-y-auto"
     showCloseButton={!$lessonVideoUpload.isUploading}
     onEscapeKeydown={(e) => {
       if ($lessonVideoUpload.isUploading) e.preventDefault();
