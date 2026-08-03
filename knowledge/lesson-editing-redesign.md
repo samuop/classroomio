@@ -154,6 +154,19 @@ Built and tested in the session that produced this document:
 
 Each phase ships on its own; none strands the one before it.
 
+**Status (2026-08-03): Phases 0–3 are implemented** — `0c2a10c71` (comfort, media
+identity, media in the document) and `db9bafca4` (block ids and
+`replace_lesson_block`). Phases 4–6 have not been started. Two things landed
+differently from the sketch below, both for the same reason — the editor package
+cannot see the lesson:
+
+- The fixed height became an `autoHeight` **prop** rather than an `editorClass`
+  override. The default is prefixed (`ui:h-128`) and consumers outside the
+  package compile unprefixed utilities, so `cn()` keeps both and `output.css`,
+  imported last, wins. Class-level override is not available from the dashboard.
+- The insert picker lives in the dashboard (next to the AI button), not in the
+  shared toolbar's `commands.media`.
+
 ### Phase 0 — comfort fixes
 
 Remove `h-[60vh]`, give the editor the reader's column width, stop clipping the
