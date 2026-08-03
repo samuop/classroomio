@@ -14,6 +14,7 @@
  *     silent gap they only discover on an issued document.
  */
 import { BINDING_KEYS, type BindingKey } from './types';
+import { getYear } from '../templates/shared';
 import type { CertificateRenderData } from '../types';
 
 /** `{{ recipientName }}` — whitespace inside the braces is tolerated. */
@@ -35,6 +36,11 @@ export function buildBindingValues(data: CertificateRenderData, clientName = '')
     orgName: data.orgName ?? '',
     clientName,
     date: data.date ?? '',
+    // Seals and medals print the year alone. Extracted from the formatted date
+    // with the same helper the fixed templates use, so a canvas seal reads the
+    // same as the template seal it was seeded from rather than dropping the
+    // year entirely.
+    year: getYear(data.date),
     certificateId: data.certificateId ?? ''
   };
 }
@@ -79,5 +85,6 @@ export const STRESS_BINDING_VALUES: BindingValues = {
   orgName: 'Consultora de Capacitación y Desarrollo Profesional Tensor Tech',
   clientName: 'Industrias Metalúrgicas del Sur Sociedad Anónima',
   date: '15 de septiembre de 2026',
+  year: '2026',
   certificateId: 'N° 2026-09-000148-AR'
 };

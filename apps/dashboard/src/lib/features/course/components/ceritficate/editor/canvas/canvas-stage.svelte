@@ -28,7 +28,11 @@
     type SnapGuide
   } from '@cio/certificates';
   import { onMount } from 'svelte';
+  import MinusIcon from '@lucide/svelte/icons/minus';
+  import PlusIcon from '@lucide/svelte/icons/plus';
+  import MaximizeIcon from '@lucide/svelte/icons/maximize';
   import { cn } from '@cio/ui/tools';
+  import { t } from '$lib/utils/functions/translations';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
 
   interface Props {
@@ -43,8 +47,32 @@
   const store = certificateEditorStore;
 
   let viewport = $state<HTMLDivElement | null>(null);
-  let scale = $state(0.5);
   let guides = $state<SnapGuide[]>([]);
+
+  /**
+   * Zoom, in two parts.
+   *
+   * `fitScale` is whatever makes the whole canvas visible and is recomputed
+   * whenever the panel resizes. `manualScale` is the teacher overriding that,
+   * and while it is set the panel resizing must NOT quietly undo their choice —
+   * which is why it is a separate value rather than something that writes back
+   * over the fit.
+   */
+  let fitScale = $state(0.5);
+  let manualScale = $state<number | null>(null);
+
+  const MIN_SCALE = 0.15;
+  const MAX_SCALE = 2;
+
+  const scale = $derived(manualScale ?? fitScale);
+
+  function clampScale(value: number): number {
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, value));
+  }
+
+  function zoomBy(factor: number) {
+    manualScale = clampScale(scale * factor);
+  }
 
   /** Null between gestures; holds the pointer origin and the rect it started from. */
   let gesture: {
@@ -74,7 +102,7 @@
     const rect = viewport.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    scale = Math.min(rect.width / CANVAS_WIDTH, rect.height / CANVAS_HEIGHT);
+    fitScale = Math.min(rect.width / CANVAS_WIDTH, rect.height / CANVAS_HEIGHT);
   }
 
   onMount(() => {
@@ -341,7 +369,9 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={viewport}
-  class="ui:bg-muted/40 relative flex h-full w-full items-center justify-center overflow-hidden rounded-md"
+  class="ui:bg-muted/40 relative flex h-full w-full items-center justify-center {manualScale
+    ? 'overflow-auto'
+    : 'overflow-hidden'} rounded-md"
   role="application"
   aria-label="Certificate canvas"
   tabindex="-1"
@@ -452,5 +482,48 @@
       ></div>
     {/each}
     </div>
+  </div>
+
+  <!--
+    Zoom, matching the read-only preview's controls so switching to the canvas
+    does not take away a control the teacher already had. Sticky rather than
+    absolute: once zoomed past the panel the viewport scrolls, and the buttons
+    have to come along.
+  -->
+  <div
+    class="ui:bg-background/90 ui:border-border sticky right-3 bottom-3 ml-auto flex items-center gap-1 self-end rounded-full border px-1.5 py-1 shadow-sm backdrop-blur"
+  >
+    <button
+      type="button"
+      class="ui:hover:bg-muted rounded-full p-1"
+      aria-label={$t('course.navItem.certificates.editor.zoom_out')}
+      onclick={() => zoomBy(1 / 1.25)}
+    >
+      <MinusIcon size={14} />
+    </button>
+    <button
+      type="button"
+      class="ui:text-muted-foreground min-w-11 text-center text-[11px] tabular-nums"
+      title={$t('course.navItem.certificates.editor.zoom_fit')}
+      onclick={() => (manualScale = null)}
+    >
+      {Math.round(scale * 100)}%
+    </button>
+    <button
+      type="button"
+      class="ui:hover:bg-muted rounded-full p-1"
+      aria-label={$t('course.navItem.certificates.editor.zoom_in')}
+      onclick={() => zoomBy(1.25)}
+    >
+      <PlusIcon size={14} />
+    </button>
+    <button
+      type="button"
+      class="ui:hover:bg-muted rounded-full p-1"
+      aria-label={$t('course.navItem.certificates.editor.zoom_fit')}
+      onclick={() => (manualScale = null)}
+    >
+      <MaximizeIcon size={13} />
+    </button>
   </div>
 </div>

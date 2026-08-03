@@ -21,6 +21,7 @@ export const BINDING_KEYS = [
   'orgName',
   'clientName',
   'date',
+  'year',
   'certificateId'
 ] as const;
 

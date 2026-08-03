@@ -20,15 +20,17 @@
  */
 import type { CertificateDesign } from '../types';
 import { resolveLabels } from '../constants';
-import type {
-  CertificateDocument,
-  CertificateElement,
-  HorizontalAlign,
-  ImageElement,
-  ShapeElement,
-  TextElement,
-  TextFit,
-  VerticalAlign
+import {
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  type CertificateDocument,
+  type CertificateElement,
+  type HorizontalAlign,
+  type ImageElement,
+  type ShapeElement,
+  type TextElement,
+  type TextFit,
+  type VerticalAlign
 } from './types';
 
 interface TextSpec {
@@ -80,8 +82,20 @@ function text(spec: TextSpec): TextElement {
   };
 }
 
-function rule(id: string, x: number, y: number, w: number, color: string, thickness = 1): ShapeElement {
-  return { kind: 'shape', id, shape: 'line', x, y, w, h: thickness, strokeColor: color, strokeWidth: thickness };
+function rule(
+  id: string,
+  x: number,
+  y: number,
+  length: number,
+  color: string,
+  thickness = 1,
+  orientation: 'horizontal' | 'vertical' = 'horizontal'
+): ShapeElement {
+  // A `line` collapses to its stroke on the cross axis, so a vertical rule is
+  // the same shape with the dimensions swapped rather than a separate kind.
+  const size = orientation === 'horizontal' ? { w: length, h: thickness } : { w: thickness, h: length };
+
+  return { kind: 'shape', id, shape: 'rect', x, y, ...size, fill: color };
 }
 
 /**
@@ -119,12 +133,48 @@ function signaturePair(
   ];
 }
 
+/**
+ * The engraved corner brackets classique draws with `border-*: none` on a
+ * square. A canvas shape has one uniform border, so each bracket is two rules —
+ * which is also what makes them individually movable, unlike the CSS original.
+ */
+function cornerBrackets(accent: string, inset: number, arm: number): CertificateElement[] {
+  const right = CANVAS_WIDTH - inset;
+  const bottom = CANVAS_HEIGHT - inset;
+
+  return [
+    rule('corner-tl-h', inset, inset, arm, accent),
+    rule('corner-tl-v', inset, inset, arm, accent, 1, 'vertical'),
+    rule('corner-tr-h', right - arm, inset, arm, accent),
+    rule('corner-tr-v', right, inset, arm, accent, 1, 'vertical'),
+    rule('corner-bl-h', inset, bottom, arm, accent),
+    rule('corner-bl-v', inset, bottom - arm, arm, accent, 1, 'vertical'),
+    rule('corner-br-h', right - arm, bottom, arm, accent),
+    rule('corner-br-v', right, bottom - arm, arm, accent, 1, 'vertical')
+  ];
+}
+
 function classiquePreset(design: CertificateDesign): CertificateDocument {
   const accent = design.accentColor;
   const ink = '#2a1810';
   const labels = resolveLabels(design.labels);
 
   const elements: CertificateElement[] = [
+    // The inner of the two rules classique draws; the outer one is the canvas
+    // border. `border: 2px double` is a single CSS declaration and two drawn
+    // lines, so recreating it takes two elements here.
+    {
+      kind: 'shape',
+      id: 'inner-frame',
+      shape: 'rect',
+      x: 42,
+      y: 42,
+      w: CANVAS_WIDTH - 84,
+      h: CANVAS_HEIGHT - 84,
+      strokeColor: accent,
+      strokeWidth: 1
+    },
+    ...cornerBrackets(accent, 55, 80),
     ...brandSlots({ x: 70, y: 60, w: 130, h: 56 }, { x: 900, y: 60, w: 130, h: 56 }),
     text({ id: 'org', x: 200, y: 70, w: 700, h: 22, content: '{{orgName}}', family: 'Cinzel', size: 13, color: accent, tracking: 7.8, uppercase: true }),
     text({ id: 'ornament', x: 200, y: 104, w: 700, h: 30, content: '❦', family: 'Cinzel', size: 24, color: accent, tracking: 12 }),
@@ -135,8 +185,12 @@ function classiquePreset(design: CertificateDesign): CertificateDocument {
     rule('recipient-rule', 210, 400, 680, accent, 2),
     text({ id: 'description', x: 200, y: 418, w: 700, h: 116, content: design.descriptionOverride || '{{courseDescription}}', family: 'Cormorant Garamond', size: 18, color: '#3a2515', italic: true, lineHeight: 1.6, fit: 'clamp', maxLines: 4 }),
     { kind: 'shape', id: 'seal', shape: 'ellipse', x: 490, y: 578, w: 120, h: 120, strokeColor: accent, strokeWidth: 2 },
-    text({ id: 'seal-year', x: 490, y: 612, w: 120, h: 28, content: '★', family: 'Cinzel', size: 20, color: accent }),
-    text({ id: 'seal-id', x: 490, y: 644, w: 120, h: 20, content: '{{certificateId}}', family: 'Cinzel', size: 9, color: accent, tracking: 1.8, fit: 'shrink', minFontSize: 6 }),
+    // Three stacked lines, matching the template's star / year / reference. The
+    // year was missing entirely before, which is the difference that read most
+    // obviously as "the canvas is not the same certificate".
+    text({ id: 'seal-star', x: 490, y: 596, w: 120, h: 24, content: '★', family: 'Cinzel', size: 18, color: accent }),
+    text({ id: 'seal-year', x: 490, y: 620, w: 120, h: 26, content: '{{year}}', family: 'Cinzel', size: 18, weight: 600, color: accent }),
+    text({ id: 'seal-id', x: 490, y: 648, w: 120, h: 18, content: '{{certificateId}}', family: 'Cinzel', size: 8, color: accent, tracking: 1.6, fit: 'shrink', minFontSize: 6 }),
     ...signaturePair(accent, ink, 'Bodoni Moda', 'Cinzel', design, 630)
   ];
 
@@ -189,7 +243,8 @@ function noirPreset(design: CertificateDesign): CertificateDocument {
       rule('recipient-rule', 300, 428, 500, accent),
       text({ id: 'description', x: 220, y: 448, w: 660, h: 96, content: design.descriptionOverride || '{{courseDescription}}', family: 'Playfair Display', size: 16, color: '#b9b0a2', lineHeight: 1.6, fit: 'clamp', maxLines: 3 }),
       { kind: 'shape', id: 'medal', shape: 'ellipse', x: 500, y: 566, w: 100, h: 100, strokeColor: accent, strokeWidth: 2 },
-      text({ id: 'medal-label', x: 500, y: 602, w: 100, h: 28, content: labels.seal ?? '', family: 'Cinzel', size: 10, color: accent, tracking: 1.5, minFontSize: 7 }),
+      text({ id: 'medal-year', x: 500, y: 592, w: 100, h: 26, content: '{{year}}', family: 'Cinzel', size: 17, weight: 600, color: accent }),
+      text({ id: 'medal-label', x: 500, y: 618, w: 100, h: 22, content: labels.seal ?? '', family: 'Cinzel', size: 9, color: accent, tracking: 1.4, minFontSize: 7 }),
       ...signaturePair(accent, ink, 'Playfair Display', 'Cinzel', design, 640)
     ]
   };
