@@ -96,12 +96,89 @@ export async function storeDraftDocument(
       fileName: parsed.fileName,
       mimeType: parsed.mimeType,
       userId,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
+      // Carried so `promoteDraftDocuments` can persist a faithful record instead
+      // of recomputing an approximation from the text.
+      wordCount: parsed.wordCount,
+      pageCount: parsed.pageCount
     }),
     { EX: DOCUMENT_REDIS_TTL }
   );
 
   return { documentId };
+}
+
+/**
+ * Turn draft documents into real course sources the first time a chat uses them.
+ *
+ * The course wizard says "we'll use them as a source for your course", but a
+ * draft lives in Redis only — no course, no row — because at upload time the
+ * course does not exist yet. Nothing ever moved it across, so the material was
+ * invisible in the Sources panel and, worse, GONE once DOCUMENT_REDIS_TTL (1h)
+ * expired: a course built from a document that no longer existed anywhere, with
+ * no way for the agent to re-read it or the teacher to recover it.
+ *
+ * Runs on the chat turn because that is the first moment both halves exist — the
+ * draft id and a real course. Best-effort by design: a failure here must not take
+ * down the turn, since the model can still read the text from Redis.
+ *
+ * The original bytes are not kept (the draft upload never touched S3), so the
+ * promoted row has no asset. The extracted text — the part the agent actually
+ * needs — is preserved in full.
+ */
+export async function promoteDraftDocuments(
+  documentIds: string[],
+  params: { userId: string; courseId: string; conversationId: string },
+  redis: RedisClient
+): Promise<number> {
+  let promoted = 0;
+
+  for (const documentId of documentIds) {
+    try {
+      if (await getChatDocument(documentId, params.userId)) continue;
+
+      const raw = await redis.get(agentDocumentKey(documentId));
+      if (!raw) continue;
+
+      const draft = JSON.parse(raw) as {
+        text?: string;
+        fileName?: string;
+        mimeType?: string;
+        userId?: string;
+        wordCount?: number;
+        pageCount?: number;
+      };
+
+      // Someone else's draft id: leave it alone rather than copying their
+      // material into this teacher's course.
+      if (!draft.text || (draft.userId && draft.userId !== params.userId)) continue;
+
+      const contentHash = computeContentHash(draft.text);
+      const existing = await findChatDocumentByContentHash(params.courseId, contentHash);
+      if (existing) continue;
+
+      await createChatDocument({
+        id: documentId,
+        conversationId: params.conversationId,
+        courseId: params.courseId,
+        userId: params.userId,
+        assetId: null,
+        fileName: draft.fileName ?? 'document',
+        mimeType: draft.mimeType ?? 'application/octet-stream',
+        text: draft.text,
+        contentHash,
+        wordCount: draft.wordCount ?? draft.text.split(/\s+/).filter(Boolean).length,
+        pageCount: draft.pageCount ?? null
+      });
+
+      promoted += 1;
+      console.log(`[agent.documents] promoted draft ${documentId} to source of course ${params.courseId}`);
+    } catch (error) {
+      console.warn(`[agent.documents] could not promote draft ${documentId}:`, error);
+    }
+  }
+
+  return promoted;
 }
 
 /**
