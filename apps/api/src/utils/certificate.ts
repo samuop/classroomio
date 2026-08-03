@@ -54,17 +54,24 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
     signatories,
     idFormat: storedDesign?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
     labels: sanitizeLabels(storedDesign?.labels),
-    // Rebuilt field by field, so anything not named here never reaches the
-    // renderer. That is how `labels` went missing; these two are the canvas
-    // layout and the client's mark, and both are meaningless without the other
-    // half of the pair.
-    ...(storedDesign?.document ? { document: storedDesign.document } : {}),
-    ...(storedDesign?.clientBrand ? { clientBrand: sanitizeClientBrand(storedDesign.clientBrand) } : {})
+    // Rebuilt field by field, so ANYTHING NOT NAMED HERE NEVER REACHES THE
+    // RENDERER — which is exactly how `labels` went missing: saved correctly,
+    // read correctly, dropped on this line. Every new design field needs a line
+    // here as well as in `ZCertificateDesign` and the column's `$type<>`.
+    ...(typeof storedDesign?.titleOverride === 'string'
+      ? { titleOverride: storedDesign.titleOverride.slice(0, 160) }
+      : {}),
+    ...(storedDesign?.orgBrand ? { orgBrand: sanitizeBrand(storedDesign.orgBrand) } : {}),
+    ...(storedDesign?.clientBrand ? { clientBrand: sanitizeBrand(storedDesign.clientBrand) } : {}),
+    ...(typeof storedDesign?.brandLogoHeight === 'number' && Number.isFinite(storedDesign.brandLogoHeight)
+      ? { brandLogoHeight: storedDesign.brandLogoHeight }
+      : {}),
+    ...(storedDesign?.document ? { document: storedDesign.document } : {})
   };
 }
 
 /**
- * The client company's mark, on its way into HTML a browser will fetch.
+ * A brand mark, on its way into HTML a browser will fetch.
  *
  * The logo URL is written straight into an `<img src>` that Cloudflare's
  * browser resolves, so a stored `javascript:` or `data:` value would be a
@@ -72,7 +79,7 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
  * The write path already rejects those, but this function is the last gate
  * before rendering and rows predate any schema.
  */
-function sanitizeClientBrand(stored: unknown): CertificateDesign['clientBrand'] {
+function sanitizeBrand(stored: unknown): CertificateDesign['clientBrand'] {
   if (!stored || typeof stored !== 'object') return undefined;
 
   const raw = stored as { name?: unknown; logoUrl?: unknown };

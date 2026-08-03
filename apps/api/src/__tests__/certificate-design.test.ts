@@ -105,4 +105,39 @@ describe('resolveCertificateDesign', () => {
 
     expect(design.clientBrand).toBeUndefined();
   });
+
+  /**
+   * This function rebuilds the design field by field, so anything it does not
+   * name is dropped between the database and the renderer — silently, and after
+   * a success toast. That is exactly how `labels` shipped broken. Every field
+   * the editor can write gets a line here.
+   */
+  it('carries every design field the editor can write', () => {
+    const design = resolveCertificateDesign({
+      design: {
+        templateId: 'classique',
+        titleOverride: 'Inducción SSMA 2026',
+        orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+        clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
+        brandLogoHeight: 56,
+        labels: { deliveredBy: 'Dictado por', deliveredFor: 'Para' }
+      }
+    });
+
+    expect(design.titleOverride).toBe('Inducción SSMA 2026');
+    expect(design.orgBrand).toEqual({ name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' });
+    expect(design.clientBrand?.name).toBe('Kisoco One');
+    expect(design.brandLogoHeight).toBe(56);
+    expect(design.labels?.deliveredBy).toBe('Dictado por');
+    expect(design.labels?.deliveredFor).toBe('Para');
+  });
+
+  it('drops an org logo url that is not http(s), same as the client one', () => {
+    const design = resolveCertificateDesign({
+      design: { templateId: 'classique', orgBrand: { name: 'Egea', logoUrl: 'javascript:alert(1)' } }
+    });
+
+    expect(design.orgBrand?.logoUrl).toBeUndefined();
+    expect(design.orgBrand?.name).toBe('Egea');
+  });
 });

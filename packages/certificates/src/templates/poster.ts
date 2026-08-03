@@ -1,4 +1,4 @@
-import { escapeHtml, getYear, type TemplateRenderer } from './shared';
+import { BRAND_STYLES, escapeHtml, getYear, renderBrands, type TemplateRenderer } from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderPoster: TemplateRenderer = ({ design, data }) => {
@@ -7,8 +7,17 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
+  const brands = renderBrands({ design, data, labels });
   const [firstTitleWord, ...restTitleWords] = data.courseName.split(' ');
   const titleEmphasis = restTitleWords.join(' ');
+
+  /*
+    The pill is a solid accent lozenge built for a few words of text. A logo
+    dropped into it lands on a coloured background — the exact thing a
+    transparent SVG was uploaded to avoid — so once there is a logo the pill
+    goes and the marks stand on the paper.
+  */
+  const orgSlot = brands.hasLogo ? brands.html : `<span class="pill">${brands.html}</span>`;
 
   const body = `
     <div class="cert t-poster">
@@ -17,7 +26,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
       <div class="blob blob-3"></div>
       <div class="content">
         <div class="top">
-          <span class="pill">${escapeHtml(data.orgName)}</span>
+          ${orgSlot}
           <span>${escapeHtml(data.certificateId)} / ${escapeHtml(data.date)}</span>
         </div>
         <div class="title">${escapeHtml(firstTitleWord || 'Award')} <em>${escapeHtml(titleEmphasis)}</em></div>
@@ -47,6 +56,15 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    ${BRAND_STYLES}
+    /*
+      Capped low. Nothing here is flex:1 — the bottom row is pushed down with
+      \`margin-top: auto\` and everything above it is top-packed at its natural
+      height, on top of a 140px title. The slack is the smallest of the five
+      templates, so the header only gets what it can have without eating it.
+    */
+    .t-poster .brand-logo { max-height: 34px; }
+    .t-poster .top { align-items: center; }
     .t-poster {
       background: #fef2dc;
       color: #1a1a1a;

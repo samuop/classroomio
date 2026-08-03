@@ -1,4 +1,4 @@
-import { escapeHtml, getYear, type TemplateRenderer } from './shared';
+import { BRAND_STYLES, escapeHtml, getYear, renderBrands, type TemplateRenderer } from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderClassique: TemplateRenderer = ({ design, data }) => {
@@ -7,6 +7,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
+  const brands = renderBrands({ design, data, labels });
 
   const body = `
     <div class="cert t-classique">
@@ -15,7 +16,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       <div class="corner bl"></div>
       <div class="corner br"></div>
       <div class="main">
-        <div class="top-tag">${escapeHtml(data.orgName)}</div>
+        <div class="top-tag">${brands.html}</div>
         <div class="ornament">&#10086;</div>
         <div class="title">${escapeHtml(data.courseName)}</div>
         <div class="subtitle">${escapeHtml(subtitle)}</div>
@@ -42,6 +43,14 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    ${BRAND_STYLES}
+    /*
+      Roomy: the marks sit inside the main block, which is flex:1 and centred,
+      so a taller header takes space from the padding around the title rather
+      than pushing anything off the canvas.
+    */
+    .t-classique .brand-logo { max-height: 52px; }
+    .t-classique .brands { margin-bottom: 6px; }
     /*
       Flex column with the footer in normal flow. It used to be positioned
       absolutely 90px from the bottom while the text above it flowed from the

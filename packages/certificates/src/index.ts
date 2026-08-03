@@ -1,6 +1,6 @@
 export {
   CERTIFICATE_TEMPLATE_IDS,
-  type CertificateClientBrand,
+  type CertificateBrand,
   type CertificateDesign,
   type CertificateLabelKey,
   type CertificateLabels,
@@ -13,11 +13,15 @@ export {
 
 export {
   ACCENT_COLORS,
+  CANVAS_EDITOR_ENABLED,
   CERTIFICATE_TEMPLATES,
   DEFAULT_ACCENT_COLOR,
+  DEFAULT_BRAND_LOGO_HEIGHT,
   DEFAULT_CERTIFICATE_DESIGN,
   DEFAULT_CERTIFICATE_LABELS,
   LEGACY_THEME_MAP,
+  MAX_BRAND_LOGO_HEIGHT,
+  MIN_BRAND_LOGO_HEIGHT,
   getTemplateLabelKeys,
   resolveLabels,
   type AccentColor

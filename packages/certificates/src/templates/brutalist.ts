@@ -1,4 +1,4 @@
-import { escapeHtml, type TemplateRenderer } from './shared';
+import { BRAND_STYLES, escapeHtml, renderBrands, type TemplateRenderer } from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
@@ -8,12 +8,13 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
   const [signatoryOne, signatoryTwo] = design.signatories;
   const idDigits = data.certificateId.match(/\d+/)?.[0] ?? '00';
   const labels = resolveLabels(design.labels);
+  const brands = renderBrands({ design, data, labels });
 
   const body = `
     <div class="cert t-brutalist">
       <div class="grid-bg"></div>
       <div class="header">
-        <div>${escapeHtml(data.orgName)}</div>
+        <div>${brands.html}</div>
         <div class="blk">${escapeHtml(data.certificateId)}</div>
       </div>
       <div class="title-block">
@@ -53,6 +54,14 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    ${BRAND_STYLES}
+    /*
+      Capped, because this is the one layout where a taller header costs
+      something: the blocks below it sit in normal flow while the signature bar
+      is pinned to the bottom edge, so whatever the header takes comes out of
+      the gap in front of that bar.
+    */
+    .t-brutalist .brand-logo { max-height: 36px; }
     .t-brutalist {
       background: #f0ede4;
       color: #000;

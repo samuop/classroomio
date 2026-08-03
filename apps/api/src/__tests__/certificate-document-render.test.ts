@@ -6,9 +6,15 @@
  * the new editor must keep producing exactly the document it produced before.
  * That is why `renderCertificate` branches on the presence of `document`
  * instead of migrating everything to the new model.
+ *
+ * The canvas editor is parked (`CANVAS_EDITOR_ENABLED`), so that branch is not
+ * reachable in production today. `renderDocument` is still covered here on its
+ * own terms: it is what the flag turns back on, and untested code that is one
+ * boolean away from live is worse than no flag at all.
  */
 import { describe, expect, it } from 'vitest';
 import {
+  CANVAS_EDITOR_ENABLED,
   DEFAULT_CERTIFICATE_DESIGN,
   renderCertificate,
   renderDocument,
@@ -202,14 +208,29 @@ describe('renderDocument — canvas', () => {
 });
 
 describe('renderCertificate — branching', () => {
-  it('uses the canvas renderer when the design carries a document', () => {
+  /**
+   * With the canvas parked, a stored layout is ignored and the course renders
+   * through its template — the same thing the editor now shows.
+   *
+   * Asserted against the flag rather than against today's value of it, because
+   * the point being defended is that ONE constant decides this. A course whose
+   * editor offers a template while its PDF is issued from a canvas layout
+   * nobody can open is the failure this prevents.
+   */
+  it('honours CANVAS_EDITOR_ENABLED when the design carries a document', () => {
     const { html } = renderCertificate(
       { ...DEFAULT_CERTIFICATE_DESIGN, document: doc([text({ content: 'Ana Ruiz' })]) },
       data
     );
 
-    expect(html).toContain('cert doc');
     expect(html).toContain('Ana Ruiz');
+
+    if (CANVAS_EDITOR_ENABLED) {
+      expect(html).toContain('cert doc');
+    } else {
+      expect(html).not.toContain('cert doc');
+      expect(html).toContain('t-classique');
+    }
   });
 
   it('leaves a design with no document on the original path, untouched', () => {

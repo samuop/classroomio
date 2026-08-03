@@ -1,4 +1,4 @@
-import { escapeHtml, getYear, shadeColor, type TemplateRenderer } from './shared';
+import { BRAND_STYLES, escapeHtml, getYear, renderBrands, shadeColor, type TemplateRenderer } from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderNoir: TemplateRenderer = ({ design, data }) => {
@@ -8,13 +8,14 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
+  const brands = renderBrands({ design, data, labels });
 
   const body = `
     <div class="cert t-noir">
       <div class="top">
         <span>${escapeHtml(data.certificateId)}</span>
         <div class="line"></div>
-        <span>${escapeHtml(data.orgName)}</span>
+        <span>${brands.html}</span>
         <div class="line"></div>
         <span>${escapeHtml(data.date)}</span>
       </div>
@@ -48,6 +49,15 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    ${BRAND_STYLES}
+    /* The main block is flex:1, so the header can grow without displacing it. */
+    .t-noir .brand-logo { max-height: 46px; }
+    /*
+      The top row is a thin gilt rule with the marks in the middle. Logos are
+      light-on-dark here, so the gap has to be wider than elsewhere or the rules
+      crowd them.
+    */
+    .t-noir .top .brands { padding: 0 6px; }
     /* Footer in flow — see the note in classique.ts for the overlap it fixes. */
     .t-noir {
       background: #0e0e0e;

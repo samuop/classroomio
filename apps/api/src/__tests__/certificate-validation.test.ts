@@ -102,6 +102,43 @@ describe('ZCertificateDesign — canvas document', () => {
     expect(parsed.clientBrand?.name).toBe('Industrias del Sur');
   });
 
+  /**
+   * Zod strips what it does not declare, without complaining. A design field
+   * missing from this schema is accepted by the API, dropped before the write,
+   * and reported back to the teacher as saved — which is how `labels` was
+   * broken end to end for as long as it existed.
+   */
+  it('keeps every field the editor writes, rather than quietly dropping one', () => {
+    const parsed = ZCertificateDesign.parse({
+      ...baseDesign,
+      titleOverride: 'Inducción SSMA 2026',
+      orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+      clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
+      brandLogoHeight: 56,
+      labels: { deliveredBy: 'Dictado por', deliveredFor: 'Para' }
+    });
+
+    expect(parsed.titleOverride).toBe('Inducción SSMA 2026');
+    expect(parsed.orgBrand?.logoUrl).toBe('https://learn-files.tensor.com.ar/egea.svg');
+    expect(parsed.clientBrand?.logoUrl).toBe('https://learn-files.tensor.com.ar/kisoco.svg');
+    expect(parsed.brandLogoHeight).toBe(56);
+    expect(parsed.labels?.deliveredBy).toBe('Dictado por');
+    expect(parsed.labels?.deliveredFor).toBe('Para');
+  });
+
+  it('rejects a logo height that would erase the certificate under it', () => {
+    expect(ZCertificateDesign.safeParse({ ...baseDesign, brandLogoHeight: 4000 }).success).toBe(false);
+  });
+
+  it('rejects a javascript: url on the org mark, not just the client one', () => {
+    const result = ZCertificateDesign.safeParse({
+      ...baseDesign,
+      orgBrand: { logoUrl: 'javascript:alert(1)' }
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects a javascript: image url', () => {
     // These URLs are written into HTML that a real browser renders on the
     // platform's behalf, so anything but http(s) is a script-injection vector.

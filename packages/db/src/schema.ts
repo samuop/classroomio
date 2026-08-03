@@ -22,7 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type { AnswerData } from '@cio/question-types';
-import type { TCertificateClientBrand, TCertificateDocument } from '@cio/utils/validation/course';
+import type { TCertificateBrand, TCertificateDocument } from '@cio/utils/validation/course';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -770,7 +770,17 @@ export const course = pgTable(
           award?: string;
           distinction?: string;
           seal?: string;
+          deliveredBy?: string;
+          deliveredFor?: string;
         };
+        /** What the certificate calls the achievement, in place of the course title. */
+        titleOverride?: string;
+        /** The delivering organisation's mark, overriding the workspace name/avatar. */
+        orgBrand?: TCertificateBrand;
+        /** The client company's mark, alongside the issuing organisation's. */
+        clientBrand?: TCertificateBrand;
+        /** Printed height of each logo in canvas pixels. */
+        brandLogoHeight?: number;
         /**
          * Free canvas layout. Typed from the zod schema that guards the write
          * rather than restated here: the element union is ~80 lines and a second
@@ -780,8 +790,6 @@ export const course = pgTable(
          * one of the five fixed templates.
          */
         document?: TCertificateDocument;
-        /** The client company's mark, alongside the issuing organisation's. */
-        clientBrand?: TCertificateClientBrand;
       };
       deadline?: string | null;
       threshold?: number;

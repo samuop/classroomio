@@ -1,4 +1,4 @@
-import { escapeHtml, type TemplateRenderer } from './shared';
+import { BRAND_STYLES, escapeHtml, renderBrands, type TemplateRenderer } from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderMinimal: TemplateRenderer = ({ design, data }) => {
@@ -7,12 +7,13 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
+  const brands = renderBrands({ design, data, labels });
 
   const body = `
     <div class="cert t-minimal">
       <span class="accent-bar" aria-hidden="true"></span>
       <div class="top">
-        <span>${escapeHtml(data.orgName)}</span>
+        <span>${brands.html}</span>
         <span>${escapeHtml(data.certificateId)} &middot; ${escapeHtml(data.date)}</span>
       </div>
       <div class="body">
@@ -46,6 +47,15 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    ${BRAND_STYLES}
+    /* The body block is flex:1, so it absorbs whatever the header takes. */
+    .t-minimal .brand-logo { max-height: 44px; }
+    /*
+      The top row is baseline-aligned 10px mono; a logo in it would sit on that
+      baseline and hang below the rule. Centring the row keeps the reference
+      number opposite it looking deliberate.
+    */
+    .t-minimal .top { align-items: center; }
     .t-minimal {
       background: #fff;
       color: #0a0a0a;

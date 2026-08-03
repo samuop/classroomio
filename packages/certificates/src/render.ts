@@ -1,4 +1,4 @@
-import { LEGACY_THEME_MAP } from './constants';
+import { CANVAS_EDITOR_ENABLED, LEGACY_THEME_MAP } from './constants';
 import type { CertificateDesign, CertificateRenderData, CertificateRenderResult, CertificateTemplateId } from './types';
 import { CERTIFICATE_TEMPLATE_IDS } from './types';
 import { renderBrutalist } from './templates/brutalist';
@@ -30,6 +30,27 @@ export function resolveTemplateId(value: string | undefined | null): Certificate
 }
 
 /**
+ * The design's own overrides, folded into the render data before any template
+ * sees it.
+ *
+ * Done once, here, rather than in five templates: the title and the issuing
+ * organisation appear in more than one place in some layouts — Brutalist prints
+ * the course name in its metadata row as well as its title block — and an
+ * override applied per-slot would have left the same certificate saying two
+ * different things.
+ */
+function applyOverrides(design: CertificateDesign, data: CertificateRenderData): CertificateRenderData {
+  return {
+    ...data,
+    courseName: design.titleOverride?.trim() || data.courseName,
+    orgName: design.orgBrand?.name?.trim() || data.orgName,
+    // The workspace avatar is a square bitmap sized for a nav bar. When a course
+    // supplies a proper lock-up it wins, and it is usually a transparent SVG.
+    orgLogoUrl: design.orgBrand?.logoUrl?.trim() || data.orgLogoUrl
+  };
+}
+
+/**
  * Render a design, whichever generation it belongs to.
  *
  * A design carrying a `document` is a canvas layout and goes through
@@ -38,9 +59,19 @@ export function resolveTemplateId(value: string | undefined | null): Certificate
  * already been issued from those five renderers, and a course that never opens
  * the new editor must keep producing exactly the file it produced yesterday.
  * Branching rather than migrating is what makes that guarantee cheap to hold.
+ *
+ * The canvas branch is behind `CANVAS_EDITOR_ENABLED`, and the editor reads the
+ * same constant. That is what keeps the two honest: with the canvas parked, a
+ * course that still has a stored layout renders through its template — which is
+ * what the editor now shows — instead of issuing a document nobody can open.
  */
-export function renderCertificate(design: CertificateDesign, data: CertificateRenderData): CertificateRenderResult {
-  if (design.document) {
+export function renderCertificate(
+  design: CertificateDesign,
+  renderData: CertificateRenderData
+): CertificateRenderResult {
+  const data = applyOverrides(design, renderData);
+
+  if (CANVAS_EDITOR_ENABLED && design.document) {
     const rendered = renderDocument({
       document: design.document,
       data,

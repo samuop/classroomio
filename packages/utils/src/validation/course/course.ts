@@ -75,7 +75,10 @@ export const ZCertificateLabels = z.object({
   reference: z.string().max(120).optional(),
   award: z.string().max(120).optional(),
   distinction: z.string().max(120).optional(),
-  seal: z.string().max(120).optional()
+  seal: z.string().max(120).optional(),
+  /** Captions over the two brand marks; both default to empty, not to wording. */
+  deliveredBy: z.string().max(120).optional(),
+  deliveredFor: z.string().max(120).optional()
 });
 export type TCertificateLabels = z.infer<typeof ZCertificateLabels>;
 
@@ -174,12 +177,18 @@ export const ZCertificateDocument = z.object({
 });
 export type TCertificateDocument = z.infer<typeof ZCertificateDocument>;
 
-/** The client company's mark, alongside the issuing organisation's. */
-export const ZCertificateClientBrand = z.object({
+/**
+ * One of the two marks a certificate is issued under: the organisation
+ * delivering the training, and the client company it was delivered for.
+ *
+ * `logoUrl` goes straight into an `<img src>` that Cloudflare's browser
+ * resolves, which is why it is an `ZAssetUrl` and not a bare string.
+ */
+export const ZCertificateBrand = z.object({
   name: z.string().max(120).optional(),
   logoUrl: ZAssetUrl.optional()
 });
-export type TCertificateClientBrand = z.infer<typeof ZCertificateClientBrand>;
+export type TCertificateBrand = z.infer<typeof ZCertificateBrand>;
 
 /**
  * NOTE FOR ANY NEW DESIGN FIELD: it must be declared here as well as on the
@@ -197,8 +206,12 @@ export const ZCertificateDesign = z.object({
   signatories: z.tuple([ZCertificateSignatory, ZCertificateSignatory]),
   idFormat: z.string().max(40).optional(),
   labels: ZCertificateLabels.optional(),
-  document: ZCertificateDocument.optional(),
-  clientBrand: ZCertificateClientBrand.optional()
+  /** What the certificate calls the achievement, in place of the course title. */
+  titleOverride: z.string().max(160).optional(),
+  orgBrand: ZCertificateBrand.optional(),
+  clientBrand: ZCertificateBrand.optional(),
+  brandLogoHeight: z.number().min(16).max(96).optional(),
+  document: ZCertificateDocument.optional()
 });
 export type TCertificateDesign = z.infer<typeof ZCertificateDesign>;
 

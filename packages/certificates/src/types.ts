@@ -32,26 +32,40 @@ export interface CertificateLabels {
   distinction?: string;
   /** Word stamped on the seal or medal. */
   seal?: string;
+  /**
+   * Caption over the issuing organisation's mark ("Dictado por").
+   *
+   * Empty by default, unlike every other label: two logos side by side is how
+   * certificates normally carry a consultancy and its client, and a caption is
+   * an addition a teacher opts into rather than wording they have to clear.
+   */
+  deliveredBy?: string;
+  /** Caption over the client company's mark ("Para"). Empty by default. */
+  deliveredFor?: string;
 }
 
 export type CertificateLabelKey = keyof CertificateLabels;
 
 /**
- * The company the training is delivered FOR, alongside the organisation
- * delivering it. A consultancy issues the same certificate under two marks —
- * its own and its client's — and before this there was room for neither: no
- * template drew a logo at all, `orgLogoUrl` was carried all the way to the
- * renderer and never used.
+ * One of the marks a certificate is issued under.
  *
- * Lives on the course's design because the same course run for two clients is
- * two courses with two marks.
+ * A consultancy issues the same certificate under two of them — its own and the
+ * client company it trained — and before this there was room for neither: no
+ * template drew a logo at all, `orgLogoUrl` was carried all the way to the
+ * renderer and never used, and the organisation was a line of plain text.
+ *
+ * Both live on the course's design, because the same course run for two clients
+ * is two courses with two marks.
  */
-export interface CertificateClientBrand {
+export interface CertificateBrand {
   name?: string;
   /**
    * Must be a PUBLIC, stable URL: the page is fetched by Cloudflare's browser,
    * not ours, and a presigned URL would expire and silently strip the logo off
    * every certificate issued afterwards.
+   *
+   * An SVG is the right thing to upload here — it has no background to clash
+   * with the certificate and stays sharp at export resolution.
    */
   logoUrl?: string;
 }
@@ -65,13 +79,35 @@ export interface CertificateDesign {
   idFormat?: string;
   labels?: CertificateLabels;
   /**
+   * What the certificate calls the achievement, replacing the course title.
+   *
+   * A course is named for the people taking it ("Inducción SSMA 2026"); the
+   * certificate is a document its holder shows to someone else, and often has
+   * to read differently. Applied once, centrally, in `renderCertificate`, so
+   * every template picks it up.
+   */
+  titleOverride?: string;
+  /**
+   * The issuing organisation's mark, overriding the workspace name and avatar.
+   *
+   * Separate from the org's own profile on purpose: the avatar is a square
+   * bitmap sized for a nav bar, and a certificate wants the full lock-up —
+   * usually a transparent SVG.
+   */
+  orgBrand?: CertificateBrand;
+  /** The company the training was delivered for. Absent for most courses. */
+  clientBrand?: CertificateBrand;
+  /** Printed height of each logo in canvas pixels; templates cap it further. */
+  brandLogoHeight?: number;
+  /**
    * A free canvas layout. When present it REPLACES the template: `templateId`
    * stays on the design as the preset it started from, but nothing reads it for
    * rendering. Absent means this course still uses one of the five fixed
    * layouts, which is what every existing course does.
+   *
+   * Only read while {@link CANVAS_EDITOR_ENABLED} is on.
    */
   document?: CertificateDocument;
-  clientBrand?: CertificateClientBrand;
 }
 
 export interface CertificateRenderData {
