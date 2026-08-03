@@ -6,6 +6,34 @@ export interface CertificateSignatory {
   role: string;
 }
 
+/**
+ * The fixed wording each template prints around the variable data.
+ *
+ * These used to be literals inside the templates, which made them both
+ * uneditable and untranslatable: a Spanish certificate still read "— this is to
+ * certify that —" over the recipient's name, and nothing in the editor could
+ * change it. Every field is optional; a template falls back to
+ * `DEFAULT_CERTIFICATE_LABELS` for anything not set.
+ */
+export interface CertificateLabels {
+  /** Line above the recipient's name: "— se certifica que —". */
+  presented?: string;
+  /** Heading over the recipient in grid layouts: "Otorgado a". */
+  awardedTo?: string;
+  /** Key for the issue date. */
+  issued?: string;
+  /** Key for the certificate number. */
+  reference?: string;
+  /** Key for the award/course name in the metadata row. */
+  award?: string;
+  /** Key for the distinction level. */
+  distinction?: string;
+  /** Word stamped on the seal or medal. */
+  seal?: string;
+}
+
+export type CertificateLabelKey = keyof CertificateLabels;
+
 export interface CertificateDesign {
   templateId: CertificateTemplateId;
   accentColor: string;
@@ -13,6 +41,7 @@ export interface CertificateDesign {
   descriptionOverride?: string;
   signatories: [CertificateSignatory, CertificateSignatory];
   idFormat?: string;
+  labels?: CertificateLabels;
 }
 
 export interface CertificateRenderData {
@@ -34,4 +63,9 @@ export interface CertificateTemplateMeta {
   id: CertificateTemplateId;
   label: string;
   description: string;
+  /**
+   * Which labels this template actually prints. The editor shows only these, so
+   * a teacher is never asked to fill in wording that will not appear.
+   */
+  labels: CertificateLabelKey[];
 }

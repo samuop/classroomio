@@ -1,10 +1,12 @@
 import { escapeHtml, getYear, type TemplateRenderer } from './shared';
+import { resolveLabels } from '../constants';
 
 export const renderClassique: TemplateRenderer = ({ design, data }) => {
   const accent = design.accentColor;
   const subtitle = design.subtitle ?? '';
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
+  const labels = resolveLabels(design.labels);
 
   const body = `
     <div class="cert t-classique">
@@ -12,13 +14,15 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       <div class="corner tr"></div>
       <div class="corner bl"></div>
       <div class="corner br"></div>
-      <div class="top-tag">${escapeHtml(data.orgName)}</div>
-      <div class="ornament">&#10086;</div>
-      <div class="title">${escapeHtml(data.courseName)}</div>
-      <div class="subtitle">${escapeHtml(subtitle)}</div>
-      <div class="presented">&mdash; this is to certify that &mdash;</div>
-      <div class="recipient">${escapeHtml(data.recipientName)}</div>
-      <div class="description">${escapeHtml(description)}</div>
+      <div class="main">
+        <div class="top-tag">${escapeHtml(data.orgName)}</div>
+        <div class="ornament">&#10086;</div>
+        <div class="title">${escapeHtml(data.courseName)}</div>
+        <div class="subtitle">${escapeHtml(subtitle)}</div>
+        ${labels.presented ? `<div class="presented">&mdash; ${escapeHtml(labels.presented)} &mdash;</div>` : ''}
+        <div class="recipient">${escapeHtml(data.recipientName)}</div>
+        <div class="description">${escapeHtml(description)}</div>
+      </div>
       <div class="footer">
         <div class="sig">
           <div class="name">${escapeHtml(signatoryOne.name)}</div>
@@ -38,11 +42,28 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    /*
+      Flex column with the footer in normal flow. It used to be positioned
+      absolutely 90px from the bottom while the text above it flowed from the
+      top, so a course title long enough to wrap onto a second line pushed the
+      description down until it ran under the seal. Nothing reserved the space.
+      Now the two are siblings and cannot overlap at any content length.
+    */
     .t-classique {
       background: #faf6ec;
       color: #2a1810;
-      padding: 55px;
+      padding: 55px 55px 70px;
       font-family: 'Cormorant Garamond', serif;
+      display: flex;
+      flex-direction: column;
+    }
+    .t-classique .main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-top: 34px;
     }
     .t-classique::before {
       content: '';
@@ -83,17 +104,27 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       font-size: 13px;
       letter-spacing: 0.6em;
       color: ${accent};
-      margin-top: 60px;
       text-transform: uppercase;
     }
+    /*
+      Fluid size with a floor and a ceiling: a short title still reads as the
+      hero, and a long one shrinks instead of pushing everything below it off the
+      fixed 780px canvas. Capped at three lines — past that the certificate is
+      no longer a certificate.
+    */
     .t-classique .title {
       text-align: center;
       font-family: 'Bodoni Moda', serif;
-      font-size: 78px;
+      font-size: clamp(38px, 7.2vw, 78px);
       font-weight: 400;
       font-style: italic;
       margin: 8px 0 4px;
       color: #2a1810;
+      line-height: 1.06;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-classique .subtitle {
       text-align: center;
@@ -114,13 +145,17 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
     .t-classique .recipient {
       text-align: center;
       font-family: 'Bodoni Moda', serif;
-      font-size: 64px;
+      font-size: clamp(36px, 5.8vw, 64px);
       font-weight: 400;
       margin: 6px 120px 12px;
       border-bottom: 2px solid ${accent};
       padding-bottom: 14px;
       line-height: 1.05;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    /* Four lines, then ellipsis: the description is a caption here, not the body. */
     .t-classique .description {
       text-align: center;
       font-size: 18px;
@@ -128,16 +163,17 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       color: #3a2515;
       margin: 20px 110px 0;
       line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-classique .footer {
-      position: absolute;
-      bottom: 90px;
-      left: 55px;
-      right: 55px;
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: end;
       gap: 40px;
+      flex: none;
     }
     .t-classique .sig {
       text-align: center;

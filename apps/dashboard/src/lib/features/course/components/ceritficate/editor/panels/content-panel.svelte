@@ -4,12 +4,20 @@
   import { TextareaField } from '@cio/ui/custom/textarea-field';
   import { t } from '$lib/utils/functions/translations';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
+  import { getTemplateLabelKeys } from '@cio/certificates';
 
   interface Props {
     disabled?: boolean;
   }
 
   let { disabled = false }: Props = $props();
+
+  /**
+   * Only the wording the CURRENT template actually prints. Showing every label
+   * would ask a teacher to fill in lines that never appear — Classique has no
+   * "Issued" key, Minimal has no "certifies that" line.
+   */
+  const labelKeys = $derived(getTemplateLabelKeys(certificateEditorStore.draft.templateId));
 </script>
 
 <Field.Group>
@@ -38,6 +46,28 @@
       </Field.Field>
     </Field.Group>
   </Field.Set>
+
+  {#if labelKeys.length > 0}
+    <Field.Separator />
+
+    <Field.Set>
+      <Field.Legend>{$t('course.navItem.certificates.editor.section_labels')}</Field.Legend>
+      <Field.Group>
+        {#each labelKeys as key (key)}
+          <Field.Field>
+            <InputField
+              label={$t(`course.navItem.certificates.editor.label_${key}`)}
+              bind:value={certificateEditorStore.draft.labels[key]}
+              isDisabled={disabled}
+            />
+          </Field.Field>
+        {/each}
+      </Field.Group>
+      <Field.Description>
+        {$t('course.navItem.certificates.editor.section_labels_hint')}
+      </Field.Description>
+    </Field.Set>
+  {/if}
 
   <Field.Separator />
 

@@ -1,10 +1,12 @@
 import { escapeHtml, getYear, type TemplateRenderer } from './shared';
+import { resolveLabels } from '../constants';
 
 export const renderPoster: TemplateRenderer = ({ design, data }) => {
   const accent = design.accentColor;
   const subtitle = design.subtitle ?? '';
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
+  const labels = resolveLabels(design.labels);
   const [firstTitleWord, ...restTitleWords] = data.courseName.split(' ');
   const titleEmphasis = restTitleWords.join(' ');
 
@@ -21,7 +23,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
         <div class="title">${escapeHtml(firstTitleWord || 'Award')} <em>${escapeHtml(titleEmphasis)}</em></div>
         <div class="of">${escapeHtml(subtitle)}</div>
         <div class="recipient-area">
-          <div class="lbl">Awarded To</div>
+          <div class="lbl">${escapeHtml(labels.awardedTo)}</div>
           <div class="recipient">${escapeHtml(data.recipientName)}</div>
         </div>
         <div class="description">${escapeHtml(description)}</div>
@@ -35,7 +37,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
             <div class="v">${escapeHtml(signatoryTwo.name)}</div>
           </div>
           <div>
-            <div class="k">Issued</div>
+            <div class="k">${escapeHtml(labels.issued)}</div>
             <div class="v">${escapeHtml(data.date)}</div>
           </div>
         </div>

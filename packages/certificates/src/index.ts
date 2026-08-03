@@ -1,6 +1,8 @@
 export {
   CERTIFICATE_TEMPLATE_IDS,
   type CertificateDesign,
+  type CertificateLabelKey,
+  type CertificateLabels,
   type CertificateRenderData,
   type CertificateRenderResult,
   type CertificateSignatory,
@@ -13,7 +15,10 @@ export {
   CERTIFICATE_TEMPLATES,
   DEFAULT_ACCENT_COLOR,
   DEFAULT_CERTIFICATE_DESIGN,
+  DEFAULT_CERTIFICATE_LABELS,
   LEGACY_THEME_MAP,
+  getTemplateLabelKeys,
+  resolveLabels,
   type AccentColor
 } from './constants';
 

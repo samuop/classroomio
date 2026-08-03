@@ -1,4 +1,5 @@
 import { escapeHtml, type TemplateRenderer } from './shared';
+import { resolveLabels } from '../constants';
 
 export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
   const accent = design.accentColor;
@@ -6,6 +7,7 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
   const idDigits = data.certificateId.match(/\d+/)?.[0] ?? '00';
+  const labels = resolveLabels(design.labels);
 
   const body = `
     <div class="cert t-brutalist">
@@ -19,24 +21,24 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
       </div>
       <div class="meta-row">
         <div>
-          <div class="k">Date</div>
+          <div class="k">${escapeHtml(labels.issued)}</div>
           <div class="v">${escapeHtml(data.date)}</div>
         </div>
         <div>
-          <div class="k">Award</div>
+          <div class="k">${escapeHtml(labels.award)}</div>
           <div class="v">${escapeHtml(data.courseName)}</div>
         </div>
         <div>
-          <div class="k">Class</div>
+          <div class="k">${escapeHtml(labels.distinction)}</div>
           <div class="v">${escapeHtml(subtitle)}</div>
         </div>
       </div>
       <div class="recipient-block">
-        <div class="lbl">Awarded To</div>
+        <div class="lbl">${escapeHtml(labels.awardedTo)}</div>
         <div class="recipient">${escapeHtml(data.recipientName)}</div>
         <div class="description">${escapeHtml(description)}</div>
       </div>
-      <div class="stamp">Verified</div>
+      ${labels.seal ? `<div class="stamp">${escapeHtml(labels.seal)}</div>` : ''}
       <div class="footer">
         <div>
           <div class="lbl">${escapeHtml(signatoryOne.role)}</div>

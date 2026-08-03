@@ -1,10 +1,12 @@
 import { escapeHtml, type TemplateRenderer } from './shared';
+import { resolveLabels } from '../constants';
 
 export const renderMinimal: TemplateRenderer = ({ design, data }) => {
   const accent = design.accentColor;
   const subtitle = design.subtitle ?? '';
   const description = design.descriptionOverride || data.courseDescription;
   const [signatoryOne, signatoryTwo] = design.signatories;
+  const labels = resolveLabels(design.labels);
 
   const body = `
     <div class="cert t-minimal">
@@ -32,11 +34,11 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
           <div class="v">${escapeHtml(signatoryTwo.name)}</div>
         </div>
         <div>
-          <div class="k">Issued</div>
+          <div class="k">${escapeHtml(labels.issued)}</div>
           <div class="v">${escapeHtml(data.date)}</div>
         </div>
         <div class="ref">
-          <div class="k">Reference</div>
+          <div class="k">${escapeHtml(labels.reference)}</div>
           <div class="v">${escapeHtml(data.certificateId)}</div>
         </div>
       </div>
