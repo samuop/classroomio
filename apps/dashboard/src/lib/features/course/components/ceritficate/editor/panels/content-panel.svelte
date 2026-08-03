@@ -3,8 +3,10 @@
   import { InputField } from '@cio/ui/custom/input-field';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
   import { t } from '$lib/utils/functions/translations';
+  import { currentOrg } from '$lib/utils/store/org';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
-  import { getTemplateLabelKeys } from '@cio/certificates';
+  import BrandLogoField from './brand-logo-field.svelte';
+  import { MAX_BRAND_LOGO_HEIGHT, MIN_BRAND_LOGO_HEIGHT, getTemplateLabelKeys } from '@cio/certificates';
 
   interface Props {
     disabled?: boolean;
@@ -12,18 +14,44 @@
 
   let { disabled = false }: Props = $props();
 
+  const draft = $derived(certificateEditorStore.draft);
+
   /**
    * Only the wording the CURRENT template actually prints. Showing every label
    * would ask a teacher to fill in lines that never appear — Classique has no
    * "Issued" key, Minimal has no "certifies that" line.
+   *
+   * The two brand captions are deliberately NOT in these lists: every template
+   * draws the marks, so they belong with the marks below rather than in a
+   * per-template section.
    */
-  const labelKeys = $derived(getTemplateLabelKeys(certificateEditorStore.draft.templateId));
+  const labelKeys = $derived(getTemplateLabelKeys(draft.templateId));
+
+  /**
+   * The captions only print when there are two marks to tell apart, so offering
+   * them before then would be offering a field that does nothing.
+   */
+  const hasClientBrand = $derived(Boolean(draft.clientBrandName.trim() || draft.clientBrandLogoUrl.trim()));
+
+  /** Noir prints its marks on near-black; a white wordmark needs the same behind it. */
+  const logoPreview = $derived(draft.templateId === 'noir' ? ('dark' as const) : ('light' as const));
 </script>
 
 <Field.Group>
   <Field.Set>
     <Field.Legend>{$t('course.navItem.certificates.editor.section_header')}</Field.Legend>
     <Field.Group>
+      <Field.Field>
+        <InputField
+          label={$t('course.navItem.certificates.editor.title_override')}
+          bind:value={certificateEditorStore.draft.titleOverride}
+          placeholder={$t('course.navItem.certificates.editor.title_override_placeholder')}
+          isDisabled={disabled}
+        />
+        <Field.Description>
+          {$t('course.navItem.certificates.editor.title_override_hint')}
+        </Field.Description>
+      </Field.Field>
       <Field.Field>
         <InputField
           label={$t('course.navItem.certificates.editor.subtitle')}
@@ -50,7 +78,35 @@
   <Field.Separator />
 
   <Field.Set>
-    <Field.Legend>{$t('course.navItem.certificates.editor.section_client_brand')}</Field.Legend>
+    <Field.Legend>{$t('course.navItem.certificates.editor.section_brands')}</Field.Legend>
+    <Field.Description>
+      {$t('course.navItem.certificates.editor.section_brands_hint')}
+    </Field.Description>
+
+    <Field.Group>
+      <Field.Field>
+        <InputField
+          label={$t('course.navItem.certificates.editor.org_brand_name')}
+          bind:value={certificateEditorStore.draft.orgBrandName}
+          placeholder={$currentOrg.name || $t('course.navItem.certificates.editor.sample_org')}
+          isDisabled={disabled}
+        />
+        <Field.Description>
+          {$t('course.navItem.certificates.editor.org_brand_name_hint')}
+        </Field.Description>
+      </Field.Field>
+
+      <BrandLogoField
+        label={$t('course.navItem.certificates.editor.org_brand_logo')}
+        value={draft.orgBrandLogoUrl}
+        preview={logoPreview}
+        {disabled}
+        onChange={(url) => (certificateEditorStore.draft.orgBrandLogoUrl = url)}
+      />
+    </Field.Group>
+
+    <Field.Separator />
+
     <Field.Group>
       <Field.Field>
         <InputField
@@ -60,27 +116,58 @@
           isDisabled={disabled}
         />
       </Field.Field>
-      <Field.Field>
-        <InputField
-          label={$t('course.navItem.certificates.editor.client_brand_logo')}
-          bind:value={certificateEditorStore.draft.clientBrandLogoUrl}
-          placeholder="https://…"
-          isDisabled={disabled}
-        />
-        <Field.Description>
-          {$t('course.navItem.certificates.editor.client_brand_logo_hint')}
-        </Field.Description>
-      </Field.Field>
+
+      <BrandLogoField
+        label={$t('course.navItem.certificates.editor.client_brand_logo')}
+        value={draft.clientBrandLogoUrl}
+        preview={logoPreview}
+        {disabled}
+        onChange={(url) => (certificateEditorStore.draft.clientBrandLogoUrl = url)}
+      />
     </Field.Group>
-    <Field.Description>
-      {#if certificateEditorStore.isCanvas}
-        {$t('course.navItem.certificates.editor.section_client_brand_hint')}
-      {:else}
-        <!-- No fixed template draws a logo, so saying nothing here would leave a
-             teacher filling in a field that visibly does nothing. -->
-        {$t('course.navItem.certificates.editor.section_client_brand_needs_canvas')}
-      {/if}
-    </Field.Description>
+
+    {#if hasClientBrand}
+      <!-- Two marks side by side already read as "by / for", so these stay out
+           of the way until there is actually a second mark to caption. -->
+      <Field.Group>
+        <Field.Field>
+          <InputField
+            label={$t('course.navItem.certificates.editor.label_deliveredBy')}
+            bind:value={certificateEditorStore.draft.labels.deliveredBy}
+            placeholder={$t('course.navItem.certificates.editor.label_deliveredBy_placeholder')}
+            isDisabled={disabled}
+          />
+        </Field.Field>
+        <Field.Field>
+          <InputField
+            label={$t('course.navItem.certificates.editor.label_deliveredFor')}
+            bind:value={certificateEditorStore.draft.labels.deliveredFor}
+            placeholder={$t('course.navItem.certificates.editor.label_deliveredFor_placeholder')}
+            isDisabled={disabled}
+          />
+        </Field.Field>
+      </Field.Group>
+    {/if}
+
+    <Field.Field>
+      <Field.Label for="brand-logo-height">
+        {$t('course.navItem.certificates.editor.brand_logo_height')}
+        <span class="ui:text-muted-foreground ml-1 font-normal">{draft.brandLogoHeight}px</span>
+      </Field.Label>
+      <input
+        id="brand-logo-height"
+        type="range"
+        min={MIN_BRAND_LOGO_HEIGHT}
+        max={MAX_BRAND_LOGO_HEIGHT}
+        step="2"
+        {disabled}
+        bind:value={certificateEditorStore.draft.brandLogoHeight}
+        class="w-full accent-current"
+      />
+      <Field.Description>
+        {$t('course.navItem.certificates.editor.brand_logo_height_hint')}
+      </Field.Description>
+    </Field.Field>
   </Field.Set>
 
   {#if labelKeys.length > 0}

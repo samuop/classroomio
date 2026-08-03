@@ -1,5 +1,6 @@
 <script lang="ts">
   import {
+    CANVAS_EDITOR_ENABLED,
     CERTIFICATE_TEMPLATES,
     type BindingValues,
     type CertificateRenderData,
@@ -76,23 +77,30 @@
   {/each}
 </div>
 
-<div class="mt-4 rounded-md border p-3">
-  {#if store.isCanvas}
-    <p class="text-xs font-medium">{$t('course.navItem.certificates.editor.canvas_active')}</p>
-    <Button variant="ghost" size="sm" class="mt-2 w-full" {disabled} onclick={revert}>
-      <RotateCcwIcon size={14} class="mr-1.5" />
-      {$t('course.navItem.certificates.editor.revert_to_template')}
-    </Button>
-  {:else}
-    <Button variant="secondary" size="sm" class="w-full" disabled={disabled || isSeeding} onclick={toCanvas}>
-      <PenToolIcon size={14} class="mr-1.5" />
-      {$t('course.navItem.certificates.editor.switch_to_canvas')}
-    </Button>
-    <p class="ui:text-muted-foreground mt-2 text-xs">
-      {$t('course.navItem.certificates.editor.switch_to_canvas_hint')}
-    </p>
-  {/if}
-</div>
+<!--
+  The way onto the free canvas, parked with the canvas itself. See
+  CANVAS_EDITOR_ENABLED in @cio/certificates for why, and for what to flip to
+  bring it back — the store and the renderer read the same constant.
+-->
+{#if CANVAS_EDITOR_ENABLED}
+  <div class="mt-4 rounded-md border p-3">
+    {#if store.isCanvas}
+      <p class="text-xs font-medium">{$t('course.navItem.certificates.editor.canvas_active')}</p>
+      <Button variant="ghost" size="sm" class="mt-2 w-full" {disabled} onclick={revert}>
+        <RotateCcwIcon size={14} class="mr-1.5" />
+        {$t('course.navItem.certificates.editor.revert_to_template')}
+      </Button>
+    {:else}
+      <Button variant="secondary" size="sm" class="w-full" disabled={disabled || isSeeding} onclick={toCanvas}>
+        <PenToolIcon size={14} class="mr-1.5" />
+        {$t('course.navItem.certificates.editor.switch_to_canvas')}
+      </Button>
+      <p class="ui:text-muted-foreground mt-2 text-xs">
+        {$t('course.navItem.certificates.editor.switch_to_canvas_hint')}
+      </p>
+    {/if}
+  </div>
+{/if}
 
 <p class="ui:text-muted-foreground mt-4 text-xs">
   {$t('course.navItem.certificates.editor.templates_hint')}

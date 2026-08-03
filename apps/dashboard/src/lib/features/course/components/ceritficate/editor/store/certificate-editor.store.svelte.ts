@@ -1,4 +1,6 @@
 import {
+  CANVAS_EDITOR_ENABLED,
+  DEFAULT_BRAND_LOGO_HEIGHT,
   DEFAULT_CERTIFICATE_DESIGN,
   DEFAULT_CERTIFICATE_LABELS,
   buildPresetDocument,
@@ -33,6 +35,8 @@ export interface CertificateEditorDraft {
   subtitle: string;
   descriptionOverride: string;
   idFormat: string;
+  /** What the certificate calls the achievement, in place of the course title. */
+  titleOverride: string;
   signatories: [{ name: string; role: string }, { name: string; role: string }];
   /**
    * The fixed wording each template prints ("se certifica que", "Otorgado a"…).
@@ -40,12 +44,21 @@ export interface CertificateEditorDraft {
    * template and back does not lose what the teacher already typed.
    */
   labels: Record<CertificateLabelKey, string>;
+  /**
+   * The organisation delivering the training; the first mark. Empty means fall
+   * back to the workspace's own name and avatar.
+   */
+  orgBrandName: string;
+  orgBrandLogoUrl: string;
   /** The client company this training was delivered for; the second mark. */
   clientBrandName: string;
   clientBrandLogoUrl: string;
+  /** Printed height of each logo, in canvas pixels. */
+  brandLogoHeight: number;
   /**
-   * A free canvas layout. `null` means the course still renders through one of
-   * the five fixed templates, which is where every course starts.
+   * A free canvas layout. `null` means the course renders through one of the
+   * five fixed templates, which is every course while `CANVAS_EDITOR_ENABLED`
+   * is off.
    */
   document: CertificateDocument | null;
 }
@@ -80,14 +93,31 @@ function toDraft(design: CertificateDesign): CertificateEditorDraft {
     subtitle: design.subtitle ?? '',
     descriptionOverride: design.descriptionOverride ?? '',
     idFormat: design.idFormat ?? '',
+    titleOverride: design.titleOverride ?? '',
     signatories: [
       { name: design.signatories[0]?.name ?? '', role: design.signatories[0]?.role ?? '' },
       { name: design.signatories[1]?.name ?? '', role: design.signatories[1]?.role ?? '' }
     ],
     labels: toLabelDraft(design.labels),
+    orgBrandName: design.orgBrand?.name ?? '',
+    orgBrandLogoUrl: design.orgBrand?.logoUrl ?? '',
     clientBrandName: design.clientBrand?.name ?? '',
     clientBrandLogoUrl: design.clientBrand?.logoUrl ?? '',
+    brandLogoHeight: design.brandLogoHeight ?? DEFAULT_BRAND_LOGO_HEIGHT,
     document: design.document ?? null
+  };
+}
+
+/** `{ name, logoUrl }` with blanks dropped, or nothing at all when both are blank. */
+function toBrand(name: string, logoUrl: string): CertificateDesign['clientBrand'] {
+  const trimmedName = name.trim();
+  const trimmedLogo = logoUrl.trim();
+
+  if (!trimmedName && !trimmedLogo) return undefined;
+
+  return {
+    ...(trimmedName ? { name: trimmedName } : {}),
+    ...(trimmedLogo ? { logoUrl: trimmedLogo } : {})
   };
 }
 
@@ -98,19 +128,21 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
     subtitle: draft.subtitle.trim() || undefined,
     descriptionOverride: draft.descriptionOverride.trim() || undefined,
     idFormat: draft.idFormat.trim() || undefined,
+    titleOverride: draft.titleOverride.trim() || undefined,
     signatories: [
       { name: draft.signatories[0].name, role: draft.signatories[0].role },
       { name: draft.signatories[1].name, role: draft.signatories[1].role }
     ],
     labels: fromLabelDraft(draft.labels),
-    ...(draft.clientBrandName.trim() || draft.clientBrandLogoUrl.trim()
-      ? {
-          clientBrand: {
-            ...(draft.clientBrandName.trim() ? { name: draft.clientBrandName.trim() } : {}),
-            ...(draft.clientBrandLogoUrl.trim() ? { logoUrl: draft.clientBrandLogoUrl.trim() } : {})
-          }
-        }
+    ...(toBrand(draft.orgBrandName, draft.orgBrandLogoUrl)
+      ? { orgBrand: toBrand(draft.orgBrandName, draft.orgBrandLogoUrl) }
       : {}),
+    ...(toBrand(draft.clientBrandName, draft.clientBrandLogoUrl)
+      ? { clientBrand: toBrand(draft.clientBrandName, draft.clientBrandLogoUrl) }
+      : {}),
+    // Only when it differs from the default, so a course does not freeze
+    // today's sizing — same rule the labels follow.
+    ...(draft.brandLogoHeight !== DEFAULT_BRAND_LOGO_HEIGHT ? { brandLogoHeight: draft.brandLogoHeight } : {}),
     ...(draft.document ? { document: draft.document } : {})
   };
 }
@@ -137,8 +169,15 @@ function readStoredDesign(): CertificateDesign {
     ],
     idFormat: stored?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
     labels: stored?.labels,
+    titleOverride: stored?.titleOverride,
+    orgBrand: stored?.orgBrand,
     clientBrand: stored?.clientBrand,
-    document: stored?.document
+    brandLogoHeight: stored?.brandLogoHeight,
+    // A course that was saved onto the canvas while it existed opens on its
+    // template instead. `renderCertificate` ignores the stored layout for the
+    // same reason and off the same constant, so the editor and the issued PDF
+    // agree about which one is in force.
+    document: CANVAS_EDITOR_ENABLED ? stored?.document : undefined
   };
 }
 
@@ -289,7 +328,7 @@ class CertificateEditorStore {
    * canvas.
    */
   async switchToCanvas(data: CertificateRenderData, values: BindingValues) {
-    if (this.draft.document) return;
+    if (!CANVAS_EDITOR_ENABLED || this.draft.document) return;
 
     const design = fromDraft(this.draft);
     const measured = await measureTemplateAsDocument(design, data, values).catch(() => null);
