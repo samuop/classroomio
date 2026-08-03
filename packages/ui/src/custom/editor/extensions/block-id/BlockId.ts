@@ -17,7 +17,17 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 
 export const BLOCK_ID_ATTRIBUTE = 'data-block-id';
 
-/** Node types that get an id. Inline nodes and table internals are not addressable units. */
+/**
+ * Node types that get an id. Inline nodes and table internals are not addressable
+ * units.
+ *
+ * `svgBlock` is deliberately absent. It renders by handing ProseMirror the raw
+ * `<svg>` element, bypassing attribute serialisation, so an id stamped on it
+ * could never reach storage — it would be re-stamped on every load and never
+ * persist. Diagrams already have their own addressing (their ordinal among the
+ * SVGs, which `regenerateDiagram` depends on); adding a second mechanism to the
+ * same element is how the wrong picture gets replaced.
+ */
 const DEFAULT_TYPES = [
   'paragraph',
   'heading',
@@ -28,7 +38,6 @@ const DEFAULT_TYPES = [
   'codeBlock',
   'table',
   'image',
-  'svgBlock',
   'lessonMedia',
   'horizontalRule'
 ];

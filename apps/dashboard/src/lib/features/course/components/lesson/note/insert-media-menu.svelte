@@ -37,10 +37,15 @@
   }
 </script>
 
+<!--
+  Stays enabled with nothing to offer, so opening it can explain why. A greyed-out
+  button leaves the teacher guessing whether the feature is broken or the lesson
+  is simply empty.
+-->
 <DropdownMenu.Root>
-  <DropdownMenu.Trigger disabled={!editor || items.length === 0}>
+  <DropdownMenu.Trigger disabled={!editor}>
     {#snippet child({ props })}
-      <Button {...props} variant="outline" size="sm" disabled={!editor || items.length === 0}>
+      <Button {...props} variant="outline" size="sm" disabled={!editor}>
         <PlusIcon size={16} />
         {$t('course.navItem.lessons.materials.tabs.note.insert_media')}
       </Button>
