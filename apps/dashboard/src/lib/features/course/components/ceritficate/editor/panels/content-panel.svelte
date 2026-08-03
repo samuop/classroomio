@@ -47,6 +47,42 @@
     </Field.Group>
   </Field.Set>
 
+  <Field.Separator />
+
+  <Field.Set>
+    <Field.Legend>{$t('course.navItem.certificates.editor.section_client_brand')}</Field.Legend>
+    <Field.Group>
+      <Field.Field>
+        <InputField
+          label={$t('course.navItem.certificates.editor.client_brand_name')}
+          bind:value={certificateEditorStore.draft.clientBrandName}
+          placeholder={$t('course.navItem.certificates.editor.client_brand_name_placeholder')}
+          isDisabled={disabled}
+        />
+      </Field.Field>
+      <Field.Field>
+        <InputField
+          label={$t('course.navItem.certificates.editor.client_brand_logo')}
+          bind:value={certificateEditorStore.draft.clientBrandLogoUrl}
+          placeholder="https://…"
+          isDisabled={disabled}
+        />
+        <Field.Description>
+          {$t('course.navItem.certificates.editor.client_brand_logo_hint')}
+        </Field.Description>
+      </Field.Field>
+    </Field.Group>
+    <Field.Description>
+      {#if certificateEditorStore.isCanvas}
+        {$t('course.navItem.certificates.editor.section_client_brand_hint')}
+      {:else}
+        <!-- No fixed template draws a logo, so saying nothing here would leave a
+             teacher filling in a field that visibly does nothing. -->
+        {$t('course.navItem.certificates.editor.section_client_brand_needs_canvas')}
+      {/if}
+    </Field.Description>
+  </Field.Set>
+
   {#if labelKeys.length > 0}
     <Field.Separator />
 

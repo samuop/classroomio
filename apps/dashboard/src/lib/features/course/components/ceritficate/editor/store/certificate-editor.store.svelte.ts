@@ -1,8 +1,10 @@
 import {
   DEFAULT_CERTIFICATE_DESIGN,
   DEFAULT_CERTIFICATE_LABELS,
+  buildPresetDocument,
   resolveTemplateId,
   type CertificateDesign,
+  type CertificateDocument,
   type CertificateLabelKey,
   type CertificateLabels,
   type CertificateTemplateId
@@ -32,6 +34,14 @@ export interface CertificateEditorDraft {
    * template and back does not lose what the teacher already typed.
    */
   labels: Record<CertificateLabelKey, string>;
+  /** The client company this training was delivered for; the second mark. */
+  clientBrandName: string;
+  clientBrandLogoUrl: string;
+  /**
+   * A free canvas layout. `null` means the course still renders through one of
+   * the five fixed templates, which is where every course starts.
+   */
+  document: CertificateDocument | null;
 }
 
 const LABEL_KEYS = Object.keys(DEFAULT_CERTIFICATE_LABELS) as CertificateLabelKey[];
@@ -68,7 +78,10 @@ function toDraft(design: CertificateDesign): CertificateEditorDraft {
       { name: design.signatories[0]?.name ?? '', role: design.signatories[0]?.role ?? '' },
       { name: design.signatories[1]?.name ?? '', role: design.signatories[1]?.role ?? '' }
     ],
-    labels: toLabelDraft(design.labels)
+    labels: toLabelDraft(design.labels),
+    clientBrandName: design.clientBrand?.name ?? '',
+    clientBrandLogoUrl: design.clientBrand?.logoUrl ?? '',
+    document: design.document ?? null
   };
 }
 
@@ -83,7 +96,16 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
       { name: draft.signatories[0].name, role: draft.signatories[0].role },
       { name: draft.signatories[1].name, role: draft.signatories[1].role }
     ],
-    labels: fromLabelDraft(draft.labels)
+    labels: fromLabelDraft(draft.labels),
+    ...(draft.clientBrandName.trim() || draft.clientBrandLogoUrl.trim()
+      ? {
+          clientBrand: {
+            ...(draft.clientBrandName.trim() ? { name: draft.clientBrandName.trim() } : {}),
+            ...(draft.clientBrandLogoUrl.trim() ? { logoUrl: draft.clientBrandLogoUrl.trim() } : {})
+          }
+        }
+      : {}),
+    ...(draft.document ? { document: draft.document } : {})
   };
 }
 
@@ -108,7 +130,9 @@ function readStoredDesign(): CertificateDesign {
       }
     ],
     idFormat: stored?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
-    labels: stored?.labels
+    labels: stored?.labels,
+    clientBrand: stored?.clientBrand,
+    document: stored?.document
   };
 }
 
@@ -134,8 +158,42 @@ class CertificateEditorStore {
     this.draft = toDraft(fromDraft(this.initial));
   }
 
+  /** True once this course renders from a canvas layout rather than a template. */
+  readonly isCanvas = $derived(this.draft.document !== null);
+
   setTemplate(templateId: CertificateTemplateId) {
     this.draft.templateId = templateId;
+
+    // Picking a different template while on the canvas would otherwise change
+    // nothing visible — the document owns the layout — which reads as a broken
+    // button. Re-seed from the template just chosen instead.
+    if (this.draft.document) {
+      this.draft.document = buildPresetDocument({ ...fromDraft(this.draft), templateId });
+    }
+  }
+
+  /**
+   * Move this course onto the free canvas, seeded from the template it is
+   * already using so the teacher starts from their own certificate rather than
+   * an empty rectangle.
+   *
+   * This is also what turns on the two brand slots: no fixed template draws a
+   * logo at all, so the client's mark only appears once a course is on the
+   * canvas.
+   */
+  switchToCanvas() {
+    if (this.draft.document) return;
+
+    this.draft.document = buildPresetDocument(fromDraft(this.draft));
+  }
+
+  /**
+   * Back to the fixed template. The document is dropped, and that is a real
+   * loss of work, so the caller confirms first — the store does not own that
+   * conversation, but it must not pretend the layout is recoverable.
+   */
+  revertToTemplate() {
+    this.draft.document = null;
   }
 
   setAccent(color: string) {
@@ -168,7 +226,10 @@ class CertificateEditorStore {
         this.initial = {
           ...this.draft,
           signatories: [{ ...this.draft.signatories[0] }, { ...this.draft.signatories[1] }],
-          labels: { ...this.draft.labels }
+          labels: { ...this.draft.labels },
+          // Deep-copied like the rest: sharing the reference would make `isDirty`
+          // compare the document against itself and never report a change.
+          document: this.draft.document ? structuredClone($state.snapshot(this.draft.document)) : null
         };
         snackbar.success(t.get('course.navItem.certificates.editor.saved'));
       }

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { CERTIFICATE_TEMPLATES, type CertificateTemplateId } from '@cio/certificates';
+  import { Button } from '@cio/ui/base/button';
+  import PenToolIcon from '@lucide/svelte/icons/pen-tool';
+  import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
   import { t } from '$lib/utils/functions/translations';
   import { cn } from '@cio/ui/tools';
   import TemplateThumb from './template-thumb.svelte';
+  import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
 
   interface Props {
     value: CertificateTemplateId;
@@ -11,6 +15,16 @@
   }
 
   let { value, onSelect, disabled = false }: Props = $props();
+
+  const store = certificateEditorStore;
+
+  function revert() {
+    // Dropping the canvas throws away real design work, so it is the one action
+    // here that asks first.
+    if (confirm($t('course.navItem.certificates.editor.revert_to_template_confirm'))) {
+      store.revertToTemplate();
+    }
+  }
 </script>
 
 <div class="grid grid-cols-2 gap-3">
@@ -39,6 +53,24 @@
       </span>
     </button>
   {/each}
+</div>
+
+<div class="mt-4 rounded-md border p-3">
+  {#if store.isCanvas}
+    <p class="text-xs font-medium">{$t('course.navItem.certificates.editor.canvas_active')}</p>
+    <Button variant="ghost" size="sm" class="mt-2 w-full" {disabled} onclick={revert}>
+      <RotateCcwIcon size={14} class="mr-1.5" />
+      {$t('course.navItem.certificates.editor.revert_to_template')}
+    </Button>
+  {:else}
+    <Button variant="secondary" size="sm" class="w-full" {disabled} onclick={() => store.switchToCanvas()}>
+      <PenToolIcon size={14} class="mr-1.5" />
+      {$t('course.navItem.certificates.editor.switch_to_canvas')}
+    </Button>
+    <p class="ui:text-muted-foreground mt-2 text-xs">
+      {$t('course.navItem.certificates.editor.switch_to_canvas_hint')}
+    </p>
+  {/if}
 </div>
 
 <p class="ui:text-muted-foreground mt-4 text-xs">
