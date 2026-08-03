@@ -45,6 +45,7 @@ import { enrollInCourse } from '@api/services/course/invite';
 import { exerciseRouter } from '@api/routes/course/exercise';
 import { extractClientIp } from '@api/utils/redis/key-generators';
 import { generateCertificatePdf, generateCertificatePng } from '@api/utils/certificate';
+import { CERTIFICATE_RENDER_UNCONFIGURED, isCertificateRenderConfigured } from '@api/utils/cloudflare';
 import { assembleCertificateRender, assembleOwnerPreviewRender } from '@api/services/course/certificate';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { generateCoursePdf } from '@api/utils/course';
@@ -512,7 +513,13 @@ export const courseRouter = new Hono()
           })
         );
       } catch (error) {
-        return handleError(c, error, 'Failed to download certificate');
+        // An unconfigured deployment is not an internal detail to hide: it is
+        // the one failure the person clicking can actually fix.
+        return handleError(
+          c,
+          error,
+          isCertificateRenderConfigured() ? 'Failed to download certificate' : CERTIFICATE_RENDER_UNCONFIGURED
+        );
       }
     }
   )
@@ -546,7 +553,11 @@ export const courseRouter = new Hono()
           })
         );
       } catch (error) {
-        return handleError(c, error, 'Failed to download certificate image');
+        return handleError(
+          c,
+          error,
+          isCertificateRenderConfigured() ? 'Failed to download certificate image' : CERTIFICATE_RENDER_UNCONFIGURED
+        );
       }
     }
   )

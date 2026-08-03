@@ -31,6 +31,48 @@
     } as const;
   }
 
+  /**
+   * What the server actually said, rather than "could not generate".
+   *
+   * Exporting goes through Cloudflare Browser Rendering, so it fails for
+   * reasons a teacher cannot guess at and an operator can fix in a minute —
+   * missing credentials, an expired key, an outage. The API now reports those
+   * precisely; throwing that away and printing a fixed sentence turns a
+   * five-minute fix into a bug report.
+   *
+   * `ApiError` carries the `Response`, and for a 5xx the client rejects on the
+   * status without reading the body, so the body is still there to read.
+   */
+  async function describeFailure(error: unknown): Promise<string> {
+    const response = (error as { response?: Response } | null)?.response;
+
+    if (response) {
+      try {
+        const text = await response.text();
+        const parsed = text.trim().startsWith('{') ? JSON.parse(text) : null;
+        const detail = (parsed?.error ?? parsed?.message ?? text ?? '').toString().trim();
+
+        if (detail) return detail.slice(0, 300);
+      } catch {
+        // The body was already consumed, or is not text. Fall through.
+      }
+    }
+
+    return error instanceof Error && error.message ? error.message : '';
+  }
+
+  async function reportFailure(context: string, error: unknown) {
+    console.error(context, error);
+
+    const detail = await describeFailure(error);
+
+    snackbar.error(
+      detail
+        ? t.get('course.navItem.certificates.editor.export_failed_detail', { detail })
+        : 'course.navItem.certificates.editor.preview_failed'
+    );
+  }
+
   async function downloadPdf() {
     if (disabled || isPdfLoading) return;
     isPdfLoading = true;
@@ -44,8 +86,7 @@
       const blob = await response.blob();
       triggerDownload(new Blob([blob], { type: 'application/pdf' }), `${downloadName}.pdf`);
     } catch (error) {
-      console.error('Preview PDF error', error);
-      snackbar.error('course.navItem.certificates.editor.preview_failed');
+      await reportFailure('Preview PDF error', error);
     } finally {
       isPdfLoading = false;
     }
@@ -64,8 +105,7 @@
       const blob = await response.blob();
       triggerDownload(new Blob([blob], { type: 'image/png' }), `${downloadName}.png`);
     } catch (error) {
-      console.error('Preview PNG error', error);
-      snackbar.error('course.navItem.certificates.editor.preview_failed');
+      await reportFailure('Preview PNG error', error);
     } finally {
       isPngLoading = false;
     }
@@ -93,8 +133,7 @@
         printWindow.document.close();
       }
     } catch (error) {
-      console.error('Preview print error', error);
-      snackbar.error('course.navItem.certificates.editor.preview_failed');
+      await reportFailure('Preview print error', error);
     } finally {
       isPrintLoading = false;
     }

@@ -3632,6 +3632,7 @@
           "print": "Print",
           "export_hint": "Exports use your name as the recipient so you can preview the final layout.",
           "preview_failed": "Could not generate certificate preview",
+          "export_failed_detail": "Could not export the certificate. {detail}",
           "sample_recipient": "Eleanor Vance",
           "sample_course": "Certificate of Excellence",
           "sample_description": "In recognition of outstanding achievement and exemplary dedication to the craft.",

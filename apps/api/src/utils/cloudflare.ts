@@ -1,6 +1,22 @@
 import { CLOUDFLARE } from '@api/constants';
 
 /**
+ * Whether this deployment can render certificates at all.
+ *
+ * Without these two values the call goes out as
+ * `/accounts/undefined/browser-rendering/pdf` with `Bearer undefined`, and
+ * Cloudflare answers 404 — which reads like a broken feature rather than an
+ * unconfigured one. The route uses this to say which it is, because the person
+ * who sees the message is usually the person who can fix it.
+ */
+export function isCertificateRenderConfigured(): boolean {
+  return Boolean(CLOUDFLARE.CONFIGS.ACCOUNT_ID && CLOUDFLARE.CONFIGS.RENDERING_API_KEY);
+}
+
+export const CERTIFICATE_RENDER_UNCONFIGURED =
+  'Certificate export is not configured: CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_RENDERING_API_KEY must be set on the API.';
+
+/**
  * A failed render must fail, not become a file.
  *
  * Neither of these functions checked the response, so any error — a 404 from an

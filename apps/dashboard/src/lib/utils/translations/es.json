@@ -1363,6 +1363,7 @@
           "print": "Imprimir",
           "export_hint": "Las exportaciones utilizan su nombre como destinatario para que pueda obtener una vista previa del diseño final.",
           "preview_failed": "No se pudo generar la vista previa del certificado",
+          "export_failed_detail": "No se pudo exportar el certificado. {detail}",
           "sample_recipient": "Eleanor Vance",
           "sample_course": "Certificado de Excelencia",
           "sample_description": "En reconocimiento a logros destacados y dedicación ejemplar al oficio.",
