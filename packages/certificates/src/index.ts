@@ -71,6 +71,7 @@ export {
 } from './document/bindings';
 
 export {
+  fontStack,
   renderDocument,
   type DocumentRenderInput,
   type DocumentRenderOutput

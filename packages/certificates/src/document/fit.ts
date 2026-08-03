@@ -151,6 +151,24 @@ export interface FitResult {
 /** Below this, a certificate stops being legible; `shrink` never goes further. */
 export const DEFAULT_MIN_FONT_SIZE = 10;
 
+/**
+ * Headroom the fit leaves inside the box.
+ *
+ * Widths here are ESTIMATES, so a fit that fills the box exactly is a fit that
+ * overflows the moment the estimate is off by a percent — and it will be. The
+ * first version accepted a title at 915 estimated pixels in a 920px box and the
+ * real text ran out over its neighbours.
+ *
+ * It also absorbs the case that actually bites in practice: the requested font
+ * has not loaded, so the browser is laying the text out in a fallback with
+ * different metrics. The renderer's fonts come over the network, and a
+ * stylesheet can be slow, blocked by a policy, or simply unavailable.
+ *
+ * 6% is roughly one character at a typical line length — enough to cover
+ * estimate drift, cheap enough that nothing is visibly smaller than it should be.
+ */
+const FIT_SAFETY = 0.94;
+
 /** Shrinking proceeds in whole points: predictable, and fast to reason about. */
 const SHRINK_STEP = 1;
 
@@ -165,14 +183,19 @@ export function fitText(element: Pick<TextElement, 'style' | 'fit' | 'minFontSiz
   const { style } = element;
   const text = style.uppercase ? resolvedText.toUpperCase() : resolvedText;
 
-  const linesAt = (size: number) => wrapText(text, element.w, size, style).length;
+  // Both axes get the margin: a line count derived from an over-optimistic
+  // width is wrong about the height too.
+  const usableWidth = element.w * FIT_SAFETY;
+  const usableHeight = element.h * FIT_SAFETY;
+
+  const linesAt = (size: number) => wrapText(text, usableWidth, size, style).length;
   const heightAt = (size: number, lineCount: number) => lineCount * size * style.lineHeight;
 
   if (element.fit === 'clamp') {
     const lineCount = linesAt(style.fontSize);
     // Whatever the caller asked for, never more lines than the box can hold —
     // a maxLines of 6 in a two-line box would clamp at a height nothing sees.
-    const boxLines = Math.max(1, Math.floor(element.h / (style.fontSize * style.lineHeight)));
+    const boxLines = Math.max(1, Math.floor(usableHeight / (style.fontSize * style.lineHeight)));
     const cap = Math.max(1, Math.min(element.maxLines ?? boxLines, boxLines));
 
     return {
@@ -189,7 +212,7 @@ export function fitText(element: Pick<TextElement, 'style' | 'fit' | 'minFontSiz
     return {
       fontSize: style.fontSize,
       lines: lineCount,
-      overflows: heightAt(style.fontSize, lineCount) > element.h
+      overflows: heightAt(style.fontSize, lineCount) > usableHeight
     };
   }
 
@@ -198,7 +221,7 @@ export function fitText(element: Pick<TextElement, 'style' | 'fit' | 'minFontSiz
   for (let size = style.fontSize; size >= floor; size -= SHRINK_STEP) {
     const lineCount = linesAt(size);
 
-    if (heightAt(size, lineCount) <= element.h) {
+    if (heightAt(size, lineCount) <= usableHeight) {
       return { fontSize: size, lines: lineCount, overflows: false };
     }
   }

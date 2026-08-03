@@ -63,9 +63,31 @@ const VERTICAL_TO_FLEX: Record<VerticalAlign, string> = {
   bottom: 'flex-end'
 };
 
-/** `Cormorant Garamond` → `'Cormorant Garamond', serif`. */
-function fontStack(family: string): string {
-  return `'${family.replace(/'/g, '')}', Georgia, serif`;
+/**
+ * Which generic family a face degrades to when its stylesheet has not arrived.
+ *
+ * Everything used to fall back to `Georgia, serif`, so a blocked or slow font
+ * turned Space Grotesk into a serif and JetBrains Mono into a proportional one —
+ * a different shape AND different metrics from what the fit engine measured,
+ * which is how text ends up outside the box it was sized for. The fonts arrive
+ * over the network, so this is a normal state, not an edge case.
+ */
+const FONT_CATEGORY: Record<string, string> = {
+  'Cormorant Garamond': 'Georgia, serif',
+  'Bodoni Moda': 'Georgia, serif',
+  'Playfair Display': 'Georgia, serif',
+  Cinzel: 'Georgia, serif',
+  'Archivo Black': 'Arial Black, Helvetica, sans-serif',
+  'Space Grotesk': 'Helvetica, Arial, sans-serif',
+  'DM Mono': 'Consolas, monospace',
+  'JetBrains Mono': 'Consolas, monospace'
+};
+
+/** `Cormorant Garamond` → `'Cormorant Garamond', Georgia, serif`. */
+export function fontStack(family: string): string {
+  const fallback = FONT_CATEGORY[family] ?? 'Georgia, serif';
+
+  return `'${family.replace(/'/g, '')}', ${fallback}`;
 }
 
 function positionRules(element: CertificateElement): string[] {

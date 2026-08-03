@@ -167,6 +167,33 @@ describe('fitText — clamp', () => {
   });
 });
 
+describe('fitText — headroom', () => {
+  it('leaves margin instead of filling the box to the last pixel', () => {
+    // The bug this exists for: the classique title fit at 51px with an estimated
+    // line of 915px inside a 920px box. Widths here are estimates, so a fit that
+    // exact overflows the moment the estimate is off by a percent — and it was,
+    // visibly, over the neighbouring elements.
+    const box = { w: 920, h: 104 };
+    const titleStyle: TextStyle = { ...style, fontFamily: 'Bodoni Moda', fontSize: 66, lineHeight: 1.06, italic: true };
+
+    const result = fitText({ ...box, style: titleStyle, fit: 'shrink', minFontSize: 32 }, 'Probability and Statistics Fundamentals');
+    const width = estimateTextWidth('Probability and Statistics Fundamentals', result.fontSize, titleStyle);
+
+    expect(width).toBeLessThan(box.w * 0.96);
+  });
+
+  it('applies the same headroom vertically', () => {
+    // A line count derived from an over-optimistic width is wrong about the
+    // height too, so margin on one axis only would not help.
+    const result = fitText(
+      { ...box(400, 100), style: { ...style, fontSize: 20, lineHeight: 1.0 }, fit: 'shrink', minFontSize: 20 },
+      'una linea\notra linea\nuna tercera\nuna cuarta\nuna quinta'
+    );
+
+    expect(result.overflows).toBe(true);
+  });
+});
+
 describe('fitText — overflow', () => {
   it('leaves the size untouched and still reports the spill', () => {
     const result = fitText({ ...box(120, 30), style, fit: 'overflow' }, 'un texto que claramente no entra acá');

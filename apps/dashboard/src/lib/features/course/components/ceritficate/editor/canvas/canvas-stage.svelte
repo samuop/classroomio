@@ -15,6 +15,7 @@
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
     fitText,
+    fontStack,
     keepReachable,
     moveRect,
     resizeRect,
@@ -238,7 +239,10 @@
     const { style } = element;
     const rules = [
       'width:100%',
-      `font-family:'${style.fontFamily}',serif`,
+      // Same stack the renderer emits, fallbacks included — a serif standing in
+      // for a sans would make the stage disagree with the PDF the moment a font
+      // is slow to arrive.
+      `font-family:${fontStack(style.fontFamily)}`,
       `font-size:${fit.fontSize}px`,
       `font-weight:${style.fontWeight}`,
       `line-height:${style.lineHeight}`,
@@ -314,7 +318,7 @@
   onkeydown={nudge}
 >
   <div
-    class="ui:bg-background relative shadow-lg"
+    class="ui:bg-background relative overflow-hidden shadow-lg"
     style="width:{CANVAS_WIDTH}px;height:{CANVAS_HEIGHT}px;transform:scale({scale});transform-origin:center center;background-color:{canvas?.color ??
       '#ffffff'}"
     onpointermove={handleMove}
