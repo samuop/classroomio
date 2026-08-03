@@ -2,6 +2,23 @@
 // Self-hosted (adapter-node) starts with empty lists; runtime domains
 // are added via env vars in hooks.server.ts so pre-built Docker images stay configurable.
 
+/**
+ * Origins every deployment needs, self-hosted included.
+ *
+ * Google Fonts is not a third-party integration an operator opts into here: the
+ * certificate renderer hard-codes `FONTS_LINK_HREF` at fonts.googleapis.com
+ * (packages/certificates), and the lesson editor loads display faces the same
+ * way. Self-hosted builds started from empty lists, so the stylesheet was
+ * blocked outright and every one of those faces silently fell back to a system
+ * font — while the exported PDF, rendered by Cloudflare's browser under no
+ * policy of ours, used the real ones. The preview and the issued document
+ * disagreed, which is the one thing the certificate design refuses to allow.
+ */
+const requiredEverywhere = {
+  styleSrc: ['https://fonts.googleapis.com'],
+  fontSrc: ['https://fonts.gstatic.com']
+};
+
 const saasDefaults = {
   scriptSrc: [
     'https://assets.cdn.clsrio.com',
@@ -80,10 +97,10 @@ export function getCspDomains(isSelfHosted, serverUrl, mediaHost) {
   if (isSelfHosted) {
     return {
       scriptSrc: [],
-      styleSrc: [],
+      styleSrc: [...requiredEverywhere.styleSrc],
       connectSrc: media,
       frameSrc: [],
-      fontSrc: [],
+      fontSrc: [...requiredEverywhere.fontSrc],
       mediaSrc: media,
       apiOrigin: null
     };
@@ -91,6 +108,8 @@ export function getCspDomains(isSelfHosted, serverUrl, mediaHost) {
 
   return {
     ...saasDefaults,
+    styleSrc: [...new Set([...saasDefaults.styleSrc, ...requiredEverywhere.styleSrc])],
+    fontSrc: [...new Set([...saasDefaults.fontSrc, ...requiredEverywhere.fontSrc])],
     connectSrc: [...saasDefaults.connectSrc, ...media],
     mediaSrc: [...saasDefaults.mediaSrc, ...media],
     apiOrigin: serverUrl ?? null

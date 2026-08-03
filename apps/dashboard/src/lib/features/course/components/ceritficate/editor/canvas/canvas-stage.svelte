@@ -14,6 +14,7 @@
   import {
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
+    fitText,
     keepReachable,
     moveRect,
     resizeRect,
@@ -21,6 +22,7 @@
     substituteBindings,
     type BindingValues,
     type CertificateElement,
+    type FitResult,
     type ResizeHandle,
     type SnapGuide
   } from '@cio/certificates';
@@ -195,6 +197,26 @@
     return element.kind === 'text' ? substituteBindings(element.content, values) : '';
   }
 
+  /**
+   * Size the text the way the RENDERER will, not the way the design declares.
+   *
+   * The stage first drew every string at its designed `fontSize`, which meant a
+   * title that the fit engine shrinks to 44px was shown at 66px, spilling out of
+   * its box and over its neighbours. The layout looked broken in the editor and
+   * would have come out fine in the PDF — the same divergence between preview
+   * and export that this whole design exists to avoid, just pointing the other
+   * way.
+   *
+   * Calling `fitText` here is what keeps the two honest: one measurement,
+   * shared. It is also why the fit engine had to be pure TypeScript rather than
+   * something that measures in the DOM.
+   */
+  function textFit(element: CertificateElement) {
+    if (element.kind !== 'text') return null;
+
+    return fitText(element, textPreview(element));
+  }
+
   function imageUrl(element: CertificateElement): string | undefined {
     if (element.kind !== 'image') return undefined;
 
@@ -202,6 +224,44 @@
     if (element.source.kind === 'clientLogo') return store.draft.clientBrandLogoUrl || undefined;
 
     return undefined;
+  }
+
+  /**
+   * Mirrors `renderTextElement` in the package renderer, down to the clamp
+   * rules. `-webkit-line-clamp` has to sit on this inner element, which is why
+   * the vertical alignment lives on a separate flex parent — same structure the
+   * renderer emits.
+   */
+  function textStyle(element: CertificateElement, fit: FitResult | null): string {
+    if (element.kind !== 'text' || !fit) return '';
+
+    const { style } = element;
+    const rules = [
+      'width:100%',
+      `font-family:'${style.fontFamily}',serif`,
+      `font-size:${fit.fontSize}px`,
+      `font-weight:${style.fontWeight}`,
+      `line-height:${style.lineHeight}`,
+      `letter-spacing:${style.letterSpacing}px`,
+      `color:${style.color}`,
+      `text-align:${style.align}`,
+      'overflow-wrap:break-word',
+      'white-space:pre-wrap'
+    ];
+
+    if (style.italic) rules.push('font-style:italic');
+    if (style.uppercase) rules.push('text-transform:uppercase');
+
+    if (element.fit === 'clamp' && fit.maxLines) {
+      rules.push(
+        'display:-webkit-box',
+        '-webkit-box-orient:vertical',
+        `-webkit-line-clamp:${fit.maxLines}`,
+        'overflow:hidden'
+      );
+    }
+
+    return rules.join(';');
   }
 
   /**
@@ -285,6 +345,7 @@
         onpointerdown={(event) => startMove(event, element)}
       >
         {#if element.kind === 'text'}
+          {@const fit = textFit(element)}
           <div
             class="pointer-events-none flex h-full w-full"
             style="align-items:{element.style.verticalAlign === 'top'
@@ -293,14 +354,7 @@
                 ? 'flex-end'
                 : 'center'}"
           >
-            <div
-              style="width:100%;font-family:'{element.style.fontFamily}',serif;font-size:{element.style
-                .fontSize}px;font-weight:{element.style.fontWeight};line-height:{element.style
-                .lineHeight};letter-spacing:{element.style.letterSpacing}px;color:{element.style
-                .color};text-align:{element.style.align};{element.style.italic
-                ? 'font-style:italic;'
-                : ''}{element.style.uppercase ? 'text-transform:uppercase;' : ''}overflow-wrap:break-word"
-            >
+            <div style={textStyle(element, fit)}>
               {textPreview(element)}
             </div>
           </div>
