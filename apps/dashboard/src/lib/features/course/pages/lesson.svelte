@@ -49,7 +49,7 @@
   } from '$features/course/components/lesson';
 
   import type { TLocale } from '@cio/db/types';
-  import { orderedTabs, tabs as materialTabs } from '$features/course/components/lesson/constants';
+  import { NOTE_TAB_VALUE, orderedTabs, tabs as materialTabs } from '$features/course/components/lesson/constants';
   import { getViewModeComponents } from '$features/course/components/lesson/utils';
   import { loadDraft, clearDraft } from '$features/course/utils/lesson-draft';
 
@@ -166,7 +166,12 @@
   $effect(() => {
     if (!tabs.length || currentTabValue) return;
     const urlTab = $page.url.searchParams.get('tab');
-    currentTabValue = urlTab ?? String(tabs[0].value);
+    // Open on the note, not on whatever tab happens to be first in the configured
+    // order. A teacher who clicks "edit" is going to the lesson's text; landing on
+    // an empty Video tab makes the lesson look empty and hides the work.
+    // An explicit ?tab= still wins — that is someone asking for a specific tab.
+    const noteTab = tabs.find((tab) => tab.value === NOTE_TAB_VALUE);
+    currentTabValue = urlTab ?? String((noteTab ?? tabs[0]).value);
   });
 
   const viewModeComponents = $derived(getViewModeComponents(tabs));

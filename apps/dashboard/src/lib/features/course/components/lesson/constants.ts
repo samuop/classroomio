@@ -12,6 +12,13 @@ interface MaterialTab {
   badgeValue?: number;
 }
 
+/**
+ * The note is the lesson's body; video, slide and document are supporting
+ * material. Named because the landing tab depends on it — the numbers here are
+ * persisted in `lessonTabsOrder`, so they cannot be renumbered.
+ */
+export const NOTE_TAB_VALUE = 1;
+
 export const tabs: MaterialTab[] = [
   {
     label: 'course.navItem.lessons.materials.tabs.video.title',
