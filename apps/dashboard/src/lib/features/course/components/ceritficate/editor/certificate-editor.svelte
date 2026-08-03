@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { CERTIFICATE_TEMPLATES, type CertificateTemplateId } from '@cio/certificates';
+  import {
+    CERTIFICATE_TEMPLATES,
+    STRESS_BINDING_VALUES,
+    buildBindingValues,
+    renderDocument,
+    type CertificateTemplateId
+  } from '@cio/certificates';
   import { Certificate } from '@cio/ui';
   import { IconButton } from '@cio/ui/custom/icon-button';
   import LayersIcon from '@lucide/svelte/icons/layers';
@@ -17,6 +23,8 @@
   import ContentPanel from './panels/content-panel.svelte';
   import ColorsPanel from './panels/colors-panel.svelte';
   import ExportPanel from './panels/export-panel.svelte';
+  import CanvasStage from './canvas/canvas-stage.svelte';
+  import CanvasToolbar from './canvas/canvas-toolbar.svelte';
   import { certificateEditorStore, type CertificateEditorPanel } from './store/certificate-editor.store.svelte';
 
   let { courseId }: { courseId: string } = $props();
@@ -35,6 +43,36 @@
   );
 
   const previewDesign = $derived(store.toDesign());
+
+  /**
+   * Which data the canvas shows. The stress values are the whole reason the fit
+   * contract exists: a teacher designing with their own short name has no other
+   * way to discover that a long one runs over the seal.
+   */
+  let stressPreview = $state(false);
+
+  const previewValues = $derived(
+    stressPreview
+      ? STRESS_BINDING_VALUES
+      : buildBindingValues(sampleRenderData, store.draft.clientBrandName)
+  );
+
+  /**
+   * Ask the renderer — the same one that produces the PDF — which elements did
+   * not fit, rather than re-deriving it in the editor. Two implementations of
+   * "does this fit" would disagree, and the one that matters is the one that
+   * prints.
+   */
+  const overflowingIds = $derived.by(() => {
+    if (!store.draft.document) return [];
+
+    return renderDocument({
+      document: store.draft.document,
+      data: sampleRenderData,
+      clientBrand: previewDesign.clientBrand,
+      bindingOverrides: previewValues
+    }).overflowingElementIds;
+  });
 
   const sampleRenderData = $derived({
     recipientName: $profile.fullname || $t('course.navItem.certificates.editor.sample_recipient'),
@@ -172,8 +210,25 @@
         class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-zinc-100 bg-[radial-gradient(circle,#d4d4d8_1px,transparent_1px)] [background-size:18px_18px] dark:bg-zinc-950 dark:bg-[radial-gradient(circle,rgba(113,113,122,0.4)_1px,transparent_1px)]"
         aria-label={$t('course.navItem.certificates.editor.preview')}
       >
+        {#if store.isCanvas}
+          <div class="absolute top-3 left-1/2 z-10 -translate-x-1/2">
+            <CanvasToolbar
+              {stressPreview}
+              onToggleStress={() => (stressPreview = !stressPreview)}
+              overflowCount={overflowingIds.length}
+              disabled={$isFreePlan}
+            />
+          </div>
+        {/if}
+
         <div class="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-14">
-          <Certificate.Preview design={previewDesign} data={sampleRenderData} showControls />
+          {#if store.isCanvas}
+            <!-- Editable surface instead of the read-only iframe. Both draw the
+                 same document; this one can be grabbed. -->
+            <CanvasStage values={previewValues} {overflowingIds} disabled={$isFreePlan} />
+          {:else}
+            <Certificate.Preview design={previewDesign} data={sampleRenderData} showControls />
+          {/if}
         </div>
       </section>
     </div>

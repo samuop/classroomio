@@ -5,6 +5,7 @@ import {
   resolveTemplateId,
   type CertificateDesign,
   type CertificateDocument,
+  type CertificateElement,
   type CertificateLabelKey,
   type CertificateLabels,
   type CertificateTemplateId
@@ -136,11 +137,28 @@ function readStoredDesign(): CertificateDesign {
   };
 }
 
+/** Plain deep copy of a rune-proxied document, safe to keep in a history stack. */
+function snapshotDocument(document: CertificateDocument): CertificateDocument {
+  return structuredClone($state.snapshot(document)) as CertificateDocument;
+}
+
+/**
+ * How many steps back the editor can go.
+ *
+ * Deep copies of a whole document, so this is a memory budget as much as a
+ * feature: 50 steps covers any realistic "I've made a mess, take me back"
+ * without holding megabytes of near-identical layouts.
+ */
+const MAX_HISTORY = 50;
+
 class CertificateEditorStore {
   activePanel = $state<CertificateEditorPanel>('templates');
   draft = $state<CertificateEditorDraft>(toDraft(DEFAULT_CERTIFICATE_DESIGN));
   initial = $state<CertificateEditorDraft>(toDraft(DEFAULT_CERTIFICATE_DESIGN));
   isSaving = $state(false);
+  selectedElementId = $state<string | null>(null);
+  #past = $state<CertificateDocument[]>([]);
+  #future = $state<CertificateDocument[]>([]);
   #initializedCourseId: string | null = null;
 
   readonly isDirty = $derived(JSON.stringify(this.draft) !== JSON.stringify(this.initial));
@@ -152,10 +170,18 @@ class CertificateEditorStore {
     this.initial = toDraft(stored);
     this.draft = toDraft(stored);
     this.#initializedCourseId = courseId;
+    // History belongs to the document being edited; carrying it across courses
+    // would let an undo paste one course's layout into another.
+    this.#past = [];
+    this.#future = [];
+    this.selectedElementId = null;
   }
 
   reset() {
     this.draft = toDraft(fromDraft(this.initial));
+    this.#past = [];
+    this.#future = [];
+    this.selectedElementId = null;
   }
 
   /** True once this course renders from a canvas layout rather than a template. */
@@ -193,7 +219,138 @@ class CertificateEditorStore {
    * conversation, but it must not pretend the layout is recoverable.
    */
   revertToTemplate() {
+    this.checkpoint();
     this.draft.document = null;
+    this.selectedElementId = null;
+  }
+
+  // ─── Canvas editing ────────────────────────────────────────────────────────
+
+  readonly elements = $derived(this.draft.document?.elements ?? []);
+  readonly selectedElement = $derived(
+    this.elements.find((element) => element.id === this.selectedElementId) ?? null
+  );
+  readonly canUndo = $derived(this.#past.length > 0);
+  readonly canRedo = $derived(this.#future.length > 0);
+
+  /**
+   * Mark a point worth returning to. Called ONCE at the start of a gesture, not
+   * per frame: a drag emits a mutation on every pointer move, and checkpointing
+   * each one would mean fifty presses of undo to reverse a single motion.
+   */
+  checkpoint() {
+    if (!this.draft.document) return;
+
+    this.#past = [...this.#past, snapshotDocument(this.draft.document)].slice(-MAX_HISTORY);
+    // A new action invalidates anything that was undone: the timeline branched.
+    this.#future = [];
+  }
+
+  undo() {
+    const previous = this.#past.at(-1);
+    if (!previous || !this.draft.document) return;
+
+    this.#future = [snapshotDocument(this.draft.document), ...this.#future];
+    this.#past = this.#past.slice(0, -1);
+    this.draft.document = previous;
+
+    // The element being edited may not exist in the restored state.
+    if (!previous.elements.some((element) => element.id === this.selectedElementId)) {
+      this.selectedElementId = null;
+    }
+  }
+
+  redo() {
+    const next = this.#future[0];
+    if (!next || !this.draft.document) return;
+
+    this.#past = [...this.#past, snapshotDocument(this.draft.document)].slice(-MAX_HISTORY);
+    this.#future = this.#future.slice(1);
+    this.draft.document = next;
+  }
+
+  select(elementId: string | null) {
+    this.selectedElementId = elementId;
+  }
+
+  /** Patch an element in place. The caller checkpoints before a gesture starts. */
+  updateElement(elementId: string, patch: Partial<CertificateElement>) {
+    const document = this.draft.document;
+    if (!document) return;
+
+    const index = document.elements.findIndex((element) => element.id === elementId);
+    if (index < 0) return;
+
+    document.elements[index] = { ...document.elements[index], ...patch } as CertificateElement;
+  }
+
+  addElement(element: CertificateElement) {
+    if (!this.draft.document) return;
+
+    this.checkpoint();
+    this.draft.document.elements.push(element);
+    this.selectedElementId = element.id;
+  }
+
+  duplicateSelected() {
+    const source = this.selectedElement;
+    if (!source || !this.draft.document) return;
+
+    this.checkpoint();
+    const copy = {
+      ...structuredClone($state.snapshot(source)),
+      id: `${source.kind}-${Date.now().toString(36)}`,
+      // Offset so the copy is visibly a second object rather than appearing to
+      // have done nothing.
+      x: source.x + 16,
+      y: source.y + 16
+    } as CertificateElement;
+
+    this.draft.document.elements.push(copy);
+    this.selectedElementId = copy.id;
+  }
+
+  removeSelected() {
+    const document = this.draft.document;
+    if (!document || !this.selectedElementId) return;
+
+    this.checkpoint();
+    document.elements = document.elements.filter((element) => element.id !== this.selectedElementId);
+    this.selectedElementId = null;
+  }
+
+  /**
+   * Move an element through the paint order. Array position IS z-order, so this
+   * is a splice rather than a z-index — keeping one source of truth for depth.
+   */
+  reorderSelected(direction: 'front' | 'back' | 'forward' | 'backward') {
+    const document = this.draft.document;
+    if (!document || !this.selectedElementId) return;
+
+    const index = document.elements.findIndex((element) => element.id === this.selectedElementId);
+    if (index < 0) return;
+
+    const target =
+      direction === 'front'
+        ? document.elements.length - 1
+        : direction === 'back'
+          ? 0
+          : direction === 'forward'
+            ? Math.min(document.elements.length - 1, index + 1)
+            : Math.max(0, index - 1);
+
+    if (target === index) return;
+
+    this.checkpoint();
+    const [element] = document.elements.splice(index, 1);
+    document.elements.splice(target, 0, element);
+  }
+
+  setCanvasBackground(patch: Partial<CertificateDocument['canvas']>) {
+    if (!this.draft.document) return;
+
+    this.checkpoint();
+    this.draft.document.canvas = { ...this.draft.document.canvas, ...patch };
   }
 
   setAccent(color: string) {

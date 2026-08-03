@@ -77,3 +77,18 @@ export {
 } from './document/render';
 
 export { buildPresetDocument } from './document/presets';
+
+export {
+  DEFAULT_SNAP_THRESHOLD,
+  MIN_ELEMENT_SIZE,
+  hitTest,
+  keepReachable,
+  moveRect,
+  resizeRect,
+  snapRect,
+  type Rect,
+  type ResizeHandle,
+  type ResizeOptions,
+  type SnapGuide,
+  type SnapResult
+} from './document/geometry';
