@@ -14,7 +14,7 @@ import {
 } from '@cio/certificates';
 import { measureTemplateAsDocument } from '../canvas/measure-template';
 
-import { ZCertificateDesign } from '@cio/utils/validation/course';
+import { ZCertificateDesign, ZCertificationSettings } from '@cio/utils/validation/course';
 
 import { courseApi } from '$features/course/api';
 import { snackbar } from '$features/ui/snackbar/store';
@@ -153,6 +153,51 @@ function brandSlotElements(): CertificateElement[] {
     { kind: 'image', id: 'org-logo', x: 68, y: 54, w: 130, h: 54, source: { kind: 'orgLogo' }, fit: 'contain' },
     { kind: 'image', id: 'client-logo', x: 902, y: 54, w: 130, h: 54, source: { kind: 'clientLogo' }, fit: 'contain' }
   ];
+}
+
+/**
+ * The certificate blob to send, with legacy junk removed.
+ *
+ * Saving carries the whole stored `certificate` object along, because it also
+ * holds settings this editor does not own — the completion deadline, the pass
+ * threshold, the email message — and sending only the design would wipe them.
+ *
+ * But the stored blob is not guaranteed to satisfy today's schema. A course with
+ * `deadline: ''` (an empty string, which the settings page can leave behind)
+ * fails validation for the WHOLE update, so the design never leaves the browser:
+ * a teacher's layout blocked by a field they never touched, on a page that does
+ * not mention deadlines. Confirmed against the real schema, not guessed.
+ *
+ * So offending keys are dropped until what remains validates. `design` and
+ * `theme` are never dropped — they are the reason we are here, and if the
+ * problem is in them the caller reports it rather than quietly saving less than
+ * the teacher asked for.
+ */
+function buildCertificatePayload(
+  stored: Record<string, unknown> | undefined | null,
+  design: CertificateDesign,
+  templateId: CertificateTemplateId
+): Record<string, unknown> {
+  const candidate: Record<string, unknown> = { ...(stored ?? {}), design, theme: templateId };
+
+  // Bounded: each pass removes at least one key, and there are only a handful.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = ZCertificationSettings.safeParse(candidate);
+    if (result.success) return candidate;
+
+    const offenders = result.error.issues
+      .map((issue) => issue.path[0])
+      .filter((key): key is string => typeof key === 'string' && key !== 'design' && key !== 'theme');
+
+    if (offenders.length === 0) return candidate;
+
+    for (const key of new Set(offenders)) {
+      console.warn(`[certificate] dropping unsaveable stored setting "${key}" so the design can be saved`);
+      delete candidate[key];
+    }
+  }
+
+  return candidate;
 }
 
 /** Plain deep copy of a rune-proxied document, safe to keep in a history stack. */
@@ -448,11 +493,7 @@ class CertificateEditorStore {
         return;
       }
 
-      const certificate = {
-        ...(course.certificate ?? {}),
-        design,
-        theme: this.draft.templateId
-      };
+      const certificate = buildCertificatePayload(course.certificate, design, this.draft.templateId);
 
       const updated = await courseApi.update(course.id, { certificate }, { showSuccessToast: false });
 
