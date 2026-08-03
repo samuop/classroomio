@@ -115,14 +115,23 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
       height: 2px;
       background: ${accent};
     }
+    /*
+      Bounded, so the signature row below cannot be pushed off the page. At a
+      flat 68px with no clamp, a long course name simply kept wrapping and took
+      the footer with it.
+    */
     .t-minimal .title {
       font-family: 'Cormorant Garamond', serif;
-      font-size: 68px;
+      font-size: clamp(40px, 6.2vw, 68px);
       font-weight: 300;
       font-style: italic;
-      line-height: 1;
-      margin-bottom: 50px;
+      line-height: 1.02;
+      margin-bottom: 40px;
       letter-spacing: -0.01em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-minimal .recipient-row {
       display: grid;

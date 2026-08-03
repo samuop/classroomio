@@ -106,7 +106,15 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
       padding: 50px 55px;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
+    /*
+      Nothing shrinks, and the clamps below decide the height instead. Measured
+      in a real browser: a two-line course title pushed the whole signature row
+      past the bottom edge of the page, in the plain layout, before any of this
+      had a logo in it.
+    */
+    .t-poster .content > * { flex-shrink: 0; }
     .t-poster .top {
       display: flex;
       justify-content: space-between;
@@ -122,13 +130,22 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
       padding: 5px 12px;
       border-radius: 100px;
     }
+    /*
+      Two lines maximum, and a line-height that actually contains its glyphs.
+      At 0.85 the descenders of a wrapped title hung into the line beneath it,
+      which is where the title used to sit on top of the subtitle.
+    */
     .t-poster .title {
       font-family: 'Playfair Display', serif;
-      font-size: 140px;
+      font-size: clamp(58px, 10.4vw, 116px);
       font-weight: 900;
-      line-height: 0.85;
+      line-height: 0.95;
       letter-spacing: -0.04em;
       color: #1a1a1a;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-poster .title em {
       font-style: italic;
@@ -137,15 +154,19 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
     }
     .t-poster .of {
       font-family: 'Playfair Display', serif;
-      font-size: 62px;
+      font-size: 46px;
       font-style: italic;
       font-weight: 400;
-      line-height: 1;
-      margin-top: -4px;
+      line-height: 1.1;
+      margin-top: 2px;
       color: #1a1a1a;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-poster .recipient-area {
-      margin-top: 40px;
+      margin-top: 24px;
       background: ${accent};
       color: #fef2dc;
       padding: 24px 30px;
@@ -165,23 +186,37 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
     }
     .t-poster .recipient {
       font-family: 'Playfair Display', serif;
-      font-size: 54px;
+      font-size: clamp(30px, 4.9vw, 54px);
       font-weight: 700;
-      line-height: 1;
+      line-height: 1.05;
       letter-spacing: -0.02em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .t-poster .description {
       font-size: 15px;
       line-height: 1.55;
-      margin-top: 20px;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-top: 16px;
       max-width: 580px;
       color: #1a1a1a;
       font-weight: 500;
     }
+    /*
+      The right padding is the corner year's territory: it is 80px of Playfair
+      pinned to the bottom-right, directly over where the third column used to
+      print the issue date.
+    */
     .t-poster .bottom {
       margin-top: auto;
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
+      padding-right: 215px;
       gap: 24px;
       border-top: 2px solid #1a1a1a;
       padding-top: 18px;

@@ -72,8 +72,20 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       display: flex;
       flex-direction: column;
       justify-content: center;
-      padding-top: 34px;
+      padding-top: 8px;
     }
+    /*
+      Flex children shrink below their own content by default, and a shrunk text
+      box does not reflow — it CUTS, through the middle of a line, leaving a row
+      of decapitated letters with the next element sitting on the remains. That
+      is what a two-line course title did here, before the brand row existed and
+      worse after it. Measured in a real browser: the title had room for 1.9 of
+      the 2.2 lines it needed.
+
+      Nothing in this column may shrink. What bounds the height instead is the
+      line clamp below, which cuts at a line BOUNDARY, where a cut is legible.
+    */
+    .t-classique .main > * { flex-shrink: 0; }
     .t-classique::before {
       content: '';
       position: absolute;
@@ -104,7 +116,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       text-align: center;
       font-size: 24px;
       color: ${accent};
-      margin: 8px 0;
+      margin: 2px 0;
       letter-spacing: 0.5em;
     }
     .t-classique .top-tag {
@@ -118,8 +130,14 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
     /*
       Fluid size with a floor and a ceiling: a short title still reads as the
       hero, and a long one shrinks instead of pushing everything below it off the
-      fixed 780px canvas. Capped at three lines — past that the certificate is
-      no longer a certificate.
+      fixed 780px canvas.
+
+      Two lines, not three. The clamp is what makes this column's height
+      PREDICTABLE — with it, the tallest this block can ever be is a fixed
+      number, so the layout either fits every certificate or none, instead of
+      fitting until someone writes a longer course name. Three lines of 78px did
+      not fit alongside the recipient and the description, so the third line was
+      only ever going to be the one that pushed something off the page.
     */
     .t-classique .title {
       text-align: center;
@@ -127,11 +145,11 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       font-size: clamp(38px, 7.2vw, 78px);
       font-weight: 400;
       font-style: italic;
-      margin: 8px 0 4px;
+      margin: 4px 0 2px;
       color: #2a1810;
       line-height: 1.06;
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -141,7 +159,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       font-size: 14px;
       letter-spacing: 0.45em;
       color: ${accent};
-      margin-bottom: 36px;
+      margin-bottom: 24px;
       text-transform: uppercase;
     }
     .t-classique .presented {
@@ -164,16 +182,16 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* Four lines, then ellipsis: the description is a caption here, not the body. */
+    /* Three lines, then ellipsis: the description is a caption here, not the body. */
     .t-classique .description {
       text-align: center;
       font-size: 18px;
       font-style: italic;
       color: #3a2515;
-      margin: 20px 110px 0;
+      margin: 14px 110px 0;
       line-height: 1.6;
       display: -webkit-box;
-      -webkit-line-clamp: 4;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }

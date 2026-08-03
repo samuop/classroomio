@@ -135,8 +135,15 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+    /*
+      The right padding is the stamp's territory. The stamp is pinned to the
+      middle of the right edge, and the name beside it is 88px type across the
+      full width, so the two collided on any name longer than about fourteen
+      characters — measured, in the plain layout, before any of this had a logo
+      in it.
+    */
     .t-brutalist .recipient-block {
-      padding: 40px 50px;
+      padding: 40px 265px 40px 50px;
       position: relative;
       z-index: 2;
     }
@@ -148,8 +155,16 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
       text-transform: uppercase;
       margin-bottom: 8px;
     }
+    /*
+      Two lines, and a size that gives way before the block does. Unbounded, a
+      long name pushed the description under the signature bar and off the page.
+    */
     .t-brutalist .recipient {
-      font-size: 88px;
+      font-size: clamp(42px, 6.6vw, 88px);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
       line-height: 0.95;
       letter-spacing: -0.03em;
       text-transform: uppercase;
@@ -159,6 +174,10 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
     }
     .t-brutalist .description {
       font-family: 'JetBrains Mono', monospace;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
       font-size: 14px;
       font-weight: 400;
       line-height: 1.5;

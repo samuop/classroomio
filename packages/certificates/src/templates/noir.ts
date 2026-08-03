@@ -103,7 +103,7 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
     }
     .t-noir .crest {
       text-align: center;
-      margin-top: 30px;
+      margin-top: 10px;
       font-family: 'Cinzel', serif;
       color: ${accent};
       font-size: 32px;
@@ -116,17 +116,25 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
       flex-direction: column;
       justify-content: center;
     }
+    /*
+      Nothing in this column may shrink. A shrunk flex child does not reflow, it
+      CUTS through the middle of a line — measured here as the title showing 1.75
+      of the 2.17 lines it needed, with the rule below sitting on the remains.
+      The line clamps are what bound the height instead, and they cut at a line
+      boundary where a cut is legible. Same fix, same reason, as classique.
+    */
+    .t-noir .main > * { flex-shrink: 0; }
     .t-noir .title {
       text-align: center;
       font-family: 'Playfair Display', serif;
       font-size: clamp(40px, 7.6vw, 84px);
       display: -webkit-box;
-      -webkit-line-clamp: 3;
+      -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       font-weight: 400;
       font-style: italic;
-      margin: 20px 0 4px;
+      margin: 6px 0 4px;
       color: #f5f1e8;
       line-height: 1;
     }
@@ -135,7 +143,7 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
       align-items: center;
       justify-content: center;
       gap: 18px;
-      margin-bottom: 36px;
+      margin-bottom: 22px;
     }
     .t-noir .title-line .l {
       width: 80px;
@@ -174,11 +182,11 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
       text-align: center;
       font-style: italic;
       font-size: 19px;
-      margin: 24px 110px 0;
+      margin: 16px 110px 0;
       color: #c9b88c;
       line-height: 1.6;
       display: -webkit-box;
-      -webkit-line-clamp: 4;
+      -webkit-line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
