@@ -14,6 +14,8 @@ import {
 } from '@cio/certificates';
 import { measureTemplateAsDocument } from '../canvas/measure-template';
 
+import { ZCertificateDesign } from '@cio/utils/validation/course';
+
 import { courseApi } from '$features/course/api';
 import { snackbar } from '$features/ui/snackbar/store';
 import { t } from '$lib/utils/functions/translations';
@@ -419,13 +421,47 @@ class CertificateEditorStore {
 
     this.isSaving = true;
     try {
+      const design = fromDraft(this.draft);
+
+      /**
+       * Check the design here, where we can say what is wrong with it.
+       *
+       * `courseApi.update` validates the whole body and, on failure, returns
+       * null after quietly parking the messages on `courseApi.errors` — which
+       * nothing in this editor renders. So a design the schema rejects produced
+       * no request, no error, and a button that just stayed on "unsaved". A
+       * teacher losing a layout they spent time on, told nothing.
+       */
+      const check = ZCertificateDesign.safeParse(design);
+
+      if (!check.success) {
+        const first = check.error.issues[0];
+        const where = first?.path.join('.') || 'design';
+
+        console.error('[certificate] design rejected before saving:', check.error.issues);
+        snackbar.error(
+          t.get('course.navItem.certificates.editor.save_invalid', {
+            detail: `${where}: ${first?.message ?? ''}`
+          })
+        );
+
+        return;
+      }
+
       const certificate = {
         ...(course.certificate ?? {}),
-        design: fromDraft(this.draft),
+        design,
         theme: this.draft.templateId
       };
 
       const updated = await courseApi.update(course.id, { certificate }, { showSuccessToast: false });
+
+      if (!updated) {
+        // The request itself failed, or the wider body was rejected. Either way
+        // the teacher's work is still in the draft, and they need to know it did
+        // not land rather than discovering it on the next page load.
+        snackbar.error(t.get('course.navItem.certificates.editor.save_failed_certificate'));
+      }
 
       if (updated) {
         this.initial = {

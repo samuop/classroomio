@@ -3541,6 +3541,8 @@
           "revert_to_template": "Back to the fixed template",
           "revert_to_template_confirm": "This discards the canvas layout and returns to the template. It cannot be undone once saved.",
           "canvas_active": "Free canvas active",
+          "save_invalid": "Could not save the design: {detail}",
+          "save_failed_certificate": "Could not save the certificate changes",
           "add_text": "Text",
           "add_shape": "Shape",
           "new_text": "New text",

@@ -32,6 +32,7 @@ import {
   type HorizontalAlign,
   type TextElement
 } from '@cio/certificates';
+import { ZCertificateDocument } from '@cio/utils/validation/course';
 
 /** Give the iframe a moment to fetch fonts; measuring before they land is the whole failure. */
 const FONT_TIMEOUT_MS = 3000;
@@ -205,7 +206,10 @@ function measureInto(root: Element, origin: DOMRect, values: BindingValues): Cer
         // showing the size the template actually rendered.
         w: Math.max(1, Math.round(w / 0.92)),
         h: Math.max(1, Math.round(h / 0.92)),
-        content: tokenize(text, values),
+        // Capped to what the schema stores. A course description can run past
+        // it, and one long paragraph must not be the reason a whole layout
+        // cannot be saved.
+        content: tokenize(text, values).slice(0, 2000),
         fit: 'shrink',
         minFontSize: Math.max(8, Math.round(fontSize * 0.45)),
         style: {
@@ -302,13 +306,32 @@ export async function measureTemplateAsDocument(
     const elements = measureInto(cert, origin, values);
     if (elements.length === 0) return null;
 
-    return {
+    const measured: CertificateDocument = {
       version: 2,
       canvas: {
         color: TRANSPARENT.has(certStyle.backgroundColor) ? '#ffffff' : toHex(certStyle.backgroundColor)
       },
       elements
     };
+
+    /**
+     * A document the schema rejects is a document that can never be saved.
+     *
+     * Whatever the browser reports is not bounded by our validation — a long
+     * course description overruns the content limit, a busy template produces
+     * more nodes than the element cap. The teacher would find out by designing
+     * a layout and then being unable to keep it, so it is checked here, at the
+     * one moment there is still a fallback to use.
+     */
+    const check = ZCertificateDocument.safeParse(measured);
+
+    if (!check.success) {
+      console.warn('[certificate] measured layout failed validation, using the preset:', check.error.issues);
+
+      return null;
+    }
+
+    return measured;
   } catch {
     return null;
   } finally {

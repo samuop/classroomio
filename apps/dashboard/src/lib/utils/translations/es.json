@@ -1272,6 +1272,8 @@
           "revert_to_template": "Volver a la plantilla fija",
           "revert_to_template_confirm": "Se descarta el diseño del lienzo y volvés a la plantilla. No se puede deshacer después de guardar.",
           "canvas_active": "Lienzo libre activo",
+          "save_invalid": "No se pudo guardar el diseño: {detail}",
+          "save_failed_certificate": "No se pudieron guardar los cambios del certificado",
           "add_text": "Texto",
           "add_shape": "Forma",
           "new_text": "Texto nuevo",
