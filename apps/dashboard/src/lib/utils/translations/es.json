@@ -1275,6 +1275,8 @@
           "brand_logo_failed": "No se pudo subir el logo",
           "brand_logo_height": "Tamaño del logo",
           "brand_logo_height_hint": "Cada plantilla lo limita a lo que su diseño puede absorber.",
+          "brand_show_names": "Imprimir también los nombres",
+          "brand_show_names_hint": "Un logo normalmente reemplaza a su propio nombre. Activalo si tu marca es sólo un ícono, o si sus letras quedan demasiado chicas para leerse en el certificado.",
           "title_override": "Título del certificado",
           "title_override_placeholder": "Por defecto, el título del curso.",
           "title_override_hint": "Dejalo vacío para usar el título del curso.",

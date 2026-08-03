@@ -63,7 +63,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
       height, on top of a 140px title. The slack is the smallest of the five
       templates, so the header only gets what it can have without eating it.
     */
-    .t-poster .brand-logo { max-height: 34px; }
+    .t-poster .brand-logo { max-height: 52px; }
     .t-poster .top { align-items: center; }
     .t-poster {
       background: #fef2dc;

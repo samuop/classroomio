@@ -51,7 +51,7 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
   const styles = `
     ${BRAND_STYLES}
     /* The main block is flex:1, so the header can grow without displacing it. */
-    .t-noir .brand-logo { max-height: 46px; }
+    .t-noir .brand-logo { max-height: 68px; }
     /*
       The top row is a thin gilt rule with the marks in the middle. Logos are
       light-on-dark here, so the gap has to be wider than elsewhere or the rules

@@ -65,6 +65,7 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
     ...(typeof design?.brandLogoHeight === 'number' && Number.isFinite(design.brandLogoHeight)
       ? { brandLogoHeight: design.brandLogoHeight }
       : {}),
+    ...(typeof design?.brandShowNames === 'boolean' ? { brandShowNames: design.brandShowNames } : {}),
     ...(design?.document ? { document: design.document } : {})
   };
 }

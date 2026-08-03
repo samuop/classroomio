@@ -61,7 +61,7 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
       is pinned to the bottom edge, so whatever the header takes comes out of
       the gap in front of that bar.
     */
-    .t-brutalist .brand-logo { max-height: 36px; }
+    .t-brutalist .brand-logo { max-height: 52px; }
     .t-brutalist {
       background: #f0ede4;
       color: #000;

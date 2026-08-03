@@ -60,10 +60,11 @@ export interface TemplateRenderArgs {
  * no logos and no client renders the same markup it always did wrapped in a
  * flex span, so the four layouts that were never meant to change do not.
  *
- * A logo REPLACES the name it belongs to rather than sitting beside it — a
- * wordmark already says the name, and printing both is the single most common
- * way a two-brand certificate ends up looking amateur. A teacher who wants the
- * words leaves the logo empty.
+ * A logo REPLACES the name it belongs to by default — a wordmark already says
+ * the name, and printing both is the single most common way a two-brand
+ * certificate ends up looking amateur. `brandShowNames` turns that off, because
+ * the reasoning does not survive an icon-only mark or one whose lettering is
+ * unreadable at certificate scale.
  *
  * `hasLogo` is returned because a couple of templates decorate the org slot —
  * Poster wraps it in a coloured pill — and a logo on a coloured pill looks
@@ -116,13 +117,17 @@ export function renderBrands({
         const caption = mark.caption?.trim()
           ? `<span class="brand-caption">${escapeHtml(mark.caption.trim())}</span>`
           : '';
-        const body = mark.logoUrl
-          ? // `alt` carries the name so a certificate whose logo fails to load
-            // still says who issued it, which is the one thing it must say.
-            `<img class="brand-logo" src="${escapeHtml(mark.logoUrl)}" alt="${escapeHtml(mark.name)}">`
-          : `<span class="brand-name">${escapeHtml(mark.name)}</span>`;
+        // `alt` carries the name so a certificate whose logo fails to load
+        // still says who issued it, which is the one thing it must say.
+        const logo = mark.logoUrl
+          ? `<img class="brand-logo" src="${escapeHtml(mark.logoUrl)}" alt="${escapeHtml(mark.name)}">`
+          : '';
+        const name =
+          (!mark.logoUrl || design.brandShowNames) && mark.name
+            ? `<span class="brand-name">${escapeHtml(mark.name)}</span>`
+            : '';
 
-        return `<span class="brand">${caption}${body}</span>`;
+        return `<span class="brand">${caption}${logo}${name}</span>`;
       })
       .join('<span class="brand-divider" aria-hidden="true"></span>') +
     '</span>';

@@ -121,6 +121,7 @@ describe('resolveCertificateDesign', () => {
         orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
         clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
         brandLogoHeight: 56,
+        brandShowNames: true,
         labels: { deliveredBy: 'Dictado por', deliveredFor: 'Para' }
       }
     });
@@ -172,6 +173,7 @@ describe('resolveCertificateDesign', () => {
       orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
       clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
       brandLogoHeight: 56,
+      brandShowNames: true,
       document: { version: 2 as const, canvas: { color: '#ffffff' }, elements: [] }
     };
 

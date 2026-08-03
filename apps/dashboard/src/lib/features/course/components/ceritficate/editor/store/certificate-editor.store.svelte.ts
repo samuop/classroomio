@@ -55,6 +55,8 @@ export interface CertificateEditorDraft {
   clientBrandLogoUrl: string;
   /** Printed height of each logo, in canvas pixels. */
   brandLogoHeight: number;
+  /** Print each mark's name under its logo as well as the logo itself. */
+  brandShowNames: boolean;
   /**
    * A free canvas layout. `null` means the course renders through one of the
    * five fixed templates, which is every course while `CANVAS_EDITOR_ENABLED`
@@ -104,6 +106,7 @@ function toDraft(design: CertificateDesign): CertificateEditorDraft {
     clientBrandName: design.clientBrand?.name ?? '',
     clientBrandLogoUrl: design.clientBrand?.logoUrl ?? '',
     brandLogoHeight: design.brandLogoHeight ?? DEFAULT_BRAND_LOGO_HEIGHT,
+    brandShowNames: design.brandShowNames ?? false,
     document: design.document ?? null
   };
 }
@@ -143,6 +146,7 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
     // Only when it differs from the default, so a course does not freeze
     // today's sizing — same rule the labels follow.
     ...(draft.brandLogoHeight !== DEFAULT_BRAND_LOGO_HEIGHT ? { brandLogoHeight: draft.brandLogoHeight } : {}),
+    ...(draft.brandShowNames ? { brandShowNames: true } : {}),
     ...(draft.document ? { document: draft.document } : {})
   };
 }

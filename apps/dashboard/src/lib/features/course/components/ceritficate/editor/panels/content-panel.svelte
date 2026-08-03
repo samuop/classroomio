@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Field from '@cio/ui/base/field';
+  import { Switch } from '@cio/ui/base/switch';
   import { InputField } from '@cio/ui/custom/input-field';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
   import { t } from '$lib/utils/functions/translations';
@@ -148,6 +149,19 @@
         </Field.Field>
       </Field.Group>
     {/if}
+
+    <!--
+      A logo normally replaces its own name, since a wordmark already says it.
+      That falls apart on an icon-only mark, or one whose lettering is
+      unreadable at certificate scale — so it is a choice, not a rule.
+    -->
+    <Field.Field orientation="horizontal">
+      <Switch bind:checked={certificateEditorStore.draft.brandShowNames} {disabled} />
+      <Field.Label>{$t('course.navItem.certificates.editor.brand_show_names')}</Field.Label>
+    </Field.Field>
+    <Field.Description>
+      {$t('course.navItem.certificates.editor.brand_show_names_hint')}
+    </Field.Description>
 
     <Field.Field>
       <Field.Label for="brand-logo-height">

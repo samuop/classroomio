@@ -100,6 +100,16 @@ export interface CertificateDesign {
   /** Printed height of each logo in canvas pixels; templates cap it further. */
   brandLogoHeight?: number;
   /**
+   * Print each mark's name under its logo as well.
+   *
+   * Off by default, because a wordmark already says the name and printing both
+   * is the usual way a two-brand certificate ends up looking amateur. It is a
+   * choice rather than a rule because that reasoning does not survive contact
+   * with a real logo: an icon-only mark, or one whose lettering is unreadable
+   * at certificate scale, needs the words next to it.
+   */
+  brandShowNames?: boolean;
+  /**
    * A free canvas layout. When present it REPLACES the template: `templateId`
    * stays on the design as the preset it started from, but nothing reads it for
    * rendering. Absent means this course still uses one of the five fixed

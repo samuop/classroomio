@@ -103,6 +103,10 @@ const SCENARIOS = {
     data: { orgLogoUrl: LOGO }
   },
   'both brands, 96px logos': { design: { clientBrand: CLIENT, brandLogoHeight: 96 }, data: { orgLogoUrl: LOGO } },
+  'both brands, names printed too': {
+    design: { clientBrand: CLIENT, brandShowNames: true, orgBrand: { name: 'Egea Consultora' } },
+    data: { orgLogoUrl: LOGO }
+  },
   'short title, no brands': { design: {}, data: { courseName: 'Inducción SSMA' } },
   'worst case': {
     design: { clientBrand: CLIENT },

@@ -1,5 +1,38 @@
 import { CLOUDFLARE } from '@api/constants';
 
+/**
+ * A failed render must fail, not become a file.
+ *
+ * Neither of these functions checked the response, so any error — a 404 from an
+ * unconfigured account id, an expired key, a Cloudflare outage — came back as
+ * `Buffer.from(<the JSON error body>)` and was served with a 200 and a
+ * `application/pdf` header. The teacher gets a file that will not open, with
+ * nothing anywhere saying why, and the same path issues certificates to
+ * students.
+ *
+ * The body is included in the error because Cloudflare says something useful in
+ * it, and truncated because it is not always JSON.
+ */
+async function readRenderedBuffer(response: Response, kind: 'PDF' | 'PNG'): Promise<Buffer> {
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+
+    throw new Error(
+      `Cloudflare Browser Rendering returned ${response.status} for the ${kind}. ${detail.slice(0, 300)}`.trim()
+    );
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+
+  // A 200 with nothing in it is the other way this silently produces a file
+  // that will not open.
+  if (buffer.byteLength === 0) {
+    throw new Error(`Cloudflare Browser Rendering returned an empty ${kind}.`);
+  }
+
+  return buffer;
+}
+
 export const getCloudflarePdfBuffer = async (html: string, styles?: string) => {
   console.log('Generating PDF with Cloudflare API...');
   try {
@@ -19,8 +52,8 @@ export const getCloudflarePdfBuffer = async (html: string, styles?: string) => {
     );
 
     console.log('PDF response status:', pdfResponse.status);
-    const arrayBuffer = await pdfResponse.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+
+    return readRenderedBuffer(pdfResponse, 'PDF');
   } catch (error) {
     console.error('Error generating PDF:', error);
     throw new Error(error instanceof Error ? error.message : 'Failed to generate PDF');
@@ -52,9 +85,8 @@ export const getCloudflarePngBuffer = async (html: string, styles?: string) => {
     );
 
     console.log('PNG response status:', response.status);
-    const arrayBuffer = await response.arrayBuffer();
 
-    return Buffer.from(arrayBuffer);
+    return readRenderedBuffer(response, 'PNG');
   } catch (error) {
     console.error('Error generating PNG:', error);
     throw new Error(error instanceof Error ? error.message : 'Failed to generate PNG');

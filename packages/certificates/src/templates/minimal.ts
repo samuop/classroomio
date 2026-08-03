@@ -49,7 +49,7 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
   const styles = `
     ${BRAND_STYLES}
     /* The body block is flex:1, so it absorbs whatever the header takes. */
-    .t-minimal .brand-logo { max-height: 44px; }
+    .t-minimal .brand-logo { max-height: 64px; }
     /*
       The top row is baseline-aligned 10px mono; a logo in it would sit on that
       baseline and hang below the rule. Centring the row keeps the reference

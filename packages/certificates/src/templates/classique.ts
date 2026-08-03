@@ -49,7 +49,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       so a taller header takes space from the padding around the title rather
       than pushing anything off the canvas.
     */
-    .t-classique .brand-logo { max-height: 52px; }
+    .t-classique .brand-logo { max-height: 76px; }
     .t-classique .brands { margin-bottom: 6px; }
     /*
       Flex column with the footer in normal flow. It used to be positioned

@@ -781,6 +781,8 @@ export const course = pgTable(
         clientBrand?: TCertificateBrand;
         /** Printed height of each logo in canvas pixels. */
         brandLogoHeight?: number;
+        /** Print each mark's name under its logo as well. */
+        brandShowNames?: boolean;
         /**
          * Free canvas layout. Typed from the zod schema that guards the write
          * rather than restated here: the element union is ~80 lines and a second

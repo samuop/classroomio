@@ -3544,6 +3544,8 @@
           "brand_logo_failed": "Could not upload the logo",
           "brand_logo_height": "Logo size",
           "brand_logo_height_hint": "Each template caps this to what its layout can take.",
+          "brand_show_names": "Also print each name",
+          "brand_show_names_hint": "A logo normally replaces its own name. Turn this on for an icon-only mark, or one whose lettering is too small to read on the certificate.",
           "title_override": "Certificate title",
           "title_override_placeholder": "Defaults to the course title.",
           "title_override_hint": "Leave blank to use the course title.",

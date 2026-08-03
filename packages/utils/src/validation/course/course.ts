@@ -211,6 +211,8 @@ export const ZCertificateDesign = z.object({
   orgBrand: ZCertificateBrand.optional(),
   clientBrand: ZCertificateBrand.optional(),
   brandLogoHeight: z.number().min(16).max(96).optional(),
+  /** Print each mark's name under its logo as well as the logo itself. */
+  brandShowNames: z.boolean().optional(),
   document: ZCertificateDocument.optional()
 });
 export type TCertificateDesign = z.infer<typeof ZCertificateDesign>;
