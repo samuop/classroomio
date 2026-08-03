@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CERTIFICATE_DESIGN } from '@cio/certificates';
+import { ZCertificateDesign } from '@cio/utils/validation/course';
 import { resolveCertificateDesign } from '@api/utils/certificate';
 
 describe('resolveCertificateDesign', () => {
@@ -139,5 +140,48 @@ describe('resolveCertificateDesign', () => {
 
     expect(design.orgBrand?.logoUrl).toBeUndefined();
     expect(design.orgBrand?.name).toBe('Egea');
+  });
+
+  /**
+   * The guard against the whole class of bug, rather than against one instance
+   * of it.
+   *
+   * This function rebuilds the design key by key, so a field added to the schema
+   * and forgotten here is written to the database, read back as absent, and
+   * never rendered — no error, no log, and a success toast. It has happened four
+   * times: `labels` in this function, and `labels`, `clientBrand`, `orgBrand`
+   * and `titleOverride` in the dashboard's own copies of it, which is why there
+   * is now only one copy and this test stands over it.
+   *
+   * Driven off the schema rather than a hand-written list, because a
+   * hand-written list is the same thing that keeps going out of date.
+   */
+  it('carries every field the schema declares — no silent drops', () => {
+    const populated = {
+      templateId: 'noir' as const,
+      accentColor: '#1e3a8a',
+      subtitle: 'Con distinción',
+      descriptionOverride: 'Una descripción propia.',
+      signatories: [
+        { name: 'Ana', role: 'Facilitadora' },
+        { name: 'Luis', role: 'Director' }
+      ] as [{ name: string; role: string }, { name: string; role: string }],
+      idFormat: 'CERT-{year}-{seq}',
+      labels: { presented: 'dejamos constancia de que', deliveredBy: 'Dictado por' },
+      titleOverride: 'Inducción SSMA 2026',
+      orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+      clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
+      brandLogoHeight: 56,
+      document: { version: 2 as const, canvas: { color: '#ffffff' }, elements: [] }
+    };
+
+    // If this fails, the fixture is out of date rather than the code.
+    expect(ZCertificateDesign.safeParse(populated).success).toBe(true);
+
+    const resolved = resolveCertificateDesign({ design: populated }) as Record<string, unknown>;
+
+    for (const key of Object.keys(ZCertificateDesign.shape)) {
+      expect(resolved[key], `resolveCertificateDesign dropped "${key}"`).toBeDefined();
+    }
   });
 });

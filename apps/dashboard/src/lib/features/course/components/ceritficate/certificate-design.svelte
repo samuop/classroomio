@@ -10,12 +10,7 @@
 
   import { courseApi } from '$features/course/api';
   import { currentOrg, isFreePlan } from '$lib/utils/store/org';
-  import {
-    CERTIFICATE_TEMPLATES,
-    DEFAULT_CERTIFICATE_DESIGN,
-    type CertificateDesign,
-    resolveTemplateId
-  } from '@cio/certificates';
+  import { CERTIFICATE_TEMPLATES, type CertificateDesign, resolveCertificateDesign } from '@cio/certificates';
 
   type Props = {
     errors?: Record<string, string>;
@@ -23,37 +18,25 @@
 
   let { errors: _errors }: Props = $props();
 
-  const design: CertificateDesign = $derived.by(() => {
-    const certificate = courseApi.course?.certificate;
-    const stored = certificate?.design as Partial<CertificateDesign> | undefined;
-    const legacyTheme = certificate?.theme as string | undefined;
-
-    return {
-      templateId: resolveTemplateId(stored?.templateId ?? legacyTheme),
-      accentColor: stored?.accentColor ?? DEFAULT_CERTIFICATE_DESIGN.accentColor,
-      subtitle: stored?.subtitle ?? DEFAULT_CERTIFICATE_DESIGN.subtitle,
-      descriptionOverride: stored?.descriptionOverride,
-      signatories: [
-        {
-          name: stored?.signatories?.[0]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].name,
-          role: stored?.signatories?.[0]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].role
-        },
-        {
-          name: stored?.signatories?.[1]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].name,
-          role: stored?.signatories?.[1]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].role
-        }
-      ],
-      idFormat: stored?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat
-    };
-  });
+  /**
+   * One shared reader, not a rebuild of its own. This component used to
+   * reconstruct the design field by field and named neither the brands nor the
+   * custom wording — so a certificate designed with two marks was shown back to
+   * its author with one, and the editor and this card disagreed about the same
+   * saved course.
+   */
+  const design: CertificateDesign = $derived(resolveCertificateDesign(courseApi.course?.certificate));
 
   const previewData = $derived({
-    recipientName: 'Eleanor Vance',
+    recipientName: $t('course.navItem.certificates.editor.sample_recipient'),
     courseName: courseApi.course?.title ?? 'Course Title',
     courseDescription: design.descriptionOverride || courseApi.course?.description || '',
     orgName: $currentOrg.name || 'Organization',
     orgLogoUrl: $currentOrg.avatarUrl || undefined,
-    date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' }),
+    // Matches `formatCertificateDate` on the server, which is what actually
+    // prints the date on an issued certificate. Hardcoded en-US here showed a
+    // preview in a different language from the document students receive.
+    date: new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' }),
     certificateId: (design.idFormat ?? 'N° {seq}').replace('{seq}', '0247')
   });
 

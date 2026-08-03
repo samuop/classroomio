@@ -29,6 +29,8 @@ export {
 
 export { renderCertificate, renderCertificateDocument, resolveTemplateId } from './render';
 
+export { resolveCertificateDesign, sanitizeBrand, sanitizeLabels } from './resolve';
+
 // ─── Canvas documents (v2) ───────────────────────────────────────────────────
 
 export {

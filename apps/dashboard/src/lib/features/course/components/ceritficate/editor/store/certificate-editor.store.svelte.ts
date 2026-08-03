@@ -4,7 +4,7 @@ import {
   DEFAULT_CERTIFICATE_DESIGN,
   DEFAULT_CERTIFICATE_LABELS,
   buildPresetDocument,
-  resolveTemplateId,
+  resolveCertificateDesign,
   type BindingValues,
   type CertificateDesign,
   type CertificateDocument,
@@ -147,38 +147,20 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
   };
 }
 
+/**
+ * The one shared reader, plus the single thing this caller wants differently.
+ *
+ * It used to be a rebuild of its own, and so did the summary card, and so did
+ * the API — three copies, each of which forgot a different field.
+ */
 function readStoredDesign(): CertificateDesign {
-  const certificate = courseApi.course?.certificate;
-  const stored = certificate?.design as Partial<CertificateDesign> | undefined;
-  const legacyTheme = certificate?.theme;
+  const design = resolveCertificateDesign(courseApi.course?.certificate);
 
-  return {
-    templateId: resolveTemplateId(stored?.templateId ?? legacyTheme),
-    accentColor: stored?.accentColor ?? DEFAULT_CERTIFICATE_DESIGN.accentColor,
-    subtitle: stored?.subtitle ?? DEFAULT_CERTIFICATE_DESIGN.subtitle,
-    descriptionOverride: stored?.descriptionOverride,
-    signatories: [
-      {
-        name: stored?.signatories?.[0]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].name,
-        role: stored?.signatories?.[0]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].role
-      },
-      {
-        name: stored?.signatories?.[1]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].name,
-        role: stored?.signatories?.[1]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].role
-      }
-    ],
-    idFormat: stored?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
-    labels: stored?.labels,
-    titleOverride: stored?.titleOverride,
-    orgBrand: stored?.orgBrand,
-    clientBrand: stored?.clientBrand,
-    brandLogoHeight: stored?.brandLogoHeight,
-    // A course that was saved onto the canvas while it existed opens on its
-    // template instead. `renderCertificate` ignores the stored layout for the
-    // same reason and off the same constant, so the editor and the issued PDF
-    // agree about which one is in force.
-    document: CANVAS_EDITOR_ENABLED ? stored?.document : undefined
-  };
+  // A course saved onto the canvas while it existed opens on its template
+  // instead. `renderCertificate` ignores the stored layout for the same reason
+  // and off the same constant, so the editor and the issued PDF agree about
+  // which one is in force.
+  return CANVAS_EDITOR_ENABLED ? design : { ...design, document: undefined };
 }
 
 /**
