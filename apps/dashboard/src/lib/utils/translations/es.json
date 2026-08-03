@@ -33,7 +33,7 @@
     "org_sitename": "Nombre del sitio de la organización",
     "create": "crear",
     "sitename": "El nombre del sitio ya existe",
-    "error_organization": "Algo salió mal al crear esta organización. Por favor recarga e intenta nuevamente"
+    "error_organization": "Algo salió mal al crear esta organización. Recargá e intentá de nuevo"
   },
   "ai": {
     "help_me": "Ayúdame a escribir",
@@ -293,7 +293,7 @@
     "error_rate_limit": "El servicio de IA está temporalmente ocupado. Inténtelo de nuevo en un momento.",
     "error_rate_limit_with_wait": "El servicio de IA está temporalmente ocupado. Inténtalo de nuevo en {seconds} segundos.",
     "error_context_too_long": "La conversación es demasiado larga. Intente iniciar un nuevo chat o acortar su mensaje.",
-    "error_network": "Error de red. Por favor verifique su conexión e inténtelo nuevamente.",
+    "error_network": "Error de red. Revisá tu conexión e intentá de nuevo.",
     "error_retry": "Reintentar",
     "context_usage_tooltip": "{used} / {max} tokens usados",
     "context_fixed": "Fijo: {tokens} — fuentes y prompt, se reenvían cada turno",
@@ -310,7 +310,7 @@
       "explain_lesson": "Explica esta lección",
       "quiz_me": "Pregúntame sobre esto",
       "summarize_section": "Resumir esta sección",
-      "what_to_review": "¿Qué debo revisar a continuación?"
+      "what_to_review": "¿Qué me conviene repasar ahora?"
     },
     "run_running": "Generando curso",
     "run_completed": "Generación del curso completa",
@@ -389,7 +389,7 @@
     "total_average_grade": "Calificación promedio total",
     "total_average_grade_description": "Según las notas de los ejercicios de todo el curso",
     "overall_course_progress_user_description": "Según las lecciones completadas",
-    "assignment_completion": "Finalización de la tarea",
+    "assignment_completion": "Tareas completadas",
     "assignment_completion_description": "Porcentaje de tareas completadas",
     "average_grade_description": "Calificación promedio de todas las tareas completadas",
     "students": "estudiantes",
@@ -449,11 +449,11 @@
       "empty": "Aún no hay datos de ubicación",
       "country": "País",
       "visitors": "Visitantes",
-      "enrollments_short": "matriculado"
+      "enrollments_short": "inscripciones"
     },
     "funnel": {
       "heading": "Embudo de conversión",
-      "description": "Desde la primera visita hasta la finalización del curso",
+      "description": "Desde la primera visita hasta terminar el curso",
       "empty": "Aún no hay datos del embudo",
       "step": {
         "landing_view": "Vistas de aterrizaje",
@@ -488,8 +488,8 @@
       "course_types": "Tipos de cursos"
     },
     "course_metrics": {
-      "page_subtitle": "Inscripción, finalización de lecciones, calificaciones y progreso por alumno para este curso.",
-      "progress_distribution_card_description": "¿Cuántos alumnos se encuentran en cada banda de finalización?",
+      "page_subtitle": "Inscripciones, lecciones completadas, calificaciones y progreso por estudiante en este curso.",
+      "progress_distribution_card_description": "¿Cuántos estudiantes hay en cada franja de avance?",
       "grade_distribution_card_description": "Cuántos alumnos se encuentran en cada grupo de grado.",
       "students_table_description": "Descripción general ordenable con enlaces a perfiles de alumnos.",
       "kpi_team_tutors": "{count, plural, one {# tutor en el equipo del curso} other {# tutores en el equipo del curso}}",
@@ -509,7 +509,7 @@
         "lms_description": "Busque y navegue por su espacio de trabajo de aprendizaje",
         "empty": "No se encontraron resultados",
         "loading": "Buscando...",
-        "clear_recents": "Borrar recientes",
+        "clear_recents": "Limpiar recientes",
         "result_types": {
           "page": "Página"
         },
@@ -791,7 +791,7 @@
       "comment": "comentario",
       "sure": "¿Seguro que querés eliminar esto?",
       "no": "No, mantenlo",
-      "yes": "Si, borrar"
+      "yes": "Sí, eliminar"
     },
     "ask": {
       "go_back": "Volver",
@@ -914,7 +914,7 @@
         "your_domain": "Tu dominio",
         "custom_domain_error": "No podés usar un dominio de primer nivel como dominio propio. Usá un subdominio, por ejemplo 'cursos.[tusitio].com' o 'www.[tusitio].com'.",
         "custom_domain_not_classroomio": "El dominio no puede contener 'classroomio'",
-        "custom_domain_success": "Dominio personalizado agregado exitosamente",
+        "custom_domain_success": "Dominio propio agregado",
         "dns_description": "Establezca el siguiente registro en su proveedor de DNS para continuar:",
         "dns_type": "Tipo",
         "dns_value": "Valor",
@@ -932,7 +932,7 @@
         "status_error": "necesita atencion",
         "status_removed": "Eliminado",
         "verified_description": "Este dominio personalizado está activo y verificado.",
-        "pending_dns_description": "Agregue los registros DNS a continuación y luego actualice la verificación.",
+        "pending_dns_description": "Agregá los registros DNS de abajo y después volvé a verificar.",
         "pending_verification_description": "Se encontraron registros DNS. La emisión o validación de SSL aún está en curso.",
         "reconnect_description": "Hay que volver a conectar este dominio para generar los registros de configuración nuevos.",
         "error_description": "Este dominio personalizado existe, pero la verificación aún no se ha completado.",
@@ -1057,7 +1057,7 @@
           "button_label_placeholder": "Leer más en mi sitio",
           "button_url_label": "URL del botón",
           "button_url_placeholder": "https://ejemplo.com",
-          "clear": "Borrar llamada",
+          "clear": "Quitar el aviso",
           "public_only": "Las notas solo aparecen en los cursos públicos.",
           "animation_label": "Animación de fondo",
           "animation_description": "Elegí el movimiento que se ve detrás de la tarjeta de aviso.",
@@ -1098,7 +1098,7 @@
         "message": "Tu mensaje",
         "your_message": "Tu mensaje aquí",
         "submit": "Enviar",
-        "successful_sub": "Has sido agregado exitosamente. Gracias por suscribirte.",
+        "successful_sub": "Listo, ya estás suscripto. ¡Gracias!",
         "enter": "Escribí tu correo...",
         "powered_by": "Desarrollado por",
         "landing_page": "Página pública",
@@ -1264,7 +1264,7 @@
           "subtitle_placeholder": "Premiado con la Máxima Distinción",
           "description_override": "Anulación de descripción",
           "description_override_placeholder": "El valor predeterminado es la descripción del curso.",
-          "description_override_hint": "Déjelo en blanco para volver a la descripción del curso al guardar.",
+          "description_override_hint": "Dejalo vacío para volver a la descripción del curso al guardar.",
           "signatory_one_name": "Nombre del firmante 1",
           "signatory_one_role": "Rol de firmante 1",
           "signatory_two_name": "Nombre del firmante 2",
@@ -1551,7 +1551,7 @@
           "comment_btn": "Comentario",
           "cancel_btn": "Cancelar",
           "load_more_btn": "Cargar más",
-          "comment_error": "No se pudo publicar el comentario. Por favor inténtalo de nuevo."
+          "comment_error": "No se pudo publicar el comentario. Intentá de nuevo."
         },
         "exercises": {
           "heading": "Todos los ejercicios",
@@ -1634,7 +1634,7 @@
               "empty_edit_hint_suffix": " botón para agregar.",
               "answers_required": "Proporcione al menos una respuesta antes de enviar.",
               "checking_submission": "Comprobando tu envío...",
-              "answer_required": "Por favor responda esta pregunta antes de continuar.",
+              "answer_required": "Respondé esta pregunta antes de continuar.",
               "instructor_feedback": "Comentarios del instructor",
               "attempt_counter": "Intento {current} de {total}",
               "previous_try": "Intento anterior",
@@ -1661,7 +1661,7 @@
                 "true_false": "Verdadero/Falso",
                 "short_answer": "respuesta corta",
                 "numeric": "respuesta numérica",
-                "fill_blank": "Completa el espacio en blanco",
+                "fill_blank": "Completar el espacio en blanco",
                 "file_upload": "Carga de archivos",
                 "matching": "Coincidencia",
                 "ordering": "Realizar pedidos",
@@ -1681,8 +1681,8 @@
             "delete_confirmation": {
               "title": "Eliminar pregunta",
               "sure": "¿Seguro que querés eliminar esta pregunta?",
-              "no": "No, por favor no",
-              "yes": "Si, borrar",
+              "no": "No, mejor no",
+              "yes": "Sí, eliminar",
               "section_title": "Eliminar sección",
               "section_sure": "Esta sección será eliminada. Sus preguntas se trasladarán a la sección más cercana."
             },
@@ -1918,10 +1918,10 @@
                 "edit": {
                   "template_label": "Plantilla de oración",
                   "template_placeholder": "Las medidas para describir nuestros datos se llaman ___. El ___ es una función...",
-                  "template_helper": "Utilice tres guiones bajos (___) para cada espacio en blanco. Los alumnos verán un banco de palabras con respuestas correctas y distractores.",
-                  "no_blanks_warning": "Agrega al menos un ___ marcador en blanco en tu plantilla.",
-                  "correct_answers_heading": "Respuesta correcta para cada espacio en blanco.",
-                  "blank_label": "En blanco",
+                  "template_helper": "Usá tres guiones bajos (___) por cada espacio en blanco. Los estudiantes van a ver un banco de palabras para completarlos.",
+                  "no_blanks_warning": "Agregá al menos un ___ en tu plantilla.",
+                  "correct_answers_heading": "Respuesta correcta de cada espacio en blanco",
+                  "blank_label": "Espacio",
                   "correct_placeholder": "Término o frase correcta",
                   "distractors_heading": "Palabras adicionales (distractores)",
                   "distractor_placeholder": "Opción equivocada",
@@ -2034,13 +2034,13 @@
             "choose_questions": "Elegí cuántas preguntas y opciones querés y la IA arma el ejercicio a partir de tu nota. Dale.",
             "how_many_questions": "¿Cuántas preguntas querés crear?",
             "how_many_options": "¿Cuántas opciones por pregunta querés?",
-            "add_note": "Por favor agregue una nota para usar esta función",
+            "add_note": "Agregá una nota para poder usar esta función",
             "generate": "generar",
             "completion": "Generación de IA completa",
             "click_generate": "Hacé clic en 'Generar' y dejá que haga la magia",
             "no_templates_for_tag": "No hay plantillas disponibles para esta etiqueta.",
             "errors": {
-              "template_fetch": "Error al obtener plantillas. Por favor inténtalo de nuevo."
+              "template_fetch": "No se pudieron cargar las plantillas. Intentá de nuevo."
             },
             "options": {
               "from_scratch": "Desde cero",
@@ -2075,7 +2075,7 @@
               "choose_file": "Elegir archivo",
               "cancel": "Cancelar",
               "uploading": "Subiendo...",
-              "upload_success": "¡Documento cargado exitosamente!",
+              "upload_success": "¡Documento subido!",
               "upload_error": "No se pudo cargar el documento",
               "file_type_error": "Tipo de archivo no compatible. Cargue archivos PDF, DOCX o DOC.",
               "file_size_error": "El tamaño del archivo es demasiado grande. El tamaño máximo es {size}.",
@@ -2120,7 +2120,7 @@
                 "big_file": "Lo sentimos, el video no fue subido. El tamaño del archivo es demasiado grande,",
                 "maximum_size": "el tamaño máximo es 30 MB. ¡Intentar otra vez!",
                 "button": "Prueba con otro archivo",
-                "try_again": "Por favor inténtalo de nuevo",
+                "try_again": "Intentá de nuevo",
                 "unsupported_format": "Lo sentimos, el video no se subió, el formato de archivo no es compatible o algo salió mal en el servidor.",
                 "format": "Sube archivos MP4, MOV y AVI.",
                 "upgrade": "Actualiza tu plan para subir videos",
@@ -2263,7 +2263,7 @@
           "add_comment_success": "Comentario añadido",
           "toggle_pin_error": "No se pudo alternar el feed fijado",
           "unpinned": "Desanclar",
-          "successfully": "Con éxito",
+          "successfully": "Listo",
           "feed_delete_success": "Feed eliminado correctamente",
           "fetch_feed_fail": "No se pudieron recuperar las fuentes de noticias",
           "fetching_error": "Se produjo un error al obtener el feed."
@@ -2344,7 +2344,7 @@
           "description": "Elegí alumnos y aplicales una acción de cumplimiento en su ciclo actual.",
           "select_all": "Seleccionar todos los alumnos visibles",
           "selected_count": "{count} seleccionado",
-          "clear_selection": "Borrar selección",
+          "clear_selection": "Limpiar selección",
           "due_date_label": "fecha de vencimiento",
           "due_date_helper": "Se utiliza para restablecer y ampliar acciones.",
           "reset_action": "Reiniciar ciclo",
@@ -2424,12 +2424,12 @@
     "certification": {
       "rules_heading": "Reglas",
       "deadline_label": "Fecha límite de certificación",
-      "deadline_helper": "Los estudiantes deben alcanzar el porcentaje de finalización antes de esta fecha (hora local). Déjelo vacío sin fecha límite.",
-      "threshold_label": "Finalización mínima (%)",
+      "deadline_helper": "Los estudiantes tienen que llegar al porcentaje mínimo antes de esta fecha (hora local).",
+      "threshold_label": "Avance mínimo (%)",
       "threshold_helper": "Progreso combinado de lección y ejercicio requerido para obtener el certificado (0–100). El valor predeterminado es 100%.",
       "final_exercise_label": "Ejercicio final (opcional)",
       "final_exercise_none": "ninguno",
-      "final_exercise_helper": "Cuando se establece, los estudiantes deben alcanzar al menos la puntuación mínima en este ejercicio (el mejor intento cuenta) además del porcentaje de finalización anterior.",
+      "final_exercise_helper": "Si lo definís, los estudiantes tienen que sacar al menos la nota mínima en este ejercicio.",
       "min_exercise_score_label": "Puntuación mínima en el ejercicio final (%)",
       "min_exercise_score_helper": "La puntuación es un porcentaje del total de puntos posibles en ese ejercicio (0-100).",
       "blocker_progress": "Tu progreso en el curso es {current}%; se necesita {required}%.",
@@ -2466,7 +2466,7 @@
         },
         "handoff": {
           "sources": "Enlaces de referencia para investigar",
-          "research_hint": "Por favor leé estas páginas (raíz + subpáginas relevantes) antes de planificar.",
+          "research_hint": "Leé estas páginas (la raíz y las subpáginas relevantes) antes de planificar.",
           "documents": "Documentos adjuntos"
         }
       },
@@ -2706,7 +2706,7 @@
         "failed_to_clone": "No se pudo clonar el curso"
       },
       "success": {
-        "course_cloned": "Curso clonado con éxito"
+        "course_cloned": "Curso duplicado"
       }
     },
     "new_course_modal": {
@@ -2735,7 +2735,7 @@
     "tag_filters": {
       "filter": "Filtrar",
       "active": "Filtros activos",
-      "clear_all": "Borrar todo",
+      "clear_all": "Limpiar todo",
       "popover_title": "Filtros",
       "sort": "ordenar",
       "order": "Orden",
@@ -2886,8 +2886,8 @@
       "p1080": "1080p"
     },
     "error": {
-      "webcodecs_unsupported": "Su navegador no admite codificación de video por hardware. Utilice una versión reciente de Chrome, Edge o Safari.",
-      "encode_failed": "Error de codificación. Pruebe con un archivo fuente diferente o actualice e inténtelo de nuevo.",
+      "webcodecs_unsupported": "Tu navegador no admite codificación de video por hardware. Usá una versión reciente de Chrome o Edge.",
+      "encode_failed": "Falló la codificación. Probá con otro archivo, o actualizá y volvé a intentar.",
       "upload_failed": "No se pudo cargar un segmento de video. Verifique su conexión y vuelva a intentarlo.",
       "finalize_failed": "No se pudo guardar el video subido."
     },
@@ -3437,7 +3437,7 @@
     },
     "filters": {
       "filter": "Filtrar",
-      "clear_all": "Borrar todo",
+      "clear_all": "Limpiar todo",
       "popover_title": "Filtros",
       "sort": "ordenar",
       "order": "Orden",
@@ -3547,10 +3547,10 @@
     "page_title": "Cursos - [[brand]]",
     "heading": "Cursos",
     "subtitle": "Explorar todos los cursos publicados",
-    "clear_filters": "Borrar filtros",
+    "clear_filters": "Limpiar filtros",
     "empty": {
       "title": "No se encontraron cursos",
-      "description": "Intente borrar sus filtros o vuelva a consultar más tarde."
+      "description": "Probá quitando algún filtro, o volvé más tarde."
     },
     "filters": {
       "title": "Filtrar por etiquetas",
@@ -4016,7 +4016,7 @@
       "title": "Autenticación",
       "sso": {
         "messages": {
-          "created": "Conexión SSO creada exitosamente",
+          "created": "Conexión SSO creada",
           "activated": "Conexión SSO activada",
           "deleted": "Conexión SSO eliminada"
         },
@@ -4105,7 +4105,7 @@
         "email_password_disabled": "El inicio de sesión por correo electrónico/contraseña está deshabilitado. Utilice SSO.",
         "email_password_disabled_message": "El inicio de sesión con correo electrónico/contraseña está deshabilitado para esta organización.",
         "google_auth_disabled": "La autenticación de Google está deshabilitada.",
-        "signup_disabled_error": "El registro está deshabilitado para esta organización. Por favor contacte a su administrador.",
+        "signup_disabled_error": "El registro está desactivado en esta organización. Escribile a quien la administra.",
         "or_continue_with": "O continuar con correo electrónico y contraseña",
         "sso_enabled": "{provider} está habilitado para esta organización"
       },
@@ -4232,13 +4232,13 @@
   },
   "snackbar": {
     "success": "Éxito",
-    "success_update": "Actualizado exitosamente",
-    "success_delete": "Eliminado exitosamente",
+    "success_update": "Actualizado",
+    "success_delete": "Eliminado",
     "something": "Algo salió mal. Inténtelo más tarde.",
     "update": "Actualizar",
     "update_failed": "La actualización falló",
     "generic": {
-      "success_delete": "Eliminado exitosamente",
+      "success_delete": "Eliminado",
       "try_again": "Error: inténtelo de nuevo más tarde"
     },
     "setup": {
@@ -4256,7 +4256,7 @@
       "success": {
         "question_updated": "Pregunta actualizada!",
         "comment_submitted": "¡Comentario enviado!",
-        "success_delete": "Eliminado exitosamente",
+        "success_delete": "Eliminado",
         "question_submitted": "¡Pregunta enviada!"
       },
       "error": {
@@ -4277,27 +4277,27 @@
       "error": "Error al recuperar las marcas"
     },
     "lessons": {
-      "lesson_created": "Lección creada exitosamente",
+      "lesson_created": "Lección creada",
       "lesson_create_failed": "No se pudo crear la lección",
-      "lesson_deleted": "Lección eliminada exitosamente",
+      "lesson_deleted": "Lección eliminada",
       "lesson_delete_failed": "No se pudo eliminar la lección",
       "lesson_update_failed": "No se pudo actualizar la lección",
-      "section_created": "Sección del curso creada exitosamente",
+      "section_created": "Sección creada",
       "section_create_failed": "No se pudo crear la sección del curso",
-      "section_updated": "Sección del curso actualizada con éxito",
+      "section_updated": "Sección actualizada",
       "section_update_failed": "No se pudo actualizar la sección del curso",
-      "sections_reordered": "Secciones del curso reordenadas exitosamente",
+      "sections_reordered": "Secciones reordenadas",
       "sections_reorder_failed": "No se pudieron reordenar las secciones del curso",
-      "lessons_reordered": "Lecciones reordenadas exitosamente",
+      "lessons_reordered": "Lecciones reordenadas",
       "lessons_reorder_failed": "No se pudo reordenar las lecciones",
       "comment_fetch_failed": "No se pudieron recuperar los comentarios de la lección",
       "load_more_comments_failed": "No se pudieron cargar más comentarios",
       "comment_add_failed": "No se pudo agregar el comentario",
-      "comment_updated": "Comentario actualizado exitosamente",
+      "comment_updated": "Comentario actualizado",
       "comment_update_failed": "No se pudo actualizar el comentario",
-      "comment_deleted": "Comentario eliminado con éxito",
+      "comment_deleted": "Comentario eliminado",
       "comment_delete_failed": "No se pudo eliminar el comentario",
-      "completion_update_failed": "No se pudo actualizar la finalización de la lección",
+      "completion_update_failed": "No se pudo actualizar el avance de la lección",
       "error": {
         "try_later": "Algo no está bien. Inténtelo más tarde.",
         "exercise_not_complete": "Completa todos los ejercicios para marcarlos como completos."
@@ -4305,13 +4305,13 @@
       "success": {
         "complete_marked": "Marcado como completo",
         "complete_download": "Descarga Completa",
-        "version_restored": "Versión restaurada exitosamente"
+        "version_restored": "Versión restaurada"
       },
-      "section_deleted": "Sección del curso eliminada exitosamente"
+      "section_deleted": "Sección eliminada"
     },
     "attendance": {
       "error": {
-        "reload": "Algo no está bien.  Por favor recarga y toma asistencia nuevamente."
+        "reload": "Algo no anduvo bien. Recargá y volvé a tomar asistencia."
       }
     },
     "course": {
@@ -4327,7 +4327,7 @@
         "comment_added": "Comentario añadido",
         "pinned": "Fijado",
         "unpinned": "Desanclar",
-        "successfully": "Con éxito",
+        "successfully": "Listo",
         "feed_delete_success": "Feed eliminado correctamente"
       }
     },
@@ -4353,7 +4353,7 @@
       "error": {
         "username_exists": "el nombre de usuario ya existe",
         "update": "La actualización falló:",
-        "try_again": "Por favor inténtalo de nuevo"
+        "try_again": "Intentá de nuevo"
       }
     },
     "course_settings": {
@@ -4367,7 +4367,7 @@
       },
       "success": {
         "download": "Descarga completa",
-        "saved": "Guardado exitosamente",
+        "saved": "Guardado",
         "successful_integration": "Integración exitosa",
         "successful_deletion": "Integración eliminada",
         "update_successful": "Actualización exitosa"
@@ -4378,7 +4378,7 @@
         "copied": "Copiado al portapapeles"
       },
       "error": {
-        "missing_data": "Faltan datos de la organización, por favor recarga la página",
+        "missing_data": "Faltan datos de la organización. Recargá la página",
         "no": "No hay dominio de organización actual"
       }
     },
@@ -4390,7 +4390,7 @@
       },
       "success": {
         "edit": "Feed editado correctamente",
-        "add": "Nuevo feed agregado exitosamente"
+        "add": "Publicación agregada"
       }
     },
     "materials": {
@@ -4400,7 +4400,7 @@
     },
     "exercise": {
       "points_required_auto_grade": "Asigne un valor de puntos positivo a cada pregunta antes de guardar.",
-      "success": "Guardado exitosamente",
+      "success": "Guardado",
       "submission_updated": "Envío actualizado a",
       "error_fetching": "No se han podido recuperar los ejercicios. Vuelva a cargar la página."
     },
@@ -4482,9 +4482,9 @@
       "success": {
         "comment_deleted": "Comentario eliminado",
         "comment_added": "Comentario añadido",
-        "feed_delete_success": "Publicación eliminada exitosamente",
-        "post_created": "Publicación creada exitosamente",
-        "post_updated": "Publicación actualizada exitosamente"
+        "feed_delete_success": "Publicación eliminada",
+        "post_created": "Publicación creada",
+        "post_updated": "Publicación actualizada"
       }
     },
     "ai_credits": {
@@ -4630,7 +4630,7 @@
     "never_active": "Sin actividad",
     "days_ago": "hace {count, plural, one {# día} other {# días}}",
     "today": "hoy",
-    "empty_students": "Aún no hay alumnos matriculados.",
+    "empty_students": "Todavía no hay estudiantes inscriptos.",
     "empty_courses": "Aún no hay cursos con alumnos inscriptos.",
     "loading": "Cargando seguimiento…",
     "view_profile": "Ver ficha del alumno"
