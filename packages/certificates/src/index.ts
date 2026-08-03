@@ -75,3 +75,5 @@ export {
   type DocumentRenderInput,
   type DocumentRenderOutput
 } from './document/render';
+
+export { buildPresetDocument } from './document/presets';

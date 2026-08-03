@@ -53,8 +53,36 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
     descriptionOverride: storedDesign?.descriptionOverride,
     signatories,
     idFormat: storedDesign?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
-    labels: sanitizeLabels(storedDesign?.labels)
+    labels: sanitizeLabels(storedDesign?.labels),
+    // Rebuilt field by field, so anything not named here never reaches the
+    // renderer. That is how `labels` went missing; these two are the canvas
+    // layout and the client's mark, and both are meaningless without the other
+    // half of the pair.
+    ...(storedDesign?.document ? { document: storedDesign.document } : {}),
+    ...(storedDesign?.clientBrand ? { clientBrand: sanitizeClientBrand(storedDesign.clientBrand) } : {})
   };
+}
+
+/**
+ * The client company's mark, on its way into HTML a browser will fetch.
+ *
+ * The logo URL is written straight into an `<img src>` that Cloudflare's
+ * browser resolves, so a stored `javascript:` or `data:` value would be a
+ * script running inside a document the platform issues on the teacher's behalf.
+ * The write path already rejects those, but this function is the last gate
+ * before rendering and rows predate any schema.
+ */
+function sanitizeClientBrand(stored: unknown): CertificateDesign['clientBrand'] {
+  if (!stored || typeof stored !== 'object') return undefined;
+
+  const raw = stored as { name?: unknown; logoUrl?: unknown };
+  const name = typeof raw.name === 'string' ? raw.name.slice(0, 120) : undefined;
+  const logoUrl =
+    typeof raw.logoUrl === 'string' && /^https?:\/\//i.test(raw.logoUrl) ? raw.logoUrl.slice(0, 2048) : undefined;
+
+  if (!name && !logoUrl) return undefined;
+
+  return { ...(name ? { name } : {}), ...(logoUrl ? { logoUrl } : {}) };
 }
 
 /**

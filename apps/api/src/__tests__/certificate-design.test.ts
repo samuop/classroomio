@@ -65,4 +65,44 @@ describe('resolveCertificateDesign', () => {
 
     expect(design.accentColor).toBe(DEFAULT_CERTIFICATE_DESIGN.accentColor);
   });
+
+  it('carries the canvas layout through to the renderer', () => {
+    const document = { version: 2, canvas: { color: '#ffffff' }, elements: [] };
+    const design = resolveCertificateDesign({ design: { templateId: 'classique', document } });
+
+    expect(design.document).toEqual(document);
+  });
+
+  it('carries the client brand — the second mark on the certificate', () => {
+    const design = resolveCertificateDesign({
+      design: {
+        templateId: 'classique',
+        clientBrand: { name: 'Industrias del Sur', logoUrl: 'https://learn-files.tensor.com.ar/c.png' }
+      }
+    });
+
+    expect(design.clientBrand).toEqual({
+      name: 'Industrias del Sur',
+      logoUrl: 'https://learn-files.tensor.com.ar/c.png'
+    });
+  });
+
+  it('drops a client logo url that is not http(s)', () => {
+    // Last gate before the URL becomes an <img src> that a real browser
+    // resolves. Rows predate the schema that now rejects these on write.
+    const design = resolveCertificateDesign({
+      design: { templateId: 'classique', clientBrand: { name: 'X', logoUrl: 'javascript:alert(1)' } }
+    });
+
+    expect(design.clientBrand?.logoUrl).toBeUndefined();
+    expect(design.clientBrand?.name).toBe('X');
+  });
+
+  it('leaves the client brand undefined when nothing usable is stored', () => {
+    const design = resolveCertificateDesign({
+      design: { templateId: 'classique', clientBrand: { logoUrl: 'ftp://nope' } }
+    });
+
+    expect(design.clientBrand).toBeUndefined();
+  });
 });
