@@ -12,17 +12,20 @@
   import DocumentList from './document-list.svelte';
   import { t } from '$lib/utils/functions/translations';
   import type { LessonDocument } from '$features/course/utils/types';
+  import type { LessonMediaRef } from '@cio/utils/functions/lesson-media-id';
+  import { listPlacedLessonMediaIds } from '$features/course/utils/lesson-media';
   import { snackbar } from '$features/ui/snackbar/store';
 
   interface Props {
     mode?: (typeof MODES)[keyof typeof MODES];
+    lessonId?: string;
   }
 
-  let { mode = MODES.view }: Props = $props();
+  let { mode = MODES.view, lessonId = '' }: Props = $props();
 
   let downloadingDocuments = $state(new Set<string>());
   let openDeleteDocumentModal = $state(false);
-  let documentIndexToDelete = $state<number | null>(null);
+  let documentToDelete = $state<LessonMediaRef | null>(null);
   let viewingPDF: any = $state(null);
   let pdfViewerOpen = $state(false);
   let pdfCanvas: HTMLCanvasElement | undefined = $state();
@@ -57,19 +60,15 @@
     $lessonDocUpload.isModalOpen = true;
   }
 
-  function deleteDocument(index: number) {
-    void lessonApi.deleteLessonDocument(index);
-  }
-
-  function requestRemoveDocument(index: number) {
-    documentIndexToDelete = index;
+  function requestRemoveDocument(ref: LessonMediaRef) {
+    documentToDelete = ref;
     openDeleteDocumentModal = true;
   }
 
   function confirmRemoveDocument() {
-    if (documentIndexToDelete !== null) {
-      deleteDocument(documentIndexToDelete);
-      documentIndexToDelete = null;
+    if (documentToDelete) {
+      void lessonApi.deleteLessonDocument(documentToDelete);
+      documentToDelete = null;
     }
     openDeleteDocumentModal = false;
   }
@@ -314,7 +313,19 @@
     event.preventDefault();
   }
 
-  let displayDocuments = $derived(lessonApi.lesson?.documents || []);
+  /**
+   * Documents placed inside the note render there; listing them again below
+   * would show the student the same file twice. Edit mode keeps the full list —
+   * it is how the lesson's material is managed.
+   */
+  const placedMediaIds = $derived(
+    listPlacedLessonMediaIds(lessonApi.translations[lessonId]?.[lessonApi.currentLocale])
+  );
+  let displayDocuments = $derived(
+    (lessonApi.lesson?.documents || []).filter(
+      (document) => mode === MODES.edit || !document.id || !placedMediaIds.has(document.id)
+    )
+  );
 </script>
 
 <DocumentList

@@ -2,7 +2,16 @@ import type { Content, Editor } from '@tiptap/core';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 
 import type { EditorView } from '@tiptap/pm/view';
+import type { LessonMediaKind } from '../../tools/sanitize';
 import type { Snippet } from 'svelte';
+
+/**
+ * Turns a lesson-media marker into something readable in the editor. This
+ * package has no access to the lesson, so the consumer supplies it; returning
+ * undefined makes the card render as "not found", which is the right answer when
+ * the media it points at has been deleted.
+ */
+export type ResolveMediaLabel = (kind: LessonMediaKind, mediaId: string) => string | undefined;
 
 export interface EdraEditorProps {
   placeholder?: string | ((node: any) => string);
@@ -12,6 +21,7 @@ export interface EdraEditorProps {
   autofocus?: boolean;
   onUpdate?: (args: { editor: Editor; transaction: Transaction }) => void;
   class?: string;
+  resolveMediaLabel?: ResolveMediaLabel;
 }
 
 export interface EditorProps {

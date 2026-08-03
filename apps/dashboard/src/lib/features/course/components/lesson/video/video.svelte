@@ -1,5 +1,7 @@
 <script lang="ts">
   import { lessonApi } from '$features/course/api';
+  import type { LessonMediaRef } from '@cio/utils/functions/lesson-media-id';
+  import { listPlacedLessonMediaIds } from '$features/course/utils/lesson-media';
   import { DeleteModal } from '$features/ui';
   import { Button } from '@cio/ui/base/button';
   import { Empty } from '@cio/ui/custom/empty';
@@ -13,28 +15,40 @@
 
   interface Props {
     mode?: (typeof MODES)[keyof typeof MODES];
+    lessonId?: string;
   }
 
-  let { mode = MODES.view }: Props = $props();
+  let { mode = MODES.view, lessonId = '' }: Props = $props();
 
   const videos = $derived(lessonApi.lesson?.videos || []);
 
+  /**
+   * Videos the teacher placed inside the note render there, so this list leaves
+   * them out — otherwise the student sees the same video twice. Edit mode still
+   * shows all of them: that grid is how you manage the lesson's material, and a
+   * video you cannot see is a video you cannot remove.
+   */
+  const placedMediaIds = $derived(
+    listPlacedLessonMediaIds(lessonApi.translations[lessonId]?.[lessonApi.currentLocale])
+  );
+  const unplacedVideos = $derived(videos.filter((video) => !video.id || !placedMediaIds.has(video.id)));
+
   let openDeleteVideoModal = $state(false);
-  let videoIndexToDelete = $state<number | null>(null);
+  let videoToDelete = $state<LessonMediaRef | null>(null);
 
   const openAddVideoModal = () => {
     $lessonVideoUpload.isModalOpen = true;
   };
 
-  function requestRemoveVideo(index: number) {
-    videoIndexToDelete = index;
+  function requestRemoveVideo(ref: LessonMediaRef) {
+    videoToDelete = ref;
     openDeleteVideoModal = true;
   }
 
   function confirmRemoveVideo() {
-    if (videoIndexToDelete !== null) {
-      lessonApi.deleteLessonVideo(videoIndexToDelete);
-      videoIndexToDelete = null;
+    if (videoToDelete) {
+      lessonApi.deleteLessonVideo(videoToDelete);
+      videoToDelete = null;
     }
     openDeleteVideoModal = false;
   }
@@ -54,8 +68,13 @@
 
   {#if videos.length}
     <Item.Group class="grid! w-full grid-cols-1 gap-x-5 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-      {#each videos as video, index}
-        <LessonVideoSimpleCard {video} {index} isEditMode={true} onRemove={() => requestRemoveVideo(index)} />
+      {#each videos as video, index (video.id ?? `${index}-${video.link}`)}
+        <LessonVideoSimpleCard
+          {video}
+          {index}
+          isEditMode={true}
+          onRemove={() => requestRemoveVideo({ id: video.id, index })}
+        />
       {/each}
     </Item.Group>
   {:else}
@@ -69,9 +88,9 @@
   <DeleteModal bind:open={openDeleteVideoModal} onDelete={confirmRemoveVideo} />
 {:else}
   <!-- View Mode -->
-  {#if videos.length}
+  {#if unplacedVideos.length}
     <div class="w-full">
-      {#each videos as video}
+      {#each unplacedVideos as video, index (video.id ?? `${index}-${video.link}`)}
         <div class="mb-5 w-full overflow-hidden">
           {@render content(video)}
         </div>

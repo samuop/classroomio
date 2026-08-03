@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { HTMLContent, Content, Editor } from '@tiptap/core';
   import type { Transaction } from '@tiptap/pm/state';
+  import type { ResolveMediaLabel } from './types';
   import { EdraEditor, EdraToolBar, EdraBubbleMenu, EdraDragHandleExtended } from './ui';
   import { slide } from 'svelte/transition';
   import { cn } from '$src/tools';
@@ -22,6 +23,16 @@
     class?: string;
     // CSS class for the editor itself
     editorClass?: string;
+    /**
+     * Let the editor grow with its content instead of scrolling inside a fixed
+     * box. Needed as a prop rather than an `editorClass` override because the
+     * default height is prefixed (`ui:h-128`) and consumers outside this package
+     * compile unprefixed utilities: `cn()` sees two different modifier sets so it
+     * keeps both, and `output.css` is imported last so the prefixed one wins.
+     */
+    autoHeight?: boolean;
+    // Names a lesson-media marker for the in-editor card; see ResolveMediaLabel
+    resolveMediaLabel?: ResolveMediaLabel;
     // Placeholder text for the editor
     placeholder?: string | ((node: any) => string);
     // Callback functions
@@ -39,6 +50,8 @@
     editableStorageKey = 'edra-editable',
     class: className = '',
     editorClass = '',
+    autoHeight = false,
+    resolveMediaLabel,
     placeholder,
     onContentChange,
     onEditorReady
@@ -132,8 +145,12 @@
     {#if editor && !editor.isDestroyed}
       {#if showToolBar}
         <div transition:slide>
+          <!--
+            The toolbar wraps rather than scrolling sideways: a clipped row hides
+            controls behind a scrollbar nobody looks for.
+          -->
           <EdraToolBar
-            class="ui:bg-secondary/50 ui:flex ui:w-full ui:items-center ui:overflow-x-auto ui:border-b ui:border-dashed ui:p-0.5"
+            class="ui:bg-secondary/50 ui:flex ui:w-full ui:flex-wrap ui:items-center ui:border-b ui:border-dashed ui:p-0.5"
             {editor}
           />
         </div>
@@ -145,12 +162,18 @@
       {/if}
     {/if}
     <EdraEditor
-      class={cn('ui:relative ui:h-128 ui:overflow-auto ui:p-4', editorClass)}
+      class={cn(
+        'ui:relative ui:p-4',
+        !autoHeight && 'ui:h-128 ui:overflow-auto',
+        autoHeight && 'ui:h-auto',
+        editorClass
+      )}
       bind:editor
       {editable}
       {content}
       {onUpdate}
       {placeholder}
+      {resolveMediaLabel}
     />
   </div>
 {/if}

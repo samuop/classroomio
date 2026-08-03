@@ -16,6 +16,9 @@ module.exports = {
     '\\.[jt]sx?$': 'babel-jest'
   },
   moduleNameMapper: {
+    // SvelteKit's own aliases, which Jest knows nothing about.
+    '^\\$lib/(.*)$': '<rootDir>/src/lib/$1',
+    '^\\$features/(.*)$': '<rootDir>/src/lib/features/$1',
     // Mirrors the `@cio/ui` alias in svelte.config.js: the package ships source,
     // not a build, so Jest has to resolve it the way Vite does.
     '^@cio/ui/(.*)$': '<rootDir>/node_modules/@cio/ui/src/$1',

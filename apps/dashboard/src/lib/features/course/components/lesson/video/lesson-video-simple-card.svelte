@@ -141,7 +141,7 @@
           <VideoCardDropdown
             {video}
             {onRemove}
-            onThumbnailSaved={(url) => lessonApi.updateLessonVideoThumbnail(index, url)}
+            onThumbnailSaved={(url) => lessonApi.updateLessonVideoThumbnail({ id: video.id, index }, url)}
             menuPlacement="inline"
           />
         {/if}

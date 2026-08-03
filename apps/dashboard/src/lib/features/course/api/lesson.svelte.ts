@@ -45,11 +45,27 @@ import {
 } from '@cio/utils/validation/lesson';
 
 import type { TLocale } from '@cio/db/types';
+import { findLessonMediaIndex, withLessonMediaIds } from '@cio/utils/functions/lesson-media-id';
+import type { LessonMediaRef } from '@cio/utils/functions/lesson-media-id';
 import { get } from 'svelte/store';
 import { mapZodErrorsToTranslations } from '$lib/utils/validation';
 import { mediaApi } from '$features/media/api';
 import { profile } from '$lib/utils/store/user';
 import { snackbar } from '$features/ui/snackbar/store';
+
+/**
+ * Gives newly added lesson media a placement id right away, rather than waiting
+ * for the server to stamp one on save. A teacher who adds a video and then drops
+ * it into the note needs something to reference before the round-trip happens.
+ *
+ * The server stamps the same field on write, so this is a convenience for the
+ * live editing session — not the guarantee.
+ */
+function stampMediaIds(field: keyof Lesson, items: unknown[]): unknown[] {
+  if (field !== 'videos' && field !== 'documents') return items;
+
+  return withLessonMediaIds(items);
+}
 
 /**
  * API class for lesson operations
@@ -745,10 +761,13 @@ export class LessonApi extends BaseApiWithErrors {
   /**
    * Deletes a video from lesson materials
    */
-  async deleteLessonVideo(videoIndex: number) {
+  async deleteLessonVideo(ref: LessonMediaRef) {
     if (!this.lesson) return;
 
     const videos = Array.isArray(this.lesson.videos) ? [...this.lesson.videos] : [];
+    const videoIndex = findLessonMediaIndex(videos, ref);
+    if (videoIndex === -1) return;
+
     const removedVideo = videos[videoIndex] as { assetId?: string } | undefined;
 
     if (removedVideo?.assetId && this.lesson.id) {
@@ -771,10 +790,11 @@ export class LessonApi extends BaseApiWithErrors {
    * Updates the thumbnail URL on a lesson video's metadata so the card preview
    * reflects the asset's new thumbnail without waiting for a reload.
    */
-  updateLessonVideoThumbnail(videoIndex: number, thumbnailUrl: string) {
+  updateLessonVideoThumbnail(ref: LessonMediaRef, thumbnailUrl: string) {
     if (!this.lesson) return;
 
     const videos = Array.isArray(this.lesson.videos) ? [...this.lesson.videos] : [];
+    const videoIndex = findLessonMediaIndex(videos, ref);
     const target = videos[videoIndex];
     if (!target) return;
 
@@ -795,10 +815,13 @@ export class LessonApi extends BaseApiWithErrors {
   /**
    * Deletes a document from lesson materials
    */
-  async deleteLessonDocument(documentIndex: number) {
+  async deleteLessonDocument(ref: LessonMediaRef) {
     if (!this.lesson) return;
 
     const documents = Array.isArray(this.lesson.documents) ? [...this.lesson.documents] : [];
+    const documentIndex = findLessonMediaIndex(documents, ref);
+    if (documentIndex === -1) return;
+
     const removedDocument = documents[documentIndex] as { assetId?: string } | undefined;
 
     if (removedDocument?.assetId && this.lesson.id) {
@@ -837,13 +860,13 @@ export class LessonApi extends BaseApiWithErrors {
 
       this.lesson = {
         ...this.lesson,
-        [field]: [...existingArray, ...newItems] as Lesson[K]
+        [field]: [...existingArray, ...stampMediaIds(field, newItems)] as Lesson[K]
       };
     } else {
       // Direct field replacement
       this.lesson = {
         ...this.lesson,
-        [field]: value as Lesson[K]
+        [field]: (Array.isArray(value) ? stampMediaIds(field, value) : value) as Lesson[K]
       };
     }
     this.isDirty = true;

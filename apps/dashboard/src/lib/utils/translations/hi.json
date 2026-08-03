@@ -3935,7 +3935,8 @@
         "generate_course_plan": "Generating course plan",
         "ask_template_questions": "टेम्प्लेट फॉर्म तैयार किया जा रहा है",
         "fetch_documentation_url": "दस्तावेज़ पृष्ठ पढ़ना",
-        "fetch_documentation_url_with_url": "पढ़ना {url}"
+        "fetch_documentation_url_with_url": "पढ़ना {url}",
+        "replace_lesson_block": "Editing the lesson"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",

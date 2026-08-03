@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Editor } from '@cio/ui/custom/editor';
-  import type { HTMLContent, TiptapEditor } from '@cio/ui/custom/editor';
+  import type { HTMLContent, ResolveMediaLabel, TiptapEditor } from '@cio/ui/custom/editor';
   import { brandName } from '$lib/utils/branding';
 
   interface Props {
@@ -21,6 +21,10 @@
     class?: string;
     // CSS class for the editor itself
     editorClass?: string;
+    // Let the editor grow with its content instead of scrolling in a fixed box
+    autoHeight?: boolean;
+    // Names a lesson-media marker for the card shown in its place while editing
+    resolveMediaLabel?: ResolveMediaLabel;
     // Callback functions
     onChange?: (content: HTMLContent) => void;
     onReady?: (editor: TiptapEditor) => void;
@@ -36,6 +40,8 @@
     editableStorageKey = 'edra-editable',
     class: className = '',
     editorClass = '',
+    autoHeight = false,
+    resolveMediaLabel,
     placeholder = `Welcome to ${brandName}`,
     onChange,
     onReady,
@@ -52,6 +58,8 @@
   {editableStorageKey}
   class={className}
   {editorClass}
+  {autoHeight}
+  {resolveMediaLabel}
   {placeholder}
   onContentChange={onChange}
   onEditorReady={onReady}

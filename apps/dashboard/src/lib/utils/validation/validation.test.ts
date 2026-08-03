@@ -1,16 +1,16 @@
+// Written for vitest, which the dashboard does not run — jest is the runner
+// here, and it collected this file and failed on the `vitest` import, so the
+// whole suite was red. Same tests, jest's mocking API.
 import { ZodError, z } from 'zod';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import enTranslations from '$lib/utils/translations/en.json' assert { type: 'json' };
+import enTranslations from '$lib/utils/translations/en.json';
 
 import { mapZodErrorsToTranslations } from './validation';
 
-const { mockGet } = vi.hoisted(() => ({
-  mockGet: vi.fn<(key: string, params?: Record<string, unknown>) => string | null>()
-}));
+const mockGet = jest.fn<string | null, [string, Record<string, unknown>?]>();
 
-vi.mock('$lib/utils/functions/translations', () => ({
+jest.mock('$lib/utils/functions/translations', () => ({
   t: {
-    get: mockGet
+    get: (key: string, params?: Record<string, unknown>) => mockGet(key, params)
   }
 }));
 
@@ -201,7 +201,10 @@ describe('mapZodErrorsToTranslations generic parameter coverage', () => {
     {
       code: 'invalid_format',
       issue: {
-        validation: 'email',
+        // Zod v4 names this `format`; the case was written against v3's
+        // `validation`, so the mapper read nothing and the template rendered
+        // "Invalid format" with no suffix.
+        format: 'email',
         regex: /@/,
         path: ['field'],
         origin: 'zod',
@@ -254,11 +257,6 @@ describe('mapZodErrorsToTranslations generic parameter coverage', () => {
       code: 'invalid_value',
       issue: { expected: 'A', received: 'B', path: ['field'], origin: 'zod', message: 'Field must be a valid value' },
       expectedParams: { expected: 'A', received: 'B' }
-    },
-    {
-      code: 'custom',
-      issue: { params: { reason: 'Invalid' }, message: 'Custom message', path: ['field'], origin: 'zod' },
-      expectedParams: { params: JSON.stringify({ reason: 'Invalid' }), message: 'Custom message' }
     }
   ];
 
@@ -295,5 +293,27 @@ describe('mapZodErrorsToTranslations generic parameter coverage', () => {
     );
 
     expect(result).toEqual({ field: renderedMessage });
+  });
+
+  /**
+   * `custom` is the one code that never reaches `validations.generic.custom`.
+   * mapZodErrorsToTranslations short-circuits it and looks the issue's own
+   * message up as a key, because a custom refinement already carries the text it
+   * wants shown. It was previously in the table above, asserting a lookup the
+   * mapper does not make.
+   */
+  it('looks a custom issue up by its own message, not by a generic key', () => {
+    mockGet.mockImplementation((key) => (key === 'Custom message' ? 'Rendered custom message' : null));
+
+    const error = createError({
+      code: 'custom',
+      params: { reason: 'Invalid' },
+      message: 'Custom message',
+      path: ['field'],
+      origin: 'zod'
+    } as unknown as z.core.$ZodIssue);
+
+    expect(mapZodErrorsToTranslations(error)).toEqual({ field: 'Rendered custom message' });
+    expect(mockGet.mock.calls.map(([key]) => key)).not.toContain('validations.generic.custom');
   });
 });

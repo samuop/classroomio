@@ -8,6 +8,7 @@
   import * as Item from '@cio/ui/base/item';
   import DocumentCard from './document-card.svelte';
   import type { LessonDocument } from '$features/course/utils/types';
+  import type { LessonMediaRef } from '@cio/utils/functions/lesson-media-id';
 
   interface Props {
     mode?: (typeof MODES)[keyof typeof MODES];
@@ -15,7 +16,7 @@
     downloadingDocuments: Set<string>;
     formatFileSize: (bytes: number) => string;
     openDocumentUploadModal: () => void;
-    requestRemoveDocument: (index: number) => void;
+    requestRemoveDocument: (ref: LessonMediaRef) => void;
     onViewPDF: (doc: LessonDocument) => void;
     downloadDocument: (doc: LessonDocument) => Promise<void>;
   }
@@ -43,14 +44,14 @@
 {#if !isEmpty(displayDocuments)}
   {@const isEditMode = mode === MODES.edit}
   <Item.Group class="flex w-full gap-4">
-    {#each displayDocuments as document, index}
+    {#each displayDocuments as document, index (document.id ?? `${index}-${document.key}`)}
       <DocumentCard
         {document}
         {index}
         {isEditMode}
         isDownloading={downloadingDocuments.has(document.name)}
         {formatFileSize}
-        onRemove={() => (isEditMode ? requestRemoveDocument(index) : undefined)}
+        onRemove={() => (isEditMode ? requestRemoveDocument({ id: document.id, index }) : undefined)}
         {onViewPDF}
         onDownload={downloadDocument}
       />

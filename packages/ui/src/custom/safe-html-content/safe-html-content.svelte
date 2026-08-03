@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { splitHtmlAndSvg, type ContentSegment } from '../../tools/sanitize';
+  import { splitHtmlAndSvg, type ContentSegment, type LessonMediaKind } from '../../tools/sanitize';
 
   interface Props {
     content: string;
@@ -13,9 +13,19 @@
      * other caller render exactly as before.
      */
     svgOverlay?: Snippet<[number, string]>;
+    /**
+     * Renders one of the lesson's own media items where the teacher placed it.
+     *
+     * The note only ever stores an inert marker — a player written into the HTML
+     * would be stripped by the sanitizer, deliberately — so the real Video/Slide/
+     * Document component has to be mounted from outside. Without this snippet the
+     * marker renders as nothing, which is correct for every caller that has no
+     * lesson to resolve it against.
+     */
+    mediaEmbed?: Snippet<[LessonMediaKind, string]>;
   }
 
-  let { content, svgOverlay }: Props = $props();
+  let { content, svgOverlay, mediaEmbed }: Props = $props();
 
   const segments: ContentSegment[] = $derived(splitHtmlAndSvg(content));
 
@@ -47,6 +57,8 @@
   {#each segments as segment, i (i)}
     {#if segment.type === 'html'}
       {@html segment.content}
+    {:else if segment.type === 'media'}
+      {@render mediaEmbed?.(segment.kind, segment.mediaId)}
     {:else}
       {@const dims = svgDimensions(segment.content)}
       {#if svgOverlay}

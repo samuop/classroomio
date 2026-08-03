@@ -1003,6 +1003,16 @@ export const lesson = pgTable(
     isUnlocked: boolean('is_unlocked').default(false),
     videos: jsonb().default([]).$type<
       {
+        /**
+         * Identity of this PLACEMENT, so a note can point at "this video" rather
+         * than "the second one". Distinct from `assetId` (identity of the file):
+         * a YouTube link has no asset, and one asset can appear twice.
+         *
+         * Optional because rows written before it existed genuinely have none.
+         * Every write path stamps one — see `withLessonMediaIds` in
+         * queries/lesson — so absence means "not saved since", not "never".
+         */
+        id?: string;
         type: 'youtube' | 'generic' | 'upload' | 'google_drive';
         link: string;
         key?: string;
@@ -1022,6 +1032,8 @@ export const lesson = pgTable(
     >(),
     documents: jsonb().default([]).$type<
       {
+        /** Identity of this placement — see the note on `videos[].id`. */
+        id?: string;
         type: string;
         name: string;
         link: string;

@@ -236,7 +236,8 @@
         "ask_template_questions": "Preparando el formulario de plantilla",
         "ask_discovery_questions": "Preparando preguntas",
         "fetch_documentation_url": "Página de lectura de documentos",
-        "fetch_documentation_url_with_url": "Leyendo {url}"
+        "fetch_documentation_url_with_url": "Leyendo {url}",
+        "replace_lesson_block": "Editando la lección"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# carácter} other {# caracteres}})",
@@ -270,7 +271,8 @@
         "generate_course_plan": "Plan del curso generado",
         "ask_template_questions": "Formulario de plantilla listo",
         "ask_discovery_questions": "Preguntas de descubrimiento enviadas",
-        "fetch_documentation_url": "Leer {url}"
+        "fetch_documentation_url": "Leer {url}",
+        "replace_lesson_block_fallback": "Lección editada ({count, plural, one {# carácter} other {# caracteres}})"
       }
     },
     "student_empty_state": "Pregúntame cualquier cosa sobre este curso: obtén explicaciones, hazte pruebas o resume lo que estás leyendo.",
@@ -2186,9 +2188,12 @@
                 "outline": "Generar esquema de lección",
                 "note": "Generar nota de lección",
                 "activities": "Generar actividades lectivas"
-              }
+              },
+              "insert_media": "Insertar material",
+              "insert_media_empty": "Esta lección todavía no tiene videos, diapositivas ni documentos."
             }
-          }
+          },
+          "media_not_found": "El material al que apunta esta nota ya no está en la lección."
         },
         "lesson_nav": {
           "materials": "Materiales",

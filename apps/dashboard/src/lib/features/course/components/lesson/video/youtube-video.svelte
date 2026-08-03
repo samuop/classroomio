@@ -94,7 +94,7 @@
         <IconButton onclick={() => copyToClipboard(video.link)}>
           <CopyIcon size={16} />
         </IconButton>
-        <IconButton onclick={() => removeVideo(index)}>
+        <IconButton onclick={() => removeVideo({ id: video.id, index })}>
           <TrashIcon size={16} />
         </IconButton>
       </div>

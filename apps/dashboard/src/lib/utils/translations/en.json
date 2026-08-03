@@ -2543,7 +2543,9 @@
                 "outline": "Generate Lesson Outline",
                 "note": "Generate Lesson Note",
                 "activities": "Generate Lesson Activities"
-              }
+              },
+              "insert_media": "Insert material",
+              "insert_media_empty": "This lesson has no videos, slides or documents yet."
             },
             "slide": {
               "title": "Slide",
@@ -2666,7 +2668,8 @@
               "empty_description": "Upload documents to share with your students"
             }
           },
-          "button_done": "Done"
+          "button_done": "Done",
+          "media_not_found": "The material this note points at is no longer in the lesson."
         },
         "exercises": {
           "heading": "All Exercises",
@@ -4847,7 +4850,8 @@
         "ask_template_questions": "Preparing template form",
         "ask_discovery_questions": "Preparing questions",
         "fetch_documentation_url": "Reading docs page",
-        "fetch_documentation_url_with_url": "Reading {url}"
+        "fetch_documentation_url_with_url": "Reading {url}",
+        "replace_lesson_block": "Editing the lesson"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -4881,7 +4885,8 @@
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Template form ready",
         "ask_discovery_questions": "Asked discovery questions",
-        "fetch_documentation_url": "Read {url}"
+        "fetch_documentation_url": "Read {url}",
+        "replace_lesson_block_fallback": "Edited the lesson ({count, plural, one {# character} other {# characters}})"
       }
     },
     "mention_lesson": "Lesson",

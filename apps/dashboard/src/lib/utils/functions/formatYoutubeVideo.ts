@@ -1,4 +1,5 @@
 import { lessonApi } from '$features/course/api';
+import type { LessonMediaRef } from '@cio/utils/functions/lesson-media-id';
 import { snackbar } from '$features/ui/snackbar/store';
 
 export function formatYoutubeVideo(url: string, errors: Record<string, string>) {
@@ -66,6 +67,6 @@ export async function copyToClipboard(text: string) {
   }
 }
 
-export function removeVideo(index = 0) {
-  lessonApi.deleteLessonVideo(index);
+export function removeVideo(ref: LessonMediaRef) {
+  lessonApi.deleteLessonVideo(ref);
 }

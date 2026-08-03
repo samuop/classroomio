@@ -492,6 +492,47 @@ input[type='checkbox'] {
 .tiptap .tiptap-mathematics-render.inline-math-error,
 .tiptap .tiptap-mathematics-render.block-math-error {
   background: var(--code-bg);
-  color: var(--color-destructive);
+  color: var(--destructive);
   border: 1px solid darkred;
+}
+
+/*
+ * Lesson-media marker, as shown while editing: a card naming the media, not the
+ * media itself. The student view swaps in the real player — see SafeHtmlContent.
+ */
+.tiptap .lesson-media-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0.625rem 0.875rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  cursor: default;
+  user-select: none;
+}
+
+.tiptap .lesson-media-card.ProseMirror-selectednode {
+  border-style: solid;
+  border-color: var(--primary);
+}
+
+.tiptap .lesson-media-card__icon {
+  flex: none;
+  line-height: 1;
+}
+
+.tiptap .lesson-media-card__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A marker whose media was deleted says so, rather than rendering as a blank. */
+.tiptap .lesson-media-card--missing {
+  border-color: var(--destructive);
+  color: var(--destructive);
 }

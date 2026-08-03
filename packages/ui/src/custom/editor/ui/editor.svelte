@@ -29,6 +29,7 @@
   import Link from './menus/Link.svelte';
   import slashcommand from '../extensions/slash-command/slashcommand';
   import SlashCommandList from './components/SlashCommandList.svelte';
+  import { LessonMedia } from '../extensions/lesson-media/LessonMedia';
 
   import '../editor.css';
   import './style.css';
@@ -48,7 +49,8 @@
     onUpdate,
     autofocus = false,
     class: className,
-    placeholder = ''
+    placeholder = '',
+    resolveMediaLabel
   }: EdraEditorProps = $props();
 
   onMount(() => {
@@ -71,6 +73,11 @@
         AudioExtended(AudioExtendedComp),
         IFramePlaceholder(IFramePlaceHolderComp),
         IFrameExtended(IFrameExtendedComp),
+        // Registered for every editor, not only the ones that can insert media:
+        // ProseMirror drops nodes it has no schema for, so without this a note
+        // containing a marker would lose it the moment someone opened and saved
+        // that note — the same silent data loss the Svg node exists to prevent.
+        LessonMedia.configure({ resolveLabel: resolveMediaLabel ?? null }),
         slashcommand(SlashCommandList)
       ],
       {

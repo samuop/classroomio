@@ -1,16 +1,23 @@
 <script lang="ts">
   import { lessonApi } from '$features/course/api';
+  import { listPlacedLessonMediaIds, SLIDE_MEDIA_ID } from '$features/course/utils/lesson-media';
   import { InputField } from '@cio/ui/custom/input-field';
   import { t } from '$lib/utils/functions/translations';
   import MODES from '$lib/utils/constants/mode';
 
   interface Props {
     mode?: (typeof MODES)[keyof typeof MODES];
+    lessonId?: string;
   }
 
-  let { mode = MODES.view }: Props = $props();
+  let { mode = MODES.view, lessonId = '' }: Props = $props();
 
-  let url = $derived(getUrl(lessonApi.lesson?.slideUrl || ''));
+  /** Placed inside the note? Then the note renders it, and this block stands down. */
+  const isPlacedInNote = $derived(
+    listPlacedLessonMediaIds(lessonApi.translations[lessonId]?.[lessonApi.currentLocale]).has(SLIDE_MEDIA_ID)
+  );
+
+  let url = $derived(isPlacedInNote ? undefined : getUrl(lessonApi.lesson?.slideUrl || ''));
 
   function canvaHandler(_url): string {
     if (_url.includes('?embed')) return _url;

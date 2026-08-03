@@ -3935,7 +3935,8 @@
         "generate_course_plan": "Generating course plan",
         "ask_template_questions": "Vorlageformular vorbereiten",
         "fetch_documentation_url": "Seite „Dokumente lesen“.",
-        "fetch_documentation_url_with_url": "{url} wird gelesen"
+        "fetch_documentation_url_with_url": "{url} wird gelesen",
+        "replace_lesson_block": "Editing the lesson"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",

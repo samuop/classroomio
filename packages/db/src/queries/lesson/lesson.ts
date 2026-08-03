@@ -13,6 +13,26 @@ import type {
 import { and, db, desc, eq, inArray, lt, sql } from '@db/drizzle';
 
 import type { DbOrTxClient } from '@db/drizzle';
+import { withLessonMediaIds } from '@cio/utils/functions/lesson-media-id';
+
+/**
+ * Gives lesson media a placement id on the way into the database, rather than at
+ * each call site: the dashboard, the course cloner and the AI agent all write
+ * these arrays, and an entry that reaches storage without an id can never be
+ * referenced from a note.
+ */
+function withMediaIds<T extends Partial<TLesson>>(data: T): T {
+  const patched = { ...data };
+
+  if (Array.isArray(patched.videos)) {
+    patched.videos = withLessonMediaIds(patched.videos) as T['videos'];
+  }
+  if (Array.isArray(patched.documents)) {
+    patched.documents = withLessonMediaIds(patched.documents) as T['documents'];
+  }
+
+  return patched;
+}
 
 // Lesson Queries
 export async function getLessonsByCourseId(courseId: string) {
@@ -55,7 +75,7 @@ export async function getLessonById(lessonId: string): Promise<LessonById | null
 
 export async function createLessons(values: TNewLesson[]) {
   try {
-    return db.insert(schema.lesson).values(values).returning();
+    return db.insert(schema.lesson).values(values.map(withMediaIds)).returning();
   } catch (error) {
     console.error('createLessons error:', error);
     throw new Error(`Failed to create lessons: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -66,7 +86,7 @@ export async function updateLesson(lessonId: string, data: Partial<TLesson>, dbC
   try {
     const [updated] = await dbClient
       .update(schema.lesson)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+      .set({ ...withMediaIds(data), updatedAt: new Date().toISOString() })
       .where(eq(schema.lesson.id, lessonId))
       .returning();
     return updated || null;

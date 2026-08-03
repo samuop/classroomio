@@ -10,6 +10,10 @@
   import AIButton from '$features/course/components/lesson/ai-button.svelte';
   import QuoteSelection from '$features/course/components/lesson/note/quote-selection.svelte';
   import DiagramActions from '$features/course/components/lesson/note/diagram-actions.svelte';
+  import InsertMediaMenu from '$features/course/components/lesson/note/insert-media-menu.svelte';
+  import LessonMediaEmbed from '$features/course/components/lesson/note/lesson-media-embed.svelte';
+  import { resolveLessonMediaLabel } from '$features/course/utils/lesson-media';
+  import type { LessonMediaKind } from '@cio/ui/tools/sanitize';
   import { RoleBasedSecurity } from '$features/ui';
   import { page } from '$app/state';
   import type { Writable } from 'svelte/store';
@@ -46,15 +50,22 @@
 
   let noteRoot: HTMLElement | undefined = $state();
   let editRoot: HTMLElement | undefined = $state();
+  let editor: TiptapEditor | undefined = $state();
 
   $effect(() => {
     if (mode !== MODES.edit) {
       editRoot = undefined;
+      editor = undefined;
     }
   });
 
-  function bindEditorRoot(editor: TiptapEditor) {
-    editRoot = editor.view.dom as HTMLElement;
+  function bindEditorRoot(instance: TiptapEditor) {
+    editRoot = instance.view.dom as HTMLElement;
+    editor = instance;
+  }
+
+  function resolveMediaLabel(kind: LessonMediaKind, mediaId: string) {
+    return resolveLessonMediaLabel(lessonApi.lesson, kind, mediaId);
   }
 
   let hasAtLeastOneTranslation = $derived(
@@ -95,16 +106,30 @@
   </RoleBasedSecurity>
 {/snippet}
 
+{#snippet mediaEmbed(kind: LessonMediaKind, mediaId: string)}
+  <LessonMediaEmbed {kind} {mediaId} />
+{/snippet}
+
 {#if mode === MODES.edit}
   <!-- AI Button -->
-  <div class="flex justify-end gap-1">
+  <div class="flex items-center justify-end gap-1">
+    <InsertMediaMenu {editor} />
     <AIButton {isLoading} {callAI} />
   </div>
   <!-- End AI Button -->
 
-  <div class="mt-5 h-[60vh]">
+  <!--
+    No fixed height here and none inside the editor: the note grows with the text
+    and the page is the only thing that scrolls. `max-w-2xl mx-auto` is the same
+    column the reading view uses below, so what you type has the shape of what
+    the student will see. The toolbar stays full width.
+  -->
+  <div class="mt-5">
     <TextEditor
       {content}
+      autoHeight
+      editorClass="mx-auto w-full max-w-2xl min-h-[60vh]"
+      {resolveMediaLabel}
       onChange={(content) => onEditorChange(content)}
       onReady={bindEditorRoot}
       placeholder={$t('course.navItem.lessons.materials.tabs.note.placeholder')}
@@ -116,7 +141,7 @@
   {#if !isHtmlValueEmpty(content)}
     <div class="relative mx-auto w-full max-w-2xl" bind:this={noteRoot}>
       <HTMLRender>
-        <SafeHtmlContent {content} svgOverlay={diagramOverlay} />
+        <SafeHtmlContent {content} svgOverlay={diagramOverlay} {mediaEmbed} />
       </HTMLRender>
       <QuoteSelection root={noteRoot} enabled />
     </div>
