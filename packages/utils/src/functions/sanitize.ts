@@ -36,8 +36,18 @@ export const FORBID_ATTR = [
  * should appear. They are inert — the viewer reads them and renders the real
  * player itself — which is what lets iframes stay forbidden while still
  * allowing a teacher to place a video mid-paragraph.
+ *
+ * `data-block-id` gives each top-level block a stable name, so the agent can
+ * replace one by id instead of reproducing its old text character for character.
  */
-export const ADD_ATTR = ['data-type', 'data-latex', 'colwidth', 'data-cio-media', 'data-cio-media-id'] as const;
+export const ADD_ATTR = [
+  'data-type',
+  'data-latex',
+  'colwidth',
+  'data-cio-media',
+  'data-cio-media-id',
+  'data-block-id'
+] as const;
 
 export const ALLOWED_URI_REGEXP =
   /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;

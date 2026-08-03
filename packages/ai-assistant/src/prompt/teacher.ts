@@ -39,9 +39,7 @@ export type BuildTeacherSystemPromptOptions = {
 };
 
 function buildQuestionTypeListBlock(isOrgOnPaidPlan: boolean): string {
-  const allowed = QUESTION_TYPE_REGISTRY.filter(
-    (t) => isOrgOnPaidPlan || !PREMIUM_QUESTION_TYPE_KEYS.has(t.key)
-  );
+  const allowed = QUESTION_TYPE_REGISTRY.filter((t) => isOrgOnPaidPlan || !PREMIUM_QUESTION_TYPE_KEYS.has(t.key));
   const listing = allowed.map((t) => `- ${t.id} = ${t.typename} — ${t.label}`).join('\n');
 
   if (isOrgOnPaidPlan) {
@@ -57,10 +55,7 @@ function buildQuestionTypeListBlock(isOrgOnPaidPlan: boolean): string {
 The following question types require a paid plan and are NOT available on this org: ${blocked}. Do NOT attempt to create them — pick one of the types listed above instead. If the teacher asks for one of these, briefly explain that it requires an upgrade and suggest the closest available type (e.g. RADIO instead of STAR for a rating-style question).`;
 }
 
-export function buildTeacherSystemPrompt(
-  context: AgentContext,
-  options?: BuildTeacherSystemPromptOptions
-): string {
+export function buildTeacherSystemPrompt(context: AgentContext, options?: BuildTeacherSystemPromptOptions): string {
   const isOrgOnPaidPlan = options?.isOrgOnPaidPlan ?? true;
   const mode = options?.mode ?? 'full';
   const questionTypeListBlock = buildQuestionTypeListBlock(isOrgOnPaidPlan);
@@ -234,12 +229,15 @@ Mentally verify, then return only if all are true:
 
   const buildEditingSection = `**Writing/editing a SINGLE lesson's content on demand IS allowed in chat.** When the teacher is viewing a specific lesson (its id appears as "currently viewing lesson" in the Current Context) and asks you to write, draft, rewrite, expand, improve, or fix THAT lesson's content, no plan is needed. Choose the right tool:
 
-**A) TARGETED edit → use \`edit_lesson_content\` (find-and-replace).** When the teacher asks to change ONE part — redo just the diagram (the <svg>), rewrite/fix a single paragraph or sentence, replace a phrase, or delete a block — DO NOT rewrite the whole lesson. That risks altering sections the teacher didn't ask about. Instead:
-1. Call \`get_lesson_content\` for the lesson in context to see the current HTML.
-2. Copy the exact fragment to change as \`oldString\` — VERBATIM from the tool result: same whitespace, quotes, and HTML entities (e.g. \`&amp;\`, \`&nbsp;\`). Never invent or paraphrase it. Pick a fragment that is unique in the lesson; if it isn't, include enough surrounding context (or pass \`replaceAll\` if you truly mean every occurrence).
-3. Call \`edit_lesson_content\` with the lessonId and locale from the Current Context, your \`oldString\`, and the \`newString\` (use an empty string to delete). The lesson body goes ONLY in the tool call, never in chat.
-4. If it errors "oldString was not found", re-read \`get_lesson_content\` and re-copy the fragment exactly — do NOT fall back to rewriting the whole lesson.
-5. Confirm with a one-line message and a clickable lesson link.
+**A) TARGETED edit → use \`replace_lesson_block\` (replace one block by id).** When the teacher asks to change ONE part — redo just the diagram (the <svg>), rewrite/fix a single paragraph, replace a phrase, or delete a block — DO NOT rewrite the whole lesson. That risks altering sections the teacher didn't ask about. Instead:
+1. Call \`get_lesson_content\` for the lesson in context. Its \`blocks\` list gives you each block's \`blockId\` and a preview of its text.
+2. Pick the \`blockId\` of the block to change and call \`replace_lesson_block\` with the lessonId and locale from the Current Context, that \`blockId\`, and the complete replacement \`html\` including its outer tag (e.g. \`<p>…</p>\`). Use an empty string to delete the block. You do NOT have to reproduce the old text — the server splices by id. The lesson body goes ONLY in the tool call, never in chat.
+3. Confirm with a one-line message and a clickable lesson link.
+
+**A2) TARGETED edit with no block id → \`edit_lesson_content\` (find-and-replace).** Only when \`blocks\` is empty or the fragment you need is inside a block (part of a sentence, one cell of a table):
+1. Copy the exact fragment to change as \`oldString\` — VERBATIM from \`get_lesson_content\`: same whitespace, quotes, and HTML entities (e.g. \`&amp;\`, \`&nbsp;\`). Never invent or paraphrase it. Pick a fragment that is unique in the lesson; if it isn't, include enough surrounding context (or pass \`replaceAll\` if you truly mean every occurrence).
+2. Call \`edit_lesson_content\` with the lessonId, locale, your \`oldString\` and \`newString\` (empty string to delete).
+3. If it errors "oldString was not found", prefer \`replace_lesson_block\` on the enclosing block — do NOT fall back to rewriting the whole lesson.
 
 **B) FULL write (empty lesson, or "rewrite the whole thing") → use \`update_lesson_content\`.**
 1. Call \`get_lesson_content\` first to see what's there (if anything).

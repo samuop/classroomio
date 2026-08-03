@@ -19,7 +19,11 @@ export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string
 // RAG for edits (step 6): search relevant fragments of an attached document
 // instead of reading the whole thing. documentId is injected from context.
 export const searchDocumentParam = z.object({
-  query: z.string().min(1).max(300).describe('What to look for in the attached document (a topic, concept, or question).'),
+  query: z
+    .string()
+    .min(1)
+    .max(300)
+    .describe('What to look for in the attached document (a topic, concept, or question).'),
   limit: z.number().int().min(1).max(10).default(6)
 });
 export const exerciseReadParam = z.object({ exerciseId: z.string() });
@@ -110,6 +114,20 @@ export const editContentParam = z.object({
     .boolean()
     .optional()
     .describe('If true, replace ALL occurrences. Defaults to false, which requires oldString to be unique.')
+});
+
+export const replaceBlockParam = z.object({
+  lessonId: z.string(),
+  locale: z.string().default('en'),
+  blockId: z
+    .string()
+    .min(1)
+    .describe('The data-block-id of the block to replace, taken from get_lesson_content. Not a guess — copy it.'),
+  html: z
+    .string()
+    .describe(
+      'The complete replacement block, including its own outer tag (e.g. "<p>…</p>"). May be an empty string to delete the block. Keep headings at h3 or lower and use only allowed HTML.'
+    )
 });
 
 export const questionSchema = z.object({

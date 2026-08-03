@@ -19,6 +19,7 @@ import AutoJoiner from 'tiptap-extension-auto-joiner';
 import 'katex/dist/katex.min.css';
 import { InlineMathReplacer } from './extensions/InlineMathReplacer';
 import { Svg } from './extensions/svg/Svg';
+import { BlockId } from './extensions/block-id/BlockId';
 
 export default (
   element?: HTMLElement,
@@ -111,6 +112,7 @@ export default (
       TableCell,
       Markdown,
       Svg,
+      BlockId,
 
       ...(extensions ?? [])
     ],

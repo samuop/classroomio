@@ -44,6 +44,7 @@ import {
   goLiveParam,
   lessonReadParam,
   reorderContentParam,
+  replaceBlockParam,
   updateContentParam,
   updateCourseLandingPageParam,
   updateExerciseParam,
@@ -54,6 +55,12 @@ import {
   updateSectionParam
 } from '@api/services/agent/agent-tool-schemas';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
+import {
+  findLessonBlock,
+  preserveBlockId,
+  replaceLessonBlock,
+  summarizeLessonBlocks
+} from '@api/services/agent/lesson-blocks';
 
 function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
   if (value == null) return value;
@@ -327,7 +334,8 @@ export function buildAgentTools(
     }),
 
     get_lesson_content: tool({
-      description: 'Get the HTML content of a specific lesson in this course.',
+      description:
+        'Get the HTML content of a specific lesson in this course. The response also lists the addressable blocks — use a blockId with replace_lesson_block to change one of them.',
       inputSchema: lessonReadParam,
       execute: async (args) => {
         return executeAgentTool('get_lesson_content', { orgId, userId, courseId, args }, async () => {
@@ -339,7 +347,19 @@ export function buildAgentTools(
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
           const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale);
-          return { id: lesson.id, title: lesson.title, content: langContent?.content || null, locale: args.locale };
+          const content = langContent?.content || null;
+          // The ids are already in the HTML above; listing them separately saves
+          // the model from parsing them out, and is cheap — id plus a short
+          // preview, not the block bodies again.
+          const blocks = content ? summarizeLessonBlocks(content) : [];
+
+          return {
+            id: lesson.id,
+            title: lesson.title,
+            content,
+            locale: args.locale,
+            ...(blocks.length > 0 ? { blocks } : {})
+          };
         });
       }
     }),
@@ -497,9 +517,82 @@ export function buildAgentTools(
       }
     }),
 
+    replace_lesson_block: tool({
+      description:
+        'PREFERRED way to change part of a lesson: replace one block by its data-block-id, leaving the rest byte-for-byte untouched. Call get_lesson_content first and copy a blockId from its `blocks` list. You only write the new block — you do NOT have to reproduce the old one. Pass the complete replacement including its outer tag (e.g. "<p>…</p>"), or an empty string to delete the block. If the block has no id (older content), fall back to edit_lesson_content.',
+      inputSchema: replaceBlockParam,
+      execute: async (args) => {
+        return executeAgentTool('replace_lesson_block', { orgId, userId, courseId, args }, async () => {
+          await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          const lesson = await getLesson(args.lessonId);
+          const lessonWithLangs = lesson as {
+            id: string;
+            title: string;
+            lessonLanguages?: Array<{ locale: string; content: string | null }>;
+          };
+          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+
+          if (!current) {
+            throw new Error(
+              `This lesson has no content in locale "${args.locale}" yet. Use update_lesson_content to write the initial content.`
+            );
+          }
+
+          const block = findLessonBlock(current, args.blockId);
+
+          if (!block) {
+            const available = summarizeLessonBlocks(current);
+            throw new Error(
+              available.length === 0
+                ? 'This lesson has no addressable blocks yet (it predates block ids). Use edit_lesson_content instead.'
+                : `No block with id "${args.blockId}". Call get_lesson_content and copy an id from its blocks list. Available: ${available.map((b) => b.blockId).join(', ')}.`
+            );
+          }
+
+          if (/<h[12][\s>]/i.test(args.html)) {
+            throw new Error(
+              'The replacement must not contain <h1> or <h2>. Lesson headings start at <h3>. Adjust the heading level and retry.'
+            );
+          }
+
+          const repaired = args.html.includes('<svg') ? repairSvgGeometry(args.html) : args.html;
+          // An empty replacement deletes the block; there is no id left to keep.
+          const replacement = repaired.trim() ? preserveBlockId(repaired, args.blockId) : '';
+          const updated = replaceLessonBlock(current, block, replacement);
+
+          if (updated === current) {
+            throw new Error('The replacement produced no change (the new block is identical to the old one).');
+          }
+
+          await upsertLessonLanguageService(args.lessonId, {
+            locale: args.locale as 'en',
+            content: updated
+          });
+
+          const svgWarnings = replacement.includes('<svg') ? validateSvgDiagram(replacement) : [];
+
+          return {
+            lessonId: args.lessonId,
+            lessonTitle: lesson.title,
+            locale: args.locale,
+            blockId: args.blockId,
+            deleted: replacement === '',
+            contentLength: updated.length,
+            updated: true,
+            ...(svgWarnings.length > 0
+              ? {
+                  svgWarnings,
+                  note: 'The edit was saved, but the diagram will not render legibly. Fix it before moving on.'
+                }
+              : {})
+          };
+        });
+      }
+    }),
+
     edit_lesson_content: tool({
       description:
-        'Make a TARGETED edit to a lesson by find-and-replace — replace one exact fragment of its HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). You MUST call get_lesson_content first and copy oldString VERBATIM from it. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
+        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). You MUST call get_lesson_content first and copy oldString VERBATIM from it. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
       inputSchema: editContentParam,
       execute: async (args) => {
         return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {

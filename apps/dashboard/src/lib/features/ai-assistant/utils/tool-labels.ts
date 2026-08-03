@@ -39,6 +39,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'update_lesson',
   'update_lesson_content',
   'edit_lesson_content',
+  'replace_lesson_block',
   'create_exercise',
   'create_exercise_section',
   'update_exercise',
@@ -139,6 +140,10 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         vars: { count: contentLength }
       };
     }
+    // Same completion copy as edit_lesson_content: from the teacher's side both
+    // are "one part of this lesson changed" — how the server found the part is
+    // not something they need to read about.
+    case 'replace_lesson_block':
     case 'edit_lesson_content': {
       const lessonId = readString(r, 'lessonId') ?? '';
       const rawTitle = readString(r, 'lessonTitle');
@@ -300,6 +305,7 @@ export const MUTATION_TOOLS = [
   'update_lesson',
   'update_lesson_content',
   'edit_lesson_content',
+  'replace_lesson_block',
   'create_exercise',
   'create_exercise_section',
   'update_exercise',
