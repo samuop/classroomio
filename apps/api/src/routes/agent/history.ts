@@ -25,6 +25,7 @@ import { compactConversation } from '@api/services/agent/compact';
 import { generateConversationTitle } from '@api/services/agent/title-generation';
 import { pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { collectDocumentIds } from '@api/services/agent/chat-context';
+import { promoteDraftDocuments } from '@api/services/agent/document';
 import { releaseDocumentCaches } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
 
@@ -107,6 +108,36 @@ export const agentHistoryRouter = new Hono()
         const { messages, title } = c.req.valid('json');
 
         await saveChatMessages(conversationId, user.id, messages, title);
+
+        /**
+         * Promote wizard drafts here, not on the chat turn.
+         *
+         * A draft uploaded before the course existed lives in Redis only, and the
+         * chat turn is the wrong moment to persist it: on the FIRST turn of a new
+         * chat the client sends no conversationId at all — it creates the
+         * conversation afterwards, right before this call — and
+         * `ai_chat_document.conversation_id` is NOT NULL. So promoting during the
+         * turn skipped the exact turn that carries the draft ids, which is why the
+         * material still never reached the Sources panel.
+         *
+         * By the time messages are saved, all three exist: the conversation, its
+         * course, and the ids inside the messages. Best-effort — a source that
+         * fails to persist must not fail the save that keeps the teacher's chat.
+         */
+        try {
+          const conversation = await getChatConversation(conversationId, user.id);
+          const documentIds = collectDocumentIds(messages);
+
+          if (conversation?.courseId && documentIds.length > 0) {
+            await promoteDraftDocuments(
+              documentIds,
+              { userId: user.id, courseId: conversation.courseId, conversationId },
+              redis
+            );
+          }
+        } catch (error) {
+          console.warn('[agent.documents] draft promotion after save failed:', error);
+        }
 
         return c.json({ success: true as const });
       } catch (error) {

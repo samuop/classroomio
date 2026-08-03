@@ -200,6 +200,7 @@
   const partsSplit = $derived.by(() => {
     const parts = (message.parts ?? []) as Array<Record<string, unknown>>;
     let lastToolIndex = -1;
+    let lastTextIndex = -1;
 
     parts.forEach((part, index) => {
       // Self-rendered tools (the plan card, the question forms) are the
@@ -207,7 +208,22 @@
       // model's intro — "Here's the plan I put together:" — as narration and
       // hide it above its own card.
       if (isAgentToolPart(part) && !isDeferredPlanPart(part)) lastToolIndex = index;
+      if (part.type === 'text') lastTextIndex = index;
     });
+
+    /**
+     * Where the working-out stops and the answer starts.
+     *
+     * The last tool call when there is one. When there ISN'T, this used to stay
+     * at -1 and nothing was ever classified as narration, so a turn that never
+     * called a tool rendered its entire chain-of-thought as the reply — which is
+     * exactly what a teacher saw after a 5-minute turn that built nothing: the
+     * one case where the model rambles is the one case with no boundary to fold
+     * it behind. Falling back to the last text part restores the same rule with
+     * the only marker left. A single text part stays whole: with nothing to
+     * split on, guessing would be worse than showing it.
+     */
+    const narrationBoundary = lastToolIndex >= 0 ? lastToolIndex : lastTextIndex;
 
     const thinking: string[] = [];
     const reply: Array<Record<string, unknown>> = [];
@@ -222,7 +238,7 @@
 
       if (type !== 'text') return;
 
-      if (index < lastToolIndex) thinking.push(part.text as string);
+      if (index < narrationBoundary) thinking.push(part.text as string);
       else reply.push(part);
     });
 

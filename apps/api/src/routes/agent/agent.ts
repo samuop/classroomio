@@ -49,7 +49,6 @@ import { buildStudentAgentTools } from '@api/services/agent/student-tools';
 import {
   parseAndStoreDocument,
   parseDocument,
-  promoteDraftDocuments,
   storeDraftDocument,
   getDocumentText
 } from '@api/services/agent/document';
@@ -553,16 +552,6 @@ const agentCoreRouter = new Hono()
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
-
-      // Material attached in the course wizard arrives as a Redis-only draft —
-      // at upload time the course did not exist yet, so there was nothing to
-      // attach it to. This is the first turn where both halves exist, so make it
-      // a real source now. Without this the wizard's promise ("we'll use them as
-      // a source for your course") held for exactly one hour and then the text
-      // was gone, leaving a course built from material nobody could read again.
-      if (role === AgentRole.TEACHER && documentIds.length > 0 && conversationId) {
-        await promoteDraftDocuments(documentIds, { userId: user.id, courseId, conversationId }, redis);
-      }
 
       const existingSections = await listCourseSections(courseId);
 
