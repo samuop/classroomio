@@ -72,7 +72,10 @@ export {
 
 export {
   fontStack,
+  imageElementRules,
   renderDocument,
+  shapeElementRules,
+  textElementRules,
   type DocumentRenderInput,
   type DocumentRenderOutput
 } from './document/render';

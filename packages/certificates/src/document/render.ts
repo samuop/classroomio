@@ -18,7 +18,7 @@
 import { escapeHtml } from '../templates/shared';
 import type { CertificateRenderData } from '../types';
 import { buildBindingValues, substituteBindings, type BindingValues } from './bindings';
-import { fitText } from './fit';
+import { fitText, type FitResult } from './fit';
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -110,13 +110,16 @@ function positionRules(element: CertificateElement): string[] {
   return rules;
 }
 
-function renderTextElement(
-  element: TextElement,
-  className: string,
-  values: BindingValues
-): { body: string; styles: string; overflowed: boolean } {
-  const resolved = substituteBindings(element.content, values);
-  const fit = fitText(element, resolved);
+/**
+ * The CSS for a text element, as two declaration lists: the positioned flex box
+ * and the type inside it.
+ *
+ * Exported because the EDITOR needs exactly these rules. It used to keep its own
+ * copy — a `textStyle` that mirrored this function — and two implementations of
+ * the same thing drift, which shows up as the editor and the issued PDF
+ * disagreeing. There is one implementation now and the editor is a caller.
+ */
+export function textElementRules(element: TextElement, fit: FitResult): { outer: string[]; inner: string[] } {
   const { style } = element;
 
   const outer = [
@@ -155,6 +158,52 @@ function renderTextElement(
     );
   }
 
+  return { outer, inner };
+}
+
+/** The CSS for a shape, as one declaration list. Shared with the editor. */
+export function shapeElementRules(element: ShapeElement): string[] {
+  const rules = positionRules(element);
+
+  if (element.fill) rules.push(`background: ${element.fill}`);
+  if (element.strokeWidth && element.strokeColor) {
+    rules.push(`border: ${element.strokeWidth}px solid ${element.strokeColor}`);
+  }
+
+  if (element.shape === 'ellipse') {
+    rules.push('border-radius: 50%');
+  } else if (element.radius) {
+    rules.push(`border-radius: ${element.radius}px`);
+  }
+
+  // A line is a rect collapsed to its stroke; giving it its own shape keeps the
+  // editor's rules simple (a line resizes on one axis).
+  if (element.shape === 'line') {
+    rules.push(`height: ${Math.max(1, element.strokeWidth ?? 1)}px`);
+    if (!element.fill) rules.push(`background: ${element.strokeColor ?? '#000000'}`);
+  }
+
+  return rules;
+}
+
+/** The CSS for an image's `<img>`. Shared with the editor. */
+export function imageElementRules(element: ImageElement): string[] {
+  const rules = ['width: 100%', 'height: 100%', `object-fit: ${element.fit}`, 'display: block'];
+
+  if (element.radius) rules.push(`border-radius: ${element.radius}px`);
+
+  return rules;
+}
+
+function renderTextElement(
+  element: TextElement,
+  className: string,
+  values: BindingValues
+): { body: string; styles: string; overflowed: boolean } {
+  const resolved = substituteBindings(element.content, values);
+  const fit = fitText(element, resolved);
+  const { outer, inner } = textElementRules(element, fit);
+
   const body = `<div class="${className}"><div class="${className}-t">${escapeHtml(resolved)}</div></div>`;
   const styles = `.${className} { ${outer.join('; ')}; }\n.${className}-t { ${inner.join('; ')}; }`;
 
@@ -186,14 +235,7 @@ function renderImageElement(
   }
 
   const outer = positionRules(element);
-  const inner = [
-    'width: 100%',
-    'height: 100%',
-    `object-fit: ${element.fit}`,
-    'display: block'
-  ];
-
-  if (element.radius) inner.push(`border-radius: ${element.radius}px`);
+  const inner = imageElementRules(element);
 
   const body = `<div class="${className}"><img src="${escapeHtml(url)}" alt="" class="${className}-i"></div>`;
   const styles = `.${className} { ${outer.join('; ')}; }\n.${className}-i { ${inner.join('; ')}; }`;
@@ -202,27 +244,10 @@ function renderImageElement(
 }
 
 function renderShapeElement(element: ShapeElement, className: string): { body: string; styles: string } {
-  const rules = positionRules(element);
-
-  if (element.fill) rules.push(`background: ${element.fill}`);
-  if (element.strokeWidth && element.strokeColor) {
-    rules.push(`border: ${element.strokeWidth}px solid ${element.strokeColor}`);
-  }
-
-  if (element.shape === 'ellipse') {
-    rules.push('border-radius: 50%');
-  } else if (element.radius) {
-    rules.push(`border-radius: ${element.radius}px`);
-  }
-
-  // A line is a rect collapsed to its stroke; giving it its own shape keeps the
-  // editor's rules simple (a line resizes on one axis).
-  if (element.shape === 'line') {
-    rules.push(`height: ${Math.max(1, element.strokeWidth ?? 1)}px`);
-    if (!element.fill) rules.push(`background: ${element.strokeColor ?? '#000000'}`);
-  }
-
-  return { body: `<div class="${className}"></div>`, styles: `.${className} { ${rules.join('; ')}; }` };
+  return {
+    body: `<div class="${className}"></div>`,
+    styles: `.${className} { ${shapeElementRules(element).join('; ')}; }`
+  };
 }
 
 function canvasStyles(document: CertificateDocument): string {

@@ -15,7 +15,9 @@
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
     fitText,
-    fontStack,
+    shapeElementRules,
+    textElementRules,
+    imageElementRules,
     keepReachable,
     moveRect,
     resizeRect,
@@ -322,70 +324,32 @@
   }
 
   /**
-   * Mirrors `renderTextElement` in the package renderer, down to the clamp
-   * rules. `-webkit-line-clamp` has to sit on this inner element, which is why
-   * the vertical alignment lives on a separate flex parent — same structure the
-   * renderer emits.
+   * The element's CSS, from the RENDERER's own rule builders.
+   *
+   * The stage used to compute this itself, mirroring `renderTextElement` and
+   * `renderShapeElement` by hand. Two implementations of the same thing drift,
+   * and here that drift is visible as the editor and the issued PDF showing
+   * different documents — the exact failure this whole design is meant to make
+   * impossible. Now there is one implementation and the stage is a caller.
    */
   function textStyle(element: CertificateElement, fit: FitResult | null): string {
     if (element.kind !== 'text' || !fit) return '';
 
-    const { style } = element;
-    const rules = [
-      'width:100%',
-      // Same stack the renderer emits, fallbacks included — a serif standing in
-      // for a sans would make the stage disagree with the PDF the moment a font
-      // is slow to arrive.
-      `font-family:${fontStack(style.fontFamily)}`,
-      `font-size:${fit.fontSize}px`,
-      `font-weight:${style.fontWeight}`,
-      `line-height:${style.lineHeight}`,
-      `letter-spacing:${style.letterSpacing}px`,
-      `color:${style.color}`,
-      `text-align:${style.align}`,
-      'overflow-wrap:break-word',
-      'white-space:pre-wrap'
-    ];
-
-    if (style.italic) rules.push('font-style:italic');
-    if (style.uppercase) rules.push('text-transform:uppercase');
-
-    if (element.fit === 'clamp' && fit.maxLines) {
-      rules.push(
-        'display:-webkit-box',
-        '-webkit-box-orient:vertical',
-        `-webkit-line-clamp:${fit.maxLines}`,
-        'overflow:hidden'
-      );
-    }
-
-    return rules.join(';');
+    return textElementRules(element, fit).inner.join(';');
   }
 
-  /**
-   * Mirrors `renderShapeElement` in the package renderer, including the order:
-   * an ellipse's 50% wins over an explicit corner radius rather than both being
-   * emitted. Two border-radius declarations is what the browser resolves
-   * arbitrarily and what makes the stage disagree with the exported PDF.
-   */
   function shapeStyle(element: CertificateElement): string {
     if (element.kind !== 'shape') return '';
 
-    const rules: string[] = [];
+    // Position is applied by the stage's own wrapper, so only the paint rules
+    // are taken from here.
+    return shapeElementRules(element)
+      .filter((rule) => !/^(position|left|top|width|height|transform|opacity)\s*:/.test(rule))
+      .join(';');
+  }
 
-    if (element.fill) rules.push(`background:${element.fill}`);
-    if (element.strokeWidth && element.strokeColor) {
-      rules.push(`border:${element.strokeWidth}px solid ${element.strokeColor}`);
-    }
-
-    if (element.shape === 'ellipse') rules.push('border-radius:50%');
-    else if (element.radius) rules.push(`border-radius:${element.radius}px`);
-
-    if (element.shape === 'line' && !element.fill) {
-      rules.push(`background:${element.strokeColor ?? '#000000'}`);
-    }
-
-    return rules.join(';');
+  function imageStyle(element: CertificateElement): string {
+    return element.kind === 'image' ? imageElementRules(element).join(';') : '';
   }
 
   const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -514,7 +478,7 @@
         {:else if element.kind === 'image'}
           {@const url = imageUrl(element)}
           {#if url}
-            <img src={url} alt="" class="pointer-events-none h-full w-full" style="object-fit:{element.fit}" />
+            <img src={url} alt="" class="pointer-events-none" style={imageStyle(element)} />
           {:else}
             <!-- The slot still has to be visible and grabbable while empty, or a
                  teacher cannot position the logo before uploading it. -->
