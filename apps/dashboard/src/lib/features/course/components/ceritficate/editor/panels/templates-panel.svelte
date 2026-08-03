@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { CERTIFICATE_TEMPLATES, type CertificateTemplateId } from '@cio/certificates';
+  import {
+    CERTIFICATE_TEMPLATES,
+    type BindingValues,
+    type CertificateRenderData,
+    type CertificateTemplateId
+  } from '@cio/certificates';
   import { Button } from '@cio/ui/base/button';
   import PenToolIcon from '@lucide/svelte/icons/pen-tool';
   import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
@@ -11,12 +16,28 @@
   interface Props {
     value: CertificateTemplateId;
     onSelect: (id: CertificateTemplateId) => void;
+    /** What the canvas is seeded from: the template is measured against this data. */
+    seed: { data: CertificateRenderData; values: BindingValues };
     disabled?: boolean;
   }
 
-  let { value, onSelect, disabled = false }: Props = $props();
+  let { value, onSelect, seed, disabled = false }: Props = $props();
 
   const store = certificateEditorStore;
+
+  // Measuring renders the template offscreen and waits for its fonts, so it is
+  // fast but not instant. Without this the button looks dead for a moment on
+  // the one click that matters most.
+  let isSeeding = $state(false);
+
+  async function toCanvas() {
+    isSeeding = true;
+    try {
+      await store.switchToCanvas(seed.data, seed.values);
+    } finally {
+      isSeeding = false;
+    }
+  }
 
   function revert() {
     // Dropping the canvas throws away real design work, so it is the one action
@@ -63,7 +84,7 @@
       {$t('course.navItem.certificates.editor.revert_to_template')}
     </Button>
   {:else}
-    <Button variant="secondary" size="sm" class="w-full" {disabled} onclick={() => store.switchToCanvas()}>
+    <Button variant="secondary" size="sm" class="w-full" disabled={disabled || isSeeding} onclick={toCanvas}>
       <PenToolIcon size={14} class="mr-1.5" />
       {$t('course.navItem.certificates.editor.switch_to_canvas')}
     </Button>

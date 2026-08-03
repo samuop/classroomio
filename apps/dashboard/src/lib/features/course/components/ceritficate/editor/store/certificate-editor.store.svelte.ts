@@ -3,13 +3,16 @@ import {
   DEFAULT_CERTIFICATE_LABELS,
   buildPresetDocument,
   resolveTemplateId,
+  type BindingValues,
   type CertificateDesign,
   type CertificateDocument,
   type CertificateElement,
   type CertificateLabelKey,
   type CertificateLabels,
+  type CertificateRenderData,
   type CertificateTemplateId
 } from '@cio/certificates';
+import { measureTemplateAsDocument } from '../canvas/measure-template';
 
 import { courseApi } from '$features/course/api';
 import { snackbar } from '$features/ui/snackbar/store';
@@ -137,6 +140,19 @@ function readStoredDesign(): CertificateDesign {
   };
 }
 
+/**
+ * The two logo slots, appended to whatever the seed produced.
+ *
+ * Positioned in the top corners, outside where any template puts text, and
+ * hidden when empty — so a course with no client logo prints nothing there.
+ */
+function brandSlotElements(): CertificateElement[] {
+  return [
+    { kind: 'image', id: 'org-logo', x: 68, y: 54, w: 130, h: 54, source: { kind: 'orgLogo' }, fit: 'contain' },
+    { kind: 'image', id: 'client-logo', x: 902, y: 54, w: 130, h: 54, source: { kind: 'clientLogo' }, fit: 'contain' }
+  ];
+}
+
 /** Plain deep copy of a rune-proxied document, safe to keep in a history stack. */
 function snapshotDocument(document: CertificateDocument): CertificateDocument {
   return structuredClone($state.snapshot(document)) as CertificateDocument;
@@ -187,14 +203,24 @@ class CertificateEditorStore {
   /** True once this course renders from a canvas layout rather than a template. */
   readonly isCanvas = $derived(this.draft.document !== null);
 
-  setTemplate(templateId: CertificateTemplateId) {
+  async setTemplate(templateId: CertificateTemplateId, reseed?: { data: CertificateRenderData; values: BindingValues }) {
     this.draft.templateId = templateId;
 
     // Picking a different template while on the canvas would otherwise change
     // nothing visible — the document owns the layout — which reads as a broken
-    // button. Re-seed from the template just chosen instead.
-    if (this.draft.document) {
+    // button. Re-seed from the template just chosen, discarding the current
+    // layout, which is what choosing a different template means.
+    if (!this.draft.document) return;
+
+    this.checkpoint();
+    this.draft.document = null;
+    this.selectedElementId = null;
+
+    if (reseed) {
+      await this.switchToCanvas(reseed.data, reseed.values);
+    } else {
       this.draft.document = buildPresetDocument({ ...fromDraft(this.draft), templateId });
+      this.draft.document.elements.push(...brandSlotElements());
     }
   }
 
@@ -203,14 +229,32 @@ class CertificateEditorStore {
    * already using so the teacher starts from their own certificate rather than
    * an empty rectangle.
    *
+   * Seeded by MEASURING the template rather than by a hand-written recreation
+   * of it. The recreations were visibly different from every template they
+   * claimed to be, and were never going to converge: the originals reflow with
+   * flex, grid and `clamp()`, and a canvas is fixed coordinates. Letting the
+   * browser lay the template out and reading the result matches by
+   * construction. `buildPresetDocument` stays as the fallback for when there is
+   * no DOM to measure in.
+   *
    * This is also what turns on the two brand slots: no fixed template draws a
    * logo at all, so the client's mark only appears once a course is on the
    * canvas.
    */
-  switchToCanvas() {
+  async switchToCanvas(data: CertificateRenderData, values: BindingValues) {
     if (this.draft.document) return;
 
-    this.draft.document = buildPresetDocument(fromDraft(this.draft));
+    const design = fromDraft(this.draft);
+    const measured = await measureTemplateAsDocument(design, data, values).catch(() => null);
+    const document = measured ?? buildPresetDocument(design);
+
+    // Nothing measurable draws a logo, so the brand slots are appended rather
+    // than discovered — they are the feature the canvas exists to unlock.
+    document.elements.push(...brandSlotElements());
+
+    this.checkpoint();
+    this.draft.document = document;
+    this.selectedElementId = null;
   }
 
   /**

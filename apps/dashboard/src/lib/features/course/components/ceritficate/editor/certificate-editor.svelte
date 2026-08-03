@@ -214,7 +214,9 @@
             <TemplatesPanel
               value={store.draft.templateId}
               disabled={$isFreePlan}
-              onSelect={(id: CertificateTemplateId) => store.setTemplate(id)}
+              seed={{ data: sampleRenderData, values: previewValues }}
+              onSelect={(id: CertificateTemplateId) =>
+                store.setTemplate(id, { data: sampleRenderData, values: previewValues })}
             />
           {:else if store.activePanel === 'content'}
             <ContentPanel disabled={$isFreePlan} />

@@ -186,6 +186,63 @@
     guides = [];
   }
 
+  /**
+   * Dragging the empty canvas moves the view, not an element.
+   *
+   * Once zoomed past the panel, reaching the far corner otherwise means hunting
+   * for a scrollbar. Panning by scrolling the viewport rather than by
+   * translating the stage keeps one notion of where the canvas is, so the
+   * scrollbars, the wheel and this drag cannot disagree.
+   *
+   * The same press also clears the selection: clicking empty space to deselect
+   * is what every editor does, and it costs nothing to combine.
+   */
+  let pan: { startX: number; startY: number; scrollLeft: number; scrollTop: number } | null = $state(null);
+
+  function startPan(event: PointerEvent) {
+    // Only a press that landed on the canvas itself, not on an element that
+    // handled it first.
+    if (event.target !== event.currentTarget) return;
+
+    store.select(null);
+
+    if (!viewport) return;
+
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    pan = {
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop
+    };
+  }
+
+  function movePan(event: PointerEvent) {
+    if (!pan || !viewport) return;
+
+    viewport.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+    viewport.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
+  }
+
+  function endPan(event: PointerEvent) {
+    if (!pan) return;
+
+    (event.currentTarget as HTMLElement).releasePointerCapture?.(event.pointerId);
+    pan = null;
+  }
+
+  /**
+   * Ctrl/⌘ + wheel zooms, plain wheel scrolls — the convention every canvas
+   * tool shares, and the reason the handler is passive-unfriendly enough to need
+   * preventDefault.
+   */
+  function handleWheel(event: WheelEvent) {
+    if (!event.ctrlKey && !event.metaKey) return;
+
+    event.preventDefault();
+    zoomBy(event.deltaY < 0 ? 1.12 : 1 / 1.12);
+  }
+
   function nudge(event: KeyboardEvent) {
     if (disabled || !store.selectedElement) return;
 
@@ -376,6 +433,7 @@
   aria-label="Certificate canvas"
   tabindex="-1"
   onkeydown={nudge}
+  onwheel={handleWheel}
 >
   <!--
     Two boxes, and the split is load-bearing.
@@ -397,12 +455,22 @@
     style="width:{CANVAS_WIDTH * scale}px;height:{CANVAS_HEIGHT * scale}px"
   >
     <div
-      class="ui:bg-background absolute top-0 left-0 overflow-hidden"
+      class="ui:bg-background absolute top-0 left-0 overflow-hidden {pan ? 'cursor-grabbing' : 'cursor-grab'}"
       style="width:{CANVAS_WIDTH}px;height:{CANVAS_HEIGHT}px;transform:scale({scale});transform-origin:0 0;background-color:{canvas?.color ??
         '#ffffff'}"
-      onpointermove={handleMove}
-      onpointerup={endGesture}
-      onpointercancel={endGesture}
+      onpointerdown={startPan}
+      onpointermove={(event) => {
+        handleMove(event);
+        movePan(event);
+      }}
+      onpointerup={(event) => {
+        endGesture(event);
+        endPan(event);
+      }}
+      onpointercancel={(event) => {
+        endGesture(event);
+        endPan(event);
+      }}
       role="presentation"
     >
     {#if canvas?.borderWidth && canvas?.borderColor}
