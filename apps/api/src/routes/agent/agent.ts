@@ -1072,9 +1072,27 @@ const agentCoreRouter = new Hono()
         console.log(`[agent.chat] using document cache for document (${documentCache.excludeDocumentId})`);
       }
 
-      // Extended thinking. MiniMax accepts `thinking` blocks on every model (its
-      // own capability table lists them), and the Anthropic adapter exposes the
-      // budget through providerOptions.
+      // Extended thinking — REAL Anthropic only, not every Anthropic-compatible
+      // endpoint.
+      //
+      // This was gated on `isAnthropicCompatible` because MiniMax's capability
+      // table lists `thinking`. In practice it does not come back: every single
+      // MiniMax turn in production and in local dev reports `reasoning=0` while
+      // the budget is enabled. The chain-of-thought is returned as ORDINARY TEXT
+      // instead, and that costs three things at once —
+      //   1. the learner-facing chat shows the raw reasoning, because to the
+      //      client it is simply the message body;
+      //   2. it is billed against the output allowance, so the effective cap
+      //      becomes maxOutputTokens + budgetTokens;
+      //   3. with no thinking block to spend it in, the model narrates instead
+      //      of calling a tool.
+      // A teacher hit all three: creating a course with a 165-page PDF attached,
+      // one turn ran 5m30s, emitted the full 20,480-token ceiling, finished on
+      // `length`, called NO tools and built nothing. Short plan turns survived it,
+      // which is why it took a large source pack to surface.
+      //
+      // cache_control is unaffected and stays on both providers — MiniMax honours
+      // that one (observed hit rates of 50–99%).
       //
       // Enabled per phase because the two phases want opposite things:
       //  - plan: pure judgement — how many sections, what depth, what the sources
@@ -1085,7 +1103,7 @@ const agentCoreRouter = new Hono()
       // Both are env-tunable, and setting a budget to 0 turns thinking off for
       // that phase without a deploy.
       const thinkingBudget =
-        isAnthropicCompatible && role === AgentRole.TEACHER
+        isAnthropic && role === AgentRole.TEACHER
           ? teacherPromptMode === 'plan'
             ? resolveThinkingBudget('AGENT_THINKING_BUDGET_PLAN', 4096)
             : teacherPromptMode === 'build'
@@ -1466,7 +1484,18 @@ const agentCoreRouter = new Hono()
                       emptyCount: planIncomplete.emptyCount,
                       finishReason
                     }
-                  : undefined
+                  : finishReason === 'length'
+                    ? {
+                        // The model ran out of output budget mid-sentence. Nothing
+                        // above catches this: it can happen on step 1 with no tool
+                        // calls, so neither the step cap nor the plan check fires,
+                        // and the teacher was left staring at a truncated wall of
+                        // text with no indication that anything had gone wrong. One
+                        // real turn ran 5m30s, built nothing, and said nothing.
+                        reason: 'output_limit' as const,
+                        finishReason
+                      }
+                    : undefined
           };
         }
       });

@@ -132,6 +132,12 @@ export type AiAssistantMessageContinuation =
       pendingCount: number;
       emptyCount: number;
       finishReason?: string;
+    }
+  | {
+      // The reply was cut off at the output-token ceiling. Can happen on the very
+      // first step with no tool calls, so neither of the cases above catches it.
+      reason: 'output_limit';
+      finishReason?: string;
     };
 
 export type AiAssistantTemplateMetadata =

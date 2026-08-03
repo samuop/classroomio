@@ -96,7 +96,8 @@
         <span class="truncate text-sm font-medium" title={source.fileName}>
           {source.fileName}
         </span>
-        <span class="ui:text-muted-foreground text-xs">
+        <!-- One line, truncated: it used to wrap to one word per line in a narrow card. -->
+        <span class="ui:text-muted-foreground truncate text-xs">
           {mimeLabel}
           {#if source.pageCount}
             · {t.get('course.sources.meta_pages', { count: source.pageCount })}

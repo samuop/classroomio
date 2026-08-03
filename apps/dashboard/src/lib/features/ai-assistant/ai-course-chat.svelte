@@ -944,11 +944,14 @@
     const lastAssistantMsg = lastMsg;
 
     const continuation = (lastAssistantMsg.metadata as AiAssistantMessageMetadata | undefined)?.continuation;
-    // Either the run hit the step cap, OR the model stopped but the server found the
-    // plan still incomplete (missing/empty items). Both offer a "Continue".
+    // Three ways a round can end with work still to do: it hit the step cap, the
+    // server found the approved plan still incomplete, or the reply was cut off at
+    // the output-token ceiling. All three offer a "Continue" — the last one used to
+    // offer nothing, which is how a 5-minute turn could build nothing and say so.
     const reachedStepLimit = continuation?.reason === 'step_limit';
     const planIncomplete = continuation?.reason === 'incomplete_plan';
-    const canResume = reachedStepLimit || planIncomplete;
+    const hitOutputLimit = continuation?.reason === 'output_limit';
+    const canResume = reachedStepLimit || planIncomplete || hitOutputLimit;
     const allToolParts = lastAssistantMsg.parts.filter((part: Record<string, unknown>) =>
       isAgentToolPart(part)
     ) as AgentToolPart[];

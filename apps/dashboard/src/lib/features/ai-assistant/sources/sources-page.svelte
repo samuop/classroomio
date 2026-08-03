@@ -114,7 +114,15 @@
       </Button>
     </div>
   {:else}
-    <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <!--
+      Columns sized from the CONTAINER, not the viewport. `md:`/`xl:` breakpoints
+      measure the window, so with the assistant panel open the page saw a 1350px
+      viewport and laid out three columns inside ~530px of usable width — each
+      card ended up ~170px wide, the file name truncated to one letter and the
+      metadata wrapped one word per line. `auto-fill` + a 240px minimum drops to
+      fewer columns when the panel opens, with no breakpoint to keep in sync.
+    -->
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
       {#each sourcesApi.sources as source (source.id)}
         <SourceCard
           {source}
