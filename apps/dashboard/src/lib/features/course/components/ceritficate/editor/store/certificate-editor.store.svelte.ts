@@ -15,7 +15,7 @@ import { courseApi } from '$features/course/api';
 import { snackbar } from '$features/ui/snackbar/store';
 import { t } from '$lib/utils/functions/translations';
 
-export type CertificateEditorPanel = 'templates' | 'content' | 'colors' | 'export';
+export type CertificateEditorPanel = 'templates' | 'content' | 'element' | 'colors' | 'export';
 
 /**
  * The store keeps optional fields as concrete strings so two-way bindings to
@@ -271,6 +271,10 @@ class CertificateEditorStore {
 
   select(elementId: string | null) {
     this.selectedElementId = elementId;
+
+    // Clicking a thing and having its properties appear is what every design
+    // tool does; without it the panel is a place you have to remember to visit.
+    if (elementId) this.activePanel = 'element';
   }
 
   /** Patch an element in place. The caller checkpoints before a gesture starts. */

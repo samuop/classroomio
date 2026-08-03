@@ -11,6 +11,7 @@
   import LayersIcon from '@lucide/svelte/icons/layers';
   import TypeIcon from '@lucide/svelte/icons/type';
   import PaletteIcon from '@lucide/svelte/icons/palette';
+  import MousePointerIcon from '@lucide/svelte/icons/mouse-pointer-2';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import { t } from '$lib/utils/functions/translations';
 
@@ -21,6 +22,7 @@
   import CertificateEditorHeader from './certificate-editor-header.svelte';
   import TemplatesPanel from './panels/templates-panel.svelte';
   import ContentPanel from './panels/content-panel.svelte';
+  import ElementPanel from './panels/element-panel.svelte';
   import ColorsPanel from './panels/colors-panel.svelte';
   import ExportPanel from './panels/export-panel.svelte';
   import CanvasStage from './canvas/canvas-stage.svelte';
@@ -136,6 +138,19 @@
         >
           <TypeIcon class="size-4" />
         </IconButton>
+        {#if store.isCanvas}
+          <IconButton
+            type="button"
+            variant={navVariant('element')}
+            tooltip={$t('course.navItem.certificates.editor.panel_element')}
+            tooltipSide="right"
+            aria-label={$t('course.navItem.certificates.editor.panel_element')}
+            aria-current={store.activePanel === 'element' ? 'page' : undefined}
+            onclick={() => setActive('element')}
+          >
+            <MousePointerIcon class="size-4" />
+          </IconButton>
+        {/if}
         <IconButton
           type="button"
           variant={navVariant('colors')}
@@ -172,6 +187,11 @@
             <p class="ui:text-muted-foreground mt-1 text-xs">
               {$t('course.navItem.certificates.editor.panel_content_subtitle')}
             </p>
+          {:else if store.activePanel === 'element'}
+            <h2 class="text-sm font-semibold">{$t('course.navItem.certificates.editor.panel_element')}</h2>
+            <p class="ui:text-muted-foreground mt-1 text-xs">
+              {$t('course.navItem.certificates.editor.panel_element_subtitle')}
+            </p>
           {:else if store.activePanel === 'colors'}
             <h2 class="text-sm font-semibold">{$t('course.navItem.certificates.editor.panel_colors')}</h2>
             <p class="ui:text-muted-foreground mt-1 text-xs">
@@ -194,6 +214,8 @@
             />
           {:else if store.activePanel === 'content'}
             <ContentPanel disabled={$isFreePlan} />
+          {:else if store.activePanel === 'element'}
+            <ElementPanel disabled={$isFreePlan} />
           {:else if store.activePanel === 'colors'}
             <ColorsPanel
               value={store.draft.accentColor}
