@@ -59,11 +59,20 @@
   const canvas = $derived(store.draft.document?.canvas);
   const elements = $derived(store.elements);
 
+  /**
+   * Fit the canvas to whatever space the panel actually has.
+   *
+   * Measured on the viewport, which carries NO padding of its own on purpose:
+   * `getBoundingClientRect` reports the border box, so padding here would be
+   * counted as available room and the canvas would be scaled slightly too large
+   * and clipped along its edges. The breathing room comes from the section that
+   * wraps this component.
+   */
   function recomputeScale() {
     if (!viewport) return;
 
     const rect = viewport.getBoundingClientRect();
-    if (rect.width === 0) return;
+    if (rect.width === 0 || rect.height === 0) return;
 
     scale = Math.min(rect.width / CANVAS_WIDTH, rect.height / CANVAS_HEIGHT);
   }
@@ -296,36 +305,76 @@
 
   const HANDLES: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
-  const HANDLE_POSITION: Record<ResizeHandle, string> = {
-    nw: 'left:-4px;top:-4px;cursor:nwse-resize',
-    n: 'left:calc(50% - 4px);top:-4px;cursor:ns-resize',
-    ne: 'right:-4px;top:-4px;cursor:nesw-resize',
-    e: 'right:-4px;top:calc(50% - 4px);cursor:ew-resize',
-    se: 'right:-4px;bottom:-4px;cursor:nwse-resize',
-    s: 'left:calc(50% - 4px);bottom:-4px;cursor:ns-resize',
-    sw: 'left:-4px;bottom:-4px;cursor:nesw-resize',
-    w: 'left:-4px;top:calc(50% - 4px);cursor:ew-resize'
+  const HANDLE_CURSOR: Record<ResizeHandle, string> = {
+    nw: 'nwse-resize',
+    n: 'ns-resize',
+    ne: 'nesw-resize',
+    e: 'ew-resize',
+    se: 'nwse-resize',
+    s: 'ns-resize',
+    sw: 'nesw-resize',
+    w: 'ew-resize'
   };
+
+  /**
+   * Handles sized in CANVAS units so they come out a constant size on screen.
+   *
+   * They live inside the scaled stage, so a fixed 8px handle renders at 8×scale
+   * — about three real pixels at the zoom a 1100px canvas gets in this panel,
+   * which is not something anyone can grab. Dividing by the scale cancels it
+   * out, and the same trick keeps the selection outline visible.
+   */
+  const handleSize = $derived(9 / scale);
+
+  function handleStyle(handle: ResizeHandle): string {
+    const size = handleSize;
+    const offset = -size / 2;
+    const centred = `calc(50% - ${size / 2}px)`;
+
+    const vertical = handle.includes('n') ? `top:${offset}px` : handle.includes('s') ? `bottom:${offset}px` : `top:${centred}`;
+    const horizontal = handle.includes('w') ? `left:${offset}px` : handle.includes('e') ? `right:${offset}px` : `left:${centred}`;
+
+    return `${vertical};${horizontal};width:${size}px;height:${size}px;cursor:${HANDLE_CURSOR[handle]}`;
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   bind:this={viewport}
-  class="ui:bg-muted/40 relative flex h-full w-full items-center justify-center overflow-hidden rounded-md p-4"
+  class="ui:bg-muted/40 relative flex h-full w-full items-center justify-center overflow-hidden rounded-md"
   role="application"
   aria-label="Certificate canvas"
   tabindex="-1"
   onkeydown={nudge}
 >
+  <!--
+    Two boxes, and the split is load-bearing.
+
+    `transform: scale()` shrinks an element visually but NOT its layout box, so a
+    single scaled stage still occupied 1100x780. That inflated the flex parent
+    this component measures itself against, which made `scale` come out wrong,
+    which resized the parent again — a feedback loop through the ResizeObserver
+    whose visible result was a certificate cropped along its right edge, at the
+    wrong aspect ratio.
+
+    The outer box carries the real, scaled dimensions, so ordinary flex centring
+    works and nothing overflows. The inner one is the canvas coordinate space,
+    scaled from its top-left corner — origin `0 0` rather than `center`, so the
+    arithmetic is "multiply by scale" with no offset to get wrong.
+  -->
   <div
-    class="ui:bg-background relative overflow-hidden shadow-lg"
-    style="width:{CANVAS_WIDTH}px;height:{CANVAS_HEIGHT}px;transform:scale({scale});transform-origin:center center;background-color:{canvas?.color ??
-      '#ffffff'}"
-    onpointermove={handleMove}
-    onpointerup={endGesture}
-    onpointercancel={endGesture}
-    role="presentation"
+    class="relative shadow-lg"
+    style="width:{CANVAS_WIDTH * scale}px;height:{CANVAS_HEIGHT * scale}px"
   >
+    <div
+      class="ui:bg-background absolute top-0 left-0 overflow-hidden"
+      style="width:{CANVAS_WIDTH}px;height:{CANVAS_HEIGHT}px;transform:scale({scale});transform-origin:0 0;background-color:{canvas?.color ??
+        '#ffffff'}"
+      onpointermove={handleMove}
+      onpointerup={endGesture}
+      onpointercancel={endGesture}
+      role="presentation"
+    >
     {#if canvas?.borderWidth && canvas?.borderColor}
       <div
         class="pointer-events-none absolute"
@@ -341,11 +390,13 @@
         class={cn(
           'absolute',
           !element.locked && !disabled && 'cursor-move',
-          isSelected && 'ui:outline-primary outline-2',
-          !isSelected && overflows && 'outline-1 outline-amber-500'
+          isSelected && 'ui:outline-primary',
+          !isSelected && overflows && 'outline-amber-500'
         )}
         style="left:{element.x}px;top:{element.y}px;width:{element.w}px;height:{element.h}px;opacity:{element.opacity ??
-          1};{element.rotation ? `transform:rotate(${element.rotation}deg);` : ''}"
+          1};{element.rotation
+          ? `transform:rotate(${element.rotation}deg);`
+          : ''}{isSelected || overflows ? `outline-width:${(isSelected ? 2 : 1) / scale}px;outline-style:solid;` : ''}"
         onpointerdown={(event) => startMove(event, element)}
       >
         {#if element.kind === 'text'}
@@ -383,8 +434,8 @@
           {#each HANDLES as handle (handle)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
-              class="ui:bg-primary absolute h-2 w-2 rounded-[1px]"
-              style={HANDLE_POSITION[handle]}
+              class="ui:bg-primary ui:border-background absolute"
+              style="{handleStyle(handle)};border-width:{1 / scale}px"
               onpointerdown={(event) => startResize(event, element, handle)}
             ></div>
           {/each}
@@ -400,5 +451,6 @@
           : `top:${guide.position}px;left:0;height:1px;width:${CANVAS_WIDTH}px`}
       ></div>
     {/each}
+    </div>
   </div>
 </div>
