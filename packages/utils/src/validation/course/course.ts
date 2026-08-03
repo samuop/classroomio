@@ -59,13 +59,42 @@ export type TCertificateSignatory = z.infer<typeof ZCertificateSignatory>;
 export const ZCertificateTemplateId = z.enum(['classique', 'brutalist', 'noir', 'poster', 'minimal']);
 export type TCertificateTemplateId = z.infer<typeof ZCertificateTemplateId>;
 
+/**
+ * The fixed wording a template prints around the variable data ("se certifica
+ * que", "Otorgado a"…). Keys mirror `CertificateLabels` in `@cio/certificates`.
+ *
+ * An empty string is allowed and meaningful: `resolveLabels` reads it as "print
+ * nothing here", which is not the same as omitting the key and falling back to
+ * the default. 120 chars is what the layouts can hold — these are short lines of
+ * chrome, not content.
+ */
+export const ZCertificateLabels = z.object({
+  presented: z.string().max(120).optional(),
+  awardedTo: z.string().max(120).optional(),
+  issued: z.string().max(120).optional(),
+  reference: z.string().max(120).optional(),
+  award: z.string().max(120).optional(),
+  distinction: z.string().max(120).optional(),
+  seal: z.string().max(120).optional()
+});
+export type TCertificateLabels = z.infer<typeof ZCertificateLabels>;
+
+/**
+ * NOTE FOR ANY NEW DESIGN FIELD: it must be declared here as well as on the
+ * `certificate` column's `$type<>` in `packages/db/src/schema.ts`. Zod strips
+ * unknown keys silently, so a field missing from this schema is accepted by the
+ * API, dropped before it reaches the database, and reported back as saved. That
+ * is exactly how `labels` shipped broken end to end: the editor wrote the custom
+ * wording, the teacher saw a success toast, and nothing was ever persisted.
+ */
 export const ZCertificateDesign = z.object({
   templateId: ZCertificateTemplateId,
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, { message: 'Accent must be a 6-digit hex color' }),
   subtitle: z.string().max(120).optional(),
   descriptionOverride: z.string().max(500).optional(),
   signatories: z.tuple([ZCertificateSignatory, ZCertificateSignatory]),
-  idFormat: z.string().max(40).optional()
+  idFormat: z.string().max(40).optional(),
+  labels: ZCertificateLabels.optional()
 });
 export type TCertificateDesign = z.infer<typeof ZCertificateDesign>;
 

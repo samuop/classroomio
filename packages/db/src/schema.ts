@@ -746,7 +746,13 @@ export const course = pgTable(
       isDownloadable?: boolean;
       /** @deprecated Use `design.templateId`. Legacy 6-theme id; mapped on read via LEGACY_THEME_MAP. */
       theme?: string;
-      /** Atelier-era certificate design. Source of truth for new courses. */
+      /**
+       * Atelier-era certificate design. Source of truth for new courses.
+       *
+       * Keep in sync with `ZCertificateDesign` (packages/utils validation): zod
+       * strips unknown keys, so a field present here but missing there is
+       * silently discarded on save.
+       */
       design?: {
         templateId: 'classique' | 'brutalist' | 'noir' | 'poster' | 'minimal';
         accentColor: string;
@@ -754,6 +760,16 @@ export const course = pgTable(
         descriptionOverride?: string;
         signatories: [{ name: string; role: string }, { name: string; role: string }];
         idFormat?: string;
+        /** Fixed wording each template prints; see `CertificateLabels` in @cio/certificates. */
+        labels?: {
+          presented?: string;
+          awardedTo?: string;
+          issued?: string;
+          reference?: string;
+          award?: string;
+          distinction?: string;
+          seal?: string;
+        };
       };
       deadline?: string | null;
       threshold?: number;
