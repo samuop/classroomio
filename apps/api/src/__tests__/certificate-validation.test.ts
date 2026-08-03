@@ -60,6 +60,102 @@ describe('ZCertificateDesign', () => {
   });
 });
 
+describe('ZCertificateDesign — canvas document', () => {
+  const textElement = {
+    kind: 'text' as const,
+    id: 'title',
+    x: 100,
+    y: 100,
+    w: 600,
+    h: 80,
+    content: '{{recipientName}}',
+    fit: 'shrink' as const,
+    style: {
+      fontFamily: 'Space Grotesk',
+      fontSize: 40,
+      fontWeight: 400,
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      color: '#111111',
+      align: 'center' as const,
+      verticalAlign: 'middle' as const
+    }
+  };
+
+  const withDocument = (elements: unknown[]) => ({
+    ...baseDesign,
+    document: { version: 2, canvas: { color: '#ffffff' }, elements }
+  });
+
+  it('accepts a canvas layout and keeps it', () => {
+    const parsed = ZCertificateDesign.parse(withDocument([textElement]));
+
+    expect(parsed.document?.elements).toHaveLength(1);
+  });
+
+  it('keeps the client brand — the second mark on the certificate', () => {
+    const parsed = ZCertificateDesign.parse({
+      ...baseDesign,
+      clientBrand: { name: 'Industrias del Sur', logoUrl: 'https://learn-files.tensor.com.ar/c.png' }
+    });
+
+    expect(parsed.clientBrand?.name).toBe('Industrias del Sur');
+  });
+
+  it('rejects a javascript: image url', () => {
+    // These URLs are written into HTML that a real browser renders on the
+    // platform's behalf, so anything but http(s) is a script-injection vector.
+    const result = ZCertificateDesign.safeParse(
+      withDocument([
+        { kind: 'image', id: 'i', x: 0, y: 0, w: 10, h: 10, fit: 'contain', source: { kind: 'upload', url: 'javascript:alert(1)' } }
+      ])
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a data: url too', () => {
+    const result = ZCertificateDesign.safeParse({
+      ...baseDesign,
+      clientBrand: { logoUrl: 'data:text/html,<script>alert(1)</script>' }
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a colour that is not a hex value', () => {
+    const result = ZCertificateDesign.safeParse({
+      ...baseDesign,
+      document: { version: 2, canvas: { color: 'url(javascript:alert(1))' }, elements: [] }
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unknown element kind rather than storing it for the renderer to meet later', () => {
+    const result = ZCertificateDesign.safeParse(withDocument([{ ...textElement, kind: 'iframe' }]));
+
+    expect(result.success).toBe(false);
+  });
+
+  it('caps the element count, so one row cannot produce a render that never ends', () => {
+    const result = ZCertificateDesign.safeParse(
+      withDocument(Array.from({ length: 201 }, (_, i) => ({ ...textElement, id: `t${i}` })))
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a document claiming a version this renderer does not know', () => {
+    const result = ZCertificateDesign.safeParse({
+      ...baseDesign,
+      document: { version: 3, canvas: { color: '#ffffff' }, elements: [] }
+    });
+
+    expect(result.success).toBe(false);
+  });
+});
+
 describe('ZCourseUpdate', () => {
   it('carries the wording through the whole update body, not just the leaf schema', () => {
     // The leaf schema accepting `labels` is not enough: the field travels nested

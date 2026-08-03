@@ -1,5 +1,6 @@
 export {
   CERTIFICATE_TEMPLATE_IDS,
+  type CertificateClientBrand,
   type CertificateDesign,
   type CertificateLabelKey,
   type CertificateLabels,
@@ -23,3 +24,54 @@ export {
 } from './constants';
 
 export { renderCertificate, renderCertificateDocument, resolveTemplateId } from './render';
+
+// ─── Canvas documents (v2) ───────────────────────────────────────────────────
+
+export {
+  BINDING_KEYS,
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
+  isImageElement,
+  isShapeElement,
+  isTextElement,
+  type BindingKey,
+  type CanvasBackground,
+  type CertificateDocument,
+  type CertificateElement,
+  type ElementBase,
+  type HorizontalAlign,
+  type ImageElement,
+  type ImageSource,
+  type ShapeElement,
+  type ShapeKind,
+  type TextElement,
+  type TextFit,
+  type TextStyle,
+  type VerticalAlign
+} from './document/types';
+
+export {
+  DEFAULT_ADVANCE,
+  DEFAULT_MIN_FONT_SIZE,
+  FONT_ADVANCE_RATIOS,
+  advanceRatioFor,
+  estimateTextWidth,
+  fitText,
+  wrapText,
+  type FitResult
+} from './document/fit';
+
+export {
+  STRESS_BINDING_VALUES,
+  buildBindingValues,
+  isBindingKey,
+  listBindings,
+  substituteBindings,
+  type BindingValues
+} from './document/bindings';
+
+export {
+  renderDocument,
+  type DocumentRenderInput,
+  type DocumentRenderOutput
+} from './document/render';

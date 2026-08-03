@@ -79,6 +79,108 @@ export const ZCertificateLabels = z.object({
 });
 export type TCertificateLabels = z.infer<typeof ZCertificateLabels>;
 
+/** Hex colour, with or without alpha. */
+const ZHexColor = z.string().regex(/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, {
+  message: 'Colour must be a hex value'
+});
+
+/**
+ * Only http(s). These URLs are written straight into the certificate's HTML and
+ * fetched by a real browser, so allowing arbitrary schemes would put
+ * `javascript:` and `data:` payloads into a document the platform issues on the
+ * teacher's behalf.
+ */
+const ZAssetUrl = z
+  .string()
+  .max(2048)
+  .refine((value) => /^https?:\/\//i.test(value), { message: 'URL must be http(s)' });
+
+/** Canvas units. Negative values are legal — an element may bleed off the edge. */
+const ZCanvasCoordinate = z.number().min(-4000).max(8000);
+const ZCanvasSize = z.number().min(0).max(8000);
+
+const ZElementBase = {
+  id: z.string().min(1).max(64),
+  x: ZCanvasCoordinate,
+  y: ZCanvasCoordinate,
+  w: ZCanvasSize,
+  h: ZCanvasSize,
+  rotation: z.number().min(-360).max(360).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  locked: z.boolean().optional()
+};
+
+const ZTextStyle = z.object({
+  fontFamily: z.string().min(1).max(60),
+  fontSize: z.number().min(1).max(400),
+  fontWeight: z.number().int().min(100).max(900),
+  lineHeight: z.number().min(0.5).max(4),
+  letterSpacing: z.number().min(-20).max(60),
+  color: ZHexColor,
+  italic: z.boolean().optional(),
+  uppercase: z.boolean().optional(),
+  align: z.enum(['left', 'center', 'right']),
+  verticalAlign: z.enum(['top', 'middle', 'bottom'])
+});
+
+const ZTextElement = z.object({
+  ...ZElementBase,
+  kind: z.literal('text'),
+  content: z.string().max(2000),
+  style: ZTextStyle,
+  fit: z.enum(['shrink', 'clamp', 'overflow']),
+  minFontSize: z.number().min(1).max(400).optional(),
+  maxLines: z.number().int().min(1).max(50).optional()
+});
+
+const ZImageElement = z.object({
+  ...ZElementBase,
+  kind: z.literal('image'),
+  source: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('orgLogo') }),
+    z.object({ kind: z.literal('clientLogo') }),
+    z.object({ kind: z.literal('upload'), url: ZAssetUrl })
+  ]),
+  fit: z.enum(['contain', 'cover']),
+  radius: z.number().min(0).max(999).optional(),
+  hideWhenEmpty: z.boolean().optional()
+});
+
+const ZShapeElement = z.object({
+  ...ZElementBase,
+  kind: z.literal('shape'),
+  shape: z.enum(['rect', 'line', 'ellipse']),
+  fill: ZHexColor.optional(),
+  strokeColor: ZHexColor.optional(),
+  strokeWidth: z.number().min(0).max(200).optional(),
+  radius: z.number().min(0).max(999).optional()
+});
+
+/**
+ * A free canvas layout. Bounded at 200 elements — well past any real
+ * certificate, and low enough that a malformed payload cannot turn one course
+ * row into a render that never finishes.
+ */
+export const ZCertificateDocument = z.object({
+  version: z.literal(2),
+  canvas: z.object({
+    color: ZHexColor,
+    imageUrl: ZAssetUrl.optional(),
+    borderColor: ZHexColor.optional(),
+    borderWidth: z.number().min(0).max(200).optional(),
+    borderInset: z.number().min(0).max(400).optional()
+  }),
+  elements: z.array(z.discriminatedUnion('kind', [ZTextElement, ZImageElement, ZShapeElement])).max(200)
+});
+export type TCertificateDocument = z.infer<typeof ZCertificateDocument>;
+
+/** The client company's mark, alongside the issuing organisation's. */
+export const ZCertificateClientBrand = z.object({
+  name: z.string().max(120).optional(),
+  logoUrl: ZAssetUrl.optional()
+});
+export type TCertificateClientBrand = z.infer<typeof ZCertificateClientBrand>;
+
 /**
  * NOTE FOR ANY NEW DESIGN FIELD: it must be declared here as well as on the
  * `certificate` column's `$type<>` in `packages/db/src/schema.ts`. Zod strips
@@ -94,7 +196,9 @@ export const ZCertificateDesign = z.object({
   descriptionOverride: z.string().max(500).optional(),
   signatories: z.tuple([ZCertificateSignatory, ZCertificateSignatory]),
   idFormat: z.string().max(40).optional(),
-  labels: ZCertificateLabels.optional()
+  labels: ZCertificateLabels.optional(),
+  document: ZCertificateDocument.optional(),
+  clientBrand: ZCertificateClientBrand.optional()
 });
 export type TCertificateDesign = z.infer<typeof ZCertificateDesign>;
 

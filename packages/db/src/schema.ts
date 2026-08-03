@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type { AnswerData } from '@cio/question-types';
+import type { TCertificateClientBrand, TCertificateDocument } from '@cio/utils/validation/course';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -770,6 +771,17 @@ export const course = pgTable(
           distinction?: string;
           seal?: string;
         };
+        /**
+         * Free canvas layout. Typed from the zod schema that guards the write
+         * rather than restated here: the element union is ~80 lines and a second
+         * copy would drift from the one that actually validates.
+         *
+         * Present means this course uses the canvas; absent means it still uses
+         * one of the five fixed templates.
+         */
+        document?: TCertificateDocument;
+        /** The client company's mark, alongside the issuing organisation's. */
+        clientBrand?: TCertificateClientBrand;
       };
       deadline?: string | null;
       threshold?: number;

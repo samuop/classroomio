@@ -1,3 +1,5 @@
+import type { CertificateDocument } from './document/types';
+
 export const CERTIFICATE_TEMPLATE_IDS = ['classique', 'brutalist', 'noir', 'poster', 'minimal'] as const;
 export type CertificateTemplateId = (typeof CERTIFICATE_TEMPLATE_IDS)[number];
 
@@ -34,6 +36,26 @@ export interface CertificateLabels {
 
 export type CertificateLabelKey = keyof CertificateLabels;
 
+/**
+ * The company the training is delivered FOR, alongside the organisation
+ * delivering it. A consultancy issues the same certificate under two marks —
+ * its own and its client's — and before this there was room for neither: no
+ * template drew a logo at all, `orgLogoUrl` was carried all the way to the
+ * renderer and never used.
+ *
+ * Lives on the course's design because the same course run for two clients is
+ * two courses with two marks.
+ */
+export interface CertificateClientBrand {
+  name?: string;
+  /**
+   * Must be a PUBLIC, stable URL: the page is fetched by Cloudflare's browser,
+   * not ours, and a presigned URL would expire and silently strip the logo off
+   * every certificate issued afterwards.
+   */
+  logoUrl?: string;
+}
+
 export interface CertificateDesign {
   templateId: CertificateTemplateId;
   accentColor: string;
@@ -42,6 +64,14 @@ export interface CertificateDesign {
   signatories: [CertificateSignatory, CertificateSignatory];
   idFormat?: string;
   labels?: CertificateLabels;
+  /**
+   * A free canvas layout. When present it REPLACES the template: `templateId`
+   * stays on the design as the preset it started from, but nothing reads it for
+   * rendering. Absent means this course still uses one of the five fixed
+   * layouts, which is what every existing course does.
+   */
+  document?: CertificateDocument;
+  clientBrand?: CertificateClientBrand;
 }
 
 export interface CertificateRenderData {
