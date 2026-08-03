@@ -50,6 +50,7 @@ import {
   parseAndStoreDocument,
   parseDocument,
   storeDraftDocument,
+  promoteDraftDocuments,
   getDocumentText
 } from '@api/services/agent/document';
 import { createChatConversation } from '@api/services/agent/chat-history';
@@ -552,6 +553,48 @@ const agentCoreRouter = new Hono()
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
+
+      /**
+       * Persist wizard drafts BEFORE anything reads the course's sources.
+       *
+       * A file dropped in the course wizard is uploaded before the course
+       * exists, so `/agent/upload-draft` can only put it in Redis. Everything
+       * downstream reads Postgres instead: the Sources panel lists
+       * `listChatDocumentsByCourse`, and so does `buildSourcePack` — the block
+       * that actually carries the material to the model. A Redis-only draft is
+       * therefore invisible to BOTH, which is why the panel said "no sources
+       * yet" while the agent replied that it could not read the file.
+       *
+       * The inline fallback (`loadDocumentsContext`) does read Redis, but it
+       * only runs when `useSourcePack` is false — never on this path. Hence
+       * `docInline=false` on a turn that had a PDF attached.
+       *
+       * So it has to happen here, ahead of both, and not when messages are
+       * saved: by then the turn has already run on empty context. When there is
+       * no conversation yet (first turn of a new chat) we create the same hidden
+       * "Course sources" one that /agent/upload and /agent/documents/url create,
+       * because ai_chat_document.conversation_id is NOT NULL.
+       *
+       * Best-effort: a source that fails to persist must not kill the turn.
+       */
+      let sourceConversationId = conversationId;
+
+      if (role === AgentRole.TEACHER && documentIds.length > 0) {
+        try {
+          if (!sourceConversationId) {
+            const created = await createChatConversation(courseId, user.id, 'Course sources');
+            sourceConversationId = created.id;
+          }
+
+          await promoteDraftDocuments(
+            documentIds,
+            { userId: user.id, courseId, conversationId: sourceConversationId },
+            redis
+          );
+        } catch (error) {
+          console.warn('[agent.documents] draft promotion failed:', error);
+        }
+      }
 
       const existingSections = await listCourseSections(courseId);
 

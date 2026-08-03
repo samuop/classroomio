@@ -100,15 +100,27 @@ export async function verifySectionBelongsToCourse(sectionId: string, courseId: 
   }
 }
 
-type AttachedMessage = { metadata?: { attachment?: { documentId?: string } } };
+type AttachedMessage = {
+  metadata?: { attachment?: { documentId?: string; documentIds?: unknown } };
+};
 
 export function collectDocumentIds(messages: unknown[], currentDocumentId?: string): string[] {
   const ids = new Set<string>();
 
   for (const msg of messages as AttachedMessage[]) {
-    const id = msg?.metadata?.attachment?.documentId;
+    const attachment = msg?.metadata?.attachment;
 
-    if (id) ids.add(id);
+    if (attachment?.documentId) ids.add(attachment.documentId);
+
+    // A message can carry more than one document — the course wizard takes up
+    // to 10 files but only one of them can be *the* attachment. Reading just
+    // `documentId` meant the extra uploads were never loaded into context and
+    // never persisted as sources.
+    if (Array.isArray(attachment?.documentIds)) {
+      for (const id of attachment.documentIds) {
+        if (typeof id === 'string' && id) ids.add(id);
+      }
+    }
   }
 
   if (currentDocumentId) ids.add(currentDocumentId);

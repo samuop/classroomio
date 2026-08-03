@@ -21,6 +21,18 @@ export interface UploadedDocument {
 export interface AiAssistantMessageAttachment {
   documentId: string;
   name: string;
+  /**
+   * Every document this message carries, when there is more than one.
+   *
+   * The course wizard accepts up to 10 files, but a message can only feature
+   * one as *the* attachment (it is what the chip shows and what gets full-text
+   * treatment). The rest used to be dropped on the floor: they were uploaded,
+   * counted, listed back to the teacher — and then never referenced again, so
+   * they were neither persisted as course sources nor read by the agent.
+   *
+   * `documentId` stays the primary one so nothing downstream changes shape.
+   */
+  documentIds?: string[];
 }
 
 // ─── Sources (course documents attached to chat conversations) ────────────────

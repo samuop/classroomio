@@ -427,8 +427,10 @@
     // On the very first message, a wizard-uploaded draft document has no
     // `uploadedDocument` chip yet — adopt its id so the attachment + context
     // resolve to the draft (full-text injection on turn 1).
-    if (isFirstMessage && !uploadedDocument && pendingInitialDocumentIds.length > 0) {
-      uploadedDocument = { id: pendingInitialDocumentIds[0], name: 'document', origin: 'course_source' };
+    const wizardDocumentIds = isFirstMessage ? [...pendingInitialDocumentIds] : [];
+
+    if (isFirstMessage && !uploadedDocument && wizardDocumentIds.length > 0) {
+      uploadedDocument = { id: wizardDocumentIds[0], name: 'document', origin: 'course_source' };
     }
 
     // Auto-adopt the most-recently-uploaded source from the Sources panel when
@@ -449,7 +451,11 @@
     const messageAttachment = uploadedDocument
       ? {
           documentId: uploadedDocument.id,
-          name: uploadedDocument.name
+          name: uploadedDocument.name,
+          // Carry the wizard's other uploads too. Without this the server sees
+          // exactly one id, so a teacher who dropped five PDFs got a course
+          // built from the first one and four sources that silently expired.
+          ...(wizardDocumentIds.length > 1 ? { documentIds: wizardDocumentIds } : {})
         }
       : undefined;
 
