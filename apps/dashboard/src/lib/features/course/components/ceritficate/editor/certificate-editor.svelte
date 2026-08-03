@@ -85,7 +85,11 @@
       $t('course.navItem.certificates.editor.sample_description'),
     orgName: $currentOrg.name || $t('course.navItem.certificates.editor.sample_org'),
     orgLogoUrl: $currentOrg.avatarUrl || undefined,
-    date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' }),
+    // Matches the server's default in `formatCertificateDate`. The issued date
+    // is formatted server-side (issuance has no browser to ask), so hardcoding
+    // en-US here showed the teacher a preview in a different language from the
+    // document their students receive.
+    date: new Date().toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' }),
     certificateId: (store.draft.idFormat || 'N° {seq}').replace('{seq}', '0247')
   });
 

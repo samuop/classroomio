@@ -26,9 +26,7 @@ export async function assembleCertificateRender(
 
   const issuedAtIso = body.issuedAt ?? new Date().toISOString();
   const issuedAtDate = new Date(issuedAtIso);
-  const date = Number.isNaN(issuedAtDate.getTime())
-    ? new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' })
-    : issuedAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: '2-digit' });
+  const date = formatCertificateDate(Number.isNaN(issuedAtDate.getTime()) ? new Date() : issuedAtDate);
 
   const certificateId = body.studentId
     ? formatCertificateId(design.idFormat, body.studentId, issuedAtDate)
@@ -46,6 +44,32 @@ export async function assembleCertificateRender(
       certificateId
     }
   };
+}
+
+/**
+ * The issue date as printed on the certificate.
+ *
+ * Hard-coded to `en-US` before this, so a Spanish certificate — every
+ * certificate this deployment issues — read "March 15, 2026" in the middle of
+ * otherwise Spanish text. Same call already made for the default labels: a
+ * certificate is a document the student keeps, and it is the last place that
+ * should mix languages.
+ *
+ * The locale is an operator decision rather than a per-request one, because the
+ * PDF is generated server-side for downloads AND for issuance, and issuance has
+ * no browser to ask. `CERTIFICATE_DATE_LOCALE` overrides it for a deployment
+ * that is not Spanish-first.
+ */
+export function formatCertificateDate(issuedAt: Date): string {
+  const locale = process.env.CERTIFICATE_DATE_LOCALE?.trim() || 'es-AR';
+
+  try {
+    return issuedAt.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' });
+  } catch {
+    // An invalid locale in the environment must not take down certificate
+    // issuance; a date in the wrong language beats no certificate.
+    return issuedAt.toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
 }
 
 function formatCertificateId(format: string | undefined, seq: string, issuedAt: Date): string {
