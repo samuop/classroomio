@@ -15,7 +15,7 @@ import { AIProvider } from '@cio/ai-assistant';
 const searchWeb = vi.fn();
 const fetchDocumentationUrl = vi.fn();
 const storeDraftDocument = vi.fn();
-const generateObject = vi.fn();
+const generateText = vi.fn();
 
 vi.mock('@api/services/agent/web-search', async () => {
   const actual = await vi.importActual<typeof import('@api/services/agent/web-search')>(
@@ -35,7 +35,7 @@ vi.mock('@api/services/agent/document', () => ({
 }));
 
 vi.mock('ai', () => ({
-  generateObject: (...args: unknown[]) => generateObject(...args)
+  generateText: (...args: unknown[]) => generateText(...args)
 }));
 
 vi.mock('@api/config/env', () => ({ env: { JINA_API_KEY: 'key' } }));
@@ -45,7 +45,9 @@ vi.mock('@api/utils/redis/redis', () => ({
   logRedisUnavailableOnce: vi.fn()
 }));
 
-const { runResearch, deriveSearchQueries } = await import('@api/services/agent/research');
+const { runResearch, deriveSearchQueries, isUnreadablePage, readableProseLength, parseQueryLines } = await import(
+  '@api/services/agent/research'
+);
 
 const PROVIDER = { provider: AIProvider.MINIMAX, apiKey: 'k' };
 const REDIS = {} as never;
@@ -63,13 +65,84 @@ function page(url: string, content = 'x'.repeat(1000)) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  generateObject.mockResolvedValue({ object: { queries: ['q1', 'q2'] } });
+  generateText.mockResolvedValue({ text: 'primera consulta larga\nsegunda consulta larga' });
   storeDraftDocument.mockImplementation(async () => ({ documentId: `doc-${storeDraftDocument.mock.calls.length}` }));
+});
+
+describe('isUnreadablePage', () => {
+  it('rejects a page the reader could not actually open', () => {
+    // Jina answers 200 and puts the real outcome in the body, so a 401 video page
+    // was stored as a "source" made of comment counts.
+    const youtube = [
+      'Title: Cómo usar el catálogo de colores',
+      'Warning: Target URL returned error 401: Unauthorized',
+      'Markdown Content:',
+      '## Comments 26',
+      '## Description',
+      'x'.repeat(5000)
+    ].join('\n');
+
+    expect(isUnreadablePage(youtube)).toBe(true);
+  });
+
+  it('rejects a login wall even though it is a big page', () => {
+    // The Instagram reel was 22 KB — larger than three of the good sources — and
+    // almost all of it links. Length cannot tell them apart; prose can.
+    const wall = Array.from(
+      { length: 300 },
+      (_, i) => `[Log in](https://www.instagram.com/accounts/login/?next=%2Freel%2F${i})`
+    ).join('\n');
+
+    expect(readableProseLength(wall)).toBeLessThan(400);
+    expect(isUnreadablePage(wall)).toBe(true);
+  });
+
+  it('keeps an article', () => {
+    const article = [
+      'Title: Fundamentos del color',
+      'Markdown Content:',
+      'El espacio CIELAB describe el color en tres ejes. '.repeat(40),
+      '[Más información](https://www.datacolor.com/blog)'
+    ].join('\n');
+
+    expect(isUnreadablePage(article)).toBe(false);
+  });
+});
+
+describe('parseQueryLines', () => {
+  it('takes the queries out of the decorations the model adds unasked', () => {
+    const answer = [
+      'Consultas:',
+      '1. colorimetría fundamentos espacio de color',
+      '- "cartas RAL NCS para pintura de paredes"',
+      '• cómo elegir color de pintura interior',
+      'ok'
+    ].join('\n');
+
+    expect(parseQueryLines(answer, 4)).toEqual([
+      'colorimetría fundamentos espacio de color',
+      'cartas RAL NCS para pintura de paredes',
+      'cómo elegir color de pintura interior'
+    ]);
+  });
+
+  it('stops at the number asked for', () => {
+    expect(parseQueryLines('consulta número uno\nconsulta número dos\nconsulta número tres', 2)).toHaveLength(2);
+  });
 });
 
 describe('deriveSearchQueries', () => {
   it('falls back to the raw topic instead of cancelling the research', async () => {
-    generateObject.mockRejectedValueOnce(new Error('model unavailable'));
+    generateText.mockRejectedValueOnce(new Error('model unavailable'));
+
+    const queries = await deriveSearchQueries('colorimetría de pinturas', 'normal', PROVIDER);
+
+    expect(queries).toEqual(['colorimetría de pinturas']);
+  });
+
+  it('falls back when the model answers with nothing usable', async () => {
+    // Exactly what MiniMax-M3 did through the Anthropic shim: an empty answer.
+    generateText.mockResolvedValueOnce({ text: '' });
 
     const queries = await deriveSearchQueries('colorimetría de pinturas', 'normal', PROVIDER);
 

@@ -76,6 +76,28 @@ describe('searchWeb', () => {
     expect(results.map((r) => r.url)).toEqual(['https://example.com/real']);
   });
 
+  it('drops the platforms that answer with a login wall or a video player', async () => {
+    // Measured on the first real run: both Facebook posts and the Instagram reel
+    // came back as "Log in / Sign Up", and the YouTube page as comment counts.
+    // Four of nine pages, all of them heading for the source pack.
+    env.JINA_API_KEY = 'key';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jinaResponse([
+          { url: 'https://www.facebook.com/groups/x/posts/1', title: 'grupo' },
+          { url: 'https://www.instagram.com/reel/abc/', title: 'reel' },
+          { url: 'https://www.youtube.com/watch?v=abc', title: 'video' },
+          { url: 'https://es.wikipedia.org/wiki/Colorimetría', title: 'wiki' }
+        ])
+      )
+    );
+
+    const results = await searchWeb({ query: 'colorimetría' });
+
+    expect(results.map((r) => r.url)).toEqual(['https://es.wikipedia.org/wiki/Colorimetría']);
+  });
+
   it('reports a failing search service rather than returning nothing', async () => {
     env.JINA_API_KEY = 'key';
     vi.stubGlobal(

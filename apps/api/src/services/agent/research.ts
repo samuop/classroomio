@@ -1,5 +1,4 @@
-import { generateObject } from 'ai';
-import { z } from 'zod';
+import { generateText } from 'ai';
 import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 import { MAX_DOCUMENT_TEXT_LENGTH } from '@cio/ai-assistant';
 import { searchWeb, mergeSearchResults, type WebSearchResult } from '@api/services/agent/web-search';
@@ -30,11 +29,63 @@ const QUERIES_PER_DEPTH: Record<ResearchDepth, number> = {
   deep: 4
 };
 
-/** How many pages we read at once. Bounded so a deep run cannot stall the request. */
-const FETCH_CONCURRENCY = 5;
+/**
+ * How many pages we read at once.
+ *
+ * Measured: nine pages at a concurrency of 5 took 60.7s, and production Nginx
+ * has no `proxy_read_timeout` so the default 60s applies — the request was
+ * already at the edge of a 504, and a deep run would have sailed past it. The
+ * reader is slow per page, so the only lever is width. Jina's paid tiers allow
+ * hundreds of requests a minute; 8 is comfortable and still polite.
+ */
+const FETCH_CONCURRENCY = 8;
+
+/**
+ * Hard stop for the whole harvest, under Nginx's 60s.
+ *
+ * Whatever has been read by then is returned instead of the request dying at the
+ * gateway: eight pages in hand beat a 504 and nothing. Deep runs are the case
+ * that hits this, which is why the depth control says "~20 pages" rather than
+ * promising exactly twenty.
+ */
+const RESEARCH_DEADLINE_MS = 45_000;
 
 /** A page that adds nothing but noise to a course. */
 const MIN_USEFUL_CHARS = 400;
+
+/**
+ * Whether a fetched page carries prose or just furniture.
+ *
+ * Two failures look like success to the reader and were both observed on the
+ * first real run:
+ *
+ *  - Jina returns 200 with `Warning: Target URL returned error 401` and then the
+ *    page chrome, so a YouTube video became a "source" made of comment counts.
+ *  - A login wall is a genuine page: Facebook and Instagram both came back as
+ *    5-22 KB of "Log in / Sign Up" and navigation links.
+ *
+ * Length alone cannot tell these apart from an article — the Instagram reel was
+ * larger than three of the good sources. What separates them is that almost all
+ * of their bytes are links, so the prose left after stripping markdown link
+ * syntax is what gets measured.
+ */
+export function readableProseLength(markdown: string): number {
+  return markdown
+    .replace(/<external_untrusted_document[^>]*>|<\/external_untrusted_document>/g, '')
+    .replace(/!?\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/^\s*(Title|URL Source|Markdown Content|Published Time):.*$/gim, '')
+    .replace(/\s+/g, ' ')
+    .trim().length;
+}
+
+export function isUnreadablePage(markdown: string): boolean {
+  if (/Warning:\s*Target URL returned error\s*\d+/i.test(markdown)) {
+    return true;
+  }
+
+  return readableProseLength(markdown) < MIN_USEFUL_CHARS;
+}
 
 export interface ResearchSource {
   documentId: string;
@@ -50,9 +101,39 @@ export interface ResearchOutcome {
   failedCount: number;
 }
 
-const ZQueries = z.object({
-  queries: z.array(z.string().min(3)).min(1).max(6)
-});
+/**
+ * Pulls the queries out of whatever shape the model answered in.
+ *
+ * One per line, tolerating the decorations models add unasked: bullets, numbering,
+ * surrounding quotes, a "1." prefix, a stray heading. Anything that survives and
+ * looks like a search phrase is a query.
+ */
+export function parseQueryLines(text: string, wanted: number): string[] {
+  const out: string[] = [];
+
+  for (const raw of text.split('\n')) {
+    const line = raw
+      .trim()
+      .replace(/^[-*•\d.)\s]+/, '')
+      .replace(/^["'«]|["'»]$/g, '')
+      .trim();
+
+    // Headings and commentary rather than a query.
+    if (line.length < 8 || line.length > 200 || line.endsWith(':') || line.startsWith('#')) {
+      continue;
+    }
+
+    if (!out.includes(line)) {
+      out.push(line);
+    }
+
+    if (out.length >= wanted) {
+      break;
+    }
+  }
+
+  return out;
+}
 
 /**
  * Turns a course topic into the handful of searches a researcher would actually
@@ -82,22 +163,31 @@ export async function deriveSearchQueries(
   });
 
   try {
-    const { object } = await generateObject({
+    // Plain text, one query per line — NOT generateObject.
+    //
+    // Structured output failed intermittently against MiniMax-M3 with
+    // `NoObjectGeneratedError: the model did not return a response`: it is a
+    // reasoning model behind an Anthropic-compatible shim, and the tool-call
+    // round trip that generateObject needs comes back empty often enough to
+    // matter. The cost was invisible and expensive — the run silently degraded
+    // to searching the raw topic, which returned three pages where a plan
+    // returned nine. Three short lines of text need no schema negotiation.
+    const { text } = await generateText({
       model,
-      schema: ZQueries,
       maxRetries: 1,
+      maxOutputTokens: 1024,
       system: [
         'You plan the web research for a training course.',
-        `Return exactly ${wanted} web search queries that together cover the topic:`,
-        'foundations and definitions, practical/applied material, and standards or',
+        `Write exactly ${wanted} web search queries that together cover the topic:`,
+        'foundations and definitions, practical or applied material, and standards or',
         'reference tables where the topic has them.',
-        'Write the queries in the SAME LANGUAGE as the topic.',
-        'Each query must stand alone as something you would type into a search engine.'
+        'Write them in the SAME LANGUAGE as the topic.',
+        'Output ONE query per line, nothing else — no numbering, no quotes, no commentary.'
       ].join(' '),
       prompt: topic.slice(0, 500)
     });
 
-    const queries = object.queries.map((q) => q.trim()).filter(Boolean).slice(0, wanted);
+    const queries = parseQueryLines(text ?? '', wanted);
 
     return queries.length > 0 ? queries : [topic];
   } catch (error) {
@@ -134,18 +224,61 @@ function toParsedDocument(page: { url: string; pageTitle: string; content: strin
   };
 }
 
-async function readPagesInBatches(
+/**
+ * Reads pages with a fixed number of workers and one shared deadline.
+ *
+ * A worker pool rather than fixed batches because the reader's per-page time
+ * varies wildly: in batches, one slow page holds up the other seven and the whole
+ * run pays for the worst case in every round. Workers pull the next URL as soon
+ * as they are free, so the slow page costs only itself.
+ */
+async function readPages(
   results: WebSearchResult[],
+  budget: number,
   params: { orgId: string; courseId?: string; userId: string; redis: RedisClient }
-): Promise<{ sources: ResearchSource[]; failedCount: number }> {
+): Promise<{ sources: ResearchSource[]; failedCount: number; timedOut: boolean }> {
   const sources: ResearchSource[] = [];
+  const deadline = Date.now() + RESEARCH_DEADLINE_MS;
   let failedCount = 0;
+  let timedOut = false;
+  let next = 0;
+  let inFlight = 0;
 
-  for (let start = 0; start < results.length; start += FETCH_CONCURRENCY) {
-    const batch = results.slice(start, start + FETCH_CONCURRENCY);
+  async function worker() {
+    for (;;) {
+      if (Date.now() >= deadline) {
+        timedOut = true;
 
-    const settled = await Promise.allSettled(
-      batch.map(async (result) => {
+        return;
+      }
+
+      // Claim a slot before reading, counting pages already being read.
+      //
+      // Without the in-flight term, workers keep pulling while the first results
+      // are still being stored — a budget of 5 cost 9 reads, because nothing had
+      // landed yet when the sixth was claimed. Spares are meant to replace
+      // failures, not to be read speculatively; each one is a paid fetch and a
+      // second or two of the deadline.
+      if (sources.length + inFlight >= budget) {
+        if (inFlight === 0) {
+          return;
+        }
+
+        // Others are still reading: one of them may fail and free this slot.
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        continue;
+      }
+
+      const index = next++;
+      const result = results[index];
+
+      if (!result) {
+        return;
+      }
+
+      inFlight += 1;
+
+      try {
         const page = await fetchDocumentationUrl({
           url: result.url,
           orgId: params.orgId,
@@ -156,33 +289,33 @@ async function readPagesInBatches(
           priorMessages: []
         });
 
-        if (page.content.length < MIN_USEFUL_CHARS) {
-          throw new Error(`too little content at ${result.url}`);
+        if (isUnreadablePage(page.content)) {
+          throw new Error(`no readable content at ${result.url}`);
         }
 
         const parsed = toParsedDocument(page);
         const { documentId } = await storeDraftDocument(parsed, params.userId, params.redis);
 
-        return {
+        sources.push({
           documentId,
           title: parsed.fileName,
           url: page.url,
           chars: parsed.text.length
-        } satisfies ResearchSource;
-      })
-    );
-
-    for (const outcome of settled) {
-      if (outcome.status === 'fulfilled') {
-        sources.push(outcome.value);
-      } else {
+        });
+      } catch (error) {
         failedCount += 1;
-        console.info('[research] page skipped:', outcome.reason);
+        console.info('[research] page skipped:', error instanceof Error ? error.message : error);
+      } finally {
+        inFlight -= 1;
       }
     }
   }
 
-  return { sources, failedCount };
+  const workers = Math.max(1, Math.min(FETCH_CONCURRENCY, budget, results.length));
+
+  await Promise.all(Array.from({ length: workers }, worker));
+
+  return { sources: sources.slice(0, budget), failedCount, timedOut };
 }
 
 /**
@@ -229,20 +362,23 @@ export async function runResearch(params: {
     })
   );
 
-  const candidates = mergeSearchResults(perQuery, Math.ceil(pageBudget * 1.5));
+  // Spares, not a bigger harvest: login walls and video pages are only detected
+  // after reading them, so a run with no slack comes back short of its depth.
+  const candidates = mergeSearchResults(perQuery, pageBudget * 2);
 
   if (candidates.length === 0) {
     return { queries, sources: [], failedCount: 0 };
   }
 
-  const { sources, failedCount } = await readPagesInBatches(candidates.slice(0, pageBudget), params);
+  const { sources, failedCount, timedOut } = await readPages(candidates, pageBudget, params);
 
   console.info('[research] done', {
     topic: topic.slice(0, 80),
     depth,
     queries: queries.length,
     kept: sources.length,
-    failed: failedCount
+    failed: failedCount,
+    timedOut
   });
 
   return { queries, sources, failedCount };

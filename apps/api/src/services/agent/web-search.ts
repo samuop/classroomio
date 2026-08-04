@@ -68,6 +68,40 @@ async function redisSafeSet(key: string, value: string, ttlSec: number): Promise
 }
 
 /**
+ * Hosts whose pages come back as furniture rather than content.
+ *
+ * Measured, not assumed. A research run on "colorimetría de pinturas de paredes"
+ * returned nine pages, and four of them were these: both Facebook posts were a
+ * login wall ("Log in / Forgotten account?"), the Instagram reel was the same,
+ * and the YouTube page carried `Warning: Target URL returned error 401` followed
+ * by comment counts and a description — no transcript. Together they were 44% of
+ * the pages and, worse, they go into the source pack the model writes the course
+ * from.
+ *
+ * The reader cannot fix this: the content is behind a login or is a video. The
+ * cheapest place to deal with it is here, before a fetch is spent on it.
+ */
+const CONTENT_FREE_HOSTS = [
+  'facebook.com',
+  'instagram.com',
+  'threads.net',
+  'tiktok.com',
+  'youtube.com',
+  'youtu.be',
+  'x.com',
+  'twitter.com',
+  'pinterest.com',
+  'linkedin.com',
+  'quora.com'
+];
+
+function isContentFreeHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^www\./, '');
+
+  return CONTENT_FREE_HOSTS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`));
+}
+
+/**
  * Keeps only results we could actually read afterwards.
  *
  * `assertFetchableDocumentationUrl` is the same guard the reader uses (no
@@ -81,7 +115,12 @@ function keepFetchableResults(results: WebSearchResult[]): WebSearchResult[] {
 
   for (const result of results) {
     try {
-      assertFetchableDocumentationUrl(result.url);
+      const parsed = assertFetchableDocumentationUrl(result.url);
+
+      if (isContentFreeHost(parsed.hostname)) {
+        continue;
+      }
+
       out.push(result);
     } catch {
       // Not reachable by the reader — drop it rather than fail the search.
