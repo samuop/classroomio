@@ -2206,9 +2206,7 @@
         },
         "research": {
           "label": "Research on the web",
-          "topic_placeholder": "Topic to search. E.g. colorimetry for wall paints",
-          "topic_placeholder_from_description": "Topic to search (leave empty to use the description)",
-          "hint": "We search the topic, save the best pages as course sources and build from those plus whatever you uploaded.",
+          "hint": "We search from what you described and who it is for, save the best pages as sources and build from those plus whatever you uploaded.",
           "depth_quick": "Quick · ~5 pages",
           "depth_normal": "Normal · ~10 pages",
           "depth_deep": "Deep · ~20 pages",

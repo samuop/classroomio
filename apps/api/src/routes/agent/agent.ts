@@ -326,7 +326,7 @@ const agentCoreRouter = new Hono()
     try {
       const user = c.get('user')!;
       const orgId = c.req.header('cio-org-id')!;
-      const { topic, depth, courseId } = c.req.valid('json');
+      const { topic, depth, courseId, audience, level } = c.req.valid('json');
 
       if (!isWebSearchConfigured()) {
         throw new AppError(WEB_SEARCH_UNCONFIGURED, 'WEB_SEARCH_UNCONFIGURED', 503);
@@ -363,7 +363,8 @@ const agentCoreRouter = new Hono()
         conversationId,
         userId: user.id,
         redis,
-        providerConfig
+        providerConfig,
+        brief: { audience, level }
       });
 
       return c.json({ success: true as const, data: outcome });

@@ -181,7 +181,7 @@
     researchDetail = '';
 
     try {
-      const outcome = await aiAssistantApi.research(topic, researchDepth, courseId);
+      const outcome = await aiAssistantApi.research(topic, researchDepth, { courseId });
 
       if (outcome && outcome.sources.length > 0) {
         open = false;

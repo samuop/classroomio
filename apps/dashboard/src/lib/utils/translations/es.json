@@ -2573,9 +2573,7 @@
         },
         "research": {
           "label": "Investigar en internet",
-          "topic_placeholder": "Tema a buscar. Ej: colorimetría de pinturas de paredes",
-          "topic_placeholder_from_description": "Tema a buscar (si lo dejás vacío, usamos la descripción)",
-          "hint": "Buscamos el tema, guardamos las mejores páginas como fuentes del curso y construimos con ellas más lo que hayas subido.",
+          "hint": "Buscamos a partir de lo que describiste y de para quién es, guardamos las mejores páginas como fuentes y construimos con ellas más lo que hayas subido.",
           "depth_quick": "Rápida · ~5 páginas",
           "depth_normal": "Normal · ~10 páginas",
           "depth_deep": "Profunda · ~20 páginas",

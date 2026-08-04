@@ -47,9 +47,8 @@ vi.mock('@api/utils/redis/redis', () => ({
   logRedisUnavailableOnce: vi.fn()
 }));
 
-const { runResearch, deriveSearchQueries, isUnreadablePage, readableProseLength, parseQueryLines } = await import(
-  '@api/services/agent/research'
-);
+const { runResearch, deriveSearchQueries, isUnreadablePage, readableProseLength, parseQueryLines, buildBriefPrompt } =
+  await import('@api/services/agent/research');
 
 const PROVIDER = { provider: AIProvider.MINIMAX, apiKey: 'k' };
 const REDIS = {} as never;
@@ -109,6 +108,25 @@ describe('isUnreadablePage', () => {
     ].join('\n');
 
     expect(isUnreadablePage(article)).toBe(false);
+  });
+});
+
+describe('buildBriefPrompt', () => {
+  it('tells the planner who the course is for, which is most of what decides a good page', () => {
+    // Same words, different learners, different material: colour charts and how
+    // to advise a customer, versus spectrophotometry and standards. The planner
+    // used to get the topic alone and could not tell those apart.
+    const prompt = buildBriefPrompt('colorimetría de pinturas de paredes', {
+      audience: 'vendedores de pinturería sin formación previa',
+      level: 'intro'
+    });
+
+    expect(prompt).toContain('vendedores de pinturería');
+    expect(prompt).toMatch(/introductory/i);
+  });
+
+  it('works with nothing but a topic, for a targeted top-up from the Sources panel', () => {
+    expect(buildBriefPrompt('cartas RAL', {})).toContain('cartas RAL');
   });
 });
 

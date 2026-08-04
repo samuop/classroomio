@@ -74,7 +74,6 @@
   let creating = $state(false);
 
   let researchEnabled = $state(false);
-  let researchTopic = $state('');
   let researchDepth = $state<ResearchDepth>('normal');
   let researching = $state(false);
   let researchError = $state('');
@@ -88,13 +87,24 @@
   let fileInputEl: HTMLInputElement | undefined = $state();
 
   /**
-   * What actually gets searched. The description is a paragraph written for a
-   * human — searching it whole is how a course on colorimetry came back with
-   * listicles about phone apps. The topic defaults to the description so the
-   * simple case stays one field, but it is editable, and it is the only thing
-   * the search sees.
+   * There is no separate "topic to research" field, on purpose.
+   *
+   * The search is never run literally: `deriveSearchQueries` asks a model to
+   * turn this into two to four actual queries. So a second field asking the
+   * teacher to restate the subject in search-engine words bought nothing and
+   * cost a field most people would leave empty or fill with a copy of the line
+   * above. What the planner was genuinely missing is who the course is for —
+   * that goes with it now, from step 2.
+   *
+   * Researching something NARROWER than the whole course still has a home: the
+   * Sources panel's Research tab takes a free topic. The wizard researches the
+   * course; the panel researches a gap.
    */
-  const effectiveTopic = $derived(researchTopic.trim() || description.trim());
+  const researchBrief = $derived(
+    [description.trim(), outcome.trim() ? `${t.get('course.creator.guide.handoff.outcome')}: ${outcome.trim()}` : '']
+      .filter(Boolean)
+      .join('\n')
+  );
 
   const canContinue = $derived(description.trim().length > 0 && uploadingCount === 0);
   const canBuild = $derived(canContinue && audience.trim().length > 0 && !creating && !researching);
@@ -221,7 +231,10 @@
     researchError = '';
     researching = true;
 
-    const outcomeResult = await aiAssistantApi.research(effectiveTopic.slice(0, 500), researchDepth);
+    const outcomeResult = await aiAssistantApi.research(researchBrief.slice(0, 1000), researchDepth, {
+      audience: audience.trim() || undefined,
+      level
+    });
 
     researching = false;
 
@@ -341,13 +354,6 @@
 
           {#if researchEnabled}
             <div class="flex flex-col gap-2 pl-6">
-              <Input
-                type="text"
-                bind:value={researchTopic}
-                placeholder={description.trim()
-                  ? $t('course.creator.guide.research.topic_placeholder_from_description')
-                  : $t('course.creator.guide.research.topic_placeholder')}
-              />
               <div class="flex flex-wrap gap-2">
                 {#each RESEARCH_DEPTHS as option (option.value)}
                   {@render chip($t(option.labelKey), researchDepth === option.value, () => (researchDepth = option.value))}

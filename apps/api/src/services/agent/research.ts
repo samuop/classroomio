@@ -107,6 +107,44 @@ export interface ResearchOutcome {
 }
 
 /**
+ * Who the course is for. Optional, because research from the Sources panel is a
+ * targeted top-up on an existing course and carries no audience of its own.
+ */
+export interface ResearchBrief {
+  audience?: string;
+  level?: 'intro' | 'intermediate' | 'advanced';
+}
+
+const LEVEL_GUIDANCE: Record<NonNullable<ResearchBrief['level']>, string> = {
+  intro: 'Prefer introductory explanations over specialist literature.',
+  intermediate: 'Prefer working, applied material over both beginner overviews and research papers.',
+  advanced: 'Prefer specialist, technical and normative sources over introductory overviews.'
+};
+
+/**
+ * The brief the planner reads.
+ *
+ * It used to receive the topic and nothing else, which made two very different
+ * courses produce identical research: colorimetry for paint-shop staff wants
+ * colour charts and how to advise a customer, the same words for formulation
+ * chemists want spectrophotometry and standards. The audience is not decoration
+ * here — it is most of what decides whether a page is useful.
+ */
+export function buildBriefPrompt(topic: string, brief: ResearchBrief): string {
+  const lines = [`Course brief: ${topic.slice(0, 900)}`];
+
+  if (brief.audience?.trim()) {
+    lines.push(`Learners: ${brief.audience.trim().slice(0, 300)}`);
+  }
+
+  if (brief.level) {
+    lines.push(LEVEL_GUIDANCE[brief.level]);
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Pulls the queries out of whatever shape the model answered in.
  *
  * One per line, tolerating the decorations models add unasked: bullets, numbering,
@@ -156,7 +194,8 @@ export function parseQueryLines(text: string, wanted: number): string[] {
 export async function deriveSearchQueries(
   topic: string,
   depth: ResearchDepth,
-  providerConfig: AIProviderConfig
+  providerConfig: AIProviderConfig,
+  brief: ResearchBrief = {}
 ): Promise<string[]> {
   const wanted = QUERIES_PER_DEPTH[depth];
   const model = createModel({
@@ -183,13 +222,21 @@ export async function deriveSearchQueries(
       maxOutputTokens: 1024,
       system: [
         'You plan the web research for a training course.',
-        `Write exactly ${wanted} web search queries that together cover the topic:`,
+        `Write exactly ${wanted} web search queries that together cover the subject:`,
         'foundations and definitions, practical or applied material, and standards or',
-        'reference tables where the topic has them.',
-        'Write them in the SAME LANGUAGE as the topic.',
+        'reference tables where the subject has them.',
+        'Write them in the SAME LANGUAGE as the brief.',
+        // Measured failure: for a colorimetry course the planner wrote
+        // "aplicación práctica de colorimetría…", the search engine read
+        // "aplicación" as "app", and three of ten pages were listicles of phone
+        // apps for repainting a room. Naming the trap is cheaper than filtering
+        // its results, which sit on perfectly ordinary domains.
+        'Aim at teaching and reference material: explanations, guides, standards, tables.',
+        'Avoid wording a shop or an app store would match — no "app", "aplicación", "mejores",',
+        '"top 10", "comprar", "precio", "opiniones", "descargar".',
         'Output ONE query per line, nothing else — no numbering, no quotes, no commentary.'
       ].join(' '),
-      prompt: topic.slice(0, 500)
+      prompt: buildBriefPrompt(topic, brief)
     });
 
     const queries = parseQueryLines(text ?? '', wanted);
@@ -385,11 +432,13 @@ export async function runResearch(params: {
   userId: string;
   redis: RedisClient;
   providerConfig: AIProviderConfig;
+  /** Who the course is for — shapes what counts as useful material. */
+  brief?: ResearchBrief;
 }): Promise<ResearchOutcome> {
-  const { topic, depth, providerConfig } = params;
+  const { topic, depth, providerConfig, brief } = params;
   const pageBudget = PAGES_PER_DEPTH[depth];
 
-  const queries = await deriveSearchQueries(topic, depth, providerConfig);
+  const queries = await deriveSearchQueries(topic, depth, providerConfig, brief ?? {});
 
   // Over-fetch the candidate list: some pages will be unreadable, and it is
   // cheaper to have spares than to come up short of the depth the teacher chose.

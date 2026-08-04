@@ -249,9 +249,20 @@ export const AGENT_RESEARCH_DEPTHS = ['quick', 'normal', 'deep'] as const;
  * that same screen.
  */
 export const ZAgentResearchBody = z.object({
-  topic: z.string().min(3).max(500),
+  topic: z.string().min(3).max(1000),
   depth: z.enum(AGENT_RESEARCH_DEPTHS).default('normal'),
-  courseId: ZAgentCourseId.optional()
+  courseId: ZAgentCourseId.optional(),
+  /**
+   * Who the course is for, and how deep it goes.
+   *
+   * The same topic needs different material for different learners: colorimetry
+   * for paint-shop staff wants colour charts and how to advise a customer, the
+   * same words for formulation chemists want spectrophotometry and standards.
+   * The query planner used to receive only the topic and could not tell those
+   * apart, so both courses got the same pages.
+   */
+  audience: z.string().max(300).optional(),
+  level: z.enum(['intro', 'intermediate', 'advanced']).optional()
 });
 
 export type TAgentResearchBody = z.infer<typeof ZAgentResearchBody>;

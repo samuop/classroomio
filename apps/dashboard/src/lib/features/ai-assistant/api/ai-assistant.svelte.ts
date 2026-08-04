@@ -201,8 +201,13 @@ class AiAssistantApi extends BaseApiWithErrors {
   async research(
     topic: string,
     depth: 'quick' | 'normal' | 'deep',
-    /** When set, the pages are stored as sources of that course straight away. */
-    courseId?: string
+    options: {
+      /** When set, the pages are stored as sources of that course straight away. */
+      courseId?: string;
+      /** Who the course is for — decides what counts as useful material. */
+      audience?: string;
+      level?: 'intro' | 'intermediate' | 'advanced';
+    } = {}
   ): Promise<{
     queries: string[];
     sources: { documentId: string; title: string; url: string; chars: number }[];
@@ -212,7 +217,13 @@ class AiAssistantApi extends BaseApiWithErrors {
       const response = await apiClient.request(`${getRequestBaseUrl()}/agent/research`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(courseId ? { topic, depth, courseId } : { topic, depth }),
+        body: JSON.stringify({
+          topic,
+          depth,
+          ...(options.courseId ? { courseId: options.courseId } : {}),
+          ...(options.audience ? { audience: options.audience } : {}),
+          ...(options.level ? { level: options.level } : {})
+        }),
         credentials: 'include'
       });
       const result = (await response.json()) as {
