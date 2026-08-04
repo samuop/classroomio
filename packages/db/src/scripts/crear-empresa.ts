@@ -16,10 +16,18 @@ import { eq } from 'drizzle-orm';
  * - Si pasás --admin-email de un usuario inexistente, falla (usá create-admin
  *   para crear un usuario nuevo desde cero).
  *
+ * `--custom-domain` sirve cuando el cliente entra por SU dominio y no por un
+ * subdominio nuestro. Marca el dominio como verificado directamente, y eso es
+ * correcto acá: la verificación existe para el camino de Approximated, donde hay
+ * que comprobar que un tercero apuntó el DNS a donde corresponde. En este
+ * despliegue el servidor es nuestro — si Nginx ya responde en ese nombre con su
+ * certificado, la comprobación ya está hecha por construcción.
+ *
  * Uso:
  *   tsx src/scripts/crear-empresa.ts \
  *     --org 'Globex' --slug globex \
- *     --admin-email samuelocta215@gmail.com
+ *     --admin-email samuelocta215@gmail.com \
+ *     [--custom-domain learn.egeaconsultoria.com.ar]
  */
 
 function arg(flag: string): string | undefined {
@@ -29,6 +37,7 @@ function arg(flag: string): string | undefined {
 
 const orgName = arg('--org');
 const adminEmail = arg('--admin-email');
+const customDomain = arg('--custom-domain')?.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
 const slug = (arg('--slug') ?? orgName ?? '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
@@ -121,7 +130,8 @@ async function main() {
       aiTutorSettings: DEFAULT_AI_TUTOR,
       settings: ORG_SETTINGS,
       isRestricted: false,
-      createdAt: nowIso
+      createdAt: nowIso,
+      ...(customDomain ? { customDomain, isCustomDomainVerified: true } : {})
     } as unknown as typeof schema.organization.$inferInsert);
 
     // 4. Asociar al admin existente.
@@ -141,6 +151,12 @@ async function main() {
     console.log('');
     console.log('   Local:   localhost:5173/?org=' + slug);
     console.log('   Prod:    ' + slug + '.<tu-dominio>');
+
+    if (customDomain) {
+      console.log('   Propio:  https://' + customDomain + '  (marcado como verificado)');
+      console.log('');
+      console.log('   Requiere que Nginx ya responda en ese nombre y que el DNS apunte acá.');
+    }
   } finally {
     await client.end();
   }
