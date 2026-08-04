@@ -133,11 +133,17 @@ jobs:
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/
 
       # ── 7. Escribir los DOS .env en sus rutas ────────────────────────────
+      # VPS_CIO_API_ENV es el archivo entero en un solo secreto, así que agregar
+      # una variable obliga a reescribirlo completo. Las claves de un solo uso van
+      # como secretos propios, apendeadas acá: se rotan sin volver a pegar el
+      # resto, y si el secreto no existe la línea queda vacía (la API lo detecta y
+      # lo dice en pantalla, ver isWebSearchConfigured).
       - name: Write API .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_API_ENV }}
+          JINA_API_KEY=${{ secrets.JINA_API_KEY }}
           ENVEOF
 
       - name: Write Dashboard .env
