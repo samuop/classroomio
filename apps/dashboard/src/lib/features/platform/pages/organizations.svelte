@@ -15,7 +15,7 @@
 
   import { platformApi } from '$features/platform/api/platform.svelte';
   import OrganizationDetail from '$features/platform/components/organization-detail.svelte';
-  import type { PlatformOrg, PlatformOrgSortBy } from '$features/platform/utils/types';
+  import type { PlatformOrg, PlatformOrgSortBy, PlatformPlanName } from '$features/platform/utils/types';
   import { t } from '$lib/utils/functions/translations';
 
   let searchTerm = $state('');
@@ -27,6 +27,15 @@
   let createName = $state('');
   let createSiteName = $state('');
   let createOwnerEmail = $state('');
+  let createOwnerName = $state('');
+  let createOwnerPassword = $state('');
+  let createPlan = $state<PlatformPlanName>('ENTERPRISE');
+
+  const PLAN_OPTIONS: { value: PlatformPlanName; labelKey: string }[] = [
+    { value: 'BASIC', labelKey: 'platform.plans.basic' },
+    { value: 'EARLY_ADOPTER', labelKey: 'platform.plans.early_adopter' },
+    { value: 'ENTERPRISE', labelKey: 'platform.plans.enterprise' }
+  ];
 
   // Rename dialog
   let renameTarget = $state<PlatformOrg | null>(null);
@@ -77,17 +86,33 @@
     return new Intl.NumberFormat().format(tokens);
   }
 
+  /**
+   * Readable rather than maximally random: the operator has to relay it to the
+   * client by hand, and it is replaced on first sign-in anyway.
+   */
+  function generatePassword() {
+    const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(14));
+    createOwnerPassword = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+  }
+
   async function onCreate() {
     await platformApi.createOrganization({
       orgName: createName,
       siteName: createSiteName,
-      ownerEmail: createOwnerEmail
+      ownerEmail: createOwnerEmail,
+      planName: createPlan,
+      ...(createOwnerName.trim() ? { ownerName: createOwnerName.trim() } : {}),
+      ...(createOwnerPassword ? { ownerPassword: createOwnerPassword } : {})
     });
 
     if (platformApi.success) {
       createName = '';
       createSiteName = '';
       createOwnerEmail = '';
+      createOwnerName = '';
+      createOwnerPassword = '';
+      createPlan = 'ENTERPRISE';
       isCreateOpen = false;
     }
   }
@@ -243,13 +268,14 @@
 
 <!-- Create -->
 <Dialog.Root bind:open={isCreateOpen}>
-  <Dialog.Content>
+  <Dialog.Content class="ui:flex ui:max-h-[85vh] ui:flex-col ui:overflow-hidden">
     <Dialog.Header>
       <Dialog.Title>{$t('platform.orgs.create_title')}</Dialog.Title>
       <Dialog.Description>{$t('platform.orgs.create_description')}</Dialog.Description>
     </Dialog.Header>
 
-    <Field.Group>
+    <div class="ui:-mr-2 ui:min-h-0 ui:flex-1 ui:overflow-y-auto ui:pr-2">
+      <Field.Group>
       <Field.Field>
         <Field.Label>{$t('platform.orgs.name_label')}</Field.Label>
         <Input bind:value={createName} />
@@ -274,7 +300,40 @@
           <Field.Error>{platformApi.errors.ownerEmail}</Field.Error>
         {/if}
       </Field.Field>
-    </Field.Group>
+
+      <Field.Field>
+        <Field.Label>{$t('platform.orgs.owner_name_label')}</Field.Label>
+        <Input bind:value={createOwnerName} />
+      </Field.Field>
+
+      <Field.Field>
+        <Field.Label>{$t('platform.orgs.owner_password_label')}</Field.Label>
+        <div class="flex gap-2">
+          <Input bind:value={createOwnerPassword} autocomplete="off" />
+          <Button variant="outline" onclick={generatePassword}>{$t('platform.orgs.owner_password_generate')}</Button>
+        </div>
+        <Field.Description>{$t('platform.orgs.owner_password_hint')}</Field.Description>
+        {#if platformApi.errors.ownerPassword}
+          <Field.Error>{platformApi.errors.ownerPassword}</Field.Error>
+        {/if}
+      </Field.Field>
+
+      <Field.Field>
+        <Field.Label>{$t('platform.orgs.plan_label')}</Field.Label>
+        <div class="grid grid-cols-3 gap-2">
+          {#each PLAN_OPTIONS as option (option.value)}
+            <Button
+              variant={createPlan === option.value ? 'default' : 'outline'}
+              size="sm"
+              onclick={() => (createPlan = option.value)}
+            >
+              {$t(option.labelKey)}
+            </Button>
+          {/each}
+        </div>
+      </Field.Field>
+      </Field.Group>
+    </div>
 
     <Dialog.Footer>
       <Button variant="outline" onclick={() => (isCreateOpen = false)}>{$t('platform.orgs.cancel')}</Button>

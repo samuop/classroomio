@@ -17,10 +17,13 @@ import {
   type DomainSetupResult
 } from '@api/services/org/domain';
 
+import { getProfileByEmail, markUserAndProfileEmailVerified, updateProfile } from '@cio/db/queries/auth';
+
 import type { TPlatformCreateOrg } from '@cio/utils/validation/platform';
+import { auth } from '@cio/db/auth';
+import { checkSiteNameExists } from '@cio/db/queries/organization';
 import { createOrganizationWithOwner } from '@api/services/onboarding';
 import { getCourseBaseUrl } from '@api/services/widget-payload';
-import { getProfileByEmail } from '@cio/db/queries/auth';
 import { updateOrg } from '@api/services/organization';
 
 /** Start of the current calendar month in ISO form (for "tokens this period"). */
@@ -97,26 +100,81 @@ export async function setOrganizationPlan(orgId: string, planName: PlatformPlanN
 }
 
 /**
- * Creates an org and assigns an existing user (by email) as its admin owner.
- * The owner must already have an account — platform creation does not invite
- * new users (that stays in the org-level team-invite flow).
+ * Creates the owner's account when `ownerEmail` belongs to nobody yet.
+ *
+ * The signup goes through Better Auth rather than writing `user` and `account`
+ * rows here, so the password hashing stays defined in exactly one place
+ * (packages/db/src/auth/email-password.ts) and the `user.create` hook still
+ * gets to build the profile. Hand-rolling the rows would fork both.
+ *
+ * The email is marked verified because a platform admin typing a client's
+ * address IS the verification, and an unverified profile lands in a dashboard
+ * whose interactions are disabled until the modal is satisfied — the account
+ * would exist and still be unusable.
+ */
+async function provisionOwnerAccount(input: TPlatformCreateOrg & { ownerPassword: string }) {
+  await auth.api.signUpEmail({
+    body: {
+      email: input.ownerEmail,
+      password: input.ownerPassword,
+      name: input.ownerName ?? input.ownerEmail.split('@')[0]
+    }
+  });
+
+  const profile = await getProfileByEmail(input.ownerEmail);
+  if (!profile) {
+    throw new AppError('The owner account was created but its profile is missing', ErrorCodes.INTERNAL_ERROR, 500);
+  }
+
+  await markUserAndProfileEmailVerified(profile.id);
+
+  // The profile hook names people after the local part of their email, which
+  // reads badly for a client's admin. Use the given name when there is one.
+  if (input.ownerName) {
+    await updateProfile(profile.id, { fullname: input.ownerName });
+  }
+
+  return { ...profile, fullname: input.ownerName ?? profile.fullname };
+}
+
+/**
+ * Creates an org and assigns a user (by email) as its admin owner, creating
+ * that account first when a temporary password is supplied.
  */
 export async function createOrganization(input: TPlatformCreateOrg) {
-  const ownerProfile = await getProfileByEmail(input.ownerEmail);
-  if (!ownerProfile) {
+  const existingProfile = await getProfileByEmail(input.ownerEmail);
+
+  if (!existingProfile && !input.ownerPassword) {
     throw new AppError(
-      `No user found with email '${input.ownerEmail}'. The owner must have an account before you can assign the workspace.`,
+      `No user found with email '${input.ownerEmail}'. Set a temporary password to create the account, or have them sign up first.`,
       ErrorCodes.PROFILE_NOT_FOUND,
       404,
       'ownerEmail'
     );
   }
 
+  // Check the site name before creating any account. `createOrganizationWithOwner`
+  // checks it too, but by then the owner would already exist: a retry with a
+  // corrected site name finds that account and silently ignores the new
+  // temporary password, leaving the operator handing over a dead one.
+  if (!existingProfile && (await checkSiteNameExists(input.siteName))) {
+    throw new AppError(`Site name '${input.siteName}' already exists`, ErrorCodes.SITENAME_EXISTS, 409, 'siteName');
+  }
+
+  const ownerProfile =
+    existingProfile ?? (await provisionOwnerAccount({ ...input, ownerPassword: input.ownerPassword! }));
+
   const result = await createOrganizationWithOwner(ownerProfile.id, {
     fullname: ownerProfile.fullname,
     orgName: input.orgName,
     siteName: input.siteName
   });
+
+  // `createOrganizationWithOwner` only assigns a plan on self-hosted instances,
+  // where the single org is implicitly Enterprise. Multi-tenant deployments run
+  // with that flag off, so a workspace created here would otherwise start with
+  // no allowance and gated features.
+  await setPlatformOrganizationPlan(result.organization.id, input.planName);
 
   return result.organization;
 }

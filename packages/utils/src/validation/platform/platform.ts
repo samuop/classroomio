@@ -50,7 +50,21 @@ export const ZPlatformCreateOrg = z.object({
     .min(3)
     .max(63)
     .refine((val) => !/^[-]|[-]$/.test(val), { message: 'validations.site_name.hyphen_rule' }),
-  /** Email of an existing user who becomes the org's admin owner. */
-  ownerEmail: z.string().email()
+  /** Email of the user who becomes the org's admin owner. */
+  ownerEmail: z.string().email(),
+  /**
+   * Temporary password. Only read when `ownerEmail` has no account yet, in
+   * which case the account is created with it and the operator passes it on.
+   * Without it, an owner who has never signed up is a dead end: the platform
+   * panel is the one place that manages other people's workspaces.
+   */
+  ownerPassword: z.string().min(8).max(128).optional(),
+  /** Display name for a newly created owner. Ignored if the account exists. */
+  ownerName: z.string().trim().min(2).max(120).optional(),
+  /**
+   * A workspace with no plan has no token allowance and gated features, so
+   * creating one always picks a plan rather than leaving it unset.
+   */
+  planName: z.enum(['BASIC', 'EARLY_ADOPTER', 'ENTERPRISE']).default('ENTERPRISE')
 });
 export type TPlatformCreateOrg = z.infer<typeof ZPlatformCreateOrg>;
