@@ -3348,7 +3348,7 @@
       "tenant_url_label": "Subdominio de la plataforma",
       "tenant_url_hint": "Se genera automáticamente a partir del nombre del sitio. No requiere configuración de DNS por empresa.",
       "custom_domain_label": "Dominio personalizado",
-      "custom_domain_hint": "Conectá un dominio que sea del cliente, como egea.com.ar. Vas a recibir los registros DNS para apuntarlo acá.",
+      "custom_domain_hint": "Un dominio del cliente, como learn.suempresa.com.ar. Antes tiene que apuntar a este servidor por DNS y el servidor tiene que responder en ese nombre con su certificado.",
       "domain_verified": "Verificado",
       "domain_pending": "DNS pendiente",
       "domain_connect": "Conectar",

@@ -5075,7 +5075,7 @@
       "tenant_url_label": "Platform subdomain",
       "tenant_url_hint": "Generated automatically from the site name. No DNS setup needed per workspace.",
       "custom_domain_label": "Custom domain",
-      "custom_domain_hint": "Connect a domain the customer owns, like egea.com.ar. You'll get DNS records to point it here.",
+      "custom_domain_hint": "A domain the customer owns, like learn.theircompany.com. It must already point at this server by DNS, and the server must answer on that name with its certificate.",
       "domain_verified": "Verified",
       "domain_pending": "Pending DNS",
       "domain_connect": "Connect",

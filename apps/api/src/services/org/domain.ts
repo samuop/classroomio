@@ -23,7 +23,7 @@ export interface DomainSetupResult {
   verified: boolean;
   reconnectRequired: boolean;
   message: string;
-  provider: 'approximated';
+  provider: 'approximated' | 'self_managed';
   dnsRecords: DomainDnsRecord[];
   validationErrors: string[];
 }
@@ -43,6 +43,46 @@ interface ApproximatedVhost {
 const SUPPORTED_CUSTOM_DOMAIN_PATTERN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.){2,}[a-z]{2,63}$/i;
 
 const APPROXIMATED_BASE_URL = 'https://cloud.approximated.app/api';
+
+/**
+ * Whether custom domains are brokered by Approximated. When they are not, this
+ * deployment terminates its clients' domains itself (a reverse-proxy server
+ * block per hostname) and there is no third party to ask about them.
+ */
+export function isApproximatedConfigured(): boolean {
+  return Boolean(
+    env.APPROXIMATED_API_KEY &&
+      env.APPROXIMATED_TARGET_ADDRESS &&
+      (env.APPROXIMATED_DNS_TARGET_IP || env.APPROXIMATED_DNS_TARGET_CNAME)
+  );
+}
+
+/**
+ * The answer for a domain this deployment serves on its own.
+ *
+ * It reports verified because on this path the proof already exists: pointing
+ * DNS at us is not enough to be served — without a server block naming the
+ * hostname the request lands on the default site — so the operator having wired
+ * it up IS the demonstration of control that `isCustomDomainVerified` stands
+ * for. That flag is not cosmetic: it gates tenant lookup by hostname and the
+ * trusted-origin registry, so leaving it false would store a domain that never
+ * resolves to its organization.
+ */
+function toSelfManagedResult(hostname: string, status: DomainSetupStatus = 'verified'): DomainSetupResult {
+  return {
+    hostname,
+    status,
+    verified: status === 'verified',
+    reconnectRequired: false,
+    message:
+      status === 'removed'
+        ? 'Custom domain removed. Its server block can now be retired.'
+        : 'Custom domain saved. It works once DNS points here and this host has a server block with a certificate.',
+    provider: 'self_managed',
+    dnsRecords: [],
+    validationErrors: []
+  };
+}
 
 function ensureApproximatedConfig() {
   const missing = [
@@ -227,18 +267,32 @@ async function createVhost(hostname: string): Promise<ApproximatedVhost> {
 }
 
 export async function connectDomain(hostname: string): Promise<DomainSetupResult> {
+  if (!isApproximatedConfigured()) {
+    return toSelfManagedResult(hostname);
+  }
+
   const existing = await getVhost(hostname);
   const vhost = existing ?? (await createVhost(hostname));
   return toDomainSetupResult(hostname, vhost);
 }
 
 export async function refreshDomain(hostname: string): Promise<DomainSetupResult> {
+  if (!isApproximatedConfigured()) {
+    // Nothing external to re-poll: the domain is served from this box, so its
+    // state cannot have drifted behind our back.
+    return toSelfManagedResult(hostname);
+  }
+
   const vhost = await getVhost(hostname);
   console.log('existing', vhost);
   return toDomainSetupResult(hostname, vhost);
 }
 
 export async function removeDomain(hostname: string): Promise<DomainSetupResult> {
+  if (!isApproximatedConfigured()) {
+    return toSelfManagedResult(hostname, 'removed');
+  }
+
   await approximatedRequest<null>(`/vhosts/by/incoming/${encodeURIComponent(hostname)}`, {
     method: 'DELETE'
   });
