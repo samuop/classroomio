@@ -2553,8 +2553,28 @@
           "url_placeholder": "https://docs.ejemplo.com/…",
           "add_url": "Agregar otro enlace"
         },
+        "step_of": "Paso {current} de {total}",
+        "step_1_name": "Qué querés enseñar",
+        "step_2_name": "Para quién y para qué",
+        "continue_button": "Continuar",
+        "back_button": "Volver",
+        "audience": {
+          "who_label": "¿A quién va dirigido?",
+          "who_placeholder": "Ej: vendedores de pinturería sin formación previa en color",
+          "outcome_label": "¿Qué tienen que poder hacer al terminar?",
+          "outcome_placeholder": "Ej: leer una carta RAL o NCS y recomendar un color de pared con criterio, justificando la elección al cliente.",
+          "modality_label": "Modalidad",
+          "modality_self_paced": "A ritmo propio",
+          "modality_live": "Clases en vivo",
+          "level_label": "Nivel",
+          "level_intro": "Introductorio",
+          "level_intermediate": "Intermedio",
+          "level_advanced": "Avanzado"
+        },
         "research": {
           "label": "Investigar en internet",
+          "topic_placeholder": "Tema a buscar. Ej: colorimetría de pinturas de paredes",
+          "topic_placeholder_from_description": "Tema a buscar (si lo dejás vacío, usamos la descripción)",
           "hint": "Buscamos el tema, guardamos las mejores páginas como fuentes del curso y construimos con ellas más lo que hayas subido.",
           "depth_quick": "Rápida · ~5 páginas",
           "depth_normal": "Normal · ~10 páginas",
@@ -2569,6 +2589,9 @@
           "sources": "Enlaces de referencia para investigar",
           "research_hint": "Leé estas páginas (la raíz y las subpáginas relevantes) antes de planificar.",
           "documents": "Documentos adjuntos",
+          "audience": "Público destinatario",
+          "outcome": "Al terminar, los alumnos tienen que poder",
+          "modality": "Modalidad y nivel",
           "researched_hint": "Las últimas {count} son páginas que ya investigamos y guardamos: usalas como material, no hace falta volver a buscarlas."
         }
       },
