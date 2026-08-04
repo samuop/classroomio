@@ -277,7 +277,11 @@ async function fetchMarkdownFromJina(url: string): Promise<{ markdown: string; s
 export async function fetchDocumentationUrl(params: {
   url: string;
   orgId: string;
-  courseId: string;
+  /**
+   * Unused today (the cache is keyed per org) and optional because the course
+   * wizard reads pages before a course exists. Kept for per-course metering.
+   */
+  courseId?: string;
   priorMessages: unknown[];
 }): Promise<FetchDocumentationUrlResult> {
   const { url, orgId, courseId, priorMessages } = params;

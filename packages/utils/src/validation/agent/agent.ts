@@ -236,6 +236,26 @@ export const ZAgentDocumentUrlBody = z.object({
 
 export type TAgentDocumentUrlBody = z.infer<typeof ZAgentDocumentUrlBody>;
 
+// ─── POST /agent/research ────────────────────────────────────────────────────
+
+/** How much material a research run should gather. Mirrors RESEARCH_DEPTHS. */
+export const AGENT_RESEARCH_DEPTHS = ['quick', 'normal', 'deep'] as const;
+
+/**
+ * Body for researching a topic on the web (POST /agent/research).
+ *
+ * `courseId` is optional on purpose: the course wizard runs research BEFORE the
+ * course exists, and gets back draft document ids exactly like an upload from
+ * that same screen.
+ */
+export const ZAgentResearchBody = z.object({
+  topic: z.string().min(3).max(500),
+  depth: z.enum(AGENT_RESEARCH_DEPTHS).default('normal'),
+  courseId: ZAgentCourseId.optional()
+});
+
+export type TAgentResearchBody = z.infer<typeof ZAgentResearchBody>;
+
 // ─── POST /agent/lessons/:lessonId/diagram ───────────────────────────────────
 
 export const ZAgentDiagramParam = z.object({

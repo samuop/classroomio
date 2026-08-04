@@ -237,6 +237,8 @@
         "ask_discovery_questions": "Preparando preguntas",
         "fetch_documentation_url": "Página de lectura de documentos",
         "fetch_documentation_url_with_url": "Leyendo {url}",
+        "search_web": "Buscando en internet",
+        "search_web_with_query": "Buscando: {query}",
         "replace_lesson_block": "Editando la lección"
       },
       "meta": {
@@ -272,6 +274,7 @@
         "ask_template_questions": "Formulario de plantilla listo",
         "ask_discovery_questions": "Preguntas de descubrimiento enviadas",
         "fetch_documentation_url": "Leer {url}",
+        "search_web": "Búsqueda «{query}»: {count, plural, one {# resultado} other {# resultados}}",
         "replace_lesson_block_fallback": "Lección editada ({count, plural, one {# carácter} other {# caracteres}})"
       }
     },
@@ -2550,10 +2553,23 @@
           "url_placeholder": "https://docs.ejemplo.com/…",
           "add_url": "Agregar otro enlace"
         },
+        "research": {
+          "label": "Investigar en internet",
+          "hint": "Buscamos el tema, guardamos las mejores páginas como fuentes del curso y construimos con ellas más lo que hayas subido.",
+          "depth_quick": "Rápida · ~5 páginas",
+          "depth_normal": "Normal · ~10 páginas",
+          "depth_deep": "Profunda · ~20 páginas",
+          "working_heading": "Investigando el tema",
+          "working_subtext": "Buscando y leyendo páginas. Puede tardar hasta un minuto según la profundidad elegida.",
+          "found": "{count, plural, one {# página guardada como fuente} other {# páginas guardadas como fuentes}}",
+          "empty": "No encontramos páginas útiles sobre ese tema. Probá describirlo con otras palabras o desactivá la investigación.",
+          "failed": "No se pudo investigar el tema."
+        },
         "handoff": {
           "sources": "Enlaces de referencia para investigar",
           "research_hint": "Leé estas páginas (la raíz y las subpáginas relevantes) antes de planificar.",
-          "documents": "Documentos adjuntos"
+          "documents": "Documentos adjuntos",
+          "researched_hint": "Las últimas {count} son páginas que ya investigamos y guardamos: usalas como material, no hace falta volver a buscarlas."
         }
       },
       "examples": {

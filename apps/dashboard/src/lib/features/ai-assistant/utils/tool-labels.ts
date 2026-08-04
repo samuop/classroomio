@@ -53,7 +53,8 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'generate_course_plan',
   'ask_template_questions',
   'ask_discovery_questions',
-  'fetch_documentation_url'
+  'fetch_documentation_url',
+  'search_web'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */
@@ -272,12 +273,37 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         vars: { url: rawUrl ? prettifyUrl(rawUrl) : '' }
       };
     }
+    case 'search_web': {
+      const results = (r as { results?: unknown }).results;
+
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.search_web',
+        vars: {
+          query: readString(r, 'query') ?? '',
+          count: Array.isArray(results) ? results.length : 0
+        }
+      };
+    }
     default:
       return { shape: 'i18n', key: 'ai_assistant.tool.done.generic' };
   }
 }
 
 export function getPendingToolLine(toolName: string, input?: unknown): ToolLineUi {
+  if (toolName === 'search_web') {
+    const query =
+      typeof input === 'object' && input !== null ? readString(input as Record<string, unknown>, 'query') : undefined;
+
+    if (query) {
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.pending.search_web_with_query',
+        vars: { query }
+      };
+    }
+  }
+
   if (toolName === 'fetch_documentation_url') {
     const rawUrl =
       typeof input === 'object' && input !== null ? readString(input as Record<string, unknown>, 'url') : undefined;

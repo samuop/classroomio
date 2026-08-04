@@ -4,12 +4,14 @@
   import { t } from '$lib/utils/functions/translations';
   import { Button } from '@cio/ui/base/button';
   import { Input } from '@cio/ui/base/input';
+  import { Switch } from '@cio/ui/base/switch';
   import { Textarea } from '@cio/ui/base/textarea';
   import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import UploadCloudIcon from '@lucide/svelte/icons/upload-cloud';
   import GlobeIcon from '@lucide/svelte/icons/globe';
+  import SearchIcon from '@lucide/svelte/icons/search';
   import XIcon from '@lucide/svelte/icons/x';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
@@ -36,6 +38,14 @@
 
   type UploadedDoc = { id: string; name: string };
 
+  type ResearchDepth = 'quick' | 'normal' | 'deep';
+
+  const RESEARCH_DEPTHS: { value: ResearchDepth; labelKey: string }[] = [
+    { value: 'quick', labelKey: 'course.creator.guide.research.depth_quick' },
+    { value: 'normal', labelKey: 'course.creator.guide.research.depth_normal' },
+    { value: 'deep', labelKey: 'course.creator.guide.research.depth_deep' }
+  ];
+
   let description = $state('');
   let docUrls = $state<string[]>(['']);
   let uploadedDocs = $state<UploadedDoc[]>([]);
@@ -44,9 +54,15 @@
   let isDragging = $state(false);
   let creating = $state(false);
 
+  let researchEnabled = $state(false);
+  let researchDepth = $state<ResearchDepth>('normal');
+  let researching = $state(false);
+  let researchError = $state('');
+  let researchedDocs = $state<UploadedDoc[]>([]);
+
   let fileInputEl: HTMLInputElement | undefined = $state();
 
-  const canBuild = $derived(description.trim().length > 0 && uploadingCount === 0 && !creating);
+  const canBuild = $derived(description.trim().length > 0 && uploadingCount === 0 && !creating && !researching);
   const atDocLimit = $derived(uploadedDocs.length >= MAX_DOCS);
 
   function applyExample(text: string) {
@@ -132,18 +148,59 @@
       lines.push(t.get('course.creator.guide.handoff.research_hint'));
     }
 
-    if (uploadedDocs.length > 0) {
+    const attached = [...uploadedDocs, ...researchedDocs];
+
+    if (attached.length > 0) {
       lines.push('');
-      lines.push(
-        `${t.get('course.creator.guide.handoff.documents')}: ${uploadedDocs.map((d) => d.name).join(', ')}`
-      );
+      lines.push(`${t.get('course.creator.guide.handoff.documents')}: ${attached.map((d) => d.name).join(', ')}`);
+    }
+
+    if (researchedDocs.length > 0) {
+      lines.push(t.get('course.creator.guide.handoff.researched_hint', { count: researchedDocs.length }));
     }
 
     return lines.join('\n');
   }
 
+  /**
+   * Research runs BEFORE the course is created, and its pages are attached as
+   * sources exactly like the uploaded PDFs — so the agent plans from the material
+   * instead of being told to go find some. That ordering is the whole point: a
+   * prompt asking the model to research is a request it can skip, while a source
+   * already sitting in the pack is one it cannot.
+   */
+  async function runResearch(): Promise<boolean> {
+    researchError = '';
+    researching = true;
+
+    const outcome = await aiAssistantApi.research(description.trim().slice(0, 500), researchDepth);
+
+    researching = false;
+
+    if (!outcome) {
+      researchError = aiAssistantApi.error || t.get('course.creator.guide.research.failed');
+
+      return false;
+    }
+
+    researchedDocs = outcome.sources.map((s) => ({ id: s.documentId, name: s.title }));
+
+    if (researchedDocs.length === 0) {
+      researchError = t.get('course.creator.guide.research.empty');
+
+      return false;
+    }
+
+    return true;
+  }
+
   async function handleBuild() {
     if (!canBuild) return;
+
+    // A failed or empty research stops the build rather than quietly creating a
+    // course without the material the teacher asked for.
+    if (researchEnabled && researchedDocs.length === 0 && !(await runResearch())) return;
+
     creating = true;
 
     const meta = await aiAssistantApi.generateCourseMeta(description.trim().slice(0, 500));
@@ -152,8 +209,10 @@
 
     setInitialChatPrompt(buildHandoffPrompt());
 
-    if (uploadedDocs.length > 0) {
-      setInitialChatDocumentIds(uploadedDocs.map((d) => d.id));
+    const attachedIds = [...uploadedDocs, ...researchedDocs].map((d) => d.id);
+
+    if (attachedIds.length > 0) {
+      setInitialChatDocumentIds(attachedIds);
     }
 
     await courseApi.create({ title, description: courseDescription, type: 'SELF_PACED' as TCourseType }, (courseId) => {
@@ -162,7 +221,15 @@
   }
 </script>
 
-{#if creating}
+{#if researching}
+  <div class="flex min-h-[80vh] flex-col items-center justify-center gap-3 px-4 text-center">
+    <LoaderCircleIcon class="ui:text-primary h-8 w-8 animate-spin" />
+    <h1 class="text-xl font-semibold">{$t('course.creator.guide.research.working_heading')}</h1>
+    <p class="ui:text-muted-foreground max-w-md text-sm">
+      {$t('course.creator.guide.research.working_subtext')}
+    </p>
+  </div>
+{:else if creating}
   <div class="flex min-h-[80vh] flex-col items-center justify-center gap-3 px-4 text-center">
     <LoaderCircleIcon class="ui:text-primary h-8 w-8 animate-spin" />
     <h1 class="text-xl font-semibold">{$t('course.creator.wizard.creating.heading')}</h1>
@@ -205,7 +272,6 @@
       <div class="flex flex-col gap-2">
         <span class="text-sm font-medium">{$t('course.creator.guide.source.document_label')}</span>
 
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           role="button"
           tabindex="0"
@@ -286,6 +352,52 @@
           <PlusIcon class="size-3" />
           {$t('course.creator.guide.source.add_url')}
         </button>
+      </div>
+
+      <!-- Research the topic on the web -->
+      <div class="flex flex-col gap-3 rounded-xl border p-4">
+        <div class="flex items-start gap-3">
+          <SearchIcon class="ui:text-primary mt-0.5 size-4 shrink-0" />
+          <div class="min-w-0 flex-1">
+            <span class="text-sm font-medium">{$t('course.creator.guide.research.label')}</span>
+            <p class="ui:text-muted-foreground text-xs">{$t('course.creator.guide.research.hint')}</p>
+          </div>
+          <Switch bind:checked={researchEnabled} aria-label={$t('course.creator.guide.research.label')} />
+        </div>
+
+        {#if researchEnabled}
+          <div class="flex flex-wrap items-center gap-2 pl-7">
+            {#each RESEARCH_DEPTHS as option (option.value)}
+              <button
+                type="button"
+                class="rounded-full border px-3 py-1 text-xs transition-colors {researchDepth === option.value
+                  ? 'ui:border-primary ui:bg-primary/10 ui:text-primary'
+                  : 'ui:text-muted-foreground hover:ui:border-primary/60'}"
+                onclick={() => (researchDepth = option.value)}
+              >
+                {$t(option.labelKey)}
+              </button>
+            {/each}
+          </div>
+
+          {#if researchedDocs.length > 0}
+            <div class="flex flex-col gap-1.5 pl-7">
+              <p class="ui:text-muted-foreground text-xs">
+                {$t('course.creator.guide.research.found', { count: researchedDocs.length })}
+              </p>
+              {#each researchedDocs as doc (doc.id)}
+                <div class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <GlobeIcon class="ui:text-primary size-4 shrink-0" />
+                  <span class="min-w-0 flex-1 truncate">{doc.name}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          {#if researchError}
+            <p class="pl-7 text-xs text-red-500">{researchError}</p>
+          {/if}
+        {/if}
       </div>
     </div>
 

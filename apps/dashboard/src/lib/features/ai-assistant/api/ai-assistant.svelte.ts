@@ -188,6 +188,55 @@ class AiAssistantApi extends BaseApiWithErrors {
   }
 
   /**
+   * Research a topic on the web and get back draft sources.
+   *
+   * Returns the same currency as `uploadDraftDocument` — draft document ids —
+   * so the wizard can hand researched pages and uploaded PDFs to the first chat
+   * turn through one code path.
+   *
+   * The failure message is the server's own: this call needs JINA_API_KEY on the
+   * API, and "research failed" would send the one person who can fix that to
+   * read logs instead.
+   */
+  async research(
+    topic: string,
+    depth: 'quick' | 'normal' | 'deep'
+  ): Promise<{
+    queries: string[];
+    sources: { documentId: string; title: string; url: string; chars: number }[];
+    failedCount: number;
+  } | null> {
+    try {
+      const response = await apiClient.request(`${getRequestBaseUrl()}/agent/research`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, depth }),
+        credentials: 'include'
+      });
+      const result = (await response.json()) as {
+        success: boolean;
+        error?: string;
+        data?: {
+          queries: string[];
+          sources: { documentId: string; title: string; url: string; chars: number }[];
+          failedCount: number;
+        };
+      };
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+
+      this.error = result.error ?? 'Failed to research the topic';
+    } catch (error) {
+      console.error('Error researching topic:', error);
+      this.error = error instanceof Error ? error.message : 'Failed to research the topic';
+    }
+
+    return null;
+  }
+
+  /**
    * Upload from the Sources panel: same endpoint as the chat upload but
    * without a conversationId. The backend will create a hidden "Course
    * sources" conversation if needed so the document has somewhere to live.

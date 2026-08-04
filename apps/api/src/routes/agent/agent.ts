@@ -21,6 +21,7 @@ import {
   ZAgentCreditsBody,
   ZAgentGenerateCourseTitleBody,
   ZAgentGenerateTextBody,
+  ZAgentResearchBody,
   ZAgentStatusQuery,
   ZAgentSummarizeBody,
   ZTutorUsageQuery,
@@ -56,6 +57,8 @@ import {
 import { createChatConversation } from '@api/services/agent/chat-history';
 import { recordAnthropicCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
 import { buildSourcePack } from '@api/services/agent/source-pack';
+import { runResearch } from '@api/services/agent/research';
+import { isWebSearchConfigured, WEB_SEARCH_UNCONFIGURED } from '@api/services/agent/web-search';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
 import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
@@ -301,6 +304,53 @@ const agentCoreRouter = new Hono()
       }
 
       return handleError(c, error, 'Failed to upload document');
+    }
+  })
+  /**
+   * POST /agent/research
+   *
+   * Search the web on a topic and keep the useful pages as material.
+   *
+   * Returns DRAFT document ids, the same currency `/agent/upload-draft` returns,
+   * because the course wizard calls this before the course exists. The caller
+   * hands those ids to the first chat turn, which promotes them into real course
+   * sources — so a researched page and an uploaded PDF end up in the same Sources
+   * panel and the same cached source pack.
+   *
+   * No paid-plan gate, matching `fetch_documentation_url`: on a self-hosted
+   * install the operator supplies and pays for the Jina and model keys directly,
+   * so metering here would only block a teacher from material they already
+   * bought.
+   */
+  .post('/research', authMiddleware, orgMemberMiddleware, zValidator('json', ZAgentResearchBody), async (c) => {
+    try {
+      const user = c.get('user')!;
+      const orgId = c.req.header('cio-org-id')!;
+      const { topic, depth, courseId } = c.req.valid('json');
+
+      if (!isWebSearchConfigured()) {
+        throw new AppError(WEB_SEARCH_UNCONFIGURED, 'WEB_SEARCH_UNCONFIGURED', 503);
+      }
+
+      const providerConfig = pickAnyConfiguredProvider();
+
+      if (!providerConfig) {
+        throw new AppError('AI provider is not configured', 'AI_PROVIDER_UNCONFIGURED', 503);
+      }
+
+      const outcome = await runResearch({
+        topic,
+        depth,
+        orgId,
+        courseId,
+        userId: user.id,
+        redis,
+        providerConfig
+      });
+
+      return c.json({ success: true as const, data: outcome });
+    } catch (error) {
+      return handleError(c, error, 'Failed to research the topic');
     }
   })
   .get('/usage/purchased', authMiddleware, orgMemberMiddleware, async (c) => {
@@ -1092,6 +1142,9 @@ const agentCoreRouter = new Hono()
               'ask_template_questions',
               'ask_discovery_questions',
               'fetch_documentation_url',
+              // Planning is exactly when missing material hurts: without search
+              // here, the agent can only read URLs it was handed.
+              'search_web',
               'update_course_landing_page',
               'check_course_go_live_readiness'
             ] as const)

@@ -49,12 +49,14 @@ import {
   updateCourseLandingPageParam,
   updateExerciseParam,
   searchDocumentParam,
+  searchWebParam,
   updateExerciseSectionParam,
   updateLessonParam,
   updateQuestionsParam,
   updateSectionParam
 } from '@api/services/agent/agent-tool-schemas';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
+import { searchWeb } from '@api/services/agent/web-search';
 import {
   findLessonBlock,
   preserveBlockId,
@@ -1076,6 +1078,26 @@ export function buildAgentTools(
             courseId,
             priorMessages
           });
+        });
+      }
+    }),
+    /**
+     * Finding material, as opposed to reading material you were handed.
+     *
+     * Returns links only — titles, URLs and snippets. Reading one is a separate
+     * `fetch_documentation_url` call, which is what keeps a single code path
+     * between a URL and course material: the 7-day cache, the SSRF guard and the
+     * untrusted-content wrapper all live there.
+     */
+    search_web: tool({
+      description:
+        'Search the web for pages about a topic. Returns titles, URLs and snippets only — call fetch_documentation_url on a result to read it. Use when you need material the teacher has not supplied.',
+      inputSchema: searchWebParam,
+      execute: async (args) => {
+        return executeAgentTool('search_web', { orgId, userId, courseId, args }, async () => {
+          const results = await searchWeb({ query: args.query, limit: args.limit ?? 5 });
+
+          return { query: args.query, results };
         });
       }
     })

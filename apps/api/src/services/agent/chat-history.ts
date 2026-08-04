@@ -12,7 +12,14 @@ import {
 
 const MAX_PERSISTED_TOOL_OUTPUT_CHARS = 2000;
 const DROPPED_PART_TYPES = new Set(['step-start', 'reasoning']);
-const TOOLS_WITH_FULL_OUTPUT = new Set(['generate_course_plan', 'ask_template_questions', 'fetch_documentation_url']);
+const TOOLS_WITH_FULL_OUTPUT = new Set([
+  'generate_course_plan',
+  'ask_template_questions',
+  'fetch_documentation_url',
+  // A short list of URLs the agent decided were worth reading. Trimming it would
+  // make it re-search to recover links it already found.
+  'search_web'
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

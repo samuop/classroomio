@@ -2186,10 +2186,23 @@
           "url_placeholder": "https://docs.example.com/…",
           "add_url": "Add another link"
         },
+        "research": {
+          "label": "Research on the web",
+          "hint": "We search the topic, save the best pages as course sources and build from those plus whatever you uploaded.",
+          "depth_quick": "Quick · ~5 pages",
+          "depth_normal": "Normal · ~10 pages",
+          "depth_deep": "Deep · ~20 pages",
+          "working_heading": "Researching the topic",
+          "working_subtext": "Searching and reading pages. This can take up to a minute depending on the depth you chose.",
+          "found": "{count, plural, one {# page saved as a source} other {# pages saved as sources}}",
+          "empty": "We could not find useful pages on that topic. Try describing it differently, or turn research off.",
+          "failed": "Could not research the topic."
+        },
         "handoff": {
           "sources": "Reference links to research",
           "research_hint": "Please read these pages (root + relevant sub-pages) before planning.",
-          "documents": "Attached documents"
+          "documents": "Attached documents",
+          "researched_hint": "The last {count} are pages we already researched and saved: use them as material, no need to search for them again."
         }
       },
       "examples": {
@@ -4937,6 +4950,8 @@
         "ask_discovery_questions": "Preparing questions",
         "fetch_documentation_url": "Reading docs page",
         "fetch_documentation_url_with_url": "Reading {url}",
+        "search_web": "Searching the web",
+        "search_web_with_query": "Searching: {query}",
         "replace_lesson_block": "Editing the lesson"
       },
       "meta": {
@@ -4972,6 +4987,7 @@
         "ask_template_questions": "Template form ready",
         "ask_discovery_questions": "Asked discovery questions",
         "fetch_documentation_url": "Read {url}",
+        "search_web": "Search “{query}”: {count, plural, one {# result} other {# results}}",
         "replace_lesson_block_fallback": "Edited the lesson ({count, plural, one {# character} other {# characters}})"
       }
     },

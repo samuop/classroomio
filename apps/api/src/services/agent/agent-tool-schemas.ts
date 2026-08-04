@@ -369,6 +369,22 @@ export const fetchDocumentationUrlParam = z.object({
   url: z.string().url()
 });
 
+export const searchWebParam = z.object({
+  query: z
+    .string()
+    .min(3)
+    .describe(
+      'REQUIRED — what to search for, written as you would type it into a search engine. Use the same language as the course.'
+    ),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .optional()
+    .describe('How many results to return. Defaults to 5.')
+});
+
 // Gemini's tool-schema validator only accepts string enums, so numeric/boolean
 // `z.literal` values must be relaxed to plain types in the schemas the model sees.
 export const agentLessonTabsOrder = z.array(

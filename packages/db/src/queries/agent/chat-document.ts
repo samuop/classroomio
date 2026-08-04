@@ -2,8 +2,29 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '@db/schema';
 import { db } from '@db/drizzle';
 
-/** Cap on how many documents we keep per conversation. Older ones get pruned on insert. */
-const MAX_DOCUMENTS_PER_CONVERSATION = 10;
+/**
+ * Cap on how many documents we keep per conversation. Older ones get pruned on
+ * insert.
+ *
+ * **Why this is 40 and not 10.** The prune deletes the OLDEST rows, and every
+ * source a teacher adds from the wizard or the Sources panel lands in the same
+ * hidden "Course sources" conversation. Web research adds up to 20 pages in one
+ * go; with the old cap of 10, a deep run on a course that already had an
+ * uploaded PDF deleted that PDF — it was inserted first, so it pruned first.
+ * The teacher would have watched the agent build a course from web pages while
+ * their own material was silently dropped from the database.
+ *
+ * The cap was never the thing protecting the model's context anyway: the source
+ * pack has its own token budget (AGENT_SOURCE_PACK_BUDGET, 300k by default) and
+ * degrades overflow to summaries instead of destroying rows. This number only
+ * bounds storage growth per conversation, so it can be generous.
+ */
+export const MAX_DOCUMENTS_PER_CONVERSATION = (() => {
+  const raw = process.env.AGENT_MAX_DOCUMENTS_PER_CONVERSATION?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 40;
+})();
 
 export interface ChatDocumentRecord {
   id: string;
