@@ -53,7 +53,17 @@ jobs:
       - name: Build
         env:
           NODE_OPTIONS: '--max-old-space-size=6144'
-          PUBLIC_IS_SELFHOSTED: 'true'
+          # PUBLIC_IS_SELFHOSTED va en 'false' a propósito, y es lo que ENCIENDE
+          # el multiempresa. En 'true', getOrgSiteInfo() devuelve la primera
+          # organización y NUNCA mira el host: subdominios y dominios propios
+          # quedan muertos. Apagarlo también hace que el navegador hable con la
+          # API por /proxy del MISMO origen (ver getRequestBaseUrl), que es lo
+          # que permite cookies de origen propio en el dominio de cada cliente.
+          # Efectos colaterales revisados: la licencia deja de restringir (no al
+          # revés), la analítica de terceros no tiene claves configuradas, y los
+          # planes ya no se cortocircuitan — por eso toda organización necesita
+          # una fila activa en organization_plan (db:plans-backfill).
+          PUBLIC_IS_SELFHOSTED: 'false'
           # Horneado en el bundle del dashboard en build-time (envPrefix incluye
           # PUBLIC_): así los subdominios de empresa salen como <site>.tensor.com.ar
           # y no con el fallback myclassroomio.com. Ponerlo solo en el .env del VPS
@@ -144,13 +154,28 @@ jobs:
             "cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_API_ENV }}
           JINA_API_KEY=${{ secrets.JINA_API_KEY }}
+          PUBLIC_IS_SELFHOSTED=false
+          AUTH_COOKIE_DOMAIN=
           ENVEOF
 
+      # Las líneas de abajo pisan al secreto (dotenv se queda con la última
+      # aparición de cada clave), así se cambia el modo sin volver a pegar el
+      # archivo entero.
+      #
+      # ORIGIN vacío es deliberado: adapter-node compara el header Origin contra
+      # ese valor y responde 403 a los POST que no coincidan, así que un ORIGIN
+      # fijo admite UN solo host — justo lo contrario de lo que necesita el
+      # multiempresa. Vacío es falsy, y entonces adapter-node arma el origen con
+      # PROTOCOL_HEADER + el header Host, que es lo que Nginx ya manda
+      # (proxy_set_header Host $host / X-Forwarded-Proto $scheme).
       - name: Write Dashboard .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "cat > /var/www/classroomio/apps/dashboard/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_DASHBOARD_ENV }}
+          PUBLIC_IS_SELFHOSTED=false
+          ORIGIN=
+          PROTOCOL_HEADER=x-forwarded-proto
           ENVEOF
 
       # ── 8. Install + db:setup + MinIO + PM2 ──────────────────────────────
