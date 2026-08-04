@@ -515,15 +515,33 @@ export async function getExerciseWithRelationsOptimized(
 }
 
 /**
- * Syncs the option table's identity sequence to the current max(id).
- * Call before inserting options to avoid duplicate key on option_pkey when the sequence is behind.
+ * Syncs the option table's identity sequence to the current max(id), NEVER backwards.
+ *
+ * Call before inserting options so a restored dump or a manual import — which
+ * insert explicit ids without advancing the sequence — cannot make the next
+ * insert reuse an existing option id.
+ *
+ * **`GREATEST` is the whole point, and it was missing.** `setval(seq, MAX(id))`
+ * moves the sequence *to* max, in both directions, and `setval` is not
+ * transactional. The agent's tool calls run concurrently inside one step, so:
+ * call A advanced the sequence and inserted ids 101-108 without committing;
+ * call B ran its own MAX(id), could not see A's uncommitted rows, and rewound
+ * the sequence to 100 — then handed out 101 again. `duplicate key value
+ * violates unique constraint "option_pkey"`, and the guard against reused ids
+ * was the thing reusing them.
+ *
+ * Clamping to the higher of (max id, current sequence value) keeps the recovery
+ * behaviour and removes the rewind.
  */
 export async function syncOptionIdSequence(dbClient: DbOrTxClient = db): Promise<void> {
   await dbClient.execute(
     sql`
       SELECT setval(
         pg_get_serial_sequence('option', 'id'),
-        COALESCE((SELECT MAX(id) FROM "option"), 1),
+        GREATEST(
+          COALESCE((SELECT MAX(id) FROM "option"), 1),
+          COALESCE(pg_sequence_last_value(pg_get_serial_sequence('option', 'id')), 1)
+        ),
         EXISTS(SELECT 1 FROM "option")
       )
     `
@@ -531,15 +549,18 @@ export async function syncOptionIdSequence(dbClient: DbOrTxClient = db): Promise
 }
 
 /**
- * Syncs the question table's identity sequence to the current max(id).
- * Call before inserting questions to avoid duplicate key on question_pkey when the sequence is behind.
+ * Syncs the question table's identity sequence to the current max(id), NEVER backwards.
+ * Same reasoning, and the same bug, as syncOptionIdSequence — see there.
  */
 export async function syncQuestionIdSequence(dbClient: DbOrTxClient = db): Promise<void> {
   await dbClient.execute(
     sql`
       SELECT setval(
         pg_get_serial_sequence('question', 'id'),
-        COALESCE((SELECT MAX(id) FROM question), 1),
+        GREATEST(
+          COALESCE((SELECT MAX(id) FROM question), 1),
+          COALESCE(pg_sequence_last_value(pg_get_serial_sequence('question', 'id')), 1)
+        ),
         EXISTS(SELECT 1 FROM question)
       )
     `

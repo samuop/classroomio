@@ -15,6 +15,7 @@ import { AIProvider } from '@cio/ai-assistant';
 const searchWeb = vi.fn();
 const fetchDocumentationUrl = vi.fn();
 const storeDraftDocument = vi.fn();
+const storeUrlDocument = vi.fn();
 const generateText = vi.fn();
 
 vi.mock('@api/services/agent/web-search', async () => {
@@ -31,7 +32,8 @@ vi.mock('@api/services/agent/fetch-url', () => ({
 
 vi.mock('@api/services/agent/document', () => ({
   URL_SOURCE_MIME_TYPE: 'text/markdown',
-  storeDraftDocument: (...args: unknown[]) => storeDraftDocument(...args)
+  storeDraftDocument: (...args: unknown[]) => storeDraftDocument(...args),
+  storeUrlDocument: (...args: unknown[]) => storeUrlDocument(...args)
 }));
 
 vi.mock('ai', () => ({
@@ -67,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   generateText.mockResolvedValue({ text: 'primera consulta larga\nsegunda consulta larga' });
   storeDraftDocument.mockImplementation(async () => ({ documentId: `doc-${storeDraftDocument.mock.calls.length}` }));
+  storeUrlDocument.mockImplementation(async () => ({ documentId: `src-${storeUrlDocument.mock.calls.length}` }));
 });
 
 describe('isUnreadablePage', () => {
@@ -214,6 +217,35 @@ describe('runResearch', () => {
 
     expect(outcome.sources).toHaveLength(5);
     expect(fetchDocumentationUrl).toHaveBeenCalledTimes(5);
+  });
+
+  it('writes straight into the Sources tab when the course already exists', async () => {
+    // A draft would leave the tab empty until the teacher happens to send a chat
+    // message, and expire an hour later if they do not.
+    searchWeb.mockResolvedValue([{ url: 'https://a.com/1', title: 'A', snippet: '' }]);
+    fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+    const outcome = await runResearch({
+      ...BASE,
+      topic: 'colorimetría',
+      depth: 'quick',
+      courseId: 'course-1',
+      conversationId: 'conv-1'
+    });
+
+    expect(storeUrlDocument).toHaveBeenCalledTimes(1);
+    expect(storeDraftDocument).not.toHaveBeenCalled();
+    expect(outcome.sources[0].documentId).toBe('src-1');
+  });
+
+  it('falls back to drafts when the wizard researches before the course exists', async () => {
+    searchWeb.mockResolvedValue([{ url: 'https://a.com/1', title: 'A', snippet: '' }]);
+    fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+    await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
+
+    expect(storeDraftDocument).toHaveBeenCalledTimes(1);
+    expect(storeUrlDocument).not.toHaveBeenCalled();
   });
 
   it('returns nothing to build on when the searches come back empty', async () => {

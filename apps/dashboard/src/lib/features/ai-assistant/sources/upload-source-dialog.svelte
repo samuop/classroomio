@@ -33,12 +33,32 @@
    * written from it. Added here it is stored like a PDF and rides in the cached
    * source pack.
    */
-  let mode = $state<'file' | 'url'>('file');
+  let mode = $state<'file' | 'url' | 'research'>('file');
   let urlValue = $state('');
   let isAddingUrl = $state(false);
 
-  const canSubmit = $derived(mode === 'file' ? !!selectedFile : urlValue.trim().length > 0);
-  const isBusy = $derived(isUploading || isAddingUrl);
+  /**
+   * The third way material arrives: the teacher knows the topic but not where
+   * the pages are. Researching from here (rather than only from the course
+   * wizard) writes the pages straight into this course, so they show up in the
+   * list as soon as the run ends.
+   */
+  type ResearchDepth = 'quick' | 'normal' | 'deep';
+  const RESEARCH_DEPTHS: { value: ResearchDepth; labelKey: string }[] = [
+    { value: 'quick', labelKey: 'course.creator.guide.research.depth_quick' },
+    { value: 'normal', labelKey: 'course.creator.guide.research.depth_normal' },
+    { value: 'deep', labelKey: 'course.creator.guide.research.depth_deep' }
+  ];
+
+  let topicValue = $state('');
+  let researchDepth = $state<ResearchDepth>('normal');
+  let isResearching = $state(false);
+  let researchDetail = $state('');
+
+  const canSubmit = $derived(
+    mode === 'file' ? !!selectedFile : mode === 'url' ? urlValue.trim().length > 0 : topicValue.trim().length > 2
+  );
+  const isBusy = $derived(isUploading || isAddingUrl || isResearching);
 
   const ALLOWED_MIME_TYPES = [
     'application/pdf',
@@ -56,6 +76,10 @@
     isUploading = false;
     urlValue = '';
     isAddingUrl = false;
+    topicValue = '';
+    researchDepth = 'normal';
+    isResearching = false;
+    researchDetail = '';
     mode = 'file';
   }
 
@@ -148,9 +172,39 @@
     }
   }
 
+  async function handleResearch() {
+    const topic = topicValue.trim();
+    if (topic.length < 3 || isResearching) return;
+
+    isResearching = true;
+    localError = null;
+    researchDetail = '';
+
+    try {
+      const outcome = await aiAssistantApi.research(topic, researchDepth, courseId);
+
+      if (outcome && outcome.sources.length > 0) {
+        open = false;
+        resetState();
+        await onUploaded(outcome.sources[0].documentId);
+      } else {
+        localError = 'research_failed';
+        // The server knows why — an unconfigured JINA_API_KEY, or a topic that
+        // returned nothing usable. Both are actionable, neither is guessable.
+        researchDetail = outcome ? $t('course.creator.guide.research.empty') : aiAssistantApi.error;
+      }
+    } catch (err) {
+      console.error('[sources] research failed:', err);
+      localError = 'research_failed';
+    } finally {
+      isResearching = false;
+    }
+  }
+
   function handleSubmit() {
     if (mode === 'file') void handleUpload();
-    else void handleAddUrl();
+    else if (mode === 'url') void handleAddUrl();
+    else void handleResearch();
   }
 </script>
 
@@ -188,9 +242,48 @@
       >
         {$t('course.sources.tab_url')}
       </button>
+      <button
+        type="button"
+        class="flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors {mode === 'research'
+          ? 'ui:bg-background shadow-sm'
+          : 'ui:text-muted-foreground'}"
+        onclick={() => {
+          mode = 'research';
+          localError = null;
+        }}
+      >
+        {$t('course.sources.tab_research')}
+      </button>
     </div>
 
-    {#if mode === 'url'}
+    {#if mode === 'research'}
+      <div class="flex flex-col gap-2">
+        <Input
+          type="text"
+          placeholder={$t('course.sources.research_placeholder')}
+          bind:value={topicValue}
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter' && canSubmit && !isBusy) handleSubmit();
+          }}
+        />
+        <div class="flex flex-wrap gap-2">
+          {#each RESEARCH_DEPTHS as option (option.value)}
+            <button
+              type="button"
+              class="rounded-full border px-3 py-1 text-xs transition-colors {researchDepth === option.value
+                ? 'ui:border-primary ui:bg-primary/10 ui:text-primary'
+                : 'ui:text-muted-foreground hover:ui:border-primary/60'}"
+              onclick={() => (researchDepth = option.value)}
+            >
+              {$t(option.labelKey)}
+            </button>
+          {/each}
+        </div>
+        <p class="ui:text-muted-foreground text-xs">
+          {$t('course.sources.research_hint')}
+        </p>
+      </div>
+    {:else if mode === 'url'}
       <div class="flex flex-col gap-2">
         <Input
           type="url"
@@ -264,6 +357,10 @@
       <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.snackbar_delete_failed')}</p>
     {:else if localError === 'url_failed'}
       <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.url_failed')}</p>
+    {:else if localError === 'research_failed'}
+      <p class="ui:text-destructive mt-2 text-xs">
+        {researchDetail || $t('course.creator.guide.research.failed')}
+      </p>
     {/if}
 
     <Dialog.Footer class="ui:gap-2">
@@ -271,9 +368,14 @@
         {$t('course.sources.delete_confirm_no')}
       </Button>
       <Button onclick={handleSubmit} disabled={!canSubmit || isBusy}>
-        {#if isBusy}
+        {#if isResearching}
+          <LoaderIcon size={14} class="animate-spin" />
+          {$t('course.creator.guide.research.working_heading')}
+        {:else if isBusy}
           <LoaderIcon size={14} class="animate-spin" />
           {$t('course.sources.uploading')}
+        {:else if mode === 'research'}
+          {$t('course.sources.tab_research')}
         {:else}
           {$t('course.sources.upload_cta')}
         {/if}

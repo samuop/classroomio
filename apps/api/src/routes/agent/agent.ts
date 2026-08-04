@@ -338,11 +338,29 @@ const agentCoreRouter = new Hono()
         throw new AppError('AI provider is not configured', 'AI_PROVIDER_UNCONFIGURED', 503);
       }
 
+      // Researching into an existing course: the pages become course sources
+      // right away, in the same hidden "Course sources" conversation that
+      // /agent/upload and /agent/documents/url use, so the Sources tab shows
+      // them the moment the run finishes rather than after the next chat turn.
+      let conversationId: string | undefined;
+
+      if (courseId) {
+        const allowed = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
+
+        if (!allowed) {
+          throw new AppError('Not authorized for this course', 'COURSE_FORBIDDEN', 403);
+        }
+
+        const conversation = await createChatConversation(courseId, user.id, 'Course sources');
+        conversationId = conversation.id;
+      }
+
       const outcome = await runResearch({
         topic,
         depth,
         orgId,
         courseId,
+        conversationId,
         userId: user.id,
         redis,
         providerConfig

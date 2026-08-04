@@ -3,7 +3,12 @@ import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from
 import { MAX_DOCUMENT_TEXT_LENGTH } from '@cio/ai-assistant';
 import { searchWeb, mergeSearchResults, type WebSearchResult } from '@api/services/agent/web-search';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
-import { storeDraftDocument, URL_SOURCE_MIME_TYPE, type ParsedDocument } from '@api/services/agent/document';
+import {
+  storeDraftDocument,
+  storeUrlDocument,
+  URL_SOURCE_MIME_TYPE,
+  type ParsedDocument
+} from '@api/services/agent/document';
 import type { RedisClient } from '@api/utils/redis/redis';
 
 /**
@@ -232,10 +237,46 @@ function toParsedDocument(page: { url: string; pageTitle: string; content: strin
  * run pays for the worst case in every round. Workers pull the next URL as soon
  * as they are free, so the slow page costs only itself.
  */
+/**
+ * Persists one page, as a course source when there is a course and as a draft
+ * when there is not.
+ *
+ * The wizard researches before the course exists, so its pages can only be
+ * drafts (Redis), promoted on the first chat turn like an uploaded PDF. But
+ * research started from a course that already exists has somewhere to put them
+ * NOW, and putting them anywhere else would mean the Sources tab stays empty
+ * until the teacher happens to send a message — with the material silently
+ * expiring an hour later if they do not.
+ */
+async function persistPage(
+  page: { url: string; pageTitle: string; content: string },
+  parsed: ParsedDocument,
+  params: { orgId: string; courseId?: string; conversationId?: string; userId: string; redis: RedisClient }
+): Promise<string> {
+  if (params.courseId && params.conversationId) {
+    const stored = await storeUrlDocument({
+      url: page.url,
+      pageTitle: page.pageTitle,
+      markdown: page.content,
+      orgId: params.orgId,
+      userId: params.userId,
+      courseId: params.courseId,
+      conversationId: params.conversationId,
+      redis: params.redis
+    });
+
+    return stored.documentId;
+  }
+
+  const { documentId } = await storeDraftDocument(parsed, params.userId, params.redis);
+
+  return documentId;
+}
+
 async function readPages(
   results: WebSearchResult[],
   budget: number,
-  params: { orgId: string; courseId?: string; userId: string; redis: RedisClient }
+  params: { orgId: string; courseId?: string; conversationId?: string; userId: string; redis: RedisClient }
 ): Promise<{ sources: ResearchSource[]; failedCount: number; timedOut: boolean }> {
   const sources: ResearchSource[] = [];
   const deadline = Date.now() + RESEARCH_DEADLINE_MS;
@@ -294,7 +335,7 @@ async function readPages(
         }
 
         const parsed = toParsedDocument(page);
-        const { documentId } = await storeDraftDocument(parsed, params.userId, params.redis);
+        const documentId = await persistPage(page, parsed, params);
 
         sources.push({
           documentId,
@@ -339,6 +380,8 @@ export async function runResearch(params: {
   orgId: string;
   /** Absent when the course wizard researches before the course exists. */
   courseId?: string;
+  /** Set together with courseId — pages then land in the Sources tab immediately. */
+  conversationId?: string;
   userId: string;
   redis: RedisClient;
   providerConfig: AIProviderConfig;

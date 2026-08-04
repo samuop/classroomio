@@ -245,17 +245,28 @@ export async function createExercise(data: TExerciseCreate): Promise<TExercise> 
       slug
     };
 
-    const [exercise] = await createExercises([exerciseData]);
-    if (!exercise) {
-      throw new AppError('Failed to create exercise', ErrorCodes.INTERNAL_ERROR, 500);
-    }
+    /**
+     * The exercise and its questions are one unit, or the retry builds a duplicate.
+     *
+     * The exercise row used to be inserted here, outside the transaction that
+     * wrote the questions. When the question insert failed, the empty exercise
+     * survived — and because the plan binding is only recorded after a
+     * successful create, `create_exercise` retried with the same planKey, found
+     * no binding, and built a second one. That is where the two empty duplicate
+     * exercises in a generated course came from: not a missing planKey, a
+     * half-finished write.
+     */
+    const exercise = await db.transaction(async (tx) => {
+      const txClient = tx as DbOrTxClient;
+      const [created] = await createExercises([exerciseData], txClient);
 
-    // Create questions and options if provided
-    if (sanitizedData.questions && sanitizedData.questions.length > 0) {
-      await db.transaction(async (tx) => {
-        const txClient = tx as DbOrTxClient;
-        const questionsData: TNewQuestion[] = sanitizedData.questions!.map((q) => ({
-          exerciseId: exercise.id,
+      if (!created) {
+        throw new AppError('Failed to create exercise', ErrorCodes.INTERNAL_ERROR, 500);
+      }
+
+      if (sanitizedData.questions && sanitizedData.questions.length > 0) {
+        const questionsData: TNewQuestion[] = sanitizedData.questions.map((q) => ({
+          exerciseId: created.id,
           title: q.question,
           questionTypeId: q.questionTypeId || 1,
           points: q.points || 0,
@@ -264,14 +275,14 @@ export async function createExercise(data: TExerciseCreate): Promise<TExercise> 
         }));
 
         const questions = await createQuestions(questionsData, txClient);
-        const hasOptions = sanitizedData.questions!.some((question) => (question.options?.length ?? 0) > 0);
+        const hasOptions = sanitizedData.questions.some((question) => (question.options?.length ?? 0) > 0);
 
         if (hasOptions) {
           await syncOptionIdSequence(txClient);
         }
 
         // Create options for each question
-        for (const [index, questionData] of sanitizedData.questions!.entries()) {
+        for (const [index, questionData] of sanitizedData.questions.entries()) {
           const question = questions[index];
           if (!question) continue;
 
@@ -284,8 +295,10 @@ export async function createExercise(data: TExerciseCreate): Promise<TExercise> 
 
           await createOptions(optionsData, txClient);
         }
-      });
-    }
+      }
+
+      return created;
+    });
 
     // Fetch the complete exercise with questions and options
     const result = await getExercise(exercise.id);
