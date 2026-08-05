@@ -220,7 +220,9 @@ export async function cloneCourse(
   userId: string,
   newDescription?: string,
   newSlug?: string,
-  organizationId?: string
+  organizationId?: string,
+  /** Record where the copy came from, so a correction can be pushed into it later. */
+  linkToMaster = false
 ): Promise<TCourse> {
   // 1. fetch old course
   const [course] = await getCourseById(courseId);
@@ -239,6 +241,10 @@ export async function cloneCourse(
     description: course.description,
     overview: course.overview,
     groupId: newGroup.id,
+    // Point at the course actually being copied. Copying a delivered copy makes
+    // the new one a copy of *that*, not a second child of the original master —
+    // pushing a correction has to reach what someone actually took it from.
+    masterCourseId: linkToMaster ? course.id : null,
     isTemplate: course.isTemplate,
     logo: course.logo,
     slug: newSlug ?? null,
@@ -283,29 +289,38 @@ export async function cloneCourse(
   // 6. clone lessons
   const oldLessons = await getLessonsByCourseId(courseId);
 
-  const newLessons = await createLessons(
-    oldLessons.map((lesson) => ({
-      note: lesson.note,
-      videoUrl: lesson.videoUrl,
-      slideUrl: lesson.slideUrl,
-      courseId: newCourse.id,
-      title: lesson.title,
-      public: lesson.public,
-      lessonAt: lesson.lessonAt,
-      teacherId: lesson.teacherId,
-      isComplete: lesson.isComplete,
-      callUrl: lesson.callUrl,
-      order: lesson.order,
-      isUnlocked: lesson.isUnlocked,
-      videos: lesson.videos,
-      sectionId: lesson.sectionId ? sectionMap.get(lesson.sectionId) : null,
-      documents: lesson.documents
-    }))
-  );
+  // A course with no lessons is a normal thing to copy — a shell someone set up
+  // to fill in, or one being handed to a client before its content is written.
+  // The bulk insert rejects an empty list, so copying one used to fail outright.
+  // Sections above already guarded this; lessons did not.
+  const newLessons =
+    oldLessons.length === 0
+      ? []
+      : await createLessons(
+          oldLessons.map((lesson) => ({
+            note: lesson.note,
+            videoUrl: lesson.videoUrl,
+            slideUrl: lesson.slideUrl,
+            courseId: newCourse.id,
+            title: lesson.title,
+            public: lesson.public,
+            lessonAt: lesson.lessonAt,
+            teacherId: lesson.teacherId,
+            isComplete: lesson.isComplete,
+            callUrl: lesson.callUrl,
+            order: lesson.order,
+            isUnlocked: lesson.isUnlocked,
+            videos: lesson.videos,
+            sectionId: lesson.sectionId ? sectionMap.get(lesson.sectionId) : null,
+            documents: lesson.documents
+          }))
+        );
 
   // 7. clone languages, exercises, questions, options using bulk queries
-  await cloneLessonLanguages(newLessons, oldLessons);
-  await cloneExercises(newLessons, oldLessons);
+  if (newLessons.length > 0) {
+    await cloneLessonLanguages(newLessons, oldLessons);
+    await cloneExercises(newLessons, oldLessons);
+  }
 
   return newCourse;
 }

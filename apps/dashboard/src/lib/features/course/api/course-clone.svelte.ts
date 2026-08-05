@@ -24,7 +24,12 @@ export class CourseCloneApi extends BaseApiWithErrors {
    * @param description Course description (optional)
    * @returns The cloned course data or null on error
    */
-  async clone(courseId: string, title: string, description?: string) {
+  async clone(
+    courseId: string,
+    title: string,
+    description?: string,
+    delivery?: { organizationId?: string; linkToMaster?: boolean }
+  ) {
     // Generate unique slug from the title
     const slug = generateSlug(title, { appendTimestamp: true });
 
@@ -33,7 +38,8 @@ export class CourseCloneApi extends BaseApiWithErrors {
       title,
       description,
       slug,
-      organizationId: get(currentOrg).id
+      organizationId: delivery?.organizationId || get(currentOrg).id,
+      linkToMaster: delivery?.linkToMaster ?? false
     };
 
     // Client-side validation
@@ -56,7 +62,16 @@ export class CourseCloneApi extends BaseApiWithErrors {
         copyCourseModal.set(copyCourseModalInitialState);
         copyCourseModal.update((modal) => ({ ...modal, open: false }));
 
-        // Navigate to the new course
+        const deliveredElsewhere = data.organizationId !== get(currentOrg).id;
+
+        if (deliveredElsewhere) {
+          // The copy lives in another company, so the course route of the one
+          // we are standing in would not find it. Say where it went instead of
+          // navigating somewhere it is not.
+          snackbar.success(t.get('courses.copy_course.success.course_delivered'));
+          return;
+        }
+
         goto(resolve(`/courses/${response.course.id}`, {}));
 
         snackbar.success(t.get('courses.copy_course.success.course_cloned'));

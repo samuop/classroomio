@@ -674,6 +674,17 @@ export const course = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow(),
     groupId: uuid('group_id'),
     isTemplate: boolean('is_template').default(true),
+    /**
+     * The course this one was delivered from, when a consultancy hands a master
+     * course to a client company. Null for a course that stands on its own,
+     * which includes a plain copy someone asked to keep free of the original.
+     *
+     * A column rather than a key in `metadata` because it is a relationship in
+     * both directions: the copy needs to know where it came from, and the master
+     * needs to be able to list what was delivered from it before its author
+     * pushes a correction downstream.
+     */
+    masterCourseId: uuid('master_course_id'),
     logo: text().default('').notNull(),
     slug: varchar(),
     metadata: jsonb().default({ goals: '', description: '', requirements: '' }).notNull().$type<{

@@ -2833,8 +2833,13 @@
         "failed_to_clone": "No se pudo clonar el curso"
       },
       "success": {
-        "course_cloned": "Curso duplicado"
-      }
+        "course_cloned": "Curso duplicado",
+        "course_delivered": "Curso entregado a la empresa cliente"
+      },
+      "destination_label": "Entregar a",
+      "destination_here": "(acá)",
+      "link_to_master_label": "Mantener atada a este curso",
+      "link_to_master_hint": "Si después corregís el curso original, vas a poder empujar la corrección a esta copia. Sin esto, la copia sigue su propio camino."
     },
     "new_course_modal": {
       "heading": "Crear un curso",

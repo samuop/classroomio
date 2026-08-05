@@ -34,7 +34,9 @@ import { attendanceRouter } from '@api/routes/course/attendance';
 import { courseAiTutorRouter } from '@api/routes/course/ai-tutor';
 import { authMiddleware } from '@api/middlewares/auth';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
+import { assertCourseDeliveryAllowed } from '@api/services/course/delivery-auth';
 import { cloneCourse } from '@api/services/course/clone';
+import { getCourseOrganizationId } from '@cio/db/queries/tag';
 import { complianceRouter } from '@api/routes/course/compliance';
 import { contentRouter } from '@api/routes/course/content';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
@@ -594,12 +596,22 @@ export const courseRouter = new Hono()
       try {
         const { courseId } = c.req.valid('param');
         const validatedData = c.req.valid('json');
-        const { title, description, slug, organizationId } = validatedData;
+        const { title, description, slug, organizationId, linkToMaster } = validatedData;
 
         const user = c.get('user')!;
+        const orgRoles = (c.get('orgRoles') as Record<string, number> | undefined) ?? {};
 
-        // Clone the course
-        const newCourse = await cloneCourse(courseId, title, user.id, description, slug, organizationId);
+        assertCourseDeliveryAllowed(orgRoles, await getCourseOrganizationId(courseId), organizationId);
+
+        const newCourse = await cloneCourse(
+          courseId,
+          title,
+          user.id,
+          description,
+          slug,
+          organizationId,
+          linkToMaster
+        );
 
         return c.json(
           {

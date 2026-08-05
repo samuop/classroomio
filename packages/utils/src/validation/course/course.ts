@@ -7,7 +7,17 @@ export const ZCourseClone = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   slug: z.string().min(1),
-  organizationId: z.string().min(1)
+  /**
+   * Where the copy lands. A consultancy delivers a master course into a client
+   * company by naming it here. The server authorizes it — being able to read a
+   * course says nothing about being allowed to write into some other company.
+   */
+  organizationId: z.string().min(1),
+  /**
+   * Keep the copy tied to the course it came from, so its author can push a
+   * correction into it later. Off means a copy that goes its own way.
+   */
+  linkToMaster: z.boolean().optional()
 });
 export type TCourseClone = z.infer<typeof ZCourseClone>;
 

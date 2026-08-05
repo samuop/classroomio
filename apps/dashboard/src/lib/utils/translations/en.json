@@ -2161,8 +2161,13 @@
         "failed_to_clone": "Failed to clone course"
       },
       "success": {
-        "course_cloned": "Course cloned successfully"
-      }
+        "course_cloned": "Course cloned successfully",
+        "course_delivered": "Course delivered to the client company"
+      },
+      "destination_label": "Deliver to",
+      "destination_here": "(here)",
+      "link_to_master_label": "Keep tied to this course",
+      "link_to_master_hint": "If you correct the original later, you will be able to push the correction into this copy. Without it, the copy goes its own way."
     }
   },
   "course": {
