@@ -3325,7 +3325,8 @@
     "automation": "Automatización",
     "help": "Ayuda",
     "early_adopter": "Sé Early Adopter",
-    "unlock": "Desbloquea funciones ilimitadas e invertí en nuestro futuro"
+    "unlock": "Desbloquea funciones ilimitadas e invertí en nuestro futuro",
+    "clients": "Clientes"
   },
   "platform": {
     "access_denied_title": "Solo administradores de plataforma",
@@ -5139,5 +5140,23 @@
       "heading": "Aún no hay widgets",
       "description": "Cree un widget para generar un bloque de curso integrable para sitios web externos."
     }
+  },
+  "clients": {
+    "page_title": "Clientes",
+    "page_description": "Cómo va cada empresa cliente, sin entrar a cada una.",
+    "empty_title": "Todavía no tenés empresas cliente",
+    "empty_description": "Creá la primera desde Configuración → Clientes y va a aparecer acá.",
+    "total_clients": "Empresas cliente",
+    "total_students": "Alumnos",
+    "average_progress": "Avance promedio",
+    "account_tokens": "Fichas del mes (cuenta)",
+    "account_tokens_split": "de las cuales {own} son tuyas",
+    "col_company": "Empresa",
+    "col_students": "Alumnos",
+    "col_courses": "Cursos",
+    "col_progress": "Avance",
+    "col_certificates": "Certificados",
+    "col_not_started": "Sin empezar",
+    "col_tokens": "Fichas (mes)"
   }
 }

@@ -1357,7 +1357,8 @@
     "settings": "Settings",
     "early_adopter": "Become an Early Adopter",
     "unlock": "Unlock unlimited features and invest in our future",
-    "upgrade": "Upgrade Now"
+    "upgrade": "Upgrade Now",
+    "clients": "Client companies"
   },
   "pricing": {
     "plan_names": {
@@ -5130,5 +5131,23 @@
       "reactivate_title": "Reactivate organization",
       "reactivate_body": "Restore access for members of {name}?"
     }
+  },
+  "clients": {
+    "page_title": "Client companies",
+    "page_description": "How each client company is doing, without opening them one by one.",
+    "empty_title": "No client companies yet",
+    "empty_description": "Create the first from Settings → Client companies and it will show up here.",
+    "total_clients": "Client companies",
+    "total_students": "Learners",
+    "average_progress": "Average progress",
+    "account_tokens": "Tokens this month (account)",
+    "account_tokens_split": "of which {own} are yours",
+    "col_company": "Company",
+    "col_students": "Learners",
+    "col_courses": "Courses",
+    "col_progress": "Progress",
+    "col_certificates": "Certificates",
+    "col_not_started": "Not started",
+    "col_tokens": "Tokens (month)"
   }
 }

@@ -14,6 +14,7 @@ import {
   TagIcon
 } from '@cio/ui/custom/moving-icons';
 
+import BuildingIcon from '@lucide/svelte/icons/building-2';
 import type { AccountOrg } from '$features/app/types';
 // import BotIcon from '@lucide/svelte/icons/bot'; // Automation (MCP) hidden for now.
 import type { Component } from 'svelte';
@@ -160,6 +161,17 @@ export const baseNavConfig: NavItemConfig[] = [
     icon: PeopleIcon,
     matchPattern: '^/org/[^/]+/audience(/.*)?$' // Matches nested routes
   },
+  {
+    // A consultancy's client companies, side by side. Hidden inside a client,
+    // which has no clients of its own.
+    group: 'people',
+    titleKey: 'org_navigation.clients',
+    path: '/clientes',
+    icon: BuildingIcon,
+    requiresAdmin: true,
+    requiresPrimaryWorkspace: true,
+    matchPattern: '^/org/[^/]+/clientes(/.*)?$'
+  },
   // Automation section (MCP + API) hidden for now — focusing on the platform's
   // core functionality first. Re-enable by uncommenting these two items; the
   // "automation" group auto-hides from the sidebar while both are commented out.
@@ -293,6 +305,10 @@ export function getOrgNavigationItems(
       continue;
     }
 
+    if (config.requiresPrimaryWorkspace && currentOrg.parentOrganizationId) {
+      continue;
+    }
+
     const visibleSubConfigs = visibleSubItems(config, currentOrg, isOrgAdmin);
 
     if (config.items && visibleSubConfigs.length === 0) {
@@ -373,6 +389,10 @@ export function getOrgNavigationGroups(
 
   for (const config of baseNavConfig) {
     if (config.requiresAdmin && !isOrgAdmin && !config.disableWhenNotAdmin) {
+      continue;
+    }
+
+    if (config.requiresPrimaryWorkspace && currentOrg.parentOrganizationId) {
       continue;
     }
 
