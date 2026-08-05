@@ -130,17 +130,33 @@ jobs:
       # El VPS reinstala node_modules (deploy-remote.sh) para que los symlinks
       # @cio/* del workspace resuelvan localmente. Transferimos código + dist/ +
       # build/ + manifests + infra.
+      # Reintentado porque la red entre los runners y el VPS se corta a ratos:
+      # tres deploys de una misma noche murieron acá con "connect to host port 22:
+      # Connection timed out", y el servidor no registró NI UN intento de conexión
+      # en esa ventana — los paquetes nunca llegaron. No hay nada que arreglar en
+      # la máquina, así que lo que corresponde es no tirar abajo una compilación
+      # entera por un corte de un minuto.
+      #
+      # rsync reanuda: lo ya copiado en un intento previo no se vuelve a mandar.
       - name: Rsync to VPS
         run: |
-          rsync -az --delete \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='**/node_modules' \
-            --exclude='**/.svelte-kit' \
-            --exclude='**/.turbo' \
-            --exclude='**/*.tsbuildinfo' \
-            ./ \
-            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/
+          for intento in 1 2 3; do
+            rsync -az --delete \
+              --timeout=60 \
+              -e 'ssh -o ConnectTimeout=30 -o ServerAliveInterval=15' \
+              --exclude='.git' \
+              --exclude='node_modules' \
+              --exclude='**/node_modules' \
+              --exclude='**/.svelte-kit' \
+              --exclude='**/.turbo' \
+              --exclude='**/*.tsbuildinfo' \
+              ./ \
+              ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/ && exit 0
+            echo "::warning::rsync falló (intento $intento/3); reintentando en 30s"
+            sleep 30
+          done
+          echo "::error::rsync falló tres veces seguidas: la red al VPS está caída, no es el código"
+          exit 1
 
       # ── 7. Escribir los DOS .env en sus rutas ────────────────────────────
       # VPS_CIO_API_ENV es el archivo entero en un solo secreto, así que agregar
