@@ -8,9 +8,15 @@
   import BuildingIcon from '@lucide/svelte/icons/building-2';
 
   import { clientsApi } from '$features/clients/api/clients.svelte';
+  import { currentOrg } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
 
+  // Wait for the organization to hydrate. The API client reads `cio-org-id`
+  // off this store, so firing on mount — which is what a direct page load
+  // does — sends the request without it and the server rejects it.
   $effect(() => {
+    if (!$currentOrg.id) return;
+
     clientsApi.loadOverview();
   });
 

@@ -2823,12 +2823,12 @@
     "heading_button": "Crear curso",
     "search_placeholder": "Buscar curso",
     "copy_course": {
-      "title": "Crear un curso",
+      "title": "Copiar curso",
       "course_name_label": "Nombre del curso",
       "course_name_placeholder": "Nombre de tu curso",
       "course_description_label": "Descripción del curso",
       "course_description_placeholder": "Escribí una descripción para tu curso",
-      "create_button": "crear",
+      "create_button": "Copiar",
       "error": {
         "failed_to_clone": "No se pudo clonar el curso"
       },

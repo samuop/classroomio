@@ -2152,12 +2152,12 @@
       "next": "Next"
     },
     "copy_course": {
-      "title": "Create a Course",
+      "title": "Copy course",
       "course_name_label": "Course name",
       "course_name_placeholder": "Your course name",
       "course_description_label": "Course description",
       "course_description_placeholder": "Enter a description for your course",
-      "create_button": "Create",
+      "create_button": "Copy",
       "error": {
         "failed_to_clone": "Failed to clone course"
       },
