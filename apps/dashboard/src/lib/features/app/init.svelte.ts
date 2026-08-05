@@ -201,7 +201,15 @@ class AppInitApi extends BaseApi {
 
     if (!shouldRedirectOnAuth(page.url.pathname)) return;
 
-    const shouldGoToLMS = isCloud ? isOrgSite || !!isStudent : !!isStudent;
+    // The role decides where to land, exactly as it decides which shell to show
+    // (see isStudentExperience). Upstream this read `isOrgSite || isStudent`,
+    // which on a multi-tenant deployment sent everyone arriving on a tenant
+    // domain to the learner area — an organization's own admin included, since
+    // the first branch won before the role was ever consulted.
+    //
+    // `isOrgStudent` is null when there is no membership to read a role from,
+    // and for those the org site really is the learner's door.
+    const shouldGoToLMS = isStudent ?? isOrgSite;
     console.log('redirecting to', shouldGoToLMS ? 'lms' : 'org');
     return shouldGoToLMS ? this.goToLMS() : this.goToOrg();
   }
