@@ -85,7 +85,9 @@
           <Button onclick={() => (isCreateOpen = true)}>
             {$t('account.workspaces.create_cta')}
             <span class="ui:text-muted-foreground ml-2">
-              {$t('account.workspaces.create_cta_used', { used: ctaState.used, allowance: ctaState.allowance })}
+              {ctaState.allowance === null
+                ? $t('account.workspaces.create_cta_count', { used: ctaState.used })
+                : $t('account.workspaces.create_cta_used', { used: ctaState.used, allowance: ctaState.allowance })}
             </span>
           </Button>
         {:else if ctaState.kind === 'limit'}
@@ -104,7 +106,7 @@
         {#if accountApi.isLoading && workspaces.length === 0}
           <Spinner class="size-10! text-blue-700!" />
         {:else}
-          {#each workspaces as workspace}
+          {#each workspaces as workspace (workspace.id)}
             <Field.Field>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">

@@ -58,7 +58,7 @@ export async function createWorkspaceForAccount(
 
   const allowance = getWorkspaceAllowance(planName);
   const current = await countWorkspacesForAccount(primary.id);
-  if (current >= allowance) {
+  if (allowance !== null && current >= allowance) {
     throw new AppError(
       `Workspace limit reached (${allowance} per Enterprise account)`,
       ErrorCodes.WORKSPACE_LIMIT_REACHED,
@@ -77,7 +77,10 @@ export async function createWorkspaceForAccount(
       name: input.name,
       siteName: input.siteName,
       ownerProfileId,
-      ownerRoleId: ROLE.ADMIN
+      ownerRoleId: ROLE.ADMIN,
+      // Non-null by construction: `canCreateWorkspaces` above rejected the
+      // planless and non-Enterprise cases before we got here.
+      planName: planName!
     });
 
     return { ...created, isPrimary: false };
@@ -119,8 +122,9 @@ export async function getWorkspaceLimits(activeOrgId: string) {
 
   return {
     planName,
-    canCreate: canCreateWorkspaces(planName) && used < allowance,
+    canCreate: canCreateWorkspaces(planName) && (allowance === null || used < allowance),
     used,
+    /** `null` means unlimited. */
     allowance,
     requiresUpgrade: !canCreateWorkspaces(planName)
   };

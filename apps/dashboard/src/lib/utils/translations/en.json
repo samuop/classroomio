@@ -165,6 +165,7 @@
       "page_description": "Manage the workspaces under your account. Workspaces share a single subscription and pooled usage.",
       "create_cta": "Create workspace",
       "create_cta_used": "{used} of {allowance} used",
+      "create_cta_count": "{used} created",
       "create_cta_disabled_limit": "You've reached the {allowance}-workspace limit. Contact us to expand.",
       "create_cta_disabled_upgrade": "Multi-workspace is an Enterprise feature.",
       "upgrade_link": "Upgrade",

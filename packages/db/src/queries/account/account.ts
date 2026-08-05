@@ -4,6 +4,7 @@ import type { TNewOrganization, TOrganization } from '@db/types';
 import { and, count, eq, inArray, isNull, or } from 'drizzle-orm';
 
 import { db, type DbOrTxClient } from '@db/drizzle';
+import { resolveWorkspaceAllowance } from '@cio/utils/plans';
 
 export async function getAccountPrimary(orgId: string, dbClient: DbOrTxClient = db): Promise<TOrganization | null> {
   try {
@@ -88,6 +89,8 @@ export type CreateSecondaryWorkspaceInput = {
   siteName: string;
   ownerProfileId: string;
   ownerRoleId: number;
+  /** Plan to grant the new workspace — normally the parent's own. */
+  planName: string;
 };
 
 export async function createSecondaryWorkspace(input: CreateSecondaryWorkspaceInput): Promise<TOrganization> {
@@ -105,12 +108,29 @@ export async function createSecondaryWorkspace(input: CreateSecondaryWorkspaceIn
         throw new Error('Insert returned no rows');
       }
 
-      await tx.insert(schema.organizationmember).values({
-        organizationId: created.id,
-        profileId: input.ownerProfileId,
-        roleId: input.ownerRoleId,
-        verified: true
-      });
+      const [member] = await tx
+        .insert(schema.organizationmember)
+        .values({
+          organizationId: created.id,
+          profileId: input.ownerProfileId,
+          roleId: input.ownerRoleId,
+          verified: true
+        })
+        .returning();
+
+      // Inherit the parent's plan. Without a plan of its own the workspace has
+      // no token allowance and its features come up gated, so a client company
+      // created here would look broken from its first minute. It rides on the
+      // parent's subscription, which is why the provider says so.
+      await tx.insert(schema.organizationPlan).values({
+        orgId: created.id,
+        planName: input.planName,
+        subscriptionId: `workspace-${created.id}`,
+        triggeredBy: member?.id,
+        payload: { inheritedFrom: input.parentOrganizationId },
+        isActive: true,
+        provider: 'parent-workspace'
+      } as typeof schema.organizationPlan.$inferInsert);
 
       return created as TOrganization;
     });
@@ -182,7 +202,7 @@ export async function clearSecondariesReadOnly(primaryOrgId: string): Promise<nu
 }
 
 export async function findAccountsOverAllowance(
-  allowanceByPlan: Record<string, number>
+  allowanceByPlan: Record<string, number | null>
 ): Promise<Array<{ primaryOrgId: string; planName: string | null; workspaceCount: number }>> {
   try {
     const primaries = await db
@@ -221,8 +241,10 @@ export async function findAccountsOverAllowance(
     const offenders: Array<{ primaryOrgId: string; planName: string | null; workspaceCount: number }> = [];
     for (const primary of primaries) {
       const total = 1 + (childCountByParent.get(primary.id) ?? 0);
-      const allowance = allowanceByPlan[primary.planName ?? ''] ?? 1;
-      if (total > allowance) {
+      const allowance = resolveWorkspaceAllowance(allowanceByPlan, primary.planName);
+
+      // `null` is uncapped, and an uncapped account can never be an offender.
+      if (allowance !== null && total > allowance) {
         offenders.push({ primaryOrgId: primary.id, planName: primary.planName, workspaceCount: total });
       }
     }

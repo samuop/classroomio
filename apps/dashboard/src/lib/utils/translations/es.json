@@ -5,6 +5,7 @@
       "page_description": "Administrá los espacios de trabajo de tu cuenta. Comparten una sola suscripción y un uso conjunto.",
       "create_cta": "Crear espacio de trabajo",
       "create_cta_used": "{used} de {allowance} usado",
+      "create_cta_count": "{used} creados",
       "create_cta_disabled_limit": "Has alcanzado el límite del espacio de trabajo de {allowance}. Contáctanos para ampliar.",
       "create_cta_disabled_upgrade": "El espacio de trabajo múltiple es una característica empresarial.",
       "upgrade_link": "Actualizar",

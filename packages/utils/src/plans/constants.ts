@@ -45,18 +45,40 @@ export const PLANS_BY_FEATURE = {
 };
 
 /**
- * Total workspaces (primary + secondaries) allowed per plan.
- * Multi-workspace is an Enterprise-only feature in v1.
+ * Total workspaces (primary + secondaries) allowed per plan. `null` means
+ * unlimited — not `Infinity`, which JSON.stringify turns into `null` anyway on
+ * the way to the browser, so the honest value travels instead of an accident.
+ *
+ * Multi-workspace is Enterprise-only. On Enterprise it is uncapped because a
+ * consultancy opens one workspace per client company: how many clients they win
+ * is their business, and a cap there is a wall in the middle of their growth.
  */
-export const WORKSPACES_INCLUDED: Record<string, number> = {
+export const WORKSPACES_INCLUDED: Record<string, number | null> = {
   [PLAN.BASIC]: 1,
   [PLAN.EARLY_ADOPTER]: 1,
-  [PLAN.ENTERPRISE]: 4
+  [PLAN.ENTERPRISE]: null
 };
 
-export function getWorkspaceAllowance(planName: string | null | undefined): number {
-  if (!planName) return WORKSPACES_INCLUDED[PLAN.BASIC];
-  return WORKSPACES_INCLUDED[planName] ?? WORKSPACES_INCLUDED[PLAN.BASIC];
+/**
+ * Reads an allowance out of a plan→allowance table, keeping apart two absences
+ * that `??` would collapse into one: a `null` entry is a plan with no cap,
+ * while a missing entry is a plan we do not recognise and cap at one.
+ *
+ * Collapsing them is not a cosmetic slip. The daily over-allowance sweep reads
+ * this table, so reading "uncapped" as "one" marks every account that has any
+ * secondary workspace as an offender and locks all of them read-only.
+ */
+export function resolveWorkspaceAllowance(
+  allowanceByPlan: Record<string, number | null>,
+  planName: string | null | undefined
+): number | null {
+  const configured = allowanceByPlan[planName ?? ''];
+
+  return configured === undefined ? 1 : configured;
+}
+
+export function getWorkspaceAllowance(planName: string | null | undefined): number | null {
+  return resolveWorkspaceAllowance(WORKSPACES_INCLUDED, planName);
 }
 
 export function canCreateWorkspaces(planName: string | null | undefined): boolean {
