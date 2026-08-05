@@ -11,11 +11,15 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
 
-  // Wait for the organization to hydrate. The API client reads `cio-org-id`
-  // off this store, so firing on mount — which is what a direct page load
-  // does — sends the request without it and the server rejects it.
+  // Wait for the organization to settle before asking. The API client reads
+  // `cio-org-id` off this store, so firing on mount — which is what a direct
+  // page load does — sends the request without it and the server rejects it.
+  //
+  // The same guard the server applies: client companies are listed from the
+  // consultancy, so while the store is still passing through one of them there
+  // is nothing worth asking for.
   $effect(() => {
-    if (!$currentOrg.id) return;
+    if (!$currentOrg.id || $currentOrg.parentOrganizationId) return;
 
     clientsApi.loadOverview();
   });
