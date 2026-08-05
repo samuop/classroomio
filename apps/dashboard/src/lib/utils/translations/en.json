@@ -523,7 +523,8 @@
       "token_auth_tab": "Token Auth",
       "customize_lms_tab": "Customize LMS",
       "domains_tab": "Domains",
-      "teams_tab": "Teams"
+      "teams_tab": "Teams",
+      "workspaces_tab": "Client companies"
     },
     "profile": {
       "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]].",

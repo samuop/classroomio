@@ -50,6 +50,12 @@ export interface NavItemConfig {
   matchPattern?: string | ((orgSlug: string) => string); // Regex pattern for route matching
   isPaid?: boolean; // Show upgrade indicator for free plan users
   group?: string | null; // Group label key for sidebar grouping
+  /**
+   * Hide inside a client company. A consultancy's clients are workspaces of the
+   * consultancy, so managing them belongs to the consultancy — offering it from
+   * within a client would suggest that client can open clients of its own.
+   */
+  requiresPrimaryWorkspace?: boolean;
 }
 
 export interface NavGroup {
@@ -213,6 +219,12 @@ export const baseNavConfig: NavItemConfig[] = [
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
         path: '/settings/auth',
         isPaid: true
+      },
+      {
+        titleKey: 'settings.tabs.workspaces_tab',
+        path: '/settings/workspaces',
+        requiresAdmin: true,
+        requiresPrimaryWorkspace: true
       }
     ],
     nestedRoutes: [
@@ -240,6 +252,10 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'auth',
         titleKey: 'settings.tabs.auth_tab'
+      },
+      {
+        path: 'workspaces',
+        titleKey: 'settings.tabs.workspaces_tab'
       }
     ]
   }
@@ -248,6 +264,20 @@ export const baseNavConfig: NavItemConfig[] = [
 /**
  * Get navigation items based on organization context and permissions
  */
+/**
+ * The sub-items this person should see here. Both navigation builders below
+ * share it so the two menus cannot drift apart on who is shown what.
+ */
+function visibleSubItems(config: NavItemConfig, currentOrg: AccountOrg, isOrgAdmin: boolean | null): NavItemConfig[] {
+  const isPrimaryWorkspace = !currentOrg.parentOrganizationId;
+
+  return (
+    config.items?.filter(
+      (sub) => (!sub.requiresAdmin || isOrgAdmin) && (!sub.requiresPrimaryWorkspace || isPrimaryWorkspace)
+    ) ?? []
+  );
+}
+
 export function getOrgNavigationItems(
   currentOrgPath: string,
   currentOrg: AccountOrg,
@@ -263,7 +293,7 @@ export function getOrgNavigationItems(
       continue;
     }
 
-    const visibleSubConfigs = config.items?.filter((sub) => !sub.requiresAdmin || isOrgAdmin) ?? [];
+    const visibleSubConfigs = visibleSubItems(config, currentOrg, isOrgAdmin);
 
     if (config.items && visibleSubConfigs.length === 0) {
       continue;
@@ -346,7 +376,7 @@ export function getOrgNavigationGroups(
       continue;
     }
 
-    const visibleSubConfigs = config.items?.filter((sub) => !sub.requiresAdmin || isOrgAdmin) ?? [];
+    const visibleSubConfigs = visibleSubItems(config, currentOrg, isOrgAdmin);
 
     if (config.items && visibleSubConfigs.length === 0) {
       continue;

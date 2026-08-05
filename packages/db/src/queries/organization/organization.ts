@@ -38,6 +38,39 @@ export async function getVerifiedCustomDomainHostnames(): Promise<string[]> {
   }
 }
 
+/**
+ * Client companies hanging directly off the given organizations.
+ *
+ * Administering a consultancy means administering the client companies it
+ * opened: they are that consultancy's workspaces, created from its own account
+ * and billed to its plan. So access flows down one level, and is *derived*
+ * rather than written as membership rows on purpose — a copied grant would
+ * outlive the person leaving the consultancy's team and quietly keep their
+ * access to every client. There is nothing to forget to revoke here.
+ *
+ * It flows down only one level and only from ADMIN: a tutor of the consultancy
+ * gets nothing, and an admin of one client gets nothing on its siblings.
+ */
+async function selectChildOrganizations(parentOrgIds: string[], dbClient: DbOrTxClient = db) {
+  if (parentOrgIds.length === 0) return [];
+
+  return dbClient
+    .select()
+    .from(schema.organization)
+    .where(inArray(schema.organization.parentOrganizationId, parentOrgIds));
+}
+
+/**
+ * Which organizations a role map grants ADMIN over. Exported because it is the
+ * gate the derivation hangs off: widen it past ADMIN and a consultancy's tutors
+ * would silently gain their clients' companies.
+ */
+export function orgIdsAdministeredBy(rolesByOrgId: Record<string, number>): string[] {
+  return Object.entries(rolesByOrgId)
+    .filter(([, roleId]) => roleId === ROLE.ADMIN)
+    .map(([orgId]) => orgId);
+}
+
 export const getOrganizationByProfileId = async (profileId: string): Promise<OrganizationWithMemberAndPlans[]> => {
   const result = await db
     .select({
@@ -96,6 +129,45 @@ export const getOrganizationByProfileId = async (profileId: string): Promise<Org
         provider: row.plan.provider,
         subscriptionId: row.plan.subscriptionId,
         customerId: row.plan.customerId as string | null
+      });
+    }
+  }
+
+  // The client companies of every consultancy this person administers. Without
+  // these the derived access would exist but be unreachable: the workspace
+  // switcher lists what this returns, so the client would never appear in it.
+  const administered = orgIdsAdministeredBy(
+    Object.fromEntries(Array.from(organizationMap.entries()).map(([orgId, data]) => [orgId, data.roleId ?? 0]))
+  );
+
+  const children = (await selectChildOrganizations(administered)).filter((child) => !organizationMap.has(child.id));
+
+  if (children.length > 0) {
+    const childPlans = await db
+      .select()
+      .from(schema.organizationPlan)
+      .where(
+        inArray(
+          schema.organizationPlan.orgId,
+          children.map((child) => child.id)
+        )
+      );
+
+    for (const child of children) {
+      organizationMap.set(child.id, {
+        organization: child,
+        // No membership row exists — the access is derived, not granted.
+        memberId: undefined,
+        roleId: ROLE.ADMIN,
+        plans: childPlans
+          .filter((plan) => plan.orgId === child.id)
+          .map((plan) => ({
+            planName: plan.planName,
+            isActive: plan.isActive,
+            provider: plan.provider,
+            subscriptionId: plan.subscriptionId,
+            customerId: (plan.payload as { customerId?: string } | null)?.customerId ?? null
+          }))
       });
     }
   }
@@ -498,6 +570,16 @@ export const getUserOrgRolesMap = async (profileId: string): Promise<Record<stri
     const map: Record<string, number> = {};
     for (const row of rows) {
       map[row.organizationId] = Number(row.roleId);
+    }
+
+    // Same rule the workspace switcher shows, applied where it is enforced.
+    // Every org-scoped middleware reads this map off the session, so granting
+    // the role here is what makes administering a consultancy mean
+    // administering its client companies — everywhere, without a middleware
+    // knowing anything about parents and children.
+    for (const child of await selectChildOrganizations(orgIdsAdministeredBy(map))) {
+      // ADMIN is the most privileged role, so this can only ever add power.
+      map[child.id] = ROLE.ADMIN;
     }
 
     return map;
