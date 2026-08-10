@@ -228,6 +228,16 @@ jobs:
       # multiempresa. Vacío es falsy, y entonces adapter-node arma el origen con
       # PROTOCOL_HEADER + el header Host, que es lo que Nginx ya manda
       # (proxy_set_header Host $host / X-Forwarded-Proto $scheme).
+      #
+      # BODY_SIZE_LIMIT: adapter-node corta los cuerpos en 512 KB por defecto, y
+      # el navegador habla con la API por /proxy del MISMO origen — o sea que TODA
+      # subida pasa por acá. Con el valor por defecto, adjuntar un PDF de 2,4 MB a
+      # las Fuentes del curso moría con un 500 genérico que ni siquiera llegaba a
+      # la API (no aparecía en su log: lo rechazaba el dashboard), mientras el
+      # diálogo prometía "hasta 25MB". 32 MB deja el tope real donde lo define la
+      # aplicación (MAX_AGENT_DOCUMENT_SIZE = 25 MB), con aire para el sobre
+      # multipart, y ahí sí responde el 413 explicativo de la API. Nginx ya venía
+      # permitiendo 200–500 MB, así que este era el único cuello.
       - name: Write Dashboard .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
@@ -236,6 +246,7 @@ jobs:
           PUBLIC_IS_SELFHOSTED=false
           ORIGIN=
           PROTOCOL_HEADER=x-forwarded-proto
+          BODY_SIZE_LIMIT=33554432
           ENVEOF
 
       # ── 8. Install + db:setup + MinIO + PM2 ──────────────────────────────
