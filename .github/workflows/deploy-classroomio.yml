@@ -191,6 +191,21 @@ jobs:
       # como secretos propios, apendeadas acá: se rotan sin volver a pegar el
       # resto, y si el secreto no existe la línea queda vacía (la API lo detecta y
       # lo dice en pantalla, ver isWebSearchConfigured).
+      #
+      # El criterio para decidir dónde va cada variable: en el secreto lo que no
+      # puede verse (contraseñas, claves, DATABASE_URL); acá las perillas de
+      # operación, que conviene que se vean. Qué modelo atiende el chat no es un
+      # secreto, y dentro de seis meses "¿desde cuándo estamos en Gemini?" se
+      # responde con git log en vez de abriendo un secreto que no se puede leer.
+      #
+      # CHAT_PROVIDER=google + GOOGLE_MODEL=gemini-3.5-flash-lite: se migró desde
+      # MiniMax-M3. GOOGLE_API_KEY ya estaba (la usa el RAG) y sirve igual para
+      # el chat — es la misma clave, no hay una por servicio. Gemini cachea el
+      # prefijo de la petición SOLO, sin pedirle nada: medido con el prompt real
+      # y las 26 herramientas, 88% de un prompt de 74k fichas vuelve como
+      # cacheRead. Para volver a MiniMax, borrar estas dos líneas.
+      # OJO: NO agregar providerOptions.google.cachedContent — es un 400 contra
+      # cualquier petición que lleve herramientas. Ver knowledge/gemini-provider.md.
       - name: Write API .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
@@ -199,6 +214,8 @@ jobs:
           JINA_API_KEY=${{ secrets.JINA_API_KEY }}
           PUBLIC_IS_SELFHOSTED=false
           AUTH_COOKIE_DOMAIN=
+          CHAT_PROVIDER=google
+          GOOGLE_MODEL=gemini-3.5-flash-lite
           ENVEOF
 
       # Las líneas de abajo pisan al secreto (dotenv se queda con la última
