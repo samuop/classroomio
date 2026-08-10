@@ -55,7 +55,7 @@ import {
   getDocumentText
 } from '@api/services/agent/document';
 import { createChatConversation } from '@api/services/agent/chat-history';
-import { recordAnthropicCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
+import { recordObservedCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
 import { buildSourcePack } from '@api/services/agent/source-pack';
 import { runResearch } from '@api/services/agent/research';
 import { isWebSearchConfigured, WEB_SEARCH_UNCONFIGURED } from '@api/services/agent/web-search';
@@ -693,11 +693,11 @@ const agentCoreRouter = new Hono()
       const cacheEligiblePhase =
         role === AgentRole.TEACHER && hasDocumentAttached && !isSingleLessonEdit;
 
-      // Capa 2b: for a LARGE current document under Gemini, place it in an
-      // explicit cache and reference it via providerOptions instead of re-sending
-      // its full text every turn (~10% input cost). Fully defensive — an empty
-      // result means "inline as before". Gated on cacheEligiblePhase so one-off
-      // edits and same-day "attach a file to tweak the course" never spin up a cache.
+      // Capa 2b: ask the provider to cache this turn's material, when it is the
+      // kind of provider that has to be asked. MiniMax/Claude get a
+      // cache_control hint; Gemini gets nothing because it caches the prefix on
+      // its own. Fully defensive — an empty result means "inline as before".
+      // Gated on cacheEligiblePhase so one-off edits never pay a cache write.
       const documentCache =
         role === AgentRole.TEACHER && cacheEligiblePhase
           ? await resolveDocumentCache({
@@ -891,28 +891,27 @@ const agentCoreRouter = new Hono()
         approvedPlan
       });
 
-      // The Anthropic-compatible document cache is "inline" — the document text
-      // MUST live inside a request content block (so the cache_control hint can
-      // mark THAT block as cached). When `documentText` is present, the build
-      // of `contextMessageText` embeds the full PDF text inside <document> tags,
-      // so the prepended context user message is the one we want to tag.
-      // (For Gemini the cache lives in a separate server-side resource and the
-      //  text is intentionally omitted from the inline context — see
-      //  `excludeDocumentId` in resolveDocumentCache — so we must NOT tag a
-      //  context block that doesn't contain the PDF, or MiniMax would cache a
-      //  block with no document inside.)
+      // "The material really rides in THIS request" — nothing more. Two things
+      // downstream ask that question: where to put the Anthropic cache_control
+      // tag, and whether a cached read reported afterwards can be attributed to
+      // this document.
+      //
+      // Both flags used to exclude Gemini, back when the Gemini path pulled the
+      // text out of the prompt and into a server-side `cachedContents` resource.
+      // That path is gone (it 400s against a request carrying tools — see
+      // document-cache.ts), so under Gemini the material is inline like anywhere
+      // else and these must say so. Keeping the exclusion here would have left
+      // every source badge dark under Gemini while the discount was really
+      // being applied.
+      //
+      // The tagging itself stays Anthropic-only, guarded by `isAnthropicCompatible`
+      // at each tag site — Gemini has nothing to tag.
       const hasInlineDocumentContext =
-        role === AgentRole.TEACHER &&
-        !!documentText &&
-        documentText.length > 0 &&
-        providerConfig.provider !== AIProvider.GOOGLE;
+        role === AgentRole.TEACHER && !!documentText && documentText.length > 0;
 
       // Same idea for the source pack, which is the far bigger block and lives in
       // its own message (see below).
-      const hasSourcePackContext =
-        role === AgentRole.TEACHER &&
-        !!sourcePack?.text &&
-        providerConfig.provider !== AIProvider.GOOGLE;
+      const hasSourcePackContext = role === AgentRole.TEACHER && !!sourcePack?.text;
 
       // Server-measured build progress, reused three ways: as the coherence anchor
       // in the prompt, as the checklist the UI renders, and as the signal that
@@ -1429,11 +1428,16 @@ const agentCoreRouter = new Hono()
           );
 
           // The ONLY evidence that the provider is really caching this
-          // material. The Anthropic-compatible API has no cache-status
-          // endpoint, so the Sources panel badge is driven from here: a handle
-          // is written only when cacheRead > 0. Guarded on the provider because
-          // the Gemini backend owns the same Redis key with a real, explicitly
-          // created cachedContent handle that must not be overwritten.
+          // material. Neither provider has a cache-status endpoint, so the
+          // Sources panel badge is driven from here: a handle is written only
+          // when cacheRead > 0.
+          //
+          // Runs for Gemini too. Its cache is automatic rather than requested,
+          // but the proof is identical — `cachedContentTokenCount` arrives as
+          // `cacheRead` through the same SDK field. Gating this on the
+          // Anthropic-compatible providers would have left every source showing
+          // "never read" under Gemini while the discount was really being
+          // applied.
           //
           // Precision caveat, deliberately accepted: `cacheRead` covers the
           // whole cached prefix (system prompt + context message with the
@@ -1442,7 +1446,7 @@ const agentCoreRouter = new Hono()
           // from cache". The API exposes no per-block breakdown. That is still
           // evidence of a real provider-side cache, which is what the badge
           // previously lacked entirely.
-          if (isAnthropicCompatible && (hasInlineDocumentContext || hasSourcePackContext) && cacheRead > 0) {
+          if ((hasInlineDocumentContext || hasSourcePackContext) && cacheRead > 0) {
             // EVERY source in the pack rides in the same cached block, so a
             // confirmed read is evidence for all of them — not just the one
             // attached to this message. Attributing the hit only to
@@ -1460,15 +1464,16 @@ const agentCoreRouter = new Hono()
             await Promise.all(
               hitDocumentIds.map(async (documentId) => {
                 const keyInfo = await getChatDocumentCacheKey(documentId).catch(() => null);
-                return recordAnthropicCacheHit({
+                return recordObservedCacheHit({
                   documentId,
+                  provider: isAnthropicCompatible ? 'anthropic' : 'gemini',
                   courseId: keyInfo?.courseId,
                   contentHash: keyInfo?.contentHash ?? undefined,
                   cacheReadTokens: cacheRead,
                   redis
                 });
               })
-            ).catch((err) => console.error('[agent.chat] recordAnthropicCacheHit failed:', err));
+            ).catch((err) => console.error('[agent.chat] recordObservedCacheHit failed:', err));
           }
 
           if (totalUsage) {

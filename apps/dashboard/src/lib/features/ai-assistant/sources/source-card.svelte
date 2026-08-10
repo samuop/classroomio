@@ -60,15 +60,14 @@
    * apart. What we can actually prove is when it last served cached tokens and
    * how many, so that is what the card says.
    *
-   * Gemini keeps the countdown: that cache is a lease we own and renew.
+   * Gemini used to keep a countdown, because back then its cache was a
+   * `cachedContents` lease we created and renewed. We no longer create one (it
+   * cannot coexist with a request that carries tools — see document-cache.ts),
+   * so there is no lease to count down and both providers report the same kind
+   * of fact: a read that was billed, and when.
    */
   const cacheLabel = $derived.by(() => {
     if (!cacheStatus?.cached) return t.get('course.sources.cache_never_read');
-
-    if (cacheStatus.provider === 'gemini' && cacheStatus.secondsRemaining !== null) {
-      const min = Math.round(cacheStatus.secondsRemaining / 60);
-      return t.get('course.sources.cache_active_minutes', { minutes: Math.max(1, min) });
-    }
 
     if (cacheStatus.observedSecondsAgo === null) return t.get('course.sources.cache_never_read');
 

@@ -10,6 +10,9 @@ where we left off.
   MiniMax-M3 Anthropic-compatible API: caching, document handling, the
   Sources panel, the gotchas that took us a day to debug. Also §6: i18n
   (`fallbackLocale`, misnested blocks, the key-coverage audit).
+- [`gemini-provider.md`](./gemini-provider.md) — switching the chat agent to
+  Gemini: the two env vars, how its automatic cache behaves (92% measured), and
+  the `cachedContents` + tools 400 that makes the explicit cache unusable here.
 - [`dashboard-csp-and-ssr.md`](./dashboard-csp-and-ssr.md) — broken uploaded
   images (CSP vs `PUBLIC_MEDIA_HOST`, absolute URLs frozen in the DB) and the
   `$features/ui` barrel that 500s every server-rendered route.

@@ -2772,7 +2772,6 @@
       "indicator_multiple": "{count} fuentes adjuntas de este curso",
       "count": "{count, plural, one {# fuente} other {# fuentes}}",
       "cached_count": "{count, plural, one {# en caché} other {# en caché}}",
-      "cache_active_minutes": "Caché activa · ~{minutes} min restantes",
       "cache_inactive": "Sin caché — el próximo turno la reconstruye",
       "cache_read_just_now": "Leída de caché recién · {tokens} fichas",
       "cache_read_ago": "Leída de caché hace {minutes} min · {tokens} fichas",

@@ -24,6 +24,7 @@ export const AGENT_MODEL_IDS = [
   'gemini-flash-lite-latest',
   'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
   'gpt-5.4-mini',
   'claude-sonnet-3-5',
   'kimi-k2.6'
@@ -88,6 +89,14 @@ export const AGENT_MODELS: Record<AgentModelId, AgentModelDescriptor> = {
     provider: 'google',
     label: ASSISTANT_LABEL,
     backendModelId: 'gemini-3.1-flash-lite',
+    isFree: true,
+    costTier: 'low',
+    contextWindow: 1_048_576
+  },
+  'gemini-3.5-flash-lite': {
+    provider: 'google',
+    label: ASSISTANT_LABEL,
+    backendModelId: 'gemini-3.5-flash-lite',
     isFree: true,
     costTier: 'low',
     contextWindow: 1_048_576

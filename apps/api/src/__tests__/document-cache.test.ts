@@ -1,15 +1,18 @@
 /**
  * Unit tests for the document-cache module (Capa 2b).
  *
- * Covers the dual-backend refactor: Google `cachedContents` (legacy) and
- * Anthropic-compatible `cache_control: ephemeral` (MiniMax-M3 / Claude). The
- * two backends share the public surface (`resolveDocumentCache`,
- * `releaseDocumentCaches`, `classifyDocumentForCache`,
- * `isDocumentCacheEnabled`) and the Redis dedup key, but the cache
- * lifecycle is fundamentally different — Gemini is explicit (we create and
- * DELETE the resource), Anthropic-compatible is implicit (the server manages
- * it from a `cache_control` hint in the request). These tests pin down that
- * divergence so future refactors don't accidentally conflate them.
+ * The two providers reach a cached read by different routes, and the tests are
+ * organised around that difference:
+ *  - **Anthropic-compatible** (MiniMax-M3, Claude): we ASK, via a
+ *    `cache_control: ephemeral` hint on a block, and the server decides.
+ *  - **Google**: we ask for NOTHING. Gemini matches the request prefix on its
+ *    own. Asking — a `cachedContents` handle — is in fact a 400 against any
+ *    request carrying tools, which ours always does, so the Google block below
+ *    is largely a set of "must not" assertions.
+ *
+ * What they share: eligibility rules, the 400k-token material cap, the Redis
+ * key, and the rule that a handle may only ever be written from a cached read
+ * the provider actually billed.
  */
 
 import {
@@ -37,7 +40,7 @@ import {
   MAX_CACHE_TOKENS,
   MIN_CACHE_DOCUMENT_CHARS,
   reconcileCourseSourceCache,
-  recordAnthropicCacheHit,
+  recordObservedCacheHit,
   refreshDocumentCache,
   releaseDocumentCaches,
   resolveDocumentCache
@@ -108,25 +111,6 @@ afterEach(() => {
   process.env = originalEnv;
   vi.unstubAllEnvs();
 });
-
-/**
- * Stub a successful Gemini cachedContents create response.
- * Returns the `name` (cacheName) the API would return.
- */
-function stubGeminiCreate(cacheName: string) {
-  fetchSpy.mockResolvedValueOnce(
-    new Response(JSON.stringify({ name: cacheName }), { status: 200 })
-  );
-}
-
-/**
- * Stub a Gemini cachedContents TTL renew response. The renew endpoint
- * returns the updated cache; the SDK doesn't read the body, so an empty 200
- * is enough — we just need it not to throw.
- */
-function stubGeminiRenew(ok = true) {
-  fetchSpy.mockResolvedValueOnce(new Response('', { status: ok ? 200 : 500 }));
-}
 
 /** Stub a Gemini cachedContents DELETE response (always 200 in the happy path). */
 function stubGeminiDelete() {
@@ -294,7 +278,7 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     // And NO handle is written. Asking for a cache is not evidence of one:
     // only usage.cacheReadTokens on the response proves the provider cached
-    // anything, and that is recorded later via recordAnthropicCacheHit.
+    // anything, and that is recorded later via recordObservedCacheHit.
     expect(redis.set).not.toHaveBeenCalled();
   });
 
@@ -322,7 +306,8 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
   it('leaves an existing fresh handle untouched (it is evidence, not a lease to renew)', async () => {
     const redis = makeFakeRedis();
     const preHandle = {
-      type: 'anthropic',
+      type: 'observed',
+      provider: 'anthropic',
       documentId: 'doc-anthropic-2',
       observedAt: Date.now() - 60_000,
       lastCacheReadTokens: 11_264,
@@ -357,7 +342,8 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
   it('does not resurrect an expired handle', async () => {
     const redis = makeFakeRedis();
     const expired = {
-      type: 'anthropic',
+      type: 'observed',
+      provider: 'anthropic',
       documentId: 'doc-anthropic-4',
       expireAt: Date.now() - 1
     };
@@ -455,8 +441,18 @@ describe('resolveDocumentCache — Anthropic-compatible backend', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('resolveDocumentCache — Google backend', () => {
-  it('returns google.cachedContent and excludeDocumentId after creating a cache', async () => {
-    stubGeminiCreate('cachedContents/abc-123');
+  /**
+   * The whole point of this block. Gemini rejects, with a 400, any request that
+   * references a `cachedContents` handle while also sending tools:
+   *
+   *   "CachedContent can not be used with GenerateContent request setting
+   *    system_instruction, tools or tool_config."
+   *
+   * The agent sends ~26 tools and a system prompt on every teacher turn, so
+   * returning that option here would break every one of them. Verified against
+   * the live API, which is why it is pinned as a test rather than a comment.
+   */
+  it('never asks for an explicit cachedContents handle (it 400s alongside tools)', async () => {
     const redis = makeFakeRedis();
     const result = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
@@ -464,173 +460,55 @@ describe('resolveDocumentCache — Google backend', () => {
       userId: 'user-1',
       redis: redis as any
     });
-    expect(result).toEqual({
-      providerOptions: { google: { cachedContent: 'cachedContents/abc-123' } },
-      excludeDocumentId: 'doc-gemini-1'
-    });
-    // Persisted a Gemini-shaped handle (not the Anthropic one).
-    expect(redis.set).toHaveBeenCalledTimes(1);
-    const [key, raw] = redis.set.mock.calls[0];
-    expect(key).toBe('agent:document:cache:doc-gemini-1');
-    const parsed = JSON.parse(raw);
-    expect(parsed.type).toBe('gemini');
-    expect(parsed.cacheName).toBe('cachedContents/abc-123');
+
+    expect(result.providerOptions?.google).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain('cachedContent');
   });
 
-  it('calls Gemini with the model resolved from GOOGLE_MODEL and a 900s TTL', async () => {
-    process.env.GOOGLE_MODEL = 'gemini-flash-latest';
-    stubGeminiCreate('cachedContents/xyz');
+  it('keeps the document inline — never sets excludeDocumentId', async () => {
+    // Dropping the text from the prompt is how the agent would end up with no
+    // document at all; Gemini's automatic cache needs it inline to cover it.
     const redis = makeFakeRedis();
-    await resolveDocumentCache({
+    const result = await resolveDocumentCache({
+      provider: AIProvider.GOOGLE,
+      currentDocumentId: 'doc-inline',
+      userId: 'user-1',
+      redis: redis as any
+    });
+    expect(result.excludeDocumentId).toBeUndefined();
+  });
+
+  it('creates no cache resource and writes no handle', async () => {
+    const redis = makeFakeRedis();
+    const result = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
       currentDocumentId: 'doc-gemini-2',
       userId: 'user-1',
       redis: redis as any
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0];
-    expect(url.toString()).toContain('generativelanguage.googleapis.com/v1beta/cachedContents');
-    expect(url.toString()).toContain('key=test-google-key');
-    const body = JSON.parse(init.body as string);
-    expect(body.model).toBe('models/gemini-flash-latest');
-    expect(body.ttl).toBe('900s');
-    expect(body.displayName).toBe('cio-agent-document');
-  });
-
-  it('falls back to empty when GOOGLE_API_KEY is unset', async () => {
-    delete process.env.GOOGLE_API_KEY;
-    const redis = makeFakeRedis();
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-no-key',
-      userId: 'user-1',
-      redis: redis as any
-    });
     expect(result).toEqual({});
+    // No POST to cachedContents — nothing to create, nothing to pay storage for.
     expect(fetchSpy).not.toHaveBeenCalled();
+    // A handle may only be written from an observed read, never from here.
     expect(redis.set).not.toHaveBeenCalled();
   });
 
-  it('falls back to empty when the Gemini create call fails (500)', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response('internal error', { status: 500 }));
+  it('still reports the 400k-token material cap', async () => {
+    // Provider-independent policy: the instructor has to be told the course's
+    // material is full, whichever model is answering.
+    mockedGetDocumentText.mockResolvedValue(HUGE_DOC);
     const redis = makeFakeRedis();
     const result = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-fail',
+      currentDocumentId: 'doc-huge-g',
       userId: 'user-1',
       redis: redis as any
     });
-    expect(result).toEqual({});
-    expect(redis.set).not.toHaveBeenCalled();
-  });
-
-  it('falls back to empty when the Gemini create call returns no name', async () => {
-    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }));
-    const redis = makeFakeRedis();
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-no-name',
-      userId: 'user-1',
-      redis: redis as any
-    });
-    expect(result).toEqual({});
-  });
-
-  it('falls back to empty when the Gemini create call throws (network error)', async () => {
-    fetchSpy.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    const redis = makeFakeRedis();
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-throw',
-      userId: 'user-1',
-      redis: redis as any
-    });
-    expect(result).toEqual({});
-  });
-
-  it('reuses a fresh Gemini handle without calling the API', async () => {
-    process.env.GOOGLE_MODEL = 'gemini-flash-latest';
-    const redis = makeFakeRedis();
-    const existingHandle = {
-      type: 'gemini',
-      cacheName: 'cachedContents/existing',
-      model: 'models/gemini-flash-latest',
-      expireAt: Date.now() + 10 * 60 * 1000
-    };
-    redis.state.set('agent:document:cache:doc-reuse', {
-      value: JSON.stringify(existingHandle),
-      expiresAt: existingHandle.expireAt
-    });
-
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-reuse',
-      userId: 'user-1',
-      redis: redis as any
-    });
-
-    expect(result).toEqual({
-      providerOptions: { google: { cachedContent: 'cachedContents/existing' } },
-      excludeDocumentId: 'doc-reuse'
-    });
+    expect(result).toEqual({ overLimit: true });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('replaces a handle whose model differs from the current GOOGLE_MODEL', async () => {
-    const redis = makeFakeRedis();
-    const staleHandle = {
-      type: 'gemini',
-      cacheName: 'cachedContents/old-model',
-      model: 'models/gemini-2.5-flash-lite',
-      expireAt: Date.now() + 10 * 60 * 1000
-    };
-    redis.state.set('agent:document:cache:doc-model-change', {
-      value: JSON.stringify(staleHandle),
-      expiresAt: staleHandle.expireAt
-    });
-    process.env.GOOGLE_MODEL = 'gemini-flash-latest';
-    stubGeminiCreate('cachedContents/new-model');
-
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-model-change',
-      userId: 'user-1',
-      redis: redis as any
-    });
-
-    expect(result.providerOptions).toEqual({
-      google: { cachedContent: 'cachedContents/new-model' }
-    });
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // recreated
-  });
-
-  it('replaces a handle whose Anthropic shape is left over from a previous provider', async () => {
-    const redis = makeFakeRedis();
-    // Operator switched from MiniMax to Gemini on the same documentId.
-    const staleAnthropicHandle = {
-      type: 'anthropic',
-      documentId: 'doc-switched',
-      expireAt: Date.now() + 10 * 60 * 1000
-    };
-    redis.state.set('agent:document:cache:doc-switched', {
-      value: JSON.stringify(staleAnthropicHandle),
-      expiresAt: staleAnthropicHandle.expireAt
-    });
-    stubGeminiCreate('cachedContents/switched');
-
-    const result = await resolveDocumentCache({
-      provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-switched',
-      userId: 'user-1',
-      redis: redis as any
-    });
-
-    expect(result.providerOptions).toEqual({
-      google: { cachedContent: 'cachedContents/switched' }
-    });
-  });
-
-  it('falls back to empty when the document is too small', async () => {
+  it('returns empty for a document below the cache threshold', async () => {
     mockedGetDocumentText.mockResolvedValue(SMALL_DOC);
     const redis = makeFakeRedis();
     const result = await resolveDocumentCache({
@@ -643,16 +521,29 @@ describe('resolveDocumentCache — Google backend', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('returns { overLimit: true } for documents over the policy cap', async () => {
-    mockedGetDocumentText.mockResolvedValue(HUGE_DOC);
+  it('does not touch a leftover lease from an older deploy', async () => {
+    // Releasing it is releaseDocumentCaches' job; resolving a turn must not
+    // resurrect, renew or reference it.
     const redis = makeFakeRedis();
+    const lease = {
+      type: 'gemini',
+      cacheName: 'cachedContents/legacy',
+      model: 'models/gemini-flash-lite-latest',
+      expireAt: Date.now() + 10 * 60 * 1000
+    };
+    redis.state.set('agent:document:cache:doc-legacy', {
+      value: JSON.stringify(lease),
+      expiresAt: lease.expireAt
+    });
+
     const result = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
-      currentDocumentId: 'doc-huge-g',
+      currentDocumentId: 'doc-legacy',
       userId: 'user-1',
       redis: redis as any
     });
-    expect(result).toEqual({ overLimit: true });
+
+    expect(result).toEqual({});
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
@@ -688,7 +579,8 @@ describe('releaseDocumentCaches', () => {
     const redis = makeFakeRedis();
     redis.state.set('agent:document:cache:doc-a1', {
       value: JSON.stringify({
-        type: 'anthropic',
+        type: 'observed',
+        provider: 'anthropic',
         documentId: 'doc-a1',
         expireAt: Date.now() + 10 * 60 * 1000
       }),
@@ -742,7 +634,8 @@ describe('releaseDocumentCaches', () => {
     });
     redis.state.set('agent:document:cache:doc-mix-2', {
       value: JSON.stringify({
-        type: 'anthropic',
+        type: 'observed',
+        provider: 'anthropic',
         documentId: 'doc-mix-2',
         expireAt: Date.now() + 10 * 60 * 1000
       }),
@@ -908,20 +801,20 @@ describe('agentDocumentCacheKey', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// recordAnthropicCacheHit — the ONLY writer of an Anthropic handle
+// recordObservedCacheHit — the ONLY writer of a cache handle
 //
-// The Anthropic-compatible API exposes no cache-status endpoint, so the only
-// evidence a cache exists is usage.inputTokenDetails.cacheReadTokens on a real
-// turn. These tests pin that down: nothing else may light the badge, and the
+// Neither provider exposes a cache-status endpoint, so the only evidence a
+// cache exists is usage.inputTokenDetails.cacheReadTokens on a real turn. These tests pin that down: nothing else may light the badge, and the
 // (courseId, contentHash) shared key must be preferred so two users who
 // uploaded the same PDF to the same course read one handle (§11).
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('recordAnthropicCacheHit', () => {
+describe('recordObservedCacheHit', () => {
   it('writes nothing when the turn reported no cached reads (a cache MISS)', async () => {
     const redis = makeFakeRedis();
-    const handle = await recordAnthropicCacheHit({
+    const handle = await recordObservedCacheHit({
       documentId: 'doc-miss',
+      provider: 'anthropic',
       cacheReadTokens: 0,
       redis: redis as any
     });
@@ -934,8 +827,9 @@ describe('recordAnthropicCacheHit', () => {
     // from a speculative handle, so a first turn — which ALWAYS misses —
     // looked identical to a confirmed hit.
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-first-turn',
+      provider: 'anthropic',
       courseId: 'course-1',
       contentHash: 'hash-1',
       cacheReadTokens: 0,
@@ -952,8 +846,9 @@ describe('recordAnthropicCacheHit', () => {
 
   it('writes the handle to the SHARED (courseId, contentHash) key when both are known', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-shared',
+      provider: 'anthropic',
       courseId: 'course-42',
       contentHash: 'abc123',
       cacheReadTokens: 11_264,
@@ -970,7 +865,8 @@ describe('recordAnthropicCacheHit', () => {
     // cache rather than protecting against an over-claim.
     expect(opts.EX).toBe(3600);
     const parsed = JSON.parse(raw);
-    expect(parsed.type).toBe('anthropic');
+    expect(parsed.type).toBe('observed');
+    expect(parsed.provider).toBe('anthropic');
     expect(parsed.documentId).toBe('doc-shared');
     expect(parsed.lastCacheReadTokens).toBe(11_264);
     expect(parsed.observedAt).toBeGreaterThan(0);
@@ -979,8 +875,9 @@ describe('recordAnthropicCacheHit', () => {
 
   it('falls back to the per-document key for legacy rows with no contentHash', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-legacy',
+      provider: 'anthropic',
       courseId: 'course-42',
       contentHash: undefined,
       cacheReadTokens: 500,
@@ -992,8 +889,9 @@ describe('recordAnthropicCacheHit', () => {
 
   it('reports the observed read, not a predicted remaining lifetime', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-observed',
+      provider: 'anthropic',
       cacheReadTokens: 110_464,
       redis: redis as any
     });
@@ -1022,8 +920,9 @@ describe('recordAnthropicCacheHit', () => {
   it('lets a second user in the same course read the first user\'s handle (§11 sharing)', async () => {
     const redis = makeFakeRedis();
     // Alice's chat turn confirms a cached read.
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-alice',
+      provider: 'anthropic',
       courseId: 'course-shared',
       contentHash: 'same-content',
       cacheReadTokens: 9_000,
@@ -1044,8 +943,9 @@ describe('recordAnthropicCacheHit', () => {
 
   it('does NOT share across different courses with identical content', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-a',
+      provider: 'anthropic',
       courseId: 'course-A',
       contentHash: 'identical',
       cacheReadTokens: 9_000,
@@ -1057,8 +957,9 @@ describe('recordAnthropicCacheHit', () => {
 
   it('refreshes the window on every confirmed hit (the provider refreshes its cache for free)', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-slide',
+      provider: 'anthropic',
       courseId: 'c',
       contentHash: 'h',
       cacheReadTokens: 100,
@@ -1067,8 +968,9 @@ describe('recordAnthropicCacheHit', () => {
     const firstExpire = JSON.parse(redis.set.mock.calls[0][1]).expireAt;
 
     await new Promise((r) => setTimeout(r, 5));
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-slide',
+      provider: 'anthropic',
       courseId: 'c',
       contentHash: 'h',
       cacheReadTokens: 250,
@@ -1106,8 +1008,9 @@ describe('honest cache badge', () => {
 
   it('reconcile keeps a handle that a real cached read produced', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-honest',
+      provider: 'anthropic',
       courseId: 'c1',
       contentHash: HASH,
       cacheReadTokens: 8_000,
@@ -1123,7 +1026,8 @@ describe('honest cache badge', () => {
     const redis = makeFakeRedis();
     redis.state.set(agentDocumentCacheKeyByContent('c1', HASH), {
       value: JSON.stringify({
-        type: 'anthropic',
+        type: 'observed',
+        provider: 'anthropic',
         documentId: 'doc-honest',
         expireAt: Date.now() - 1
       }),
@@ -1138,8 +1042,9 @@ describe('honest cache badge', () => {
 
   it('refresh clears the evidence and reports uncached (no instant green badge)', async () => {
     const redis = makeFakeRedis();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-honest',
+      provider: 'anthropic',
       courseId: 'c1',
       contentHash: HASH,
       cacheReadTokens: 8_000,
@@ -1183,8 +1088,9 @@ describe('Anthropic end-to-end lifecycle', () => {
       anthropic: { cacheControl: { type: 'ephemeral' } }
     });
     expect(redis.set).not.toHaveBeenCalled();
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-e2e',
+      provider: 'anthropic',
       cacheReadTokens: 0,
       redis: redis as any
     });
@@ -1199,8 +1105,9 @@ describe('Anthropic end-to-end lifecycle', () => {
       redis: redis as any
     });
     expect(second.providerOptions).toEqual(first.providerOptions);
-    await recordAnthropicCacheHit({
+    await recordObservedCacheHit({
       documentId: 'doc-e2e',
+      provider: 'anthropic',
       cacheReadTokens: 11_264,
       redis: redis as any
     });
@@ -1215,40 +1122,86 @@ describe('Anthropic end-to-end lifecycle', () => {
     expect(redis.state.has('agent:document:cache:doc-e2e')).toBe(false);
   });
 
-  it('Google end-to-end: classify → ensure → reuse → release makes exactly 2 fetch calls (1 create + 1 delete)', async () => {
-    process.env.GOOGLE_MODEL = 'gemini-flash-latest';
+  it('Google end-to-end: two turns, zero API calls, and the badge lights only on the billed read', async () => {
+    process.env.GOOGLE_MODEL = 'gemini-3.5-flash-lite';
     const text = 'Lorem ipsum dolor sit amet. '.repeat(800); // ~22k chars
     expect(classifyDocumentForCache(text)).toBe('cache');
 
     const redis = makeFakeRedis();
     mockedGetDocumentText.mockResolvedValue(text);
-    stubGeminiCreate('cachedContents/e2e-1');
 
-    // First call: ensure creates the cache.
+    // Turn 1: nothing is asked for and nothing is created — Gemini caches the
+    // prefix by itself, and the first turn is always a miss because the prefix
+    // is new.
     const first = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
       currentDocumentId: 'doc-gemini-e2e',
       userId: 'user-1',
       redis: redis as any
     });
-    expect(first.providerOptions).toEqual({
-      google: { cachedContent: 'cachedContents/e2e-1' }
-    });
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // create
+    expect(first).toEqual({});
+    expect(fetchSpy).not.toHaveBeenCalled();
 
-    // Second call: reuse, no fetch.
+    await recordObservedCacheHit({
+      documentId: 'doc-gemini-e2e',
+      provider: 'gemini',
+      cacheReadTokens: 0,
+      redis: redis as any
+    });
+    expect(await getDocumentCacheStatus('doc-gemini-e2e', redis as any)).toMatchObject({
+      cached: false
+    });
+
+    // Turn 2: same prefix → Gemini bills part of it as cached input, which
+    // arrives as cacheRead through the same SDK field MiniMax uses.
     const second = await resolveDocumentCache({
       provider: AIProvider.GOOGLE,
       currentDocumentId: 'doc-gemini-e2e',
       userId: 'user-1',
       redis: redis as any
     });
-    expect(second.providerOptions).toEqual(first.providerOptions);
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // still just the create
+    expect(second).toEqual({});
+    await recordObservedCacheHit({
+      documentId: 'doc-gemini-e2e',
+      provider: 'gemini',
+      cacheReadTokens: 49_102,
+      redis: redis as any
+    });
+    expect(await getDocumentCacheStatus('doc-gemini-e2e', redis as any)).toMatchObject({
+      cached: true,
+      provider: 'gemini',
+      lastCacheReadTokens: 49_102
+    });
 
-    // Release: explicit DELETE.
-    stubGeminiDelete();
+    // Release: nothing to DELETE at Google, because nothing was created.
     await releaseDocumentCaches(['doc-gemini-e2e'], redis as any);
-    expect(fetchSpy).toHaveBeenCalledTimes(2); // create + delete
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(redis.state.has('agent:document:cache:doc-gemini-e2e')).toBe(false);
+  });
+
+  it('still DELETEs a cachedContents lease left behind by an older deploy', async () => {
+    // The only reason the Gemini delete path survives: those leases bill
+    // storage by the hour, so one stranded in Redis has to be cancelled rather
+    // than waited out.
+    const redis = makeFakeRedis();
+    const lease = {
+      type: 'gemini',
+      cacheName: 'cachedContents/stranded',
+      model: 'models/gemini-flash-lite-latest',
+      expireAt: Date.now() + 10 * 60 * 1000
+    };
+    redis.state.set('agent:document:cache:doc-stranded', {
+      value: JSON.stringify(lease),
+      expiresAt: lease.expireAt
+    });
+
+    stubGeminiDelete();
+    await releaseDocumentCaches(['doc-stranded'], redis as any);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url.toString()).toContain('cachedContents/stranded');
+    expect(init?.method).toBe('DELETE');
+    expect(redis.state.has('agent:document:cache:doc-stranded')).toBe(false);
   });
 });

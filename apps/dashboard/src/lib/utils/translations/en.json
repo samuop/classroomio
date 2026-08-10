@@ -3958,7 +3958,6 @@
       "indicator_multiple": "{count} sources attached from this course",
       "count": "{count, plural, one {# source} other {# sources}}",
       "cached_count": "{count, plural, one {# cached} other {# cached}}",
-      "cache_active_minutes": "Cache active · ~{minutes} min remaining",
       "cache_inactive": "Not cached — next turn rebuilds",
       "cache_read_just_now": "Served from cache just now · {tokens} tokens",
       "cache_read_ago": "Served from cache {minutes} min ago · {tokens} tokens",

@@ -1,4 +1,4 @@
-import { resolveModelName, AIProvider } from '@cio/ai-assistant';
+import { AIProvider } from '@cio/ai-assistant';
 import {
   agentDocumentCacheKey,
   agentDocumentCacheKeyByContent
@@ -7,41 +7,61 @@ import { getDocumentText } from '@api/services/agent/document';
 import type { RedisClient } from '@api/utils/redis/redis';
 
 /**
- * Document-level explicit prompt caching for the AI agent.
+ * Document-level prompt caching for the AI agent.
  *
  * When an instructor attaches a large document to a course build, the agent
- * would otherwise re-send the full text of the document on every chat turn.
- * This module caches the document once and references it from subsequent
- * requests at a fraction of the input cost.
+ * re-sends that material on every chat turn. Caching lets the provider serve
+ * it at a fraction of the input price.
  *
- * Two backends are supported, picked by the chat provider:
- *  - **Google (cachedContents)**: explicit REST cache; we manage the handle
- *    and reference it via `providerOptions.google.cachedContent`.
- *  - **Anthropic-compatible (cache_control: ephemeral)**: MiniMax-M3 and
- *    Claude both honor a `cache_control: { type: "ephemeral" }` hint on a
- *    system / message block; the server transparently creates the cache and
- *    reuses it on subsequent calls within 5 min. We only track the handle in
- *    Redis to dedupe and to know when the cache has gone cold.
+ * How each provider gets there is NOT symmetric:
  *
- * Design guarantees (both backends):
+ *  - **Anthropic-compatible (MiniMax-M3, Claude)**: we ask, with a
+ *    `cache_control: { type: "ephemeral" }` hint on a system / message block.
+ *    The server decides and manages the cache; we never create a resource.
+ *
+ *  - **Google (Gemini)**: caching is *automatic*. Gemini matches the request
+ *    prefix against what it already processed and bills the overlap at the
+ *    cached rate with nothing asked for and nothing to manage. Measured on
+ *    `gemini-3.5-flash-lite` with this agent's request shape (stable system
+ *    prompt + source pack + growing transcript, ~53k tokens):
+ *
+ *        turn 1  prompt 53065  cached     0   0%   ← always a miss, it's new
+ *        turn 2  prompt 53094  cached 49102  92%
+ *        turn 3  prompt 53130  cached 49095  92%
+ *        turn 4  prompt 53164  cached 49088  92%
+ *
+ * **Gemini's explicit cache (`cachedContents`) is deliberately NOT used**, and
+ * this is the trap to remember if someone reaches for it again. The API refuses
+ * to combine a cached handle with a request that carries tools:
+ *
+ *     400 CachedContent can not be used with GenerateContent request setting
+ *         system_instruction, tools or tool_config.
+ *
+ * Our agent always sends both a system prompt and ~26 tools, so referencing a
+ * `cachedContents` handle fails EVERY teacher turn — verified against the live
+ * API, not inferred. Moving system+tools inside the cache is what the error
+ * suggests, and it does work, but it welds the cache to one exact prompt
+ * version and tool set (which changes per phase, plan vs build) and forces the
+ * request to omit fields the AI SDK always sends. The automatic cache above
+ * gives a better discount over a *wider* prefix, for free, with no resource to
+ * create, renew, bill or leak. So the document stays inline for Google.
+ *
+ * What this module still does, for both providers:
+ *  - **Decides eligibility** (see classifyDocumentForCache) and surfaces the
+ *    400k-token material cap to the instructor.
+ *  - **Records evidence** of cached reads the provider actually billed, which
+ *    is what the Sources panel badge reports.
+ *
+ * Design guarantees:
  *  - **Defensive**: every failure path returns null/{} and lets the caller
  *    fall back to inlining. Caching must NEVER block or break generation.
  *  - **Opt-in**: only runs when DOCUMENT_CACHE_ENABLED=true (or the legacy
- *    GEMINI_EXPLICIT_CACHE=true) and the document is large enough to be
- *    worth it (see classifyDocumentForCache).
- *  - **Self-healing dedup**: the Redis handle TTL is aligned to the cache
- *    TTL, so a stale handle expires on its own; a miss just rebuilds.
+ *    GEMINI_EXPLICIT_CACHE=true).
+ *  - **Never fabricated**: a handle in Redis means the provider billed us for
+ *    cached reads, never that we hope it did.
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-
-/**
- * Gemini cache TTL: 15 minutes, sliding. We own that cache as a real
- * server-side resource, renew it on use (maybeRenewGeminiCache), and pay
- * storage while it lives — so a short sliding TTL keeps it alive exactly
- * during a build burst and lets it die minutes after the instructor walks away.
- */
-const CACHE_TTL_SECONDS = 900;
 
 /**
  * How long a recorded cache observation stays worth showing: 1 hour, matching
@@ -54,15 +74,13 @@ const CACHE_TTL_SECONDS = 900;
  * new conversation sending a fresh prefix). The short TTL made the Sources badge
  * go dark while the cache was demonstrably still live.
  *
- * Note this is now a retention window for *evidence*, not a claim about the
- * provider's cache: the status object reports when the read was observed and how
- * many tokens it covered, so the UI states a fact with its age instead of
- * predicting a remaining lifetime we cannot actually see.
+ * It is a retention window for *evidence*, not a claim about the provider's
+ * cache: the status object reports when the read was observed and how many
+ * tokens it covered, so the UI states a fact with its age instead of predicting
+ * a remaining lifetime we cannot actually see. That holds for Gemini too — its
+ * automatic cache is no more inspectable than MiniMax's.
  */
-const ANTHROPIC_CACHE_TTL_SECONDS = 3600;
-
-/** Renew the TTL when a use finds less than this much lifetime remaining. */
-const CACHE_RENEW_THRESHOLD_MS = 5 * 60 * 1000;
+const OBSERVED_CACHE_TTL_SECONDS = 3600;
 
 /**
  * Minimum characters before explicit caching kicks in. Policy: activate at the
@@ -81,22 +99,31 @@ export const MIN_CACHE_DOCUMENT_CHARS = 16_000;
 export const MAX_CACHE_TOKENS = 400_000;
 export const MAX_CACHE_CHARS = MAX_CACHE_TOKENS * 4;
 
-interface GeminiCacheHandle {
+/**
+ * A `cachedContents` lease this code used to create before the tools conflict
+ * documented above was found. No new ones are ever written; the shape survives
+ * only so `releaseDocumentCaches` can still DELETE a leftover from an older
+ * deploy instead of paying its storage until Google expires it.
+ */
+interface LegacyGeminiLeaseHandle {
   type: 'gemini';
   cacheName: string; // "cachedContents/xxxx"
-  model: string; // "models/gemini-..." the cache was created against
+  model: string;
   expireAt: number; // epoch ms
 }
 
 /**
  * Evidence that the provider served cached tokens for a document's material.
- * Written only by `recordAnthropicCacheHit` from observed usage — never
- * speculatively. There is no Anthropic-compatible endpoint to query cache
- * state, so this is the only signal we have.
+ * Written only by `recordObservedCacheHit` from observed usage — never
+ * speculatively. Neither provider exposes an endpoint to query cache state
+ * (Gemini's automatic cache is as opaque as MiniMax's), so a billed read is
+ * the only signal either of them gives us.
  */
-interface AnthropicCacheHandle {
-  type: 'anthropic';
+interface ObservedCacheHandle {
+  type: 'observed';
   documentId: string;
+  /** Which provider served the cached tokens. */
+  provider: 'gemini' | 'anthropic';
   /** Optional: when the handle is shared across users via contentHash. */
   courseId?: string;
   contentHash?: string;
@@ -107,7 +134,7 @@ interface AnthropicCacheHandle {
   expireAt: number; // epoch ms
 }
 
-type CacheHandle = GeminiCacheHandle | AnthropicCacheHandle;
+type CacheHandle = LegacyGeminiLeaseHandle | ObservedCacheHandle;
 
 /** Whether explicit caching is enabled by config. */
 export function isDocumentCacheEnabled(): boolean {
@@ -132,71 +159,11 @@ export function classifyDocumentForCache(text: string | undefined | null): Cache
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Google backend
+// Legacy Gemini lease cleanup
 // ────────────────────────────────────────────────────────────────────────────
-
-/** Gemini requires the "models/<name>" form; resolveModelName returns the bare alias. */
-function geminiModelResource(): string {
-  const name = resolveModelName(AIProvider.GOOGLE);
-  return name.startsWith('models/') ? name : `models/${name}`;
-}
 
 function geminiApiKey(): string | null {
   return process.env.GOOGLE_API_KEY || null;
-}
-
-/**
- * Create a cachedContent for the document text. Returns the cache handle, or null
- * on any failure (caller falls back to inline). The document goes in `contents`
- * as a single user turn; systemInstruction/tools are intentionally NOT cached
- * here — they're small and change per request, and caching them would tie the
- * cache to the exact tool set.
- */
-async function createGeminiCache(text: string): Promise<GeminiCacheHandle | null> {
-  const key = geminiApiKey();
-  if (!key) return null;
-
-  const model = geminiModelResource();
-
-  try {
-    const res = await fetch(`${GEMINI_API_BASE}/cachedContents?key=${encodeURIComponent(key)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        displayName: 'cio-agent-document',
-        ttl: `${CACHE_TTL_SECONDS}s`,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text }]
-          }
-        ]
-      })
-    });
-
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      console.error(`[document-cache] gemini create failed: ${res.status} ${detail.slice(0, 300)}`);
-      return null;
-    }
-
-    const body = (await res.json()) as { name?: string };
-    if (!body.name) {
-      console.error('[document-cache] gemini create returned no name');
-      return null;
-    }
-
-    return {
-      type: 'gemini',
-      cacheName: body.name,
-      model,
-      expireAt: Date.now() + CACHE_TTL_SECONDS * 1000
-    };
-  } catch (err) {
-    console.error('[document-cache] gemini create error:', err);
-    return null;
-  }
 }
 
 /** Delete a Gemini cache by name. Best-effort; failures are logged, never thrown. */
@@ -210,128 +177,41 @@ async function deleteGeminiCache(cacheName: string): Promise<void> {
   }
 }
 
-/**
- * Sliding TTL: when a reused cache has < CACHE_RENEW_THRESHOLD_MS of life left,
- * PATCH it back up to CACHE_TTL_SECONDS ("15 min, renewed 15 more while in
- * use"). Returns the (possibly updated) expireAt. Best-effort: on failure the
- * old expireAt stands and the cache simply dies on schedule — next use rebuilds.
- */
-async function maybeRenewGeminiCache(handle: GeminiCacheHandle): Promise<number> {
-  if (handle.expireAt - Date.now() > CACHE_RENEW_THRESHOLD_MS) return handle.expireAt;
-
-  const key = geminiApiKey();
-  if (!key) return handle.expireAt;
-
-  try {
-    const res = await fetch(`${GEMINI_API_BASE}/${handle.cacheName}?key=${encodeURIComponent(key)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ttl: `${CACHE_TTL_SECONDS}s` })
-    });
-
-    if (!res.ok) {
-      console.error(`[document-cache] gemini ttl renew failed: ${res.status}`);
-      return handle.expireAt;
-    }
-
-    return Date.now() + CACHE_TTL_SECONDS * 1000;
-  } catch (err) {
-    console.error('[document-cache] gemini ttl renew error:', err);
-    return handle.expireAt;
-  }
-}
-
-/**
- * Get (or lazily create) the Gemini cache handle for a document. Dedups on
- * documentId via Redis: an existing, non-expired, same-model handle is reused;
- * otherwise a new cache is created and the handle stored with a TTL aligned to
- * the cache.
- */
-async function ensureGeminiDocumentCache(params: {
-  documentId: string;
-  text: string;
-  redis: RedisClient;
-}): Promise<{ cacheName: string } | null> {
-  const { documentId, text, redis } = params;
-
-  if (!geminiApiKey()) return null;
-
-  const model = geminiModelResource();
-  const redisKey = agentDocumentCacheKey(documentId);
-
-  try {
-    const raw = await redis.get(redisKey);
-    if (raw) {
-      const handle = JSON.parse(raw) as CacheHandle;
-      if (
-        handle.type === 'gemini' &&
-        handle.cacheName &&
-        handle.model === model &&
-        handle.expireAt > Date.now() + 30_000
-      ) {
-        const renewedExpireAt = await maybeRenewGeminiCache(handle);
-        if (renewedExpireAt !== handle.expireAt) {
-          const renewed: GeminiCacheHandle = { ...handle, expireAt: renewedExpireAt };
-          try {
-            await redis.set(redisKey, JSON.stringify(renewed), { EX: CACHE_TTL_SECONDS });
-          } catch (err) {
-            console.error('[document-cache] gemini redis renew-write error:', err);
-          }
-        }
-        return { cacheName: handle.cacheName };
-      }
-    }
-  } catch (err) {
-    console.error('[document-cache] gemini redis read error (continuing to create):', err);
-  }
-
-  const handle = await createGeminiCache(text);
-  if (!handle) return null;
-
-  try {
-    await redis.set(redisKey, JSON.stringify(handle), { EX: CACHE_TTL_SECONDS });
-  } catch (err) {
-    // Cache exists in Gemini but we couldn't persist the handle. Still usable
-    // this turn; it just won't be deduped next turn.
-    console.error('[document-cache] gemini redis write error (cache still usable this turn):', err);
-  }
-
-  return { cacheName: handle.cacheName };
-}
-
 // ────────────────────────────────────────────────────────────────────────────
-// Anthropic-compatible backend (MiniMax-M3, Claude, etc.)
+// Observed cache reads (the only thing either provider lets us know)
 // ────────────────────────────────────────────────────────────────────────────
 /**
- * The Anthropic-compatible backend is *implicit* and, unlike Gemini, exposes
- * **no way to query cache state**. There is no `cachedContents` resource and no
- * status endpoint: you attach `cache_control: ephemeral` to a block and the
- * server decides. The only ground truth that a cache exists is
- * `usage.inputTokenDetails.cacheReadTokens > 0` coming back on a real turn.
+ * **Neither provider exposes a way to query cache state.** MiniMax has no
+ * `cachedContents` resource and no status endpoint — you attach
+ * `cache_control: ephemeral` and the server decides. Gemini's automatic cache
+ * is matched per request against a prefix we never named. In both cases the
+ * only ground truth is `usage.inputTokenDetails.cacheReadTokens > 0` coming
+ * back on a real turn.
  *
- * So an Anthropic handle in Redis means exactly one thing:
+ * So a handle in Redis means exactly one thing:
  *
  *   "the provider billed us for cached reads of this material at `observedAt`"
  *
- * It is written ONLY by `recordAnthropicCacheHit`, from observed usage. Nothing
- * else may fabricate one. The previous implementation created a handle
- * speculatively (on chat, on reconcile, on refresh), which made the Sources
- * panel light up its "cached" badge merely because the panel had been opened —
- * asserting a MiniMax-side cache that had never been requested, let alone
- * confirmed. See knowledge/minimax-integration.md §5.
+ * It is written ONLY here, from observed usage. Nothing else may fabricate one.
+ * An earlier implementation created handles speculatively (on chat, on
+ * reconcile, on refresh), which made the Sources panel light its "cached" badge
+ * merely because the panel had been opened — asserting a provider-side cache
+ * that had never been requested, let alone confirmed. See
+ * knowledge/minimax-integration.md §5.
  *
  * Multi-user sharing: when `courseId` + `contentHash` are known the handle is
  * keyed on (courseId, contentHash) so two users who uploaded the same PDF to
  * the same course read one handle. Falls back to the per-document key for
  * legacy rows whose `content_hash` is NULL.
  */
-export async function recordAnthropicCacheHit(params: {
+export async function recordObservedCacheHit(params: {
   documentId: string;
+  provider: 'gemini' | 'anthropic';
   courseId?: string;
   contentHash?: string;
   cacheReadTokens: number;
   redis: RedisClient;
-}): Promise<AnthropicCacheHandle | null> {
+}): Promise<ObservedCacheHandle | null> {
   // No confirmed read → no handle. A cache MISS (the first turn, always) must
   // not light the badge: the cached prefix may or may not have been stored,
   // and MiniMax frequently reports cacheWriteTokens=0 even when it did store
@@ -343,22 +223,23 @@ export async function recordAnthropicCacheHit(params: {
       ? agentDocumentCacheKeyByContent(params.courseId, params.contentHash)
       : agentDocumentCacheKey(params.documentId);
 
-  const handle: AnthropicCacheHandle = {
-    type: 'anthropic',
+  const handle: ObservedCacheHandle = {
+    type: 'observed',
     documentId: params.documentId,
+    provider: params.provider,
     courseId: params.courseId,
     contentHash: params.contentHash,
     observedAt: Date.now(),
     lastCacheReadTokens: params.cacheReadTokens,
     // How long this observation stays on display. Refreshed by every new hit, so
     // material that stops being read fades out on its own.
-    expireAt: Date.now() + ANTHROPIC_CACHE_TTL_SECONDS * 1000
+    expireAt: Date.now() + OBSERVED_CACHE_TTL_SECONDS * 1000
   };
 
   try {
-    await params.redis.set(key, JSON.stringify(handle), { EX: ANTHROPIC_CACHE_TTL_SECONDS });
+    await params.redis.set(key, JSON.stringify(handle), { EX: OBSERVED_CACHE_TTL_SECONDS });
   } catch (err) {
-    console.error('[document-cache] anthropic redis write error (handle not persisted):', err);
+    console.error('[document-cache] redis write error (cache observation not persisted):', err);
   }
 
   return handle;
@@ -374,9 +255,10 @@ export async function recordAnthropicCacheHit(params: {
  * storage stops being billed for material of a chat that no longer exists.
  * Best-effort: failures are logged and never propagate.
  *
- * - Gemini: explicitly DELETE the cachedContent.
- * - Anthropic-compatible: the server-side cache expires on its own TTL; we
- *   just clear the local Redis handle.
+ * Nothing we write today has a server-side resource behind it, so this is
+ * normally just a Redis delete. The one exception is a `cachedContents` lease
+ * created by an older deploy: those bill storage by the hour, so if one is
+ * still sitting in Redis we DELETE it at Google rather than wait it out.
  */
 export async function releaseDocumentCaches(
   documentIds: string[],
@@ -394,9 +276,11 @@ export async function releaseDocumentCaches(
         if (raw) {
           const handle = JSON.parse(raw) as CacheHandle;
           if (handle.type === 'gemini' && handle.cacheName) {
+            // Leftover lease from before the tools conflict was found. Stop
+            // paying for it.
             await deleteGeminiCache(handle.cacheName);
           }
-          // Anthropic: nothing to delete on the server; the handle is local-only.
+          // Observed handles are local-only: nothing to delete on the server.
         }
         await redis.del(redisKey);
       }
@@ -409,29 +293,28 @@ export async function releaseDocumentCaches(
 /**
  * Public-facing cache status for the Sources panel.
  *
- * For the Anthropic-compatible provider this reports an **observation, not a
- * prediction**: when the provider last billed us for cached reads covering this
- * material, and how many tokens that was. We cannot see the provider's cache —
- * there is no status endpoint — so "~N minutes remaining" was always a guess
- * about someone else's eviction policy, and it guessed wrong (it assumed a
- * 5-minute window while reads were landing 20 minutes apart).
+ * This reports an **observation, not a prediction**: when the provider last
+ * billed us for cached reads covering this material, and how many tokens that
+ * was. Neither provider has a status endpoint, so "~N minutes remaining" was
+ * always a guess about someone else's eviction policy — and it guessed wrong
+ * (it assumed a 5-minute window while reads were landing 20 minutes apart).
  *
- * Gemini is different: that cache is a resource we create, own, and pay for, so
- * `secondsRemaining` there is a real lease we control.
+ * `secondsRemaining` is therefore how long this *observation* stays on display,
+ * never a lease. It used to be a real countdown for Gemini, back when we
+ * created `cachedContents` resources; we don't anymore (see the module header),
+ * so nothing here is a claim about the provider's own cache.
  */
 export interface DocumentCacheStatus {
   documentId: string;
   cached: boolean;
-  /** Which provider's cache the handle was created against. null when there's
-   * no live handle. */
+  /** Which provider served the cached read. null when there's no live handle. */
   provider: 'gemini' | 'anthropic' | null;
   /** ISO string. null when not cached. */
   expireAt: string | null;
-  /** Seconds until the handle expires. Negative means expired. null when
-   * not cached. */
+  /** Seconds until the observation stops being displayed. null when not cached. */
   secondsRemaining: number | null;
-  /** When the provider last served cached tokens for this material (ISO).
-   *  Anthropic-compatible only — this is the observed fact the badge states. */
+  /** When the provider last served cached tokens for this material (ISO) —
+   *  the observed fact the badge states. */
   observedAt: string | null;
   /** Seconds since that observation. */
   observedSecondsAgo: number | null;
@@ -461,17 +344,19 @@ export async function getDocumentCacheStatus(
 
   const secondsRemaining = Math.round((handle.expireAt - Date.now()) / 1000);
   const cached = secondsRemaining > 30; // 30s slack so we don't report "cached" right at expiry
-  const observedAt = handle.type === 'anthropic' ? (handle.observedAt ?? null) : null;
+  const observed = handle.type === 'observed' ? handle : null;
+  const observedAt = observed?.observedAt ?? null;
 
   return {
     documentId,
     cached,
-    provider: handle.type,
+    // A legacy lease says which provider it belonged to by its own type.
+    provider: observed ? observed.provider : 'gemini',
     expireAt: new Date(handle.expireAt).toISOString(),
     secondsRemaining: Math.max(0, secondsRemaining),
     observedAt: observedAt ? new Date(observedAt).toISOString() : null,
     observedSecondsAgo: observedAt ? Math.max(0, Math.round((Date.now() - observedAt) / 1000)) : null,
-    lastCacheReadTokens: handle.type === 'anthropic' ? (handle.lastCacheReadTokens ?? null) : null
+    lastCacheReadTokens: observed?.lastCacheReadTokens ?? null
   };
 }
 
@@ -638,11 +523,11 @@ export interface ResolvedDocumentCache {
 }
 
 /**
- * Decide whether the CURRENT document should be served from an explicit cache,
- * and if so ensure the cache exists. Returns provider-agnostic options the
- * caller spreads into `streamText({ providerOptions })`. Fully defensive: any
- * miss (disabled, wrong provider, small doc, no text, API failure) returns an
- * empty result and the caller inlines the document text as before.
+ * Decide what, if anything, to ask the provider for regarding the CURRENT
+ * document. Returns provider-agnostic options the caller spreads into
+ * `streamText({ providerOptions })`. Fully defensive: any miss (disabled, wrong
+ * provider, small doc, no text) returns an empty result and the caller inlines
+ * the document text as before.
  */
 export async function resolveDocumentCache(params: {
   provider: AIProvider;
@@ -674,22 +559,29 @@ export async function resolveDocumentCache(params: {
   if (eligibility === 'too_small') return {};
 
   if (provider === AIProvider.GOOGLE) {
-    const cache = await ensureGeminiDocumentCache({ documentId: currentDocumentId, text: text!, redis });
-    if (!cache) return {};
-    return {
-      providerOptions: { google: { cachedContent: cache.cacheName } },
-      excludeDocumentId: currentDocumentId
-    };
+    // Nothing to ask for, and that is the correct behaviour — not a gap.
+    //
+    // Gemini caches the request prefix automatically, so the document earns its
+    // discount by staying INLINE where the prefix can cover it (measured 92% of
+    // a 53k-token prompt served cached from turn 2; see the module header).
+    //
+    // The alternative — a `cachedContents` handle via
+    // `providerOptions.google.cachedContent` — is not merely unnecessary, it is
+    // a hard 400: "CachedContent can not be used with GenerateContent request
+    // setting system_instruction, tools or tool_config". This agent sends both
+    // on every turn. Returning `{}` here is what keeps that request legal.
+    //
+    // Note there is deliberately NO `excludeDocumentId`: dropping the text from
+    // the prompt would leave the agent with no document at all.
+    return {};
   }
 
   // Anthropic-compatible (MiniMax, Claude).
   //
-  // CRITICAL: unlike the Gemini backend (which stores the document in a separate
-  // server-side `cachedContent` resource and references it by name), the
-  // Anthropic-compatible backend has NO standalone cache resource. The "cache"
-  // here is just a `cache_control: ephemeral` hint attached to a content block
-  // in the request — MiniMax then caches THAT BLOCK's tokens on its end and
-  // bills them at ~10% on subsequent reads.
+  // The "cache" here is just a `cache_control: ephemeral` hint attached to a
+  // content block in the request — MiniMax then caches THAT BLOCK's tokens on
+  // its end and bills them at ~10% on subsequent reads. Unlike Gemini, nothing
+  // happens unless we ask.
   //
   // Implication: the document text MUST remain inline (so it can be cached).
   // Setting `excludeDocumentId` would remove the document from the prompt
@@ -702,7 +594,7 @@ export async function resolveDocumentCache(params: {
   // served from cache at ~10% cost.
   // No handle is written here. Asking for the cache is just the hint below;
   // whether a cache actually exists is only knowable from the usage numbers on
-  // the response, which the caller feeds back via `recordAnthropicCacheHit`.
+  // the response, which the caller feeds back via `recordObservedCacheHit`.
   return {
     providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } }
   };
