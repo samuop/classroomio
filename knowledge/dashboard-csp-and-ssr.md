@@ -169,3 +169,44 @@ docker exec cio-postgres psql -U postgres -d classroomio -c '\dt'
 Same shape as §1: **check the layer that actually failed before rewriting the
 layer you suspect.** Reproduce with deliberately wrong credentials — if bad
 credentials give 500 instead of 401, the failure is infrastructure, not logic.
+
+## 6. A 500 the API never saw: the proxy's 512 KB body limit
+
+Attaching a 2.4 MB PDF to a course's Sources failed with a generic 500, and
+`api-out.log` had **no record of the request** — the last `POST /agent/upload`
+in it was a week old. That absence is the clue: the browser talks to the API
+through `/proxy` on the same origin (see `getRequestBaseUrl`), so every upload
+crosses the dashboard first, and adapter-node caps request bodies at **512 KB**
+by default.
+
+```
+dashboard-error.log:
+  msg: 'Content-length of 2486543 exceeds limit of 524288 bytes.'
+  at get_raw_body (build/handler.js:972)
+  at getRequest (build/handler.js:1044)
+```
+
+Two things make it nasty. The check runs inside `getRequest`, **before any
+route handler**, so it cannot be caught or turned into a friendly 413 by
+application code. And the upload dialog advertises "PDF, DOCX o PPTX de hasta
+25MB" — the UI promised fifty times what the transport allowed.
+
+**Fix**: `BODY_SIZE_LIMIT` on the dashboard's `.env` (written by the deploy
+workflow). Set to 32 MB so the real ceiling is the application's own
+`MAX_AGENT_DOCUMENT_SIZE` (25 MB) and an oversized file gets the API's
+explanatory 413 instead. Nginx was never the constraint — `client_max_body_size`
+is already 200–500 MB in `/etc/nginx/sites-available/classroomio`.
+
+**How to tell this class of failure apart from a real API error**: grep the API
+log for the request. If it is not there at all, stop looking at the API — the
+request died in Nginx or in the dashboard proxy. Same lesson as §1 and §5:
+check the layer that actually failed.
+
+A quick probe that needs no session, since the limit is evaluated before auth:
+
+```bash
+head -c 1048576 /dev/zero > 1mb.bin
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  'https://learn.tensor.com.ar/proxy/agent/upload?courseId=test' -F 'file=@1mb.bin'
+# 500 → the body limit is still biting.  403/401 → the body got through.
+```
