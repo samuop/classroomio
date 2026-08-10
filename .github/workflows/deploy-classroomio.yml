@@ -153,6 +153,7 @@ jobs:
       # sabe recrear pero no tiene por qué tener que hacerlo.)
       - name: Rsync to VPS
         run: |
+          codigo=0
           for intento in 1 2 3; do
             rsync -az --delete \
               --timeout=60 \
@@ -168,10 +169,20 @@ jobs:
               --exclude='infra/minio.env' \
               ./ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/ && exit 0
-            echo "::warning::rsync falló (intento $intento/3); reintentando en 30s"
+            codigo=$?
+            echo "::warning::rsync falló con código $codigo (intento $intento/3); reintentando en 30s"
             sleep 30
           done
-          echo "::error::rsync falló tres veces seguidas: la red al VPS está caída, no es el código"
+
+          # El código de salida importa, y este mensaje solía ignorarlo: decía
+          # "la red está caída" pasara lo que pasara. Un día el rsync moría por
+          # permisos y ese texto mandó a diagnosticar conectividad durante media
+          # hora, con el servidor respondiendo perfecto todo el tiempo.
+          if [ "$codigo" = "23" ]; then
+            echo "::error::rsync no pudo escribir algunos archivos (código 23). Casi siempre es PROPIEDAD, no red: algo dentro de /var/www/classroomio quedó creado por otro usuario (típicamente root, entrando a mano por SSH) y ${{ secrets.VPS_USER }} no lo puede sobrescribir. Para verlo: find /var/www/classroomio -not -user ${{ secrets.VPS_USER }} -not -path '*/node_modules/*' -not -path '*/.git/*'"
+          else
+            echo "::error::rsync falló tres veces con código $codigo. Ahí sí mirá la conectividad al puerto 22 antes que el código."
+          fi
           exit 1
 
       # ── 7. Escribir los DOS .env en sus rutas ────────────────────────────
