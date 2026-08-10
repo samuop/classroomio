@@ -1604,8 +1604,18 @@ const agentCoreRouter = new Hono()
                   items: planProgress.items
                 }
               : undefined,
-            continuation:
-              completedStepCount >= maxStepsForRound
+            // Teacher-only. Every `continuation` reason drives the same UI
+            // affordance, and that affordance sends "Continue implementing the
+            // plan from where you left off" — a build instruction. A learner has
+            // no plan to implement, so offering it would be nonsense in their
+            // chat, and the round that ends at the cap should simply end.
+            //
+            // This never surfaced before because a learner round shared the
+            // 40-step build budget and never came near it. Giving the tutor its
+            // own, much smaller cap is exactly what would have started showing
+            // learners a Continue button.
+            continuation: !isStudentRound
+              ? completedStepCount >= maxStepsForRound
                 ? {
                     reason: 'step_limit' as const,
                     maxSteps: maxStepsForRound,
@@ -1632,6 +1642,7 @@ const agentCoreRouter = new Hono()
                         finishReason
                       }
                     : undefined
+              : undefined
           };
         }
       });

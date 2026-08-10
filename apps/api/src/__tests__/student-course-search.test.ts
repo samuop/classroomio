@@ -141,8 +141,11 @@ describe('learner-round budgets', () => {
     expect(MAX_STEPS_PER_ROUND_STUDENT).toBeLessThan(MAX_STEPS_PER_ROUND);
   });
 
-  it('still leaves room for search → read → read → answer', () => {
-    expect(MAX_STEPS_PER_ROUND_STUDENT).toBeGreaterThanOrEqual(4);
+  it('still leaves room for search → read → read → answer, with slack', () => {
+    // A working tutor uses three to five steps, eight when thorough. The cap is
+    // a backstop against a retry loop, not a budget the tutor should feel: a few
+    // unused steps cost nothing, a truncated answer costs a learner the answer.
+    expect(MAX_STEPS_PER_ROUND_STUDENT).toBeGreaterThanOrEqual(10);
   });
 
   it('caps learner output below the lesson-HTML ceiling but above a long answer', () => {

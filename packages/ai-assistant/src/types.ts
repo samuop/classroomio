@@ -269,15 +269,20 @@ export const MAX_STEPS_PER_ROUND = 40;
 
 /**
  * The learner-facing tutor answers questions; it does not build anything. Its
- * shape is search → read a lesson or two → answer, so 8 steps is generous.
+ * shape is search → read a lesson or two → answer: three to five steps, and
+ * eight even when it is being thorough.
  *
  * The build budget was never meant for it — the caps were simply not per-role.
  * That mattered because every step re-sends the whole prefix, so a tutor stuck
  * in a retry loop (asking `search_course` again and again because the course is
- * only half indexed) could spend ~40 requests on ONE learner question. The cap
- * is the backstop for that; it is not reached by a tutor that is working.
+ * only half indexed) could spend ~40 requests on ONE learner question.
+ *
+ * Set at 12 rather than 8 because this cap is in front of real learners, and the
+ * two failure modes are not symmetric: a few unused steps cost nothing, while
+ * one truncated answer is a learner told less than the course knows. Twelve is
+ * still ~70% off the build budget and roughly triple what a working tutor uses.
  */
-export const MAX_STEPS_PER_ROUND_STUDENT = 8;
+export const MAX_STEPS_PER_ROUND_STUDENT = 12;
 
 /**
  * Output ceiling for a learner answer. The tutor's own settings ask for 1–3
