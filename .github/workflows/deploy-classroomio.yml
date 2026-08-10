@@ -138,6 +138,19 @@ jobs:
       # entera por un corte de un minuto.
       #
       # rsync reanuda: lo ya copiado en un intento previo no se vuelve a mandar.
+      #
+      # Los .env van EXCLUIDOS, y eso no es una optimización: es lo que evita
+      # dejar producción sin variables de entorno. Están gitignorados, así que
+      # `--delete` los borraba en cada deploy y el paso 7 los reescribía un
+      # segundo después. Mientras el rsync anduviera, nadie lo notaba. El día que
+      # falló (2026-08-10), el borrado ya había ocurrido y el paso que los
+      # recrea nunca corrió: el servidor quedó con los procesos vivos —
+      # sostenidos por lo que dotenv ya tenía en memoria— y sin un solo .env en
+      # disco. Cualquier reinicio lo habría tumbado, y los valores viven en un
+      # secreto de GitHub que no se puede volver a leer desde el servidor.
+      # Excluirlos hace que un rsync fallido no toque nada que no se pueda
+      # reconstruir. (Vale lo mismo para infra/minio.env, que deploy-remote.sh
+      # sabe recrear pero no tiene por qué tener que hacerlo.)
       - name: Rsync to VPS
         run: |
           for intento in 1 2 3; do
@@ -150,6 +163,9 @@ jobs:
               --exclude='**/.svelte-kit' \
               --exclude='**/.turbo' \
               --exclude='**/*.tsbuildinfo' \
+              --exclude='.env' \
+              --exclude='**/.env' \
+              --exclude='infra/minio.env' \
               ./ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/ && exit 0
             echo "::warning::rsync falló (intento $intento/3); reintentando en 30s"
