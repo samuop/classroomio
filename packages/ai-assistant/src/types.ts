@@ -267,6 +267,27 @@ export const DOCUMENT_REDIS_TTL = 3600;
  */
 export const MAX_STEPS_PER_ROUND = 40;
 
+/**
+ * The learner-facing tutor answers questions; it does not build anything. Its
+ * shape is search → read a lesson or two → answer, so 8 steps is generous.
+ *
+ * The build budget was never meant for it — the caps were simply not per-role.
+ * That mattered because every step re-sends the whole prefix, so a tutor stuck
+ * in a retry loop (asking `search_course` again and again because the course is
+ * only half indexed) could spend ~40 requests on ONE learner question. The cap
+ * is the backstop for that; it is not reached by a tutor that is working.
+ */
+export const MAX_STEPS_PER_ROUND_STUDENT = 8;
+
+/**
+ * Output ceiling for a learner answer. The tutor's own settings ask for 1–3
+ * sentences ("short") up to a structured explanation ("long"); 4096 tokens is
+ * roughly 3,000 words, well past the longest of those. The 16k build ceiling
+ * exists for turns that emit full lesson HTML for many sections, which the
+ * tutor never does — leaving it that high only widens a runaway.
+ */
+export const MAX_OUTPUT_TOKENS_STUDENT = 4096;
+
 /** Supported MIME types for document upload */
 export const SUPPORTED_DOCUMENT_TYPES = [
   'application/pdf',

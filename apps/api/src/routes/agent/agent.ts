@@ -74,6 +74,8 @@ import {
   AgentRole,
   AIProvider,
   MAX_STEPS_PER_ROUND,
+  MAX_STEPS_PER_ROUND_STUDENT,
+  MAX_OUTPUT_TOKENS_STUDENT,
   getCourseTemplate,
   resolveAgentContextBudget,
   type AgentContext,
@@ -1012,6 +1014,15 @@ const agentCoreRouter = new Hono()
       const isAnthropic = providerConfig.provider === AIProvider.ANTHROPIC;
       const isAnthropicCompatible = isAnthropic || providerConfig.provider === AIProvider.MINIMAX;
 
+      // Budgets are per ROLE, not global. The tutor a learner talks to used to
+      // inherit the course-builder's 40 steps and 16k output tokens, which is
+      // the wrong shape of permission entirely: it answers a question, it does
+      // not build a course. Since every step re-sends the whole prefix, that
+      // gave one learner question a worst case of ~40 full-price requests.
+      const isStudentRound = role === AgentRole.STUDENT;
+      const maxStepsForRound = isStudentRound ? MAX_STEPS_PER_ROUND_STUDENT : MAX_STEPS_PER_ROUND;
+      const maxOutputTokens = isStudentRound ? MAX_OUTPUT_TOKENS_STUDENT : 16384;
+
       // 1h TTL keeps the prefix warm across tool-execution gaps in long agent
       // runs. Break-even is 3 requests within the hour; well under most plan-
       // execution loops. Applies to BOTH Anthropic and MiniMax — they share the
@@ -1310,13 +1321,17 @@ const agentCoreRouter = new Hono()
         // MiniMax-M3 has a much higher ceiling, so 16384 is a safe upper bound
         // for course-building turns. Other providers (Gemini Flash-Lite,
         // OpenAI) just clamp this to their own max without harm.
-        maxOutputTokens: 16384,
+        //
+        // The learner-facing tutor gets its own, much smaller ceiling: it
+        // answers questions rather than emitting lesson HTML. See
+        // MAX_OUTPUT_TOKENS_STUDENT.
+        maxOutputTokens: maxOutputTokens,
         system: systemContent,
         messages: modelMessages,
         tools: agentTools,
         ...(activeToolNames ? { activeTools: activeToolNames as any } : {}),
         ...(providerOptions ? { providerOptions } : {}),
-        stopWhen: stepCountIs(MAX_STEPS_PER_ROUND),
+        stopWhen: stepCountIs(maxStepsForRound),
         // Paso 2 (context diet, intra-round): a build round runs up to 40 steps in
         // one loop, and by default every step re-sends ALL prior steps' tool calls
         // verbatim — including full lesson-HTML inputs and 150KB fetched docs. From
@@ -1590,10 +1605,10 @@ const agentCoreRouter = new Hono()
                 }
               : undefined,
             continuation:
-              completedStepCount >= MAX_STEPS_PER_ROUND
+              completedStepCount >= maxStepsForRound
                 ? {
                     reason: 'step_limit' as const,
-                    maxSteps: MAX_STEPS_PER_ROUND,
+                    maxSteps: maxStepsForRound,
                     finishReason
                   }
                 : planIncomplete

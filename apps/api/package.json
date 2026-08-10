@@ -19,7 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "upload:openapi": "tsx scripts/upload-openapi-spec.ts"
+    "upload:openapi": "tsx scripts/upload-openapi-spec.ts",
+    "agent:reindex-lessons": "tsx src/scripts/reindex-lessons.ts"
   },
   "repository": {
     "type": "git",

@@ -13,6 +13,11 @@ import { AppError } from '@api/utils/errors';
 import { AgentEvent, trackAgentEvent } from '@api/utils/tinybird';
 import { verifyExerciseBelongsToCourse, verifyLessonBelongsToCourse } from './chat-context';
 import { semanticSearchCourse } from './embeddings';
+import {
+  dedupeByLesson,
+  mergeCourseSearchResults,
+  type CourseSearchHit
+} from './course-search-merge';
 import type { TLocale } from '@db/types';
 
 /**
@@ -24,6 +29,13 @@ import type { TLocale } from '@db/types';
  */
 
 const SEARCH_SNIPPET_RADIUS = 80;
+
+/**
+ * How many chunks to pull per requested result before collapsing them by
+ * lesson. Three covers the usual case of one lesson owning a topic without
+ * making pgvector scan much more than it already does.
+ */
+const SEMANTIC_CHUNK_OVERFETCH = 3;
 
 function logToolEvent(
   phase: 'start' | 'success' | 'error',
@@ -119,6 +131,53 @@ function makeSnippet(text: string, query: string, radius: number = SEARCH_SNIPPE
   const prefix = start > 0 ? '…' : '';
   const suffix = end < normalized.length ? '…' : '';
   return `${prefix}${normalized.slice(start, end)}${suffix}`;
+}
+
+/**
+ * Literal search over this course's exercises. Separate from the lesson search
+ * because lessons have embeddings and exercises do not, so the two can never
+ * share a ranking — but both have to run, always. See the comment in
+ * `search_course`.
+ *
+ * Never throws: exercises widen the answer, they are not the answer. A failure
+ * here must degrade to "no exercises matched" rather than take the lesson
+ * results down with it — and it must not surface as "semantic search failed"
+ * either, which is what an exception thrown inside the caller's try block would
+ * be logged as.
+ */
+async function searchExercises(
+  courseId: string,
+  query: string,
+  limit: number
+): Promise<CourseSearchHit[]> {
+  const pattern = `%${query}%`;
+
+  try {
+    const matches = await db
+      .select({
+        id: schema.exercise.id,
+        title: schema.exercise.title,
+        description: schema.exercise.description
+      })
+      .from(schema.exercise)
+      .where(
+        and(
+          eq(schema.exercise.courseId, courseId),
+          or(ilike(schema.exercise.title, pattern), ilike(schema.exercise.description, pattern))
+        )
+      )
+      .limit(limit);
+
+    return matches.map((em) => ({
+      type: 'exercise' as const,
+      id: em.id,
+      title: em.title,
+      snippet: makeSnippet(em.description ?? em.title ?? '', query)
+    }));
+  } catch (error) {
+    console.warn('[search_course] exercise search failed, returning lessons only:', error);
+    return [];
+  }
 }
 
 const listCourseOutlineParam = z.object({});
@@ -240,12 +299,33 @@ export function buildStudentAgentTools(
         return executeStudentTool('search_course', { orgId, userId, courseId, args }, async () => {
           const limit = args.limit ?? 8;
 
-          // Primary path: semantic (vector) search over indexed lesson chunks.
-          // Matches by meaning, so synonyms/paraphrase work. Falls through to the
-          // literal ILIKE search below if embeddings are unavailable or nothing
-          // is indexed for this course yet.
+          // Exercises are ALWAYS searched, on every path.
+          //
+          // They used to be searched only in the literal fallback, so the moment
+          // a course had indexed lessons the semantic branch returned and no
+          // exercise could ever come back — while the tool description promised
+          // "lessons and exercises". The learner asked about an exercise, got an
+          // empty result the model had no reason to doubt, and was told the
+          // material is not in the course. There is no exercise embedding table,
+          // so literal matching is what we have for them.
+          const exerciseSearch = searchExercises(courseId, args.query, limit);
+
+          // Primary path for lessons: semantic (vector) search over indexed
+          // chunks. Matches by meaning, so synonyms/paraphrase work. Falls
+          // through to the literal ILIKE search below if embeddings are
+          // unavailable or nothing is indexed for this course yet.
+          //
+          // Asks for more chunks than it needs because chunks are not lessons: a
+          // thorough lesson wins several of them, and after deduping those
+          // collapse into one result. Fetching `limit` chunks would hand back
+          // three or four distinct lessons where the learner asked for eight.
           try {
-            const semantic = await semanticSearchCourse({ courseId, query: args.query, locale, limit });
+            const semantic = await semanticSearchCourse({
+              courseId,
+              query: args.query,
+              locale,
+              limit: limit * SEMANTIC_CHUNK_OVERFETCH
+            });
 
             if (semantic.length > 0) {
               const ids = [...new Set(semantic.map((s) => s.lessonId))];
@@ -255,14 +335,20 @@ export function buildStudentAgentTools(
                 .where(and(eq(schema.lesson.courseId, courseId), inArray(schema.lesson.id, ids)));
               const titleById = new Map(titles.map((t) => [t.id, t.title]));
 
-              return {
-                query: args.query,
-                results: semantic.map((s) => ({
+              // Already ordered closest-first, so deduping keeps each lesson's
+              // best-matching chunk.
+              const lessons = dedupeByLesson(
+                semantic.map((s) => ({
                   type: 'lesson' as const,
                   id: s.lessonId,
                   title: titleById.get(s.lessonId) ?? '',
                   snippet: makeSnippet(s.content, args.query)
                 }))
+              );
+
+              return {
+                query: args.query,
+                results: mergeCourseSearchResults(lessons, await exerciseSearch, limit)
               };
             }
           } catch (error) {
@@ -271,40 +357,24 @@ export function buildStudentAgentTools(
 
           const pattern = `%${args.query}%`;
 
-          const [lessonMatches, exerciseMatches] = await Promise.all([
-            db
-              .select({
-                id: schema.lesson.id,
-                title: schema.lesson.title,
-                content: schema.lessonLanguage.content
-              })
-              .from(schema.lesson)
-              .leftJoin(
-                schema.lessonLanguage,
-                and(eq(schema.lessonLanguage.lessonId, schema.lesson.id), eq(schema.lessonLanguage.locale, locale))
+          const lessonMatches = await db
+            .select({
+              id: schema.lesson.id,
+              title: schema.lesson.title,
+              content: schema.lessonLanguage.content
+            })
+            .from(schema.lesson)
+            .leftJoin(
+              schema.lessonLanguage,
+              and(eq(schema.lessonLanguage.lessonId, schema.lesson.id), eq(schema.lessonLanguage.locale, locale))
+            )
+            .where(
+              and(
+                eq(schema.lesson.courseId, courseId),
+                or(ilike(schema.lesson.title, pattern), ilike(schema.lessonLanguage.content, pattern))
               )
-              .where(
-                and(
-                  eq(schema.lesson.courseId, courseId),
-                  or(ilike(schema.lesson.title, pattern), ilike(schema.lessonLanguage.content, pattern))
-                )
-              )
-              .limit(limit),
-            db
-              .select({
-                id: schema.exercise.id,
-                title: schema.exercise.title,
-                description: schema.exercise.description
-              })
-              .from(schema.exercise)
-              .where(
-                and(
-                  eq(schema.exercise.courseId, courseId),
-                  or(ilike(schema.exercise.title, pattern), ilike(schema.exercise.description, pattern))
-                )
-              )
-              .limit(limit)
-          ]);
+            )
+            .limit(limit);
 
           const lessonsResult = lessonMatches.map((lm) => ({
             type: 'lesson' as const,
@@ -313,16 +383,10 @@ export function buildStudentAgentTools(
             snippet: makeSnippet(lm.content ?? lm.title ?? '', args.query)
           }));
 
-          const exercisesResult = exerciseMatches.map((em) => ({
-            type: 'exercise' as const,
-            id: em.id,
-            title: em.title,
-            snippet: makeSnippet(em.description ?? em.title ?? '', args.query)
-          }));
-
-          const merged = [...lessonsResult, ...exercisesResult].slice(0, limit);
-
-          return { query: args.query, results: merged };
+          return {
+            query: args.query,
+            results: mergeCourseSearchResults(lessonsResult, await exerciseSearch, limit)
+          };
         });
       }
     })
