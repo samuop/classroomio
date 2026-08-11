@@ -18,7 +18,13 @@ import {
   updateExerciseSectionMetadataService
 } from '@api/services/exercise/exercise';
 import { reorderCourseContent } from '@api/services/course/content';
-import { normalizeAgentLessonContent, repairSvgGeometry, validateSvgDiagram } from '@api/services/agent/lesson-content';
+import {
+  convertMarkdownMathToKatex,
+  normalizeAgentLessonContent,
+  repairSvgGeometry,
+  validateLessonMath,
+  validateSvgDiagram
+} from '@api/services/agent/lesson-content';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
 import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
@@ -100,6 +106,53 @@ function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
   }
 
   return String(value);
+}
+
+/**
+ * Normalize, save and check one lesson body — the single path for it.
+ *
+ * Shared by `update_lesson_content` and by `create_lesson` when it is handed a
+ * body, so the one-call shape cannot drift from the two-call one: same
+ * normalization, same diagram checks, same formula conversion.
+ */
+async function writeLessonBody(params: {
+  lessonId: string;
+  lessonTitle: string;
+  locale: string;
+  content: string;
+}): Promise<{ normalizedContent: string; svgWarnings: string[]; mathWarnings: string[] }> {
+  const normalizedContent = normalizeAgentLessonContent(params.content, params.lessonTitle);
+
+  await upsertLessonLanguageService(params.lessonId, {
+    locale: params.locale as 'en',
+    content: normalizedContent
+  });
+
+  // Problems the prompt forbids but nothing used to catch (labels below the
+  // readable size, rows stacked on top of each other, formulas KaTeX will never
+  // reach). Reported rather than repaired: fixing an overlap means moving a
+  // label, which needs to know what the diagram is saying. Handing the warning
+  // back lets the model correct its own work instead of shipping it broken.
+  return {
+    normalizedContent,
+    svgWarnings: validateSvgDiagram(normalizedContent),
+    mathWarnings: validateLessonMath(normalizedContent)
+  };
+}
+
+/** The `note` that goes with whatever came back broken, or nothing. */
+function contentWarningFields(warnings: { svgWarnings: string[]; mathWarnings: string[] }) {
+  const notes: string[] = [];
+  if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
+  if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
+
+  if (notes.length === 0) return {};
+
+  return {
+    ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
+    ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
+    note: `The lesson was saved, but ${notes.join(' and ')}. Fix that now with edit_lesson_content before moving on.`
+  };
 }
 
 function logAgentToolDebug(
@@ -422,7 +475,7 @@ export function buildAgentTools(
 
     create_lesson: tool({
       description:
-        'Create a new lesson within a section of this course. Use update_lesson_content after to add content.',
+        'Create a new lesson within a section of this course, and write its content in the SAME call by passing `content`. That one-call form is the normal way to build a planned lesson — creating the lesson empty and filling it with a follow-up update_lesson_content costs an extra round trip for nothing. Use update_lesson_content only to rewrite a lesson that already exists.',
       inputSchema: createLessonParam,
       execute: async (args) => {
         return executeAgentTool('create_lesson', { orgId, userId, courseId, args }, async () => {
@@ -434,12 +487,25 @@ export function buildAgentTools(
             // getLesson throws when missing; the binding was just verified, so a
             // failure here is a race, not a real absence — fall back to the args.
             const existing = await getLesson(boundId).catch(() => null);
+            const title = existing?.title ?? args.title;
+
+            // A retry after an interrupted round lands here. It still carries the
+            // body, and the lesson it belongs to may well be empty — so write it
+            // rather than returning early and stranding the content.
+            const written = args.content
+              ? await writeLessonBody({ lessonId: boundId, lessonTitle: title, locale: args.locale, content: args.content })
+              : null;
+
             return {
               id: boundId,
-              title: existing?.title ?? args.title,
+              title,
               order: existing?.order ?? args.order,
               reused: true,
-              note: 'This plan item was already built. Reusing the existing lesson — write its content with update_lesson_content instead of creating a duplicate.'
+              ...(written
+                ? { contentWritten: true, contentLength: written.normalizedContent.length, ...contentWarningFields(written) }
+                : {
+                    note: 'This plan item was already built. Reusing the existing lesson — write its content with update_lesson_content instead of creating a duplicate.'
+                  })
             };
           }
 
@@ -449,8 +515,30 @@ export function buildAgentTools(
             sectionId: args.sectionId,
             order: args.order
           });
+          // Bind before writing the body: if the content write fails, the retry
+          // has to find this lesson and fill it, not create a second one.
           await recordBinding(args.planKey, lesson.id);
-          return { id: lesson.id, title: lesson.title, order: lesson.order };
+
+          if (!args.content) {
+            return { id: lesson.id, title: lesson.title, order: lesson.order };
+          }
+
+          const written = await writeLessonBody({
+            lessonId: lesson.id,
+            lessonTitle: lesson.title,
+            locale: args.locale,
+            content: args.content
+          });
+
+          return {
+            id: lesson.id,
+            title: lesson.title,
+            order: lesson.order,
+            locale: args.locale,
+            contentWritten: true,
+            contentLength: written.normalizedContent.length,
+            ...contentWarningFields(written)
+          };
         });
       }
     }),
@@ -489,31 +577,21 @@ export function buildAgentTools(
         return executeAgentTool('update_lesson_content', { orgId, userId, courseId, args }, async () => {
           await verifyLessonBelongsToCourse(args.lessonId, courseId);
           const lesson = await getLesson(args.lessonId);
-          const normalizedContent = normalizeAgentLessonContent(args.content, lesson.title);
 
-          await upsertLessonLanguageService(args.lessonId, {
-            locale: args.locale as 'en',
-            content: normalizedContent
+          const written = await writeLessonBody({
+            lessonId: args.lessonId,
+            lessonTitle: lesson.title,
+            locale: args.locale,
+            content: args.content
           });
-          // Diagram problems the prompt forbids but nothing used to catch (labels
-          // below the readable size, rows stacked on top of each other). Reported
-          // rather than repaired: fixing an overlap means moving a label, which
-          // needs to know what the diagram is saying. Handing the warning back lets
-          // the model correct its own work instead of shipping a broken picture.
-          const svgWarnings = validateSvgDiagram(normalizedContent);
 
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
             locale: args.locale,
-            contentLength: normalizedContent.length,
+            contentLength: written.normalizedContent.length,
             updated: true,
-            ...(svgWarnings.length > 0
-              ? {
-                  svgWarnings,
-                  note: 'The lesson was saved, but the diagram(s) above will not render legibly. Fix them now with edit_lesson_content before moving on.'
-                }
-              : {})
+            ...contentWarningFields(written)
           };
         });
       }
@@ -557,7 +635,9 @@ export function buildAgentTools(
             );
           }
 
-          const repaired = args.html.includes('<svg') ? repairSvgGeometry(args.html) : args.html;
+          const repaired = convertMarkdownMathToKatex(
+            args.html.includes('<svg') ? repairSvgGeometry(args.html) : args.html
+          );
           // An empty replacement deletes the block; there is no id left to keep.
           const replacement = repaired.trim() ? preserveBlockId(repaired, args.blockId) : '';
           const updated = replaceLessonBlock(current, block, replacement);
@@ -571,8 +651,6 @@ export function buildAgentTools(
             content: updated
           });
 
-          const svgWarnings = replacement.includes('<svg') ? validateSvgDiagram(replacement) : [];
-
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
@@ -581,12 +659,13 @@ export function buildAgentTools(
             deleted: replacement === '',
             contentLength: updated.length,
             updated: true,
-            ...(svgWarnings.length > 0
-              ? {
-                  svgWarnings,
-                  note: 'The edit was saved, but the diagram will not render legibly. Fix it before moving on.'
-                }
-              : {})
+            // Only inspect what this edit wrote — see the note in
+            // edit_lesson_content about not sending the model after untouched
+            // parts of the lesson.
+            ...contentWarningFields({
+              svgWarnings: replacement.includes('<svg') ? validateSvgDiagram(replacement) : [],
+              mathWarnings: validateLessonMath(replacement)
+            })
           };
         });
       }
@@ -636,7 +715,9 @@ export function buildAgentTools(
           // Repair SVG geometry on the replacement fragment (edit_lesson_content is
           // often used to redo just a diagram); ensures the <svg> keeps viewBox +
           // explicit width/height so it isn't clipped. No-op for non-SVG fragments.
-          const newString = args.newString.includes('<svg') ? repairSvgGeometry(args.newString) : args.newString;
+          const newString = convertMarkdownMathToKatex(
+            args.newString.includes('<svg') ? repairSvgGeometry(args.newString) : args.newString
+          );
 
           // String replace (no regex) so $&, $1, $$ etc. in newString are not interpreted.
           const updated = args.replaceAll
@@ -652,11 +733,6 @@ export function buildAgentTools(
             content: updated
           });
 
-          // Only inspect what this edit wrote — warning about a pre-existing
-          // diagram elsewhere in the lesson would send the model chasing something
-          // the teacher didn't ask it to touch.
-          const svgWarnings = newString.includes('<svg') ? validateSvgDiagram(newString) : [];
-
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
@@ -664,12 +740,13 @@ export function buildAgentTools(
             replacements: args.replaceAll ? occurrences : 1,
             contentLength: updated.length,
             updated: true,
-            ...(svgWarnings.length > 0
-              ? {
-                  svgWarnings,
-                  note: 'The edit was saved, but the diagram will not render legibly. Fix it before moving on.'
-                }
-              : {})
+            // Only inspect what this edit wrote — warning about a pre-existing
+            // diagram elsewhere in the lesson would send the model chasing
+            // something the teacher didn't ask it to touch.
+            ...contentWarningFields({
+              svgWarnings: newString.includes('<svg') ? validateSvgDiagram(newString) : [],
+              mathWarnings: validateLessonMath(newString)
+            })
           };
         });
       }

@@ -49,3 +49,4 @@ export function buildContextMessage(
 
 export { buildTeacherSystemPrompt, buildStudentSystemPrompt, buildTeacherContextMessage, buildStudentContextMessage };
 export { SVG_DIAGRAM_RULES } from './svg-rules';
+export { MATH_FORMULA_RULES } from './math-rules';

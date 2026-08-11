@@ -64,7 +64,25 @@ export const createLessonParam = z.object({
   sectionId: z.string(),
   title: z.string().min(1),
   order: z.number().int().min(0),
-  planKey: planKeyParam
+  planKey: planKeyParam,
+  // Writing the body here instead of in a follow-up `update_lesson_content` call
+  // saves a whole round trip per lesson. A build round re-sends the entire
+  // context on every step (~25k tokens), so the second call costs that much to
+  // carry information the model already had when it made the first one.
+  content: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Lesson body HTML. Pass it here to create the lesson AND write its content in ONE call — this is the normal way to build a planned lesson. Same rules as update_lesson_content: body only, no lesson title, headings start at h3.'
+    ),
+  // Defaults to 'en' like every other content tool. Passing the course locale
+  // matters: content written under the wrong one is invisible to the editor and
+  // to RAG, which is how a course ended up with orphaned `en` rows once already.
+  locale: z
+    .string()
+    .default('en')
+    .describe('Locale for `content` — pass the course locale from the Current Context. Ignored when `content` is omitted.')
 });
 export const updateLessonParam = z
   .object({

@@ -58,7 +58,8 @@ export {
   buildContextMessage,
   buildTeacherContextMessage,
   buildStudentContextMessage,
-  SVG_DIAGRAM_RULES
+  SVG_DIAGRAM_RULES,
+  MATH_FORMULA_RULES
 } from './prompt';
 export type { TeacherPromptMode } from './prompt/teacher';
 

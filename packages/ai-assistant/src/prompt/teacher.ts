@@ -2,6 +2,7 @@ import { PREMIUM_QUESTION_TYPE_KEYS, QUESTION_TYPE_REGISTRY } from '@cio/questio
 import type { AgentContext } from '../types';
 import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId } from '../templates';
 import { SVG_DIAGRAM_RULES } from './svg-rules';
+import { MATH_FORMULA_RULES } from './math-rules';
 
 /**
  * The shared diagram rules, indented to sit as sub-bullets under the "use inline
@@ -12,6 +13,13 @@ import { SVG_DIAGRAM_RULES } from './svg-rules';
  */
 function indentSvgRules(): string {
   return SVG_DIAGRAM_RULES.split('\n')
+    .map((line) => `  ${line}`)
+    .join('\n');
+}
+
+/** Same arrangement as the diagram rules, under the "formulas" bullet. */
+function indentMathRules(): string {
+  return MATH_FORMULA_RULES.split('\n')
     .map((line) => `  ${line}`)
     .join('\n');
 }
@@ -217,9 +225,9 @@ Mentally verify, then return only if all are true:
    - **Pass the \`[key]\` shown beside an item as \`planKey\`** when you call \`create_section\`, \`create_lesson\`, or \`create_exercise\`. It makes the create idempotent: if that item was already built, the tool returns the existing row (\`reused: true\`) instead of creating a duplicate.
    - Create sections first
    - For each section, iterate through its items in order
-   - Items with type "lesson": use create_lesson, then update_lesson_content to write content
+   - Items with type "lesson": call \`create_lesson\` **with its \`content\` in the same call** — one call per lesson, not two. Creating the lesson empty and filling it with a follow-up \`update_lesson_content\` wastes a whole step per lesson and gets you nothing. Use \`update_lesson_content\` only to rewrite a lesson that already exists.
    - Items with type "exercise": use create_exercise with quiz questions (MCQ, true/false, etc.)
-   - Items with type "lesson" and hasExercise: true: create the lesson, write content, then also create a linked exercise
+   - Items with type "lesson" and hasExercise: true: create the lesson with its content in one call, then also create a linked exercise
    - **Comprehensive final exam (last plan section):** Use \`create_exercise\` with \`questions: []\` if you need an empty shell, then for **each prior course section** (every course outline section except the final exam section) call \`create_exercise_section\` with a title that reflects that section's topic, then \`add_questions\` **3–5** questions into that block (\`exerciseSectionId\` from \`get_exercise_details\`). Mix \`questionTypeId\` values across the whole exam. If you already added questions in \`create_exercise\`, assign them to the correct block or recreate structure as needed. If step limits interrupt, resume with \`get_exercise_details\` and continue until every prior section has a block with 3–5 questions.
 3. If the teacher asks to rename or otherwise edit an existing section or lesson, use update_section or update_lesson on the existing item instead of creating a new one
 4. Report progress as you go
@@ -390,7 +398,9 @@ When generating lesson content with update_lesson_content:
 - Use only these HTML elements: <h3>, <h4>, <h5> for section headings, <p> for paragraphs, <ul><li> and <ol><li> for lists, <strong> for bold, <em> for italic, <blockquote> for callouts, <code> for inline code, <pre><code> for code blocks, <a href="..."> for links
 - **Use inline <svg> diagrams generously** to make abstract or visual concepts concrete — flowcharts, timelines, labelled structures, before/after comparisons, simple charts, process steps. A lesson that teaches a process, a relationship, or a structure should almost always include at least one diagram, not just prose. **When a diagram would help, draw the actual <svg> — do not write a sentence telling the teacher to add one.** Follow these SVG rules exactly — they are what separates a clean diagram from a broken one:
 ${indentSvgRules()}
-- Do NOT use: <div>, <span>, <table>, <img>, <iframe>, <script>, <style>, or any custom elements. You CANNOT embed raster images (PNG/JPG), uploaded videos, or external media directly in lesson HTML.
+- **Formulas and mathematical notation** — lesson content is HTML, so markdown math does not render. Follow these rules exactly:
+${indentMathRules()}
+- Do NOT use: <div>, <table>, <img>, <iframe>, <script>, <style>, or any custom elements. The ONLY permitted <span> is the math node described above (\`<span data-type="inline-math" data-latex="…">\`) — no other <span> is allowed. You CANNOT embed raster images (PNG/JPG), uploaded videos, or external media directly in lesson HTML.
 - **Suggest audio-visual material in text ONLY for media you cannot embed** (uploaded video, external interactive resources, raster photos). This is the one case where a "suggested …" callout is correct — because you genuinely can't produce that media. It does NOT apply to diagrams or examples, which you must produce yourself (see SVG and "Produce, don't promise" above). When such external media would strengthen the lesson, add a short callout telling the teacher what to add and where — e.g. a <blockquote> like "📺 Suggested video: a 3–4 min walkthrough of <topic> — search YouTube for '<specific query>' and embed it here." or "🖼️ Suggested image: a screenshot of <specific screen/step>." Be specific about the content and the search query so the teacher can act on it. Use these sparingly (1–3 per lesson) and only where genuinely useful.
 - Use headings to break content into scannable sections
 - Include practical examples where relevant

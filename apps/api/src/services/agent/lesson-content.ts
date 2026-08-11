@@ -274,12 +274,163 @@ export function validateSvgDiagram(content: string): string[] {
   return warnings;
 }
 
+// ─── Math formulas ───────────────────────────────────────────────────────────
+
+/**
+ * Lesson math renders through KaTeX, which only looks at nodes shaped like
+ * `<span data-type="inline-math" data-latex="…">` (see `renderMathInElement` in
+ * @cio/ui, and ADD_ATTR in the sanitizer, which whitelists both attributes).
+ *
+ * Models write `$x$` instead, because that is what markdown training data looks
+ * like — and `$x$` is not markup, so it reaches the learner as literal dollar
+ * signs. Converting here rather than only asking the prompt not to do it: the
+ * prompt rule steers, this guarantees, and the same normalization runs for every
+ * writer (the agent, and any future import path).
+ */
+const PROTECTED_TEXT_TAGS = new Set(['code', 'pre', 'svg', 'script', 'style']);
+
+/**
+ * Applies `transform` to text nodes only — never inside a tag (which would
+ * corrupt attributes) and never inside code/pre/svg (where a `$` is content,
+ * not a delimiter).
+ */
+function mapTextNodes(html: string, transform: (text: string) => string): string {
+  const tagPattern = /<\/?([a-zA-Z][\w-]*)\b[^>]*>/g;
+
+  let result = '';
+  let cursor = 0;
+  let protectedDepth = 0;
+
+  for (const match of html.matchAll(tagPattern)) {
+    const text = html.slice(cursor, match.index);
+    result += protectedDepth > 0 ? text : transform(text);
+    result += match[0];
+    cursor = match.index + match[0].length;
+
+    if (PROTECTED_TEXT_TAGS.has(match[1].toLowerCase())) {
+      if (match[0].startsWith('</')) protectedDepth = Math.max(0, protectedDepth - 1);
+      else if (!match[0].endsWith('/>')) protectedDepth += 1;
+    }
+  }
+
+  const tail = html.slice(cursor);
+
+  return result + (protectedDepth > 0 ? tail : transform(tail));
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function mathNode(latex: string, display: boolean): string {
+  return `<span data-type="${display ? 'block' : 'inline'}-math" data-latex="${escapeAttribute(latex.trim())}"></span>`;
+}
+
+/**
+ * Is this `$…$` span really math, or a price?
+ *
+ * "$50" and "cuesta $30 y $40" must survive untouched, so a bare number is never
+ * math, and an operator alone is not enough (`$10-$20` would qualify otherwise).
+ * What does qualify: LaTeX syntax (backslash, braces, sub/superscript), a
+ * relation, or a single bare identifier like `N` — the exact shapes seen in real
+ * generated lessons.
+ */
+function looksLikeMath(inner: string): boolean {
+  if (/^[\d.,\s]+$/.test(inner)) return false;
+
+  return /[\\_^{}=/*+]/.test(inner) || /^[A-Za-z][A-Za-z0-9]{0,3}$/.test(inner);
+}
+
+function convertMathDelimiters(text: string): string {
+  return (
+    text
+      // Display math first — `$$…$$` would otherwise be eaten as two inline spans.
+      .replace(/\\\[([\s\S]{1,400}?)\\\]/g, (_full, latex: string) => mathNode(latex, true))
+      .replace(/\$\$([^$]{1,400}?)\$\$/g, (_full, latex: string) => mathNode(latex, true))
+      .replace(/\\\(([\s\S]{1,200}?)\\\)/g, (_full, latex: string) => mathNode(latex, false))
+      // Newlines are allowed inside the span: `mapTextNodes` hands over text
+      // nodes only, so a match can never run past the enclosing element.
+      .replace(/\$(?!\s)([^$]{1,120}?)(?<!\s)\$/g, (full, latex: string) =>
+        looksLikeMath(latex) ? mathNode(latex, false) : full
+      )
+  );
+}
+
+/**
+ * Rewrites markdown-style math into the KaTeX nodes the lesson renderer reads.
+ *
+ * Exported for the same reason as `repairSvgGeometry`: `edit_lesson_content` and
+ * `replace_lesson_block` write fragments straight into stored content without
+ * going through `normalizeAgentLessonContent`, so without this they would be the
+ * one way `$…$` still reaches a learner.
+ */
+export function convertMarkdownMathToKatex(content: string): string {
+  return mapTextNodes(content, convertMathDelimiters);
+}
+
+const LATEX_MARKERS = /\\(?:frac|sum|int|sqrt|alpha|beta|mu|sigma|pi|cdot|times|leq|geq|neq)\b|[_^]\{/;
+
+/**
+ * Formula problems left after conversion, handed back so the model can fix its
+ * own work — the same loop `validateSvgDiagram` runs for diagrams.
+ */
+export function validateLessonMath(content: string): string[] {
+  const warnings: string[] = [];
+
+  // Mirrors the converter's own judgement rather than its size limit: a `$…$`
+  // span that reads as maths but is too long to rewrite safely is exactly the
+  // case worth reporting, and "cuesta $50 y $60" still must not warn.
+  let leftover = 0;
+  mapTextNodes(content, (text) => {
+    const hasTexDelimiters = /\\\(|\\\[/.test(text);
+    const hasUnconverted = [...text.matchAll(/\$([^$]{1,400})\$/g)].some((match) => looksLikeMath(match[1]));
+
+    if (hasTexDelimiters || hasUnconverted) leftover += 1;
+
+    return text;
+  });
+
+  if (leftover > 0) {
+    warnings.push(
+      `${leftover} text block(s) still contain markdown-style math delimiters ($…$, \\(…\\) or \\[…\\]). Those render as literal dollar signs and backslashes for the learner. Rewrite each formula as <span data-type="inline-math" data-latex="…"></span> (or data-type="block-math" for a standalone equation).`
+    );
+  }
+
+  const codeMath = [...content.matchAll(/<(code|pre)\b[^>]*>([\s\S]*?)<\/\1>/gi)].filter((match) =>
+    LATEX_MARKERS.test(match[2])
+  );
+
+  if (codeMath.length > 0) {
+    warnings.push(
+      `${codeMath.length} code block(s) contain what looks like a formula rather than code. A formula inside <code> renders in monospace with the LaTeX showing. Move it to <span data-type="block-math" data-latex="…"></span>.`
+    );
+  }
+
+  // KaTeX only walks HTML: `renderMathInElement` queries for data-type="…-math"
+  // spans, and SVG <text> is not HTML, so it is never visited. LaTeX inside a
+  // diagram is therefore GUARANTEED to reach the learner as raw source — and
+  // since the source is far longer than the formula it denotes, it overruns the
+  // box it was measured for. Unicode is the only thing that renders in an SVG.
+  const svgLatex = [...content.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)].filter((match) =>
+    /\$[^$]{1,120}\$|\\\(|\\\[|\\[a-zA-Z]{2,}|[_^]\{/.test(match[0])
+  );
+
+  if (svgLatex.length > 0) {
+    warnings.push(
+      `${svgLatex.length} diagram(s) contain LaTeX inside SVG <text>. KaTeX never renders inside an SVG, so it shows as raw source AND overflows its box. Rewrite those labels with Unicode characters instead (χ² σ₀² α β μ σ ≤ ≥ ≠ √ Σ ∫ ± ∞), which render correctly in SVG.`
+    );
+  }
+
+  return warnings;
+}
+
 export function normalizeAgentLessonContent(content: string, lessonTitle: string): string {
   let normalizedContent = content.trim();
 
   normalizedContent = stripLeadingLessonTitle(normalizedContent, lessonTitle);
   normalizedContent = normalizeHeadingLevels(normalizedContent);
   normalizedContent = repairSvgGeometry(normalizedContent);
+  normalizedContent = convertMarkdownMathToKatex(normalizedContent);
 
   return normalizedContent.trim();
 }
