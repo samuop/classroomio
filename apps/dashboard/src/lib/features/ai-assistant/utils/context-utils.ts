@@ -22,6 +22,16 @@ export interface ContextUsage {
   /** Sources + system prompt + tool schemas: re-sent every turn, immune to compaction. */
   fixedTokens?: number;
   /**
+   * The course material alone, broken out of `fixedTokens`.
+   *
+   * It is the single reason the gauge swings: the pack rides along when the
+   * agent may need every source at once and is left out on a single-lesson
+   * edit, which moves the reading by tens of thousands of tokens between one
+   * message and the next. Without this line the teacher sees a number jump from
+   * 13% to 70% and back with nothing to attribute it to.
+   */
+  sourcesTokens?: number;
+  /**
    * Whether compaction is worth offering. False when the window is full of
    * material rather than conversation — there, the honest advice is to split
    * the course, not to summarize a short chat.
@@ -137,6 +147,7 @@ export function calculateContextUsage(messages: AiAssistantMessage[], contextWin
     isFull: percentage >= CONTEXT_FULL_THRESHOLD,
     compactableTokens,
     fixedTokens,
+    sourcesTokens: breakdown?.sourcesTokens,
     isCompactionWorthwhile: compactableShare === undefined || compactableShare >= COMPACTABLE_SHARE_THRESHOLD
   };
 }

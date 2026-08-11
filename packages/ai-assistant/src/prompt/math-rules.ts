@@ -6,6 +6,11 @@
  * in @cio/ui, and ADD_ATTR in the sanitizer, which whitelists both attributes.
  * Anything else reaches the learner as literal source.
  *
+ * The tags come from @tiptap/extension-mathematics, which parses inline math as
+ * `span[data-type="inline-math"]` and block math as `div[data-type="block-math"]`.
+ * The viewer is laxer than the editor here, so getting the tag wrong looks fine
+ * until a teacher opens the lesson — and then the node is dropped on save.
+ *
  * Every rule here was written against a defect seen in a real generated lesson:
  * `$\sigma_0^2$` printed with its dollar signs, a formula parked in a <code>
  * block, and LaTeX inside an SVG <text> where KaTeX can never reach it. The
@@ -14,7 +19,7 @@
  */
 export const MATH_FORMULA_RULES = `- **Never write \`$…$\`, \`$$…$$\`, \`\\(…\\)\` or \`\\[…\\]\`.** Those are markdown conventions; lesson content is HTML, so they reach the learner as literal dollar signs and backslashes. There is exactly one way to write a formula:
   - Inline, inside a sentence: \`<span data-type="inline-math" data-latex="\\sigma_0^2"></span>\`
-  - Standalone, on its own line: \`<span data-type="block-math" data-latex="\\chi^2 = \\frac{(n-1)S^2}{\\sigma_0^2}"></span>\`
+  - Standalone, on its own line: \`<div data-type="block-math" data-latex="\\chi^2 = \\frac{(n-1)S^2}{\\sigma_0^2}"></div>\` — a \`div\`, not a span, and never inside a \`<p>\`.
   - The LaTeX goes in the \`data-latex\` attribute and the element stays EMPTY. Escape \`"\` as \`&quot;\` inside the attribute.
 - **Never put a formula in a \`<code>\` or \`<pre>\` block.** Those are for code. A formula there renders in monospace with the LaTeX showing, which is the defect, not the fix.
 - **Never put LaTeX inside an \`<svg>\`.** KaTeX only walks HTML, and SVG \`<text>\` is not HTML — it is never visited, so the LaTeX shows as raw source AND overflows the box you sized for the rendered formula. Inside a diagram, write the symbols directly as Unicode: χ² σ₀² σ² α β μ ρ Σ √ ∫ ≤ ≥ ≠ ± ∞ → ×. Keep diagram labels to a short symbol or a plain word; put the real formula in a block-math span above or below the diagram.

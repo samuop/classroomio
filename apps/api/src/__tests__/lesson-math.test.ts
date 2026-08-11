@@ -30,6 +30,33 @@ describe('convertMarkdownMathToKatex — what the renderer needs', () => {
     expect(convert('<p>\\[x = y\\]</p>')).toContain('data-type="block-math"');
   });
 
+  /**
+   * The tag is what the EDITOR parses on (@tiptap/extension-mathematics:
+   * span[data-type="inline-math"], div[data-type="block-math"]). The viewer
+   * selects on the attribute alone, so a wrong tag renders fine and is then
+   * dropped the first time a teacher opens the lesson and saves.
+   */
+  it('emits a span for inline maths and a div for block maths', () => {
+    expect(convert('<p>$N$</p>')).toContain('<span data-type="inline-math"');
+    expect(convert('<p>\\[x = y\\]</p>')).toContain('<div data-type="block-math"');
+    expect(convert('<p>\\[x = y\\]</p>')).not.toContain('<span data-type="block-math"');
+  });
+
+  it('lifts a display formula out of the paragraph it owns, since a div cannot live in a p', () => {
+    expect(convert('<p>$$x = y$$</p>')).toBe('<div data-type="block-math" data-latex="x = y"></div>');
+  });
+
+  it('repairs block maths already stored as a span', () => {
+    expect(convert('<p><span data-type="block-math" data-latex="x = y"></span></p>')).toBe(
+      '<div data-type="block-math" data-latex="x = y"></div>'
+    );
+  });
+
+  it('leaves inline maths as the span it is meant to be', () => {
+    const node = '<p><span data-type="inline-math" data-latex="N"></span></p>';
+    expect(convert(node)).toBe(node);
+  });
+
   it('handles \\(…\\) inline delimiters', () => {
     expect(convert('<p>\\(\\chi^2 < \\chi^2_{1-\\alpha}\\)</p>')).toContain('data-type="inline-math"');
   });
@@ -47,6 +74,56 @@ describe('convertMarkdownMathToKatex — what the renderer needs', () => {
   });
 });
 
+/**
+ * Formulas parked in <code>. The model reaches for it to make a formula stand
+ * out on its own line, which renders in monospace with every backslash showing —
+ * 25 of the 32 lessons of the real course did it.
+ */
+describe('convertMarkdownMathToKatex — formulas rescued from <code>', () => {
+  it('rescues the display formula exactly as the course had it', () => {
+    const out = convert('<p><code>Mo = L_{i-1} + \\frac{\\Delta_1}{\\Delta_1 + \\Delta_2} \\cdot A_i</code><br>Donde…</p>');
+
+    expect(out).toContain('data-type="inline-math"');
+    expect(out).toContain('data-latex="Mo = L_{i-1} + \\frac{\\Delta_1}{\\Delta_1 + \\Delta_2} \\cdot A_i"');
+    expect(out).not.toContain('<code>');
+    expect(out).toContain('Donde…');
+  });
+
+  it('decodes the entities the stored HTML holds', () => {
+    expect(convert('<p><code>a &lt; b \\leq c</code></p>')).toContain('data-latex="a &lt; b \\leq c"');
+  });
+
+  it('leaves a code block that is really code', () => {
+    const code = '<pre><code>const media = xs.reduce((a, b) => a + b) / xs.length;</code></pre>';
+    expect(convert(code)).toBe(code);
+  });
+
+  it('leaves a regex alone — \\d is not a maths command', () => {
+    const code = '<p><code>\\d+\\.\\d{2}</code></p>';
+    expect(convert(code)).toBe(code);
+  });
+
+  it('leaves a multi-line snippet alone, however mathematical it looks', () => {
+    const code = '<pre><code>x = \\alpha\ny = \\beta</code></pre>';
+    expect(convert(code)).toBe(code);
+  });
+
+  it('leaves emphasised prose alone — no LaTeX, no formula', () => {
+    const code = '<p><code>Moda &lt; Mediana &lt; Media</code></p>';
+    expect(convert(code)).toBe(code);
+  });
+
+  it('leaves a code block holding markup alone', () => {
+    const code = '<pre><code><span>\\frac{a}{b}</span></code></pre>';
+    expect(convert(code)).toBe(code);
+  });
+
+  it('is idempotent over a rescued formula', () => {
+    const once = convert('<p><code>\\frac{a}{b}</code></p>');
+    expect(convert(once)).toBe(once);
+  });
+});
+
 describe('convertMarkdownMathToKatex — what it must NOT touch', () => {
   it('leaves prices alone', () => {
     const prose = '<p>El curso cuesta $50 y el otro $60.</p>';
@@ -58,9 +135,20 @@ describe('convertMarkdownMathToKatex — what it must NOT touch', () => {
     expect(convert(prose)).toBe(prose);
   });
 
-  it('never rewrites inside <code> or <pre>', () => {
+  it('never reads a $ inside code as a delimiter', () => {
     const code = '<pre><code>const total = $a + $b;</code></pre>';
     expect(convert(code)).toBe(code);
+  });
+
+  it('handles the real paragraph the defect was reported on', () => {
+    const out = convert(
+      '<blockquote><p><code>Mo = L_{i-1} + \\frac{\\Delta_1}{\\Delta_1 + \\Delta_2} \\cdot A_i</code><br>' +
+        'Donde $\\Delta_1 = f_i - f_{i-1}$ es la diferencia con la anterior.</p></blockquote>'
+    );
+
+    expect(out.match(/data-type="inline-math"/g)).toHaveLength(2);
+    expect(out).not.toContain('$');
+    expect(out).not.toContain('<code>');
   });
 
   it('never rewrites inside an <svg>', () => {

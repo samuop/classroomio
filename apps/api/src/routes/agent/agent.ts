@@ -98,6 +98,7 @@ import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-cal
 import { measureContextBreakdown } from '@api/services/agent/context-window';
 import {
   buildPlanProgressAnchor,
+  isChecklistWorthShowing,
   type PlanProgress,
   collectDocumentIds,
   getActiveCourseTemplateId,
@@ -920,6 +921,12 @@ const agentCoreRouter = new Hono()
       // decides whether the round should continue on its own.
       let planProgress: PlanProgress | undefined;
 
+      // What the UI draws, which is NOT the same thing: `planProgress` feeds the
+      // prompt anchor and the continuation logic on every round, while the
+      // checklist is only worth showing when it has news. Kept apart so making
+      // the UI quieter can never blind the agent to its own progress.
+      let checklistProgress: PlanProgress | undefined;
+
       // Coherence anchor: when a plan is being implemented, inject the REAL course
       // state (plan vs live structure — done/empty/missing per item) so the agent
       // can't lose track of progress when history is trimmed or falsely believe it
@@ -1387,6 +1394,10 @@ const agentCoreRouter = new Hono()
           // missing/empty, flag it so the UI can offer "Continue" — regardless of
           // whether the model stopped by choice or hit the step limit.
           if (approvedPlan) {
+            // Measured BEFORE the round's writes landed, so "did this round move
+            // the plan forward?" is answerable below.
+            const completedBefore = planProgress?.completed;
+
             try {
               const [finalItems, finalSections, finalRegistry] = await Promise.all([
                 getCourseContentItems(courseId),
@@ -1410,6 +1421,12 @@ const agentCoreRouter = new Hono()
                     pendingCount: finalProgress.pendingCount,
                     emptyCount: finalProgress.emptyCount
                   };
+                }
+
+                // A checklist is a PROGRESS report, not a permanent header — see
+                // `isChecklistWorthShowing`.
+                if (isChecklistWorthShowing(finalProgress, completedBefore)) {
+                  checklistProgress = finalProgress;
                 }
               }
             } catch (err) {
@@ -1595,13 +1612,13 @@ const agentCoreRouter = new Hono()
             // course. Replaces the checklist that used to be drawn from the model's
             // own update_course_todo_list output, which drifted from reality because
             // nothing forced the model to keep it current.
-            planProgress: planProgress
+            planProgress: checklistProgress
               ? {
-                  total: planProgress.total,
-                  completed: planProgress.completed,
-                  pendingCount: planProgress.pendingCount,
-                  emptyCount: planProgress.emptyCount,
-                  items: planProgress.items
+                  total: checklistProgress.total,
+                  completed: checklistProgress.completed,
+                  pendingCount: checklistProgress.pendingCount,
+                  emptyCount: checklistProgress.emptyCount,
+                  items: checklistProgress.items
                 }
               : undefined,
             // Teacher-only. Every `continuation` reason drives the same UI

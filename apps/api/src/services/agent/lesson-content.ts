@@ -322,8 +322,21 @@ function escapeAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * The tag is not cosmetic. The lesson EDITOR parses math with
+ * `span[data-type="inline-math"]` and `div[data-type="block-math"]`
+ * (@tiptap/extension-mathematics) — a `<span data-type="block-math">` matches
+ * neither, and since a math node is EMPTY (the formula lives in the attribute)
+ * an unrecognised one is not just unstyled, it is dropped: the formula would be
+ * destroyed the first time a teacher opened that lesson and saved.
+ *
+ * The viewer hid this, because `renderMathInElement` selects on the attribute
+ * alone and accepts either tag.
+ */
 function mathNode(latex: string, display: boolean): string {
-  return `<span data-type="${display ? 'block' : 'inline'}-math" data-latex="${escapeAttribute(latex.trim())}"></span>`;
+  const tag = display ? 'div' : 'span';
+
+  return `<${tag} data-type="${display ? 'block' : 'inline'}-math" data-latex="${escapeAttribute(latex.trim())}"></${tag}>`;
 }
 
 /**
@@ -357,15 +370,103 @@ function convertMathDelimiters(text: string): string {
 }
 
 /**
+ * LaTeX commands a formula actually uses. Deliberately a closed list rather than
+ * "any `\word`": a code sample containing the regex `\d+`, or a Windows path,
+ * must not be mistaken for maths.
+ */
+const MATH_MACROS =
+  /\\(?:d?frac|tfrac|sum|prod|int|sqrt|cdot|times|div|pm|mp|leq?|geq?|neq?|approx|equiv|infty|partial|nabla|bar|hat|vec|overline|underline|left|right|binom|l?dots|cdots|log|ln|exp|sin|cos|tan|lim|max|min|alpha|beta|gamma|delta|Delta|var?epsilon|zeta|eta|theta|Theta|lambda|Lambda|mu|nu|xi|rho|sigma|Sigma|tau|phi|Phi|chi|psi|Psi|omega|Omega|pi|Pi|mathrm|mathbb|mathcal|text|q?quad|to|rightarrow|in|notin|subset|cup|cap|forall|exists)\b/;
+
+/** Shapes that mean "this really is source code", checked before the macros. */
+const CODE_MARKERS =
+  /;\s*$|\/\/|\/\*|=>|::|#include|\b(?:function|const|let|var|def|class|import|export|return|print|println|console|printf|SELECT|INSERT|UPDATE|DELETE|public|private|static|void)\b/;
+
+function decodeBasicEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#3[49];/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function codeLooksLikeMath(inner: string): boolean {
+  // A formula is one line; a code sample rarely is. Cheap and very effective.
+  if (/[\r\n]/.test(inner)) return false;
+  if (CODE_MARKERS.test(inner)) return false;
+
+  return MATH_MACROS.test(inner) || /[_^]\{/.test(inner);
+}
+
+/**
+ * Rescues a formula parked in a `<code>` block.
+ *
+ * Models reach for `<code>` when they want a formula to stand out on its own
+ * line, which is exactly wrong: it renders in monospace with every backslash
+ * showing. Seen in 25 of the 32 lessons of one real course, so the prompt rule
+ * against it does not carry on its own.
+ *
+ * Rendered inline rather than as a block on purpose. An inline span is valid
+ * HTML wherever the `<code>` stood — a `<div>` inside a `<p>` would make the
+ * parser close the paragraph early and orphan the rest of the sentence — and
+ * these formulas sit next to a `<br>` or mid-sentence anyway. Inline KaTeX
+ * renders fractions and sums correctly; it only sets them tighter.
+ */
+function convertCodeBlockMath(content: string): string {
+  return content.replace(/<(code|pre)\b[^>]*>([\s\S]*?)<\/\1>/gi, (full, _tag: string, inner: string) => {
+    // Anything with markup inside is not a bare formula — leave it alone.
+    if (/<[a-zA-Z/]/.test(inner)) return full;
+
+    const latex = decodeBasicEntities(inner).trim();
+
+    return latex && codeLooksLikeMath(latex) ? mathNode(latex, false) : full;
+  });
+}
+
+/**
+ * Repairs block math written as a `<span>`.
+ *
+ * The shape this codebase emitted for one day, and the shape a model still
+ * produces from memory. The viewer renders it, so it looks correct — and the
+ * editor, which parses block math as a `div`, silently drops it on the next
+ * save. Only ever an empty node: one with content is something else.
+ */
+function repairBlockMathTag(content: string): string {
+  return content.replace(
+    /<span(\s[^>]*\bdata-type="block-math"[^>]*)><\/span>/gi,
+    (_full, attrs: string) => `<div${attrs}></div>`
+  );
+}
+
+/**
+ * Lifts a display formula out of a paragraph that holds nothing else.
+ *
+ * `block-math` is a `<div>` (see `mathNode`), and a `<div>` inside a `<p>` makes
+ * the parser close the paragraph early. When the formula IS the paragraph — the
+ * usual shape for display math — dropping the wrapper avoids that entirely.
+ */
+function hoistBlockMath(content: string): string {
+  return content.replace(
+    /<p\b[^>]*>\s*(<div data-type="block-math"[^>]*><\/div>)\s*<\/p>/gi,
+    (_full, node: string) => node
+  );
+}
+
+/**
  * Rewrites markdown-style math into the KaTeX nodes the lesson renderer reads.
  *
  * Exported for the same reason as `repairSvgGeometry`: `edit_lesson_content` and
  * `replace_lesson_block` write fragments straight into stored content without
  * going through `normalizeAgentLessonContent`, so without this they would be the
- * one way `$…$` still reaches a learner.
+ * one way `$…$` still reaches a learner. `backfill-lesson-math.ts` runs it over
+ * already-stored lessons, which is why it has to stay idempotent.
  */
 export function convertMarkdownMathToKatex(content: string): string {
-  return mapTextNodes(content, convertMathDelimiters);
+  // Code blocks first: `mapTextNodes` protects their insides, so rescuing them
+  // afterwards would leave any delimiters they hold behind.
+  const rescued = convertCodeBlockMath(repairBlockMathTag(content));
+
+  return hoistBlockMath(mapTextNodes(rescued, convertMathDelimiters));
 }
 
 const LATEX_MARKERS = /\\(?:frac|sum|int|sqrt|alpha|beta|mu|sigma|pi|cdot|times|leq|geq|neq)\b|[_^]\{/;
@@ -392,7 +493,7 @@ export function validateLessonMath(content: string): string[] {
 
   if (leftover > 0) {
     warnings.push(
-      `${leftover} text block(s) still contain markdown-style math delimiters ($…$, \\(…\\) or \\[…\\]). Those render as literal dollar signs and backslashes for the learner. Rewrite each formula as <span data-type="inline-math" data-latex="…"></span> (or data-type="block-math" for a standalone equation).`
+      `${leftover} text block(s) still contain markdown-style math delimiters ($…$, \\(…\\) or \\[…\\]). Those render as literal dollar signs and backslashes for the learner. Rewrite each formula as <span data-type="inline-math" data-latex="…"></span>, or <div data-type="block-math" data-latex="…"></div> for a standalone equation.`
     );
   }
 
@@ -402,7 +503,7 @@ export function validateLessonMath(content: string): string[] {
 
   if (codeMath.length > 0) {
     warnings.push(
-      `${codeMath.length} code block(s) contain what looks like a formula rather than code. A formula inside <code> renders in monospace with the LaTeX showing. Move it to <span data-type="block-math" data-latex="…"></span>.`
+      `${codeMath.length} code block(s) contain what looks like a formula rather than code. A formula inside <code> renders in monospace with the LaTeX showing. Move it to <span data-type="inline-math" data-latex="…"></span>, or <div data-type="block-math" data-latex="…"></div> if it stands on its own line.`
     );
   }
 

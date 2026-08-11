@@ -291,6 +291,25 @@ export interface PlanProgress {
   completed: number;
 }
 
+/**
+ * Whether this round's progress is worth drawing as a checklist.
+ *
+ * The anchor is measured on EVERY round for as long as an approved plan exists,
+ * which is right for the prompt and wrong for the UI: once a course was built,
+ * all of its rows reappeared under every later answer, including plain edit
+ * chat where they report nothing new. A checklist earns its place when there is
+ * still something outstanding, or when this round moved the count — the latter
+ * covering the round that reaches 100%, so completion still announces itself.
+ *
+ * `completedBefore` is undefined when the round started with no measurement to
+ * compare against; that counts as news rather than silence.
+ */
+export function isChecklistWorthShowing(progress: PlanProgress, completedBefore: number | undefined): boolean {
+  if (progress.pendingCount > 0 || progress.emptyCount > 0) return true;
+
+  return completedBefore === undefined || progress.completed !== completedBefore;
+}
+
 export function buildPlanProgressAnchor(
   plan: z.infer<typeof CoursePlanFieldsSchema> | undefined,
   sections: CourseSectionState[],

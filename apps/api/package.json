@@ -20,7 +20,8 @@
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
     "upload:openapi": "tsx scripts/upload-openapi-spec.ts",
-    "agent:reindex-lessons": "tsx src/scripts/reindex-lessons.ts"
+    "agent:reindex-lessons": "tsx src/scripts/reindex-lessons.ts",
+    "agent:backfill-lesson-math": "tsx src/scripts/backfill-lesson-math.ts"
   },
   "repository": {
     "type": "git",

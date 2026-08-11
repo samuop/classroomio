@@ -301,6 +301,7 @@
     "error_retry": "Reintentar",
     "context_usage_tooltip": "{used} / {max} tokens usados",
     "context_fixed": "Fijo: {tokens} — fuentes y prompt, se reenvían cada turno",
+    "context_sources": "De eso, {tokens} son las fuentes del curso. No viajan cuando estás editando una lección sola, por eso el número sube y baja.",
     "context_conversation": "Conversación: {tokens} — todo lo que puede liberar compactar",
     "context_compaction_wont_help": "Compactar casi no ayudaría acá: la ventana está ocupada por el material del curso, no por este chat. El camino es dividir el material en un segundo curso.",
     "context_full_title": "La ventana de contexto está llena",

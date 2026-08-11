@@ -32,12 +32,25 @@
       return [];
     }
 
-    return [
-      t.get('ai_assistant.context_fixed', { tokens: formatTokenCount(contextUsage.fixedTokens) }),
+    const lines = [t.get('ai_assistant.context_fixed', { tokens: formatTokenCount(contextUsage.fixedTokens) })];
+
+    // Named separately from the rest of the fixed cost because it is the part
+    // that moves: the pack is left out of a single-lesson edit, so the same
+    // conversation reads 70% on one turn and 13% on the next. Naming it is what
+    // turns an alarming jump into an explicable one.
+    if (contextUsage.sourcesTokens) {
+      lines.push(
+        t.get('ai_assistant.context_sources', { tokens: formatTokenCount(contextUsage.sourcesTokens) })
+      );
+    }
+
+    lines.push(
       t.get('ai_assistant.context_conversation', {
         tokens: formatTokenCount(contextUsage.compactableTokens)
       })
-    ];
+    );
+
+    return lines;
   });
 </script>
 

@@ -5036,6 +5036,7 @@
     "error_retry": "Retry",
     "context_usage_tooltip": "{used} / {max} tokens used",
     "context_fixed": "Fixed: {tokens} — sources and prompt, re-sent every turn",
+    "context_sources": "Of that, {tokens} is the course material. It is left out while you edit a single lesson, which is why the number rises and falls.",
     "context_conversation": "Conversation: {tokens} — all compacting can free",
     "context_compaction_wont_help": "Compacting would barely help here: the window is filled by course material, not by this chat. Splitting the material into a second course is the way forward.",
     "context_full_title": "Context window is full",
