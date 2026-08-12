@@ -2,7 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createMoonshotAI } from '@ai-sdk/moonshotai';
-import type { EmbeddingModel, LanguageModel } from 'ai';
+import type { EmbeddingModel, ImageModel, LanguageModel } from 'ai';
 import { AIProvider, type AIProviderConfig } from '../types';
 
 /**
@@ -22,6 +22,33 @@ export function getEmbeddingModel(): EmbeddingModel | null {
 
   const google = createGoogleGenerativeAI({ apiKey });
   return google.textEmbeddingModel(EMBEDDING_MODEL_NAME);
+}
+
+/**
+ * Image model for lesson illustrations ("Nano Banana 2").
+ *
+ * Google-only and independent of `CHAT_PROVIDER`, for the same reason as
+ * embeddings: it is the only configured provider that generates images, and the
+ * chat flag is about which model writes prose. `GOOGLE_API_KEY` is the same key
+ * the RAG already uses — there is not one key per service.
+ *
+ * `gemini-3.1-flash-image` at 1K is the deliberate middle tier: US$0.067 an
+ * image against US$0.0336 for the lite model and US$0.134 for pro. At one image
+ * per lesson a 49-lesson course costs ~US$3.28 — more than the entire text
+ * generation of that same course, which is why `MAX_IMAGES_PER_ROUND` exists.
+ * Images are billed per image, not per token, so they never touch the org's
+ * monthly token allowance.
+ */
+export const IMAGE_MODEL_NAME = 'gemini-3.1-flash-image';
+export const IMAGE_SIZE = '1K';
+
+export function getImageModel(): ImageModel | null {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+
+  const google = createGoogleGenerativeAI({ apiKey });
+
+  return google.image(process.env.GOOGLE_IMAGE_MODEL || IMAGE_MODEL_NAME);
 }
 
 /**

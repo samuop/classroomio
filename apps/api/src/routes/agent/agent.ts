@@ -988,7 +988,12 @@ const agentCoreRouter = new Hono()
           : buildAgentTools(orgId, user.id, courseId, messages, {
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
-              searchableDocumentId
+              searchableDocumentId,
+              // The thin-lesson check belongs to a full build and nowhere else:
+              // on a one-off edit the teacher may well be asking for something
+              // short, and the prompt explicitly forbids inflating an existing
+              // 600-word lesson into 3,000.
+              isBuilding: teacherPromptMode === 'build'
             });
 
       const contextManaged = await buildModelContextMessages({

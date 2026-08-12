@@ -149,6 +149,7 @@ export const ToolName = {
   ASK_TEMPLATE_QUESTIONS: 'ask_template_questions',
   ASK_DISCOVERY_QUESTIONS: 'ask_discovery_questions',
   FETCH_DOCUMENTATION_URL: 'fetch_documentation_url',
+  GENERATE_IMAGE: 'generate_image',
   // Student read tools (course-scoped, read-only)
   LIST_COURSE_OUTLINE: 'list_course_outline',
   READ_LESSON: 'read_lesson',

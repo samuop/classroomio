@@ -525,6 +525,53 @@ export function validateLessonMath(content: string): string[] {
   return warnings;
 }
 
+// ─── Lesson depth ────────────────────────────────────────────────────────────
+
+/**
+ * Words below which a lesson written during a full build is reported as thin.
+ *
+ * Measured, not guessed: across a real 32-lesson course the agent averaged 311
+ * words against a stated target of 1,500–3,000 — the longest lesson was 557.
+ * The prompt asks for depth in prose and then hedges it five ways, so on a small
+ * model the hedges win. Prose alone cannot fix that; a measurement can.
+ *
+ * Set well under the target on purpose. This is not "make it 2,000 words", it
+ * is "this is too thin to teach from" — a floor a genuinely concise lesson can
+ * still clear, so the warning stays rare and therefore worth reading.
+ */
+export const THIN_LESSON_WORD_COUNT = 700;
+
+/**
+ * Words of real prose in a lesson body.
+ *
+ * Diagrams are stripped first: an SVG is mostly coordinates, and counting them
+ * would let a lesson pass the floor on the strength of its markup. Attributes go
+ * with the tags for the same reason.
+ */
+export function countLessonWords(content: string): number {
+  const prose = content
+    .replace(/<svg\b[\s\S]*?<\/svg>/gi, ' ')
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+
+  return prose.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Thin-lesson warning, handed back through the same loop as the SVG and maths
+ * checks — the one mechanism in this agent that demonstrably changes what the
+ * model writes next.
+ */
+export function validateLessonDepth(content: string): string[] {
+  const words = countLessonWords(content);
+
+  if (words >= THIN_LESSON_WORD_COUNT) return [];
+
+  return [
+    `This lesson is ${words} words, which is too thin to learn from — a student reading only this would not be able to do the thing it teaches. Expand it now with edit_lesson_content: add a worked example with real numbers, a second sub-section that goes a level deeper, and a "Common pitfalls" or "Key takeaways" close. Do not pad with restatement; add material that teaches.`
+  ];
+}
+
 export function normalizeAgentLessonContent(content: string, lessonTitle: string): string {
   let normalizedContent = content.trim();
 

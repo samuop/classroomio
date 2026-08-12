@@ -486,3 +486,34 @@ export const reorderContentParam = z.object({
     .optional()
     .describe('Reorder or move lessons/exercises')
 });
+
+/**
+ * The subject is prose, not a style sheet: the service appends the house style
+ * and the no-text-in-the-image rule, so a caller that also describes those wastes
+ * prompt on instructions that are already there.
+ */
+export const generateImageParam = z.object({
+  subject: z
+    .string()
+    .min(12)
+    .max(600)
+    .describe(
+      'What the picture should show, in one or two plain sentences. Describe the SCENE — the objects, the setting, the action, the point of view. Do NOT ask for text, labels or numbers inside the image: they come out wrong and the lesson supplies its own wording around it.'
+    ),
+  lessonId: z
+    .string()
+    .optional()
+    .describe('The lesson this illustrates, when there is one. Used to group the stored file.'),
+  locale: z.string().default('en').describe('Locale of the lesson, from the Current Context.'),
+  aspectRatio: z
+    .enum(['16:9', '4:3', '1:1', '3:4'])
+    .default('16:9')
+    .describe('16:9 for a banner or a wide scene, 4:3 or 1:1 for an object or a portrait subject.'),
+  alt: z
+    .string()
+    .min(3)
+    .max(200)
+    .describe(
+      'Alt text describing the image for a student using a screen reader. Written in the lesson’s language.'
+    )
+});

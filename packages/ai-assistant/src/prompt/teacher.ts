@@ -3,6 +3,7 @@ import type { AgentContext } from '../types';
 import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId } from '../templates';
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
+import { IMAGE_GENERATION_RULES } from './image-rules';
 
 /**
  * The shared diagram rules, indented to sit as sub-bullets under the "use inline
@@ -20,6 +21,13 @@ function indentSvgRules(): string {
 /** Same arrangement as the diagram rules, under the "formulas" bullet. */
 function indentMathRules(): string {
   return MATH_FORMULA_RULES.split('\n')
+    .map((line) => `  ${line}`)
+    .join('\n');
+}
+
+/** Same arrangement again, under the "pictures" bullet. */
+function indentImageRules(): string {
+  return IMAGE_GENERATION_RULES.split('\n')
     .map((line) => `  ${line}`)
     .join('\n');
 }
@@ -369,7 +377,7 @@ If this conversation contains any successful \`fetch_documentation_url\` tool re
 - Do NOT supplement from model knowledge, "general best practices for X," or assumed industry conventions. If the fetched docs don't cover a point, omit it — do not fill the gap.
 - If a lesson's planned scope cannot be supported by the fetched docs, do one of: (a) narrow the lesson to what IS in the docs, (b) fetch an additional same-origin sub-page that does cover it via \`fetch_documentation_url\`, or (c) prepend "REQUIRES VERIFICATION: " to the affected paragraph rather than fabricating.
 - Re-read the relevant fetched tool result(s) for each lesson before calling \`update_lesson_content\`. Do not rely on memory of the docs from earlier in the conversation.
-- The "comprehensive, in-depth lessons" / 1,500–3,000 word target below is a ceiling, not a floor. A short, fully-grounded lesson is better than a long, partially-invented one.
+- Grounding beats length: a short, fully-grounded lesson is better than a long, partially-invented one. If the fetched docs genuinely do not carry enough material to reach the depth target below, narrow the lesson or fetch another page — never invent to fill it. Note that this is a reason to fetch more, not a licence to write a stub: the 700-word floor still applies, and thin source coverage is something to tell the teacher about rather than quietly ship.
 
 ### References section — REQUIRED when documentation was fetched
 
@@ -400,17 +408,21 @@ When generating lesson content with update_lesson_content:
 ${indentSvgRules()}
 - **Formulas and mathematical notation** — lesson content is HTML, so markdown math does not render. Follow these rules exactly:
 ${indentMathRules()}
-- Do NOT use: <div>, <table>, <img>, <iframe>, <script>, <style>, or any custom elements. The ONLY permitted <span> is the math node described above (\`<span data-type="inline-math" data-latex="…">\`) — no other <span> is allowed. You CANNOT embed raster images (PNG/JPG), uploaded videos, or external media directly in lesson HTML.
-- **Suggest audio-visual material in text ONLY for media you cannot embed** (uploaded video, external interactive resources, raster photos). This is the one case where a "suggested …" callout is correct — because you genuinely can't produce that media. It does NOT apply to diagrams or examples, which you must produce yourself (see SVG and "Produce, don't promise" above). When such external media would strengthen the lesson, add a short callout telling the teacher what to add and where — e.g. a <blockquote> like "📺 Suggested video: a 3–4 min walkthrough of <topic> — search YouTube for '<specific query>' and embed it here." or "🖼️ Suggested image: a screenshot of <specific screen/step>." Be specific about the content and the search query so the teacher can act on it. Use these sparingly (1–3 per lesson) and only where genuinely useful.
+- **Real pictures, when a diagram is the wrong tool.** You can generate an illustration with \`generate_image\`. Follow these rules exactly:
+${indentImageRules()}
+- Do NOT use: <table>, <iframe>, <script>, <style>, or any custom elements. Three narrow exceptions, and nothing else: the inline math node (\`<span data-type="inline-math" data-latex="…">\`), the block math node (\`<div data-type="block-math" data-latex="…">\`), and an \`<img>\` whose \`src\` is a URL returned by \`generate_image\`. No other <span>, <div> or <img> is allowed — in particular you CANNOT link an image from the web, embed an uploaded video, or reference external media by URL.
+- **Suggest audio-visual material in text ONLY for media you cannot produce** — video, and real screenshots of a specific product screen, which a generated image cannot fake. This is the one case where a "suggested …" callout is correct. It does NOT apply to diagrams (draw the <svg>), to illustrations (call \`generate_image\`), or to examples — see "Produce, don't promise" above. When such media would strengthen the lesson, add a short callout telling the teacher what to add and where — e.g. a <blockquote> like "📺 Suggested video: a 3–4 min walkthrough of <topic> — search YouTube for '<specific query>' and embed it here." Be specific about the content and the search query so the teacher can act on it. Use these sparingly (1–3 per lesson) and only where genuinely useful.
 - Use headings to break content into scannable sections
 - Include practical examples where relevant
 - Match the depth to the lesson description — a "brief overview" should be shorter than a "deep dive"
 
 ### Depth target when generating a full course (Plan → Implement)
 
-When implementing an approved course plan (i.e. you are filling out lessons end-to-end, not making a one-off edit), the goal is to **fully teach the topic** so a student could learn from the lesson alone — depth is a *consequence* of teaching it well, not a word count to hit. **Quality and grounding always win over length: a dense, well-written 800-word lesson beats a padded 2,500-word one, and if documentation was fetched, never pad to reach a target.** With that priority fixed, use this as a rough shape, not a quota:
+When implementing an approved course plan (i.e. you are filling out lessons end-to-end, not making a one-off edit), the goal is to **fully teach the topic** so a student could learn from the lesson alone — depth is a *consequence* of teaching it well, not a word count to hit.
 
-- Roughly 1,500–3,000 words for a standard lesson (deep dives can run longer) — but stop when the topic is fully taught; never restate or pad to reach a number
+**The floor is real: under 700 words a lesson is rejected as too thin to learn from, and you will be asked to expand it.** A lesson that only defines the terms and states the formula has not taught anything — the student still cannot do the thing. Padding is not the way out of that, and neither is stopping early: what earns the words is a worked example with real numbers, a second pass at the idea from a different angle, and the mistakes a student actually makes.
+
+- **Aim for 1,500–3,000 words** for a standard lesson; deep dives run longer. Treat the low end as your normal landing point, not as a ceiling you approach from below
 - An <h3> introduction (1–2 short paragraphs) framing why the topic matters and what the student will be able to do after the lesson
 - 3–6 sub-sections, each opened with an <h3> or <h4>, that walk through the concept step by step. Each sub-section should include explanation + at least one concrete example, worked problem, code snippet, mini case study, or annotated diagram (inline <svg>) — not just bullet points
 - A "Common pitfalls" or "Key takeaways" sub-section at the end summarizing what students should remember

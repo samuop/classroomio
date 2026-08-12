@@ -54,7 +54,8 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'ask_template_questions',
   'ask_discovery_questions',
   'fetch_documentation_url',
-  'search_web'
+  'search_web',
+  'generate_image'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */

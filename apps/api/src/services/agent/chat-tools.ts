@@ -22,9 +22,11 @@ import {
   convertMarkdownMathToKatex,
   normalizeAgentLessonContent,
   repairSvgGeometry,
+  validateLessonDepth,
   validateLessonMath,
   validateSvgDiagram
 } from '@api/services/agent/lesson-content';
+import { generateLessonImage, MAX_IMAGES_PER_ROUND } from '@api/services/agent/image-generation';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
 import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
@@ -47,6 +49,7 @@ import {
   emptyParam,
   exerciseReadParam,
   fetchDocumentationUrlParam,
+  generateImageParam,
   goLiveParam,
   lessonReadParam,
   reorderContentParam,
@@ -108,6 +111,15 @@ function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
   return String(value);
 }
 
+/** Attribute-safe text for the one element the agent is handed pre-built. */
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * Normalize, save and check one lesson body — the single path for it.
  *
@@ -120,7 +132,14 @@ async function writeLessonBody(params: {
   lessonTitle: string;
   locale: string;
   content: string;
-}): Promise<{ normalizedContent: string; svgWarnings: string[]; mathWarnings: string[] }> {
+  /** Only a full build gets the thin-lesson check — see `buildAgentTools`. */
+  checkDepth?: boolean;
+}): Promise<{
+  normalizedContent: string;
+  svgWarnings: string[];
+  mathWarnings: string[];
+  depthWarnings: string[];
+}> {
   const normalizedContent = normalizeAgentLessonContent(params.content, params.lessonTitle);
 
   await upsertLessonLanguageService(params.lessonId, {
@@ -130,27 +149,36 @@ async function writeLessonBody(params: {
 
   // Problems the prompt forbids but nothing used to catch (labels below the
   // readable size, rows stacked on top of each other, formulas KaTeX will never
-  // reach). Reported rather than repaired: fixing an overlap means moving a
-  // label, which needs to know what the diagram is saying. Handing the warning
-  // back lets the model correct its own work instead of shipping it broken.
+  // reach, a lesson too thin to teach from). Reported rather than repaired:
+  // fixing an overlap means moving a label, which needs to know what the diagram
+  // is saying. Handing the warning back lets the model correct its own work
+  // instead of shipping it broken.
   return {
     normalizedContent,
     svgWarnings: validateSvgDiagram(normalizedContent),
-    mathWarnings: validateLessonMath(normalizedContent)
+    mathWarnings: validateLessonMath(normalizedContent),
+    depthWarnings: params.checkDepth ? validateLessonDepth(normalizedContent) : []
   };
 }
 
 /** The `note` that goes with whatever came back broken, or nothing. */
-function contentWarningFields(warnings: { svgWarnings: string[]; mathWarnings: string[] }) {
+function contentWarningFields(warnings: {
+  svgWarnings: string[];
+  mathWarnings: string[];
+  depthWarnings?: string[];
+}) {
+  const depthWarnings = warnings.depthWarnings ?? [];
   const notes: string[] = [];
   if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
+  if (depthWarnings.length > 0) notes.push('it is too thin to teach from');
 
   if (notes.length === 0) return {};
 
   return {
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
+    ...(depthWarnings.length > 0 ? { depthWarnings } : {}),
     note: `The lesson was saved, but ${notes.join(' and ')}. Fix that now with edit_lesson_content before moving on.`
   };
 }
@@ -294,10 +322,21 @@ export function buildAgentTools(
   userId: string,
   courseId: string,
   priorMessages: unknown[],
-  _options?: { isOrgOnPaidPlan?: boolean; conversationId?: string | null; searchableDocumentId?: string | null }
+  _options?: {
+    isOrgOnPaidPlan?: boolean;
+    conversationId?: string | null;
+    searchableDocumentId?: string | null;
+    isBuilding?: boolean;
+  }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
   const searchableDocumentId = _options?.searchableDocumentId ?? null;
+  const isBuilding = _options?.isBuilding ?? false;
+
+  // Images are the only tool here that spends money per call rather than per
+  // token, so the guard has to live where the calls are counted. The tool set is
+  // rebuilt for each round, which makes this counter per-round by construction.
+  let imagesGenerated = 0;
   const runScope = { orgId, courseId, conversationId, userId };
 
   /**
@@ -369,6 +408,49 @@ export function buildAgentTools(
         });
       }
     }),
+    generate_image: tool({
+      description:
+        'Generate a real illustration (a raster picture) for a lesson and get back a permanent URL to embed with <img src="…">. Use it for what a diagram cannot show — a scene, an object, a place, an atmosphere, an analogy made visual. Do NOT use it for charts, flows, timelines, labelled structures or anything with data or text in it: those stay inline <svg>, which is sharper, editable, and free. Costs real money per call, so one image per lesson at most, and only where a picture genuinely teaches something.',
+      inputSchema: generateImageParam,
+      execute: async (args) => {
+        return executeAgentTool('generate_image', { orgId, userId, courseId, args }, async () => {
+          // Refused rather than thrown: an error would push the model to retry,
+          // which is precisely what must not happen when the reason is spend.
+          if (imagesGenerated >= MAX_IMAGES_PER_ROUND) {
+            return {
+              generated: false,
+              note: `This round has already generated its limit of ${MAX_IMAGES_PER_ROUND} images. Continue without one — write the lesson, or draw an inline <svg> if the idea is structural. Do not call generate_image again this round.`
+            };
+          }
+
+          if (args.lessonId) {
+            await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          }
+
+          const image = await generateLessonImage({
+            subject: args.subject,
+            courseId,
+            lessonId: args.lessonId,
+            locale: args.locale,
+            aspectRatio: args.aspectRatio
+          });
+
+          imagesGenerated += 1;
+
+          return {
+            generated: true,
+            url: image.url,
+            // Handed over ready to paste. The model is told never to invent an
+            // <img>, so giving it the exact element removes the temptation to
+            // improvise attributes the sanitizer would strip.
+            html: `<img src="${image.url}" alt="${escapeHtmlAttribute(args.alt)}" />`,
+            remaining: MAX_IMAGES_PER_ROUND - imagesGenerated,
+            note: 'Insert the `html` above into the lesson body where the picture belongs. Use it verbatim — a different src will not load.'
+          };
+        });
+      }
+    }),
+
     // `update_course_todo_list` used to live here. It was the model's own build
     // checklist, and it asked for a bookkeeping call after every created item —
     // out of a 40-step round, roughly a third spent narrating instead of
@@ -493,7 +575,13 @@ export function buildAgentTools(
             // body, and the lesson it belongs to may well be empty — so write it
             // rather than returning early and stranding the content.
             const written = args.content
-              ? await writeLessonBody({ lessonId: boundId, lessonTitle: title, locale: args.locale, content: args.content })
+              ? await writeLessonBody({
+                  lessonId: boundId,
+                  lessonTitle: title,
+                  locale: args.locale,
+                  content: args.content,
+                  checkDepth: isBuilding
+                })
               : null;
 
             return {
@@ -527,7 +615,8 @@ export function buildAgentTools(
             lessonId: lesson.id,
             lessonTitle: lesson.title,
             locale: args.locale,
-            content: args.content
+            content: args.content,
+            checkDepth: isBuilding
           });
 
           return {
@@ -582,7 +671,8 @@ export function buildAgentTools(
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
             locale: args.locale,
-            content: args.content
+            content: args.content,
+            checkDepth: isBuilding
           });
 
           return {

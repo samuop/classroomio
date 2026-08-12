@@ -40,8 +40,11 @@ export {
   pickAnyConfiguredProvider,
   resolveModelName,
   getEmbeddingModel,
+  getImageModel,
   EMBEDDING_MODEL_NAME,
   EMBEDDING_PROVIDER_OPTIONS,
+  IMAGE_MODEL_NAME,
+  IMAGE_SIZE,
   isAnthropicCompatibleProvider,
   ANTHROPIC_COMPATIBLE_PROVIDERS
 } from './providers';
@@ -59,7 +62,8 @@ export {
   buildTeacherContextMessage,
   buildStudentContextMessage,
   SVG_DIAGRAM_RULES,
-  MATH_FORMULA_RULES
+  MATH_FORMULA_RULES,
+  IMAGE_GENERATION_RULES
 } from './prompt';
 export type { TeacherPromptMode } from './prompt/teacher';
 

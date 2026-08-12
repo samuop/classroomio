@@ -240,6 +240,7 @@
         "fetch_documentation_url_with_url": "Leyendo {url}",
         "search_web": "Buscando en internet",
         "search_web_with_query": "Buscando: {query}",
+        "generate_image": "Generando una imagen",
         "replace_lesson_block": "Editando la lección"
       },
       "meta": {
@@ -276,6 +277,7 @@
         "ask_discovery_questions": "Preguntas de descubrimiento enviadas",
         "fetch_documentation_url": "Leer {url}",
         "search_web": "Búsqueda «{query}»: {count, plural, one {# resultado} other {# resultados}}",
+        "generate_image": "Imagen generada",
         "replace_lesson_block_fallback": "Lección editada ({count, plural, one {# carácter} other {# caracteres}})"
       }
     },

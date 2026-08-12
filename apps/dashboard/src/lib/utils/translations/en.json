@@ -4983,6 +4983,7 @@
         "fetch_documentation_url_with_url": "Reading {url}",
         "search_web": "Searching the web",
         "search_web_with_query": "Searching: {query}",
+        "generate_image": "Generating an image",
         "replace_lesson_block": "Editing the lesson"
       },
       "meta": {
@@ -5019,6 +5020,7 @@
         "ask_discovery_questions": "Asked discovery questions",
         "fetch_documentation_url": "Read {url}",
         "search_web": "Search “{query}”: {count, plural, one {# result} other {# results}}",
+        "generate_image": "Generated an image",
         "replace_lesson_block_fallback": "Edited the lesson ({count, plural, one {# character} other {# characters}})"
       }
     },
