@@ -135,6 +135,8 @@ export type LessonHistory = GetLessonHistorySuccess['data'];
 
 /** Redraw one SVG diagram inside a lesson (instructor-only, view mode). */
 export type RegenerateDiagramRequest = (typeof classroomio.agent.lessons)[':lessonId']['diagram']['$post'];
+export type RegenerateImageRequest = (typeof classroomio.agent.lessons)[':lessonId']['image']['$post'];
+export type DiagramToImageRequest = (typeof classroomio.agent.lessons)[':lessonId']['diagram-to-image']['$post'];
 
 // Lesson language types
 export type GetLessonLanguageRequest =

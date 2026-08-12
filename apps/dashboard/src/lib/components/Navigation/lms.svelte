@@ -19,10 +19,10 @@
     <div class="">
       <a href={page.url.pathname} title={$t('navigation.goto_home')} id="logo" class="flex items-center text-lg">
         <Avatar.Root class="mr-2 h-7 w-7 rounded-md">
-          <Avatar.Image
-            src={$currentOrg.avatarUrl ? $currentOrg.avatarUrl : '/logo-192.png'}
-            alt={$currentOrg.name ? $currentOrg.name : 'Organization'}
-          />
+          <!-- No fallback src: an unset avatar falls through to Avatar.Fallback
+               below, which shows the org's own initials. It used to fall back to
+               the upstream ClassroomIO logo. -->
+          <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name ? $currentOrg.name : 'Organization'} />
           <Avatar.Fallback>{shortenName($currentOrg.name)}</Avatar.Fallback>
         </Avatar.Root>
         <span class="line-clamp-1">

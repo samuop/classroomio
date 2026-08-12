@@ -115,6 +115,7 @@ import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
 import { agentDocumentsRouter } from './documents';
 import { agentDiagramsRouter } from './diagrams';
+import { agentImagesRouter } from './images';
 
 /**
  * Read an extended-thinking budget from the environment.
@@ -1690,4 +1691,5 @@ export const agentRouter = new Hono()
   .route('/history', agentHistoryRouter)
   .route('/runs', agentRunsRouter)
   .route('/documents', agentDocumentsRouter)
-  .route('/lessons', agentDiagramsRouter);
+  .route('/lessons', agentDiagramsRouter)
+  .route('/lessons', agentImagesRouter);

@@ -94,7 +94,16 @@ export type ContentSegment =
    * an inert marker and the viewer swaps in the real Svelte player, the same
    * trade already made for SVG diagrams.
    */
-  | { type: 'media'; kind: LessonMediaKind; mediaId: string };
+  | { type: 'media'; kind: LessonMediaKind; mediaId: string }
+  /**
+   * A generated illustration, split out so the lesson view can anchor controls
+   * over it exactly as it does over a diagram.
+   *
+   * `alt` is carried because it is the only stored record of WHAT the picture
+   * shows — the subject that produced it is not kept anywhere — so it is what a
+   * regeneration has to work from.
+   */
+  | { type: 'image'; src: string; alt: string };
 
 /** Attribute names the marker uses. Must be mirrored in ADD_ATTR (@cio/utils) or DOMPurify drops them. */
 export const LESSON_MEDIA_ATTR = { kind: 'data-cio-media', id: 'data-cio-media-id' } as const;
@@ -192,7 +201,7 @@ function pushHtmlWithMedia(segments: ContentSegment[], html: string): void {
     if (!LESSON_MEDIA_KINDS.includes(kind) || !mediaId) continue;
 
     if (match.index > lastIndex) {
-      segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex, match.index)) });
+      pushHtmlWithImages(segments, html.slice(lastIndex, match.index));
     }
 
     segments.push({ type: 'media', kind, mediaId });
@@ -200,8 +209,55 @@ function pushHtmlWithMedia(segments: ContentSegment[], html: string): void {
   }
 
   if (lastIndex < html.length) {
+    pushHtmlWithImages(segments, html.slice(lastIndex));
+  }
+}
+
+const IMAGE_REGEX = /<img\b[^>]*>/gi;
+
+/**
+ * Splits the remaining HTML on `<img>` elements.
+ *
+ * The last pass, so a picture inside a media marker or an SVG can never be
+ * mistaken for a lesson illustration, and so the SVG and marker ordinals other
+ * tools depend on stay exactly as they were.
+ */
+function pushHtmlWithImages(segments: ContentSegment[], html: string): void {
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  IMAGE_REGEX.lastIndex = 0;
+
+  while ((match = IMAGE_REGEX.exec(html)) !== null) {
+    const src = readMarkerAttr(match[0], 'src');
+
+    // Without a source there is nothing to show and nothing to regenerate;
+    // leave it in the HTML stream and let the sanitizer deal with it.
+    //
+    // The scheme check matters because this segment bypasses DOMPurify — it is
+    // rendered as a real <img> by the viewer rather than as sanitized markup.
+    // Stored content was sanitized on save, so this is the second line, not the
+    // first, and it is cheap.
+    if (!src || !/^(https?:|\/|data:image\/)/i.test(src.trim())) continue;
+
+    if (match.index > lastIndex) {
+      segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex, match.index)) });
+    }
+
+    segments.push({ type: 'image', src, alt: readMarkerAttr(match[0], 'alt') ?? '' });
+    lastIndex = IMAGE_REGEX.lastIndex;
+  }
+
+  if (lastIndex < html.length) {
     segments.push({ type: 'html', content: sanitizeHtml(html.slice(lastIndex)) });
   }
+}
+
+/** Every generated illustration in a note, in document order. */
+export function listLessonImages(html: string): Array<{ src: string; alt: string }> {
+  return splitHtmlAndSvg(html).flatMap((segment) =>
+    segment.type === 'image' ? [{ src: segment.src, alt: segment.alt }] : []
+  );
 }
 
 /** Every lesson-media reference in a note, in document order. */

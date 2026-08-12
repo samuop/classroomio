@@ -6,6 +6,7 @@
   import * as Card from '@cio/ui/base/card';
   import { currentOrg } from '$lib/utils/store/org';
   import * as Avatar from '@cio/ui/base/avatar';
+  import { shortenName } from '$lib/utils/functions/string';
 
   const errorCode = $derived(new URLSearchParams(page.url.search).get('error'));
 
@@ -21,11 +22,8 @@
 <AuthUI isLogin={false} showOnlyContent={true}>
   <div class="flex flex-col items-center gap-4">
     <Avatar.Root>
-      <Avatar.Image
-        src={$currentOrg.avatarUrl ? $currentOrg.avatarUrl : '/logo-192.png'}
-        alt={$currentOrg.name ? $currentOrg.name : brandName}
-      />
-      <Avatar.Fallback>{$currentOrg.name ? $currentOrg.name : brandName}</Avatar.Fallback>
+      <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name ? $currentOrg.name : brandName} />
+      <Avatar.Fallback>{shortenName($currentOrg.name || brandName)}</Avatar.Fallback>
     </Avatar.Root>
 
     <p class="text-xl font-semibold">Something went wrong</p>

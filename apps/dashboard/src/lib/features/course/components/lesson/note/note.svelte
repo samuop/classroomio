@@ -10,6 +10,7 @@
   import AIButton from '$features/course/components/lesson/ai-button.svelte';
   import QuoteSelection from '$features/course/components/lesson/note/quote-selection.svelte';
   import DiagramActions from '$features/course/components/lesson/note/diagram-actions.svelte';
+  import ImageActions from '$features/course/components/lesson/note/image-actions.svelte';
   import InsertMediaMenu from '$features/course/components/lesson/note/insert-media-menu.svelte';
   import LessonMediaEmbed from '$features/course/components/lesson/note/lesson-media-embed.svelte';
   import { resolveLessonMediaLabel } from '$features/course/utils/lesson-media';
@@ -45,6 +46,30 @@
       locale: lessonApi.currentLocale,
       index,
       instruction
+    });
+  }
+
+  async function handleRegenerateImage(index: number, instruction?: string) {
+    if (!lessonId || !courseId) return;
+
+    await lessonApi.regenerateImage({
+      lessonId,
+      courseId,
+      locale: lessonApi.currentLocale,
+      index,
+      instruction
+    });
+  }
+
+  async function handleDiagramToImage(index: number, subject: string) {
+    if (!lessonId || !courseId) return;
+
+    await lessonApi.convertDiagramToImage({
+      lessonId,
+      courseId,
+      locale: lessonApi.currentLocale,
+      index,
+      subject
     });
   }
 
@@ -102,6 +127,20 @@
       blockedByDraft={diagramBlockedByDraft}
       warnings={lessonApi.diagramWarnings[index] ?? []}
       onSubmit={handleRegenerateDiagram}
+      onConvertToImage={handleDiagramToImage}
+    />
+  </RoleBasedSecurity>
+{/snippet}
+
+<!-- Same gate as the diagram controls: instructors and org admins only. -->
+{#snippet imageOverlay(index: number, alt: string)}
+  <RoleBasedSecurity allowedRoles={[1, 2]}>
+    <ImageActions
+      {index}
+      {alt}
+      isBusy={lessonApi.regeneratingImageIndex === index}
+      blockedByDraft={diagramBlockedByDraft}
+      onSubmit={handleRegenerateImage}
     />
   </RoleBasedSecurity>
 {/snippet}
@@ -141,7 +180,7 @@
   {#if !isHtmlValueEmpty(content)}
     <div class="relative mx-auto w-full max-w-2xl" bind:this={noteRoot}>
       <HTMLRender>
-        <SafeHtmlContent {content} svgOverlay={diagramOverlay} {mediaEmbed} />
+        <SafeHtmlContent {content} svgOverlay={diagramOverlay} {imageOverlay} {mediaEmbed} />
       </HTMLRender>
       <QuoteSelection root={noteRoot} enabled />
     </div>

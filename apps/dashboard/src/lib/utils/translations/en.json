@@ -3958,7 +3958,16 @@
       "ask_change": "Ask for a change",
       "ask_change_placeholder": "e.g. the labels overlap, space them out",
       "apply": "Apply",
-      "save_first": "Save your lesson changes first"
+      "save_first": "Save your lesson changes first",
+      "to_image": "Make it a picture",
+      "to_image_placeholder": "What should the picture show?",
+      "to_image_apply": "Generate"
+    },
+    "image": {
+      "regenerate": "Regenerate",
+      "ask_change": "Ask for a change",
+      "ask_change_placeholder": "e.g. at night, without people",
+      "apply": "Apply"
     },
     "sources": {
       "heading": "Course sources",

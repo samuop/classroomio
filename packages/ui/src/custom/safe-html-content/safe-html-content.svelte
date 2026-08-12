@@ -23,9 +23,17 @@
      * lesson to resolve it against.
      */
     mediaEmbed?: Snippet<[LessonMediaKind, string]>;
+    /**
+     * Optional per-illustration overlay, the counterpart of `svgOverlay`.
+     *
+     * Receives the picture's position among the images of this content — the
+     * same ordinal the API uses to splice a replacement in — plus its alt text,
+     * which is the only stored description of what it shows.
+     */
+    imageOverlay?: Snippet<[number, string]>;
   }
 
-  let { content, svgOverlay, mediaEmbed }: Props = $props();
+  let { content, svgOverlay, mediaEmbed, imageOverlay }: Props = $props();
 
   const segments: ContentSegment[] = $derived(splitHtmlAndSvg(content));
 
@@ -37,6 +45,12 @@
   const svgOrdinals: number[] = $derived.by(() => {
     let next = 0;
     return segments.map((segment) => (segment.type === 'svg' ? next++ : -1));
+  });
+
+  /** Same idea for illustrations; `listLessonImages` on the server counts identically. */
+  const imageOrdinals: number[] = $derived.by(() => {
+    let next = 0;
+    return segments.map((segment) => (segment.type === 'image' ? next++ : -1));
   });
 
   function svgDimensions(svg: string): { width: string; height: string } {
@@ -59,6 +73,17 @@
       {@html segment.content}
     {:else if segment.type === 'media'}
       {@render mediaEmbed?.(segment.kind, segment.mediaId)}
+    {:else if segment.type === 'image'}
+      {#if imageOverlay}
+        <!-- Wrapper exists only to anchor the overlay; without a snippet the
+             picture sits exactly where it did in the flow. -->
+        <div style="position:relative;display:block;max-width:100%">
+          <img src={segment.src} alt={segment.alt} style="display:block;max-width:100%;height:auto" />
+          {@render imageOverlay(imageOrdinals[i], segment.alt)}
+        </div>
+      {:else}
+        <img src={segment.src} alt={segment.alt} style="display:block;max-width:100%;height:auto" />
+      {/if}
     {:else}
       {@const dims = svgDimensions(segment.content)}
       {#if svgOverlay}

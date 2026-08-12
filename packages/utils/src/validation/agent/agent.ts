@@ -285,3 +285,33 @@ export const ZAgentDiagramBody = z.object({
 });
 
 export type TAgentDiagramBody = z.infer<typeof ZAgentDiagramBody>;
+
+/**
+ * Redraw the illustration at `index`. Without an instruction it is a re-roll of
+ * the same subject; with one, the instruction steers what changes.
+ */
+export const ZAgentImageBody = z.object({
+  courseId: ZAgentCourseId,
+  locale: z.string().min(2).max(10),
+  /** Position among the lesson's images, as enumerated by splitHtmlAndSvg. */
+  index: z.number().int().min(0),
+  instruction: z.string().max(500).optional()
+});
+
+export type TAgentImageBody = z.infer<typeof ZAgentImageBody>;
+
+/**
+ * Swap the diagram at `index` for a generated illustration.
+ *
+ * `subject` is required and comes from the teacher: what the picture should
+ * show is precisely the thing a diagram was the wrong tool for, so it cannot be
+ * inferred from the diagram it replaces without producing another diagram.
+ */
+export const ZAgentDiagramToImageBody = z.object({
+  courseId: ZAgentCourseId,
+  locale: z.string().min(2).max(10),
+  index: z.number().int().min(0),
+  subject: z.string().min(8).max(500)
+});
+
+export type TAgentDiagramToImageBody = z.infer<typeof ZAgentDiagramToImageBody>;

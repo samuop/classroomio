@@ -4,6 +4,7 @@
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import WandSparklesIcon from '@lucide/svelte/icons/wand-sparkles';
+  import ImageIcon from '@lucide/svelte/icons/image';
   import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
   import { t } from '$lib/utils/functions/translations';
 
@@ -23,14 +24,27 @@
     blockedByDraft?: boolean;
     warnings?: string[];
     onSubmit: (index: number, instruction?: string) => void | Promise<void>;
+    /** Swaps this diagram for a generated picture. Absent = the control is not offered. */
+    onConvertToImage?: (index: number, subject: string) => void | Promise<void>;
   }
 
-  let { index, isBusy = false, blockedByDraft = false, warnings = [], onSubmit }: Props = $props();
+  let { index, isBusy = false, blockedByDraft = false, warnings = [], onSubmit, onConvertToImage }: Props = $props();
 
   let instruction = $state('');
-  let expanded = $state(false);
+  /**
+   * Which box is open. The two share one input because they are the same
+   * gesture — "say what you want" — and two stacked inputs over a diagram is
+   * more chrome than the diagram.
+   */
+  let mode = $state<'closed' | 'change' | 'toImage'>('closed');
 
   const disabled = $derived(isBusy || blockedByDraft);
+  const expanded = $derived(mode !== 'closed');
+
+  function open(next: 'change' | 'toImage') {
+    mode = mode === next ? 'closed' : next;
+    instruction = '';
+  }
 
   async function submit(withInstruction: boolean) {
     if (disabled) return;
@@ -39,6 +53,21 @@
 
     await onSubmit(index, withInstruction ? text : undefined);
     if (withInstruction) instruction = '';
+  }
+
+  /**
+   * A subject is required rather than derived from the diagram. What the picture
+   * should show is exactly the thing the diagram was the wrong tool for, so
+   * inferring it from the diagram would produce another diagram.
+   */
+  async function convert() {
+    if (disabled || !onConvertToImage) return;
+    const text = instruction.trim();
+    if (!text) return;
+
+    await onConvertToImage(index, text);
+    instruction = '';
+    mode = 'closed';
   }
 </script>
 
@@ -59,15 +88,21 @@
           {/if}
           <span class="ml-1 text-xs">{$t('course.diagram.regenerate')}</span>
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          {disabled}
-          onclick={() => (expanded = !expanded)}
-          title={$t('course.diagram.ask_change')}
-        >
+        <Button variant="ghost" size="sm" {disabled} onclick={() => open('change')} title={$t('course.diagram.ask_change')}>
           <WandSparklesIcon size={13} />
         </Button>
+        {#if onConvertToImage}
+          <Button
+            variant="ghost"
+            size="sm"
+            {disabled}
+            onclick={() => open('toImage')}
+            title={$t('course.diagram.to_image')}
+          >
+            <ImageIcon size={13} />
+            <span class="ml-1 text-xs">{$t('course.diagram.to_image')}</span>
+          </Button>
+        {/if}
       {/if}
     </div>
   </div>
@@ -77,19 +112,28 @@
       <div class="ui:bg-background flex items-center gap-1 rounded-md border p-1 shadow-sm">
         <Input
           bind:value={instruction}
-          placeholder={$t('course.diagram.ask_change_placeholder')}
+          placeholder={mode === 'toImage'
+            ? $t('course.diagram.to_image_placeholder')
+            : $t('course.diagram.ask_change_placeholder')}
           {disabled}
           onkeydown={(event: KeyboardEvent) => {
-            if (event.key === 'Enter') submit(true);
-            if (event.key === 'Escape') expanded = false;
+            if (event.key === 'Enter') {
+              if (mode === 'toImage') convert();
+              else submit(true);
+            }
+            if (event.key === 'Escape') mode = 'closed';
           }}
           class="h-8 text-xs"
         />
-        <Button size="sm" disabled={disabled || !instruction.trim()} onclick={() => submit(true)}>
+        <Button
+          size="sm"
+          disabled={disabled || !instruction.trim()}
+          onclick={() => (mode === 'toImage' ? convert() : submit(true))}
+        >
           {#if isBusy}
             <LoaderIcon size={13} class="animate-spin" />
           {:else}
-            {$t('course.diagram.apply')}
+            {mode === 'toImage' ? $t('course.diagram.to_image_apply') : $t('course.diagram.apply')}
           {/if}
         </Button>
       </div>

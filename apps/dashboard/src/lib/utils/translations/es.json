@@ -2774,7 +2774,16 @@
       "ask_change": "Pedir un cambio",
       "ask_change_placeholder": "Ej: los rótulos se pisan, separalos",
       "apply": "Aplicar",
-      "save_first": "Guardá los cambios de la lección primero"
+      "save_first": "Guardá los cambios de la lección primero",
+      "to_image": "Volverlo imagen",
+      "to_image_placeholder": "¿Qué debería mostrar la imagen?",
+      "to_image_apply": "Generar"
+    },
+    "image": {
+      "regenerate": "Regenerar",
+      "ask_change": "Pedir un cambio",
+      "ask_change_placeholder": "Ej: que sea de noche, sin personas",
+      "apply": "Aplicar"
     },
     "sources": {
       "heading": "Fuentes del curso",

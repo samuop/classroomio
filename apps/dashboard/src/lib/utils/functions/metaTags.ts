@@ -11,26 +11,31 @@ const DEFAULT_DESCRIPTION =
   'A flexible, user-friendly platform for creating, managing, and delivering courses for companies and training organisations';
 const CLOUD_OG_IMAGE = '/logo-512.png';
 
+/**
+ * The picture that shows when a link to this platform is shared.
+ *
+ * The organisation's own image is tried whatever the tenancy mode. It used to be
+ * gated on `isSelfHosted`, which reads as a branding switch but is really the
+ * multi-tenant switch — so this deployment (multi-tenant, hence not "self
+ * hosted") sent the bundled upstream logo as the preview for every shared link,
+ * including a consultancy sharing a course with its own client.
+ */
 function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): string {
   const envUrl = env.PUBLIC_OG_IMAGE_URL?.trim();
   if (envUrl) return envUrl;
 
-  if (isSelfHosted) {
-    const org = orgSiteInfo.org;
-    if (!org) {
-      return CLOUD_OG_IMAGE;
-    }
+  const org = orgSiteInfo.org;
+  const orgImage =
+    org?.avatarUrl ||
+    org?.landingpage?.header?.banner?.image ||
+    (org as { customization?: { dashboard?: { bannerImage?: string } } } | undefined)?.customization?.dashboard
+      ?.bannerImage;
 
-    const orgImage =
-      org.avatarUrl ||
-      org.landingpage?.header?.banner?.image ||
-      (org as { customization?: { dashboard?: { bannerImage?: string } } }).customization?.dashboard?.bannerImage;
-    if (orgImage) {
-      try {
-        return new URL(orgImage, url.origin).href;
-      } catch {
-        // fall through to bundled default
-      }
+  if (orgImage) {
+    try {
+      return new URL(orgImage, url.origin).href;
+    } catch {
+      // fall through to the bundled default
     }
   }
 

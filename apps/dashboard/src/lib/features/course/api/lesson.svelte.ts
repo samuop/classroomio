@@ -16,6 +16,8 @@ import type {
   LessonComments,
   PromoteUngroupedSectionRequest,
   RegenerateDiagramRequest,
+  RegenerateImageRequest,
+  DiagramToImageRequest,
   ReorderCourseSectionsRequest,
   ReorderLessonsRequest,
   UpdateCourseSectionRequest,
@@ -730,6 +732,89 @@ export class LessonApi extends BaseApiWithErrors {
         const data = result.data as { content: string; warnings: string[] };
         this.updateTranslation(params.lessonId, params.locale, data.content);
         this.diagramWarnings = { ...this.diagramWarnings, [params.index]: data.warnings ?? [] };
+        ok = true;
+      }
+    });
+
+    this.regeneratingDiagramIndex = null;
+    return ok;
+  }
+
+  /** Position of the illustration currently being redrawn, or null when idle. */
+  regeneratingImageIndex = $state<number | null>(null);
+
+  /**
+   * Redraw one illustration, optionally following an instruction.
+   *
+   * Same contract as `regenerateDiagram`: the server splices by position into
+   * the SAVED content. Without an instruction it re-rolls the same subject —
+   * image generation is not deterministic, so the same description gives a
+   * different picture, which is what "regenerate" means for a picture.
+   */
+  async regenerateImage(params: {
+    lessonId: string;
+    courseId: string;
+    locale: TLocale;
+    index: number;
+    instruction?: string;
+  }): Promise<boolean> {
+    this.regeneratingImageIndex = params.index;
+    let ok = false;
+
+    await this.execute<RegenerateImageRequest>({
+      requestFn: () =>
+        classroomio.agent.lessons[':lessonId'].image.$post({
+          param: { lessonId: params.lessonId },
+          json: {
+            courseId: params.courseId,
+            locale: params.locale,
+            index: params.index,
+            instruction: params.instruction
+          }
+        }),
+      logContext: 'regenerating lesson image',
+      onSuccess: (result) => {
+        this.updateTranslation(params.lessonId, params.locale, (result.data as { content: string }).content);
+        ok = true;
+      }
+    });
+
+    this.regeneratingImageIndex = null;
+    return ok;
+  }
+
+  /**
+   * Swap a diagram for a generated illustration, for the case where the subject
+   * was never a diagram's job. Shares `regeneratingDiagramIndex` because it is
+   * the same control and the same slot on screen.
+   */
+  async convertDiagramToImage(params: {
+    lessonId: string;
+    courseId: string;
+    locale: TLocale;
+    index: number;
+    subject: string;
+  }): Promise<boolean> {
+    this.regeneratingDiagramIndex = params.index;
+    let ok = false;
+
+    await this.execute<DiagramToImageRequest>({
+      requestFn: () =>
+        classroomio.agent.lessons[':lessonId']['diagram-to-image'].$post({
+          param: { lessonId: params.lessonId },
+          json: {
+            courseId: params.courseId,
+            locale: params.locale,
+            index: params.index,
+            subject: params.subject
+          }
+        }),
+      logContext: 'replacing a diagram with an image',
+      onSuccess: (result) => {
+        this.updateTranslation(params.lessonId, params.locale, (result.data as { content: string }).content);
+        // The diagram is gone, so any warning that referred to it is stale.
+        const { [params.index]: _removed, ...rest } = this.diagramWarnings;
+        this.diagramWarnings = rest;
         ok = true;
       }
     });

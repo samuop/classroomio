@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { t } from '$lib/utils/functions/translations';
   import { brandName } from '$lib/utils/branding';
+  import OrgLogo from '$features/ui/org-logo.svelte';
 
   interface Props {
     logo: string | undefined;
@@ -19,13 +20,7 @@
     id="logo"
     data-hveid="8"
   >
-    <img
-      src={logo || '/logo-192.png'}
-      alt={`${orgName || brandName} logo`}
-      class="mx-auto inline-block w-9 rounded"
-      width="36"
-      height="36"
-    />
+    <OrgLogo src={logo} name={orgName || brandName} class="h-9 w-9" />
     {#if orgName}
       <span class="line-clamp-1 hidden text-sm font-medium md:block">{orgName}</span>
     {/if}
