@@ -27,6 +27,7 @@ import {
   validateSvgDiagram
 } from '@api/services/agent/lesson-content';
 import { generateLessonImage, MAX_IMAGES_PER_ROUND } from '@api/services/agent/image-generation';
+import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
 import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
@@ -427,12 +428,19 @@ export function buildAgentTools(
             await verifyLessonBelongsToCourse(args.lessonId, courseId);
           }
 
+          // The organisation's look, read per call rather than per round: an
+          // admin who changes the style mid-build should see it take effect on
+          // the next image, not the next conversation.
+          const style = await getOrgAiImageSettingsService(orgId).catch(() => null);
+
           const image = await generateLessonImage({
             subject: args.subject,
             courseId,
             lessonId: args.lessonId,
             locale: args.locale,
-            aspectRatio: args.aspectRatio
+            aspectRatio: args.aspectRatio,
+            styleReferenceUrl: style?.styleReferenceUrl,
+            styleNote: style?.styleNote
           });
 
           imagesGenerated += 1;

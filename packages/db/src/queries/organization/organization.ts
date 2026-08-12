@@ -1274,3 +1274,19 @@ export async function getOrganizationMembersByNormalizedEmails(
     );
   }
 }
+
+/**
+ * Stored image-style settings for an org, or null when never configured.
+ * Mirrors `getOrgAtRiskSettings` — both live under `organization.settings`.
+ */
+export const getOrgAiImageSettings = async (
+  orgId: string
+): Promise<NonNullable<TOrganization['settings']>['aiImages'] | null> => {
+  const [row] = await db
+    .select({ settings: schema.organization.settings })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, orgId))
+    .limit(1);
+
+  return row?.settings?.aiImages ?? null;
+};

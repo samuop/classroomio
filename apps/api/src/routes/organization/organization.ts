@@ -50,6 +50,7 @@ import { TOrganization } from '@db/types';
 import { assetsRouter } from '@api/routes/organization/assets';
 import { autoEnrollStudent } from '@api/services/organization/auto-enroll';
 import { organizationAiTutorRouter } from '@api/routes/organization/ai-tutor';
+import { organizationAiImagesRouter } from '@api/routes/organization/ai-images';
 import { organizationAtRiskRouter } from '@api/routes/organization/at-risk';
 import { organizationClientsRouter } from '@api/routes/organization/clients';
 import { organizationTrackingRouter } from '@api/routes/organization/tracking';
@@ -698,6 +699,7 @@ export const organizationRouter = new Hono()
   .route('/widgets', widgetsRouter)
   .route('/assets', assetsRouter)
   .route('/ai-tutor', organizationAiTutorRouter)
+  .route('/ai-images', organizationAiImagesRouter)
   .route('/at-risk', organizationAtRiskRouter)
   .route('/clients', organizationClientsRouter)
   .route('/tracking', organizationTrackingRouter)

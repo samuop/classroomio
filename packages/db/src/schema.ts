@@ -2126,6 +2126,15 @@ export const organization = pgTable(
         lowProgressPct?: number;
         lowGradePct?: number;
       };
+      /**
+       * How generated lesson illustrations should look. See
+       * `ZAiImageSettings` in @cio/utils — the validator is the contract, this
+       * only keeps Drizzle's type honest about the same shape.
+       */
+      aiImages?: {
+        styleReferenceUrl?: string | null;
+        styleNote?: string;
+      };
     }>(),
     landingpage: jsonb().default({}).$type<{
       header?: {

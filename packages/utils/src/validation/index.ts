@@ -3,6 +3,7 @@ export * from './shared';
 
 export * from './account';
 export * from './agent';
+export * from './ai-images';
 export * from './at-risk';
 export * from './attendance';
 export * from './assets';

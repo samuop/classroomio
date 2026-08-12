@@ -45,6 +45,43 @@
     "insert": "Insertar",
     "can_you": "¿Podés reformular esto?"
   },
+  "ai_images": {
+    "page": {
+      "title": "Imágenes de IA",
+      "description": "Cómo se ven las ilustraciones que genera el asistente al escribir un curso. Los diagramas no se tocan: siguen siendo dibujos vectoriales."
+    },
+    "action": {
+      "save": "Guardar"
+    },
+    "state": {
+      "loading": "Cargando…"
+    },
+    "reference": {
+      "label": "Imagen de referencia",
+      "help": "Es lo único que mantiene un estilo parejo entre imágenes: en cada generación se le muestra esta imagen como modelo. Se copia el estilo —paleta, trazo, nivel de detalle, luz—, nunca el contenido. Sin ella igual genera, con el estilo por defecto.",
+      "alt": "Imagen de referencia de estilo",
+      "upload": "Subir una imagen",
+      "replace": "Cambiarla",
+      "remove": "Quitarla"
+    },
+    "note": {
+      "label": "Indicaciones de estilo",
+      "help": "Para lo que una imagen no puede decir: una paleta de marca, algo que nunca deba aparecer, el tipo de trazo. Se suma a la referencia, no la reemplaza.",
+      "placeholder": "Por ejemplo: ilustración plana, sin rostros reconocibles, azules y grises sobrios."
+    },
+    "preview": {
+      "label": "Probar el estilo",
+      "help": "Genera una imagen de muestra con lo que tenés cargado acá, aunque no lo hayas guardado. Siempre el mismo motivo, así lo único que cambia es el estilo. Cada prueba cuesta unos centavos.",
+      "action": "Generar una prueba",
+      "alt": "Muestra del estilo configurado"
+    },
+    "snackbar": {
+      "saved": "Estilo de imágenes guardado"
+    },
+    "error": {
+      "upload": "No se pudo subir la imagen. Probá de nuevo."
+    }
+  },
   "aiTutor": {
     "creditsPage": {
       "tutorSummaryTitle": "Uso legítimo del tutor de IA",
@@ -4148,6 +4185,7 @@
       "workspaces_tab": "Clientes",
       "ai_credits_tab": "Créditos de IA",
       "ai_tutor_tab": "Tutor de IA",
+      "ai_images_tab": "Imágenes de IA",
       "at_risk_tab": "Estudiantes en riesgo"
     },
     "subheadings": {

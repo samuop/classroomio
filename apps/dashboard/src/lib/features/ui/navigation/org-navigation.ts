@@ -223,6 +223,10 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/ai-tutor'
       },
       {
+        titleKey: 'settings.tabs.ai_images_tab',
+        path: '/settings/ai-images'
+      },
+      {
         titleKey: 'settings.tabs.at_risk_tab',
         path: '/settings/at-risk'
       },
@@ -248,6 +252,10 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'ai-tutor',
         titleKey: 'settings.tabs.ai_tutor_tab'
+      },
+      {
+        path: 'ai-images',
+        titleKey: 'settings.tabs.ai_images_tab'
       },
       {
         path: 'at-risk',

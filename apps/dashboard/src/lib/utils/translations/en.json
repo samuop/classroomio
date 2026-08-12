@@ -42,6 +42,43 @@
     "loading": "Loading tracking…",
     "view_profile": "View student profile"
   },
+  "ai_images": {
+    "page": {
+      "title": "AI Images",
+      "description": "How the illustrations the assistant generates while writing a course should look. Diagrams are unaffected — those stay as vector drawings."
+    },
+    "action": {
+      "save": "Save"
+    },
+    "state": {
+      "loading": "Loading…"
+    },
+    "reference": {
+      "label": "Reference image",
+      "help": "The only thing that reliably holds a look together: every generation is shown this image as a model. It copies the style — palette, line weight, level of detail, lighting — never the content. Without one, images still generate in the default style.",
+      "alt": "Style reference image",
+      "upload": "Upload an image",
+      "replace": "Replace it",
+      "remove": "Remove it"
+    },
+    "note": {
+      "label": "Style direction",
+      "help": "For what an image cannot say: a brand palette, something that must never appear, the kind of line work. It is added to the reference, not a substitute for it.",
+      "placeholder": "For example: flat illustration, no recognisable faces, muted blues and greys."
+    },
+    "preview": {
+      "label": "Try the style",
+      "help": "Generates a sample image from what is in this form, saved or not. Always the same subject, so the only thing that changes is the style. Each try costs a few cents.",
+      "action": "Generate a sample",
+      "alt": "Sample of the configured style"
+    },
+    "snackbar": {
+      "saved": "Image style saved"
+    },
+    "error": {
+      "upload": "The image could not be uploaded. Try again."
+    }
+  },
   "aiTutor": {
     "page": {
       "org": {
@@ -515,6 +552,7 @@
       "billing_tab": "Billing",
       "ai_credits_tab": "AI Credits",
       "ai_tutor_tab": "AI Tutor",
+      "ai_images_tab": "AI Images",
       "at_risk_tab": "At-risk students",
       "integrations_tab": "Integrations",
       "language_tab": "Language",

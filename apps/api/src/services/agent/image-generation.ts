@@ -78,7 +78,7 @@ const HOUSE_STYLE =
  * loudly and before anything is billed, instead of being silently ignored by the
  * provider. Never fatal: an image in the house style beats no image at all.
  */
-async function loadStyleReference(url: string | undefined): Promise<Uint8Array | null> {
+async function loadStyleReference(url: string | null | undefined): Promise<Uint8Array | null> {
   if (!url) return null;
 
   try {
@@ -105,7 +105,12 @@ async function loadStyleReference(url: string | undefined): Promise<Uint8Array |
  * than left to the caller: it is a property of using images for lessons, not of
  * any one call.
  */
-function buildImagePrompt(subject: string, locale: string, hasReference: boolean): string {
+function buildImagePrompt(
+  subject: string,
+  locale: string,
+  hasReference: boolean,
+  styleNote: string | undefined
+): string {
   return [
     subject.trim(),
     '',
@@ -113,10 +118,15 @@ function buildImagePrompt(subject: string, locale: string, hasReference: boolean
       ? 'Match the visual style of the reference image exactly — its palette, line weight, level of ' +
         'detail and lighting. Take ONLY the style from it; the subject is the one described above.'
       : HOUSE_STYLE,
+    // After the reference, not instead of it: an anchor fixes the look, and the
+    // note says the things a picture cannot ("never show faces", a brand colour).
+    styleNote?.trim() ? `Also follow this house direction: ${styleNote.trim()}` : '',
     'Do NOT render any text, labels, numbers, captions or lettering inside the image — the lesson ' +
       'supplies its own wording around it, and any writing in the picture will be wrong or unreadable.' +
       (locale ? ` (The lesson is written in "${locale}", so baked-in wording would also be in the wrong place.)` : '')
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export async function generateLessonImage(params: {
@@ -126,7 +136,9 @@ export async function generateLessonImage(params: {
   locale?: string;
   aspectRatio?: ImageAspectRatio;
   /** Overrides the deployment-wide anchor; see `loadStyleReference`. */
-  styleReferenceUrl?: string;
+  styleReferenceUrl?: string | null;
+  /** The organisation's house direction in words, appended to the style. */
+  styleNote?: string;
 }): Promise<GeneratedLessonImage> {
   const model = getImageModel();
 
@@ -155,7 +167,7 @@ export async function generateLessonImage(params: {
   const reference = await loadStyleReference(
     params.styleReferenceUrl ?? process.env.AGENT_IMAGE_STYLE_REFERENCE_URL
   );
-  const text = buildImagePrompt(params.subject, params.locale ?? '', reference !== null);
+  const text = buildImagePrompt(params.subject, params.locale ?? '', reference !== null, params.styleNote);
 
   const { image } = await generateImage({
     model,
@@ -197,4 +209,37 @@ export async function generateLessonImage(params: {
     bytes: body.byteLength,
     styledFromReference: reference !== null
   };
+}
+
+/**
+ * The fixed subject for a style preview.
+ *
+ * Chosen to exercise the things a style actually differs on — a person, an
+ * object, a surface, depth — while being generic enough that no organisation
+ * reads it as being about their material. It never changes, so two previews
+ * differ only by the style being previewed, which is the entire point.
+ */
+const STYLE_PREVIEW_SUBJECT =
+  'A person seated at a desk beside a window, writing in a notebook, with a mug and a small ' +
+  'stack of books next to them, seen from a three-quarter view.';
+
+/**
+ * One image in the organisation's configured style, so an admin can see what
+ * they are about to impose on every course before they impose it.
+ *
+ * Stored under `previews/` rather than a course prefix: it belongs to the
+ * organisation, and nothing should sweep it when a course is deleted.
+ */
+export async function generateStylePreview(params: {
+  orgId: string;
+  styleNote?: string;
+  styleReferenceUrl?: string | null;
+}): Promise<GeneratedLessonImage> {
+  return generateLessonImage({
+    subject: STYLE_PREVIEW_SUBJECT,
+    courseId: `org-${params.orgId}/previews`,
+    styleNote: params.styleNote,
+    styleReferenceUrl: params.styleReferenceUrl,
+    aspectRatio: '16:9'
+  });
 }
