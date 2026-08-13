@@ -24,7 +24,6 @@ const saasDefaults = {
     'https://assets.cdn.clsrio.com',
     'https://cdnjs.cloudflare.com',
     'https://*.posthog.com',
-    'https://*.senja.io',
     'https://umami.hz.oncws.com',
     'https://www.youtube.com',
     'https://youtube.com',
@@ -51,7 +50,6 @@ const saasDefaults = {
     'https://*.posthog.com',
     'https://umami.hz.oncws.com',
     'https://*.r2.cloudflarestorage.com',
-    'https://*.senja.io',
     'https://*.ytimg.com',
     'https://noembed.com',
     'https://www.googleapis.com'

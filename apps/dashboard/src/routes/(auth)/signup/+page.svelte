@@ -2,7 +2,6 @@
   import { brandName } from '$lib/utils/branding';
   import { untrack } from 'svelte';
   import AuthUI from '$features/ui/auth-ui.svelte';
-  import SenjaEmbed from '$features/ui/senja-embed.svelte';
   import { SIGNUP_FIELDS } from '$lib/utils/constants/authentication';
   import { t } from '$lib/utils/functions/translations';
   import { authValidation, getConfirmPasswordError, getDisableSubmit } from '$lib/utils/functions/validator';
@@ -178,8 +177,6 @@
 <svelte:head>
   <title>Join {brandName}</title>
 </svelte:head>
-
-<SenjaEmbed id="aa054658-1e15-4d00-8920-91f424326c4e" />
 
 {#if signupRestricted}
   <div
