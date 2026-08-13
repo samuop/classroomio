@@ -250,13 +250,18 @@ async function main() {
   const certificado = {
     isDownloadable: true,
     design: {
-      templateId: 'diploma',
+      // `as const`, o en un objeto literal se infiere `string` y la columna
+      // espera la unión de plantillas. `tsx` no verifica tipos, así que el
+      // script corre igual y el error aparece recién al compilar el paquete.
+      templateId: 'diploma' as const,
       accentColor: '#8a6d3b',
       subtitle: 'Certificado de aprobación',
+      // Tupla de exactamente dos, no un arreglo: la columna declara dos firmas
+      // y ni una más. Sin la anotación, TypeScript infiere un arreglo suelto.
       signatories: [
         { name: 'A. Fernández', role: 'Dirección académica' },
         { name: 'M. Rossi', role: 'Instructor' }
-      ],
+      ] as [{ name: string; role: string }, { name: string; role: string }],
       idFormat: 'N° {seq}',
       // Las dos marcas: la consultora que dicta y la empresa que la recibe.
       // Sin logos todavía — se suben desde el editor, que es justamente lo que
