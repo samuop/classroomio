@@ -2112,6 +2112,10 @@
         "overdue": "Overdue",
         "no_deadline": "No deadline"
       }
+    },
+    "loading": {
+      "title": "Loading program…",
+      "description": "Please wait while we load your program data."
     }
   },
   "courses": {
@@ -2470,6 +2474,10 @@
         "view_certificate": "View certificate",
         "later": "Close"
       }
+    },
+    "loading": {
+      "title": "Loading course…",
+      "description": "Please wait while we load your course data."
     },
     "header": {
       "preview": "Preview course",
@@ -3652,6 +3660,7 @@
           "section_labels": "Fixed wording",
           "section_labels_hint": "The words the template prints around the data. Clear a field to print nothing there.",
           "label_presented": "\"Certifies that\" line",
+          "label_completed": "\"Has completed\" line",
           "label_awardedTo": "\"Awarded to\" heading",
           "label_issued": "\"Issued\" key",
           "label_reference": "\"Reference\" key",
@@ -3743,7 +3752,13 @@
           "field_accent": "Accent",
           "field_signatories": "Signatories",
           "customize_design": "Customize design"
-        }
+        },
+        "issue_modal": {
+          "email_label": "Student's email address",
+          "schedule_label": "Schedule date",
+          "message_label": "Add a personalized message"
+        },
+        "reports_search_placeholder": "Search students"
       },
       "landing_page": {
         "editor": {

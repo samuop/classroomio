@@ -4,6 +4,7 @@
 
   import { issueCertificateModal, resetForm } from './store';
   import { preventDefault } from '$lib/utils/functions/svelte';
+  import { t } from '$lib/utils/functions/translations';
 
   import * as Dialog from '@cio/ui/base/dialog';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
@@ -41,14 +42,14 @@
       <form onsubmit={preventDefault(issueCertificate)}>
         <div class="flex w-full flex-col gap-2 md:flex-row">
           <InputField
-            label="Email address of the student"
+            label={$t('course.navItem.certificates.issue_modal.email_label')}
             className="w-full my-4"
             labelClassName="text-xs font-normal"
             placeholder="email,comma seperated"
             bind:value={$issueCertificateModal.email}
           />
           <InputField
-            label="Schedule date"
+            label={$t('course.navItem.certificates.issue_modal.schedule_label')}
             className="w-full my-4"
             labelClassName="text-xs font-normal"
             placeholder="12/06/2023"
@@ -57,7 +58,7 @@
         </div>
 
         <TextareaField
-          label="Add a personalized message"
+          label={$t('course.navItem.certificates.issue_modal.message_label')}
           labelClassName="text-xs font-normal"
           bind:value={$issueCertificateModal.message}
           rows={2}

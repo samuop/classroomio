@@ -1,5 +1,6 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
+  import { t } from '$lib/utils/functions/translations';
   import { page } from '$app/state';
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { Empty } from '@cio/ui/custom/empty';
@@ -47,8 +48,8 @@
     {#if !isProgramReady}
       <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
         <Empty
-          title="Loading program..."
-          description="Please wait while we load your program data."
+          title={$t('programs.loading.title')}
+          description={$t('programs.loading.description')}
           icon={Spinner}
           iconClass="h-8 w-8"
           variant="page"

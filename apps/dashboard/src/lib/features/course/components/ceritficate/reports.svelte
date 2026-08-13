@@ -8,6 +8,7 @@
   import { Checkbox } from '@cio/ui/base/checkbox';
 
   import { CertificateReportData, students } from './mockData';
+  import { t } from '$lib/utils/functions/translations';
 
   let searchValue = $state('');
   let selectAll = $state(false);
@@ -55,7 +56,12 @@
     <p class="w-full text-base font-semibold">Certificate issued</p>
     <div class="relative w-full max-w-sm">
       <SearchIcon class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
-      <Input type="search" placeholder="Search students" bind:value={searchValue} class="pl-10" />
+      <Input
+        type="search"
+        placeholder={$t('course.navItem.certificates.reports_search_placeholder')}
+        bind:value={searchValue}
+        class="pl-10"
+      />
     </div>
   </div>
 </section>

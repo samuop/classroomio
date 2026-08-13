@@ -1327,6 +1327,7 @@
           "section_labels": "Textos fijos",
           "section_labels_hint": "Las palabras que la plantilla imprime alrededor de los datos. Vaciá un campo para que ahí no aparezca nada.",
           "label_presented": "Línea «se certifica que»",
+          "label_completed": "Línea «ha completado»",
           "label_awardedTo": "Encabezado «Otorgado a»",
           "label_issued": "Rótulo «Emitido»",
           "label_reference": "Rótulo «Referencia»",
@@ -1418,7 +1419,13 @@
           "field_accent": "acento",
           "field_signatories": "Firmantes",
           "customize_design": "Personalizar diseño"
-        }
+        },
+        "issue_modal": {
+          "email_label": "Correo del alumno",
+          "schedule_label": "Fecha de envío",
+          "message_label": "Agregar un mensaje personalizado"
+        },
+        "reports_search_placeholder": "Buscar alumnos"
       },
       "people": {
         "title": "Personas",
@@ -2521,6 +2528,10 @@
     "search": {
       "placeholder": "Buscar lecciones o ejercicios",
       "empty": "No se encontraron resultados"
+    },
+    "loading": {
+      "title": "Cargando el curso…",
+      "description": "Esperá un momento mientras traemos los datos del curso."
     },
     "header": {
       "preview": "Vista previa del curso",
@@ -3726,6 +3737,10 @@
         "save": "Guardar",
         "cancel": "Cancelar"
       }
+    },
+    "loading": {
+      "title": "Cargando el programa…",
+      "description": "Esperá un momento mientras traemos los datos del programa."
     }
   },
   "public_course": {

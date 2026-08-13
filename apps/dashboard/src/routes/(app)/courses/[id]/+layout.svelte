@@ -176,8 +176,8 @@
     {#if !isCourseReady}
       <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
         <Empty
-          title="Loading course…"
-          description="Please wait while we load your course data."
+          title={$t('course.loading.title')}
+          description={$t('course.loading.description')}
           icon={Spinner}
           iconClass="h-8 w-8"
           variant="page"
