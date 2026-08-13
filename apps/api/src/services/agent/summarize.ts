@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { AppError } from '@api/utils/errors';
 
-const SUMMARIZE_SYSTEM_PROMPT = `You are summarizing a multi-turn ClassroomIO course-creation chat so the assistant can pick up exactly where it left off in a new conversation.
+const SUMMARIZE_SYSTEM_PROMPT = `You are summarizing a multi-turn course-creation chat so the assistant can pick up exactly where it left off in a new conversation.
 
 Write the summary as a first-person user message to the assistant. It must be DETAILED — assume the receiving assistant has zero prior context.
 

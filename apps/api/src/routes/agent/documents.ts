@@ -25,7 +25,7 @@ import {
   type ReconcileResult
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
-import { getDocumentText, storeUrlDocument } from '@api/services/agent/document';
+import { getDocumentText, storeUrlDocument, SOURCES_CONVERSATION_TITLE } from '@api/services/agent/document';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 
 /**
@@ -171,7 +171,7 @@ export const agentDocumentsRouter = new Hono()
         // ai_chat_document.conversation_id is NOT NULL, so give it the same hidden
         // "Course sources" conversation an upload from that panel gets.
         if (!conversationId) {
-          const created = await createChatConversation(courseId, user.id, 'Course sources');
+          const created = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
           conversationId = created.id;
         } else {
           const conversation = await getChatConversation(conversationId, user.id);

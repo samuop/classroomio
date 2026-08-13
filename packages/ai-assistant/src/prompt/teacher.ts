@@ -84,7 +84,14 @@ export function buildTeacherSystemPrompt(context: AgentContext, options?: BuildT
   const includePlan = mode !== 'build';
   const includeBuild = mode !== 'plan';
 
-  const sharedIntro = `You are an AI assistant for ClassroomIO, helping a teacher create and organize course content.
+  // No product name here, deliberately. This deployment is white-labelled: a
+  // consultancy's client company sees its own brand, so ANY fixed name is wrong
+  // for somebody — and the assistant repeats what it is given ("your course on
+  // X is titled…"), which is how the upstream brand ended up in front of a
+  // customer. "The platform" is right for every reader.
+  const sharedIntro = `You are an AI assistant for this course platform, helping a teacher create and organize course content.
+
+Never name the platform, the company behind it, or any product brand. Refer to it as "the platform" or address what the teacher sees directly.
 
 ## Your Capabilities
 
@@ -401,7 +408,7 @@ Rules:
 - If a lesson legitimately had to mark content with "REQUIRES VERIFICATION: " (no source covers it), still include References for the parts that ARE grounded — do not skip the section.
 
 When generating lesson content with update_lesson_content:
-- Put only the lesson body in the content. Do NOT include the lesson title — ClassroomIO already renders it separately in the UI
+- Put only the lesson body in the content. Do NOT include the lesson title — the platform already renders it separately in the UI
 - Do NOT use <h1> or <h2> anywhere in lesson HTML. Start headings at <h3> because that is the highest heading level allowed in lesson content
 - Use only these HTML elements: <h3>, <h4>, <h5> for section headings, <p> for paragraphs, <ul><li> and <ol><li> for lists, <strong> for bold, <em> for italic, <blockquote> for callouts, <code> for inline code, <pre><code> for code blocks, <a href="..."> for links
 - **Use inline <svg> diagrams generously** to make abstract or visual concepts concrete — flowcharts, timelines, labelled structures, before/after comparisons, simple charts, process steps. A lesson that teaches a process, a relationship, or a structure should almost always include at least one diagram, not just prose. **When a diagram would help, draw the actual <svg> — do not write a sentence telling the teacher to add one.** Follow these SVG rules exactly — they are what separates a clean diagram from a broken one:

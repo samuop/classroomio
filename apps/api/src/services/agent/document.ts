@@ -1,5 +1,17 @@
 import { nanoid } from 'nanoid';
 import { AppError } from '@api/utils/errors';
+
+/**
+ * Title of the hidden conversation every course source lands in.
+ *
+ * A constant because four call sites created it by repeating the literal, and
+ * they have to agree: a typo in one of them opens a SECOND hidden conversation,
+ * splitting a course's sources across two of them where the panel only shows
+ * one. It is user-visible — the assistant panel prints it as the conversation
+ * name — so it is written in the interface language, like the rest of the
+ * strings this backend hands to the UI.
+ */
+export const SOURCES_CONVERSATION_TITLE = 'Fuentes del curso';
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   MAX_AGENT_DOCUMENT_SIZE,

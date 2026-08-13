@@ -52,7 +52,8 @@ import {
   parseDocument,
   storeDraftDocument,
   promoteDraftDocuments,
-  getDocumentText
+  getDocumentText,
+  SOURCES_CONVERSATION_TITLE
 } from '@api/services/agent/document';
 import { createChatConversation } from '@api/services/agent/chat-history';
 import { recordObservedCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
@@ -197,7 +198,7 @@ const agentCoreRouter = new Hono()
       // document — the document row in ai_chat_document just needs a non-null
       // conversationId to satisfy the FK constraint.
       if (!conversationId) {
-        const created = await createChatConversation(courseId, user.id, 'Course sources');
+        const created = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
         conversationId = created.id;
       } else {
         const conversation = await getChatConversation(conversationId, user.id);
@@ -355,7 +356,7 @@ const agentCoreRouter = new Hono()
           throw new AppError('Not authorized for this course', 'COURSE_FORBIDDEN', 403);
         }
 
-        const conversation = await createChatConversation(courseId, user.id, 'Course sources');
+        const conversation = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
         conversationId = conversation.id;
       }
 
@@ -655,7 +656,7 @@ const agentCoreRouter = new Hono()
       if (role === AgentRole.TEACHER && documentIds.length > 0) {
         try {
           if (!sourceConversationId) {
-            const created = await createChatConversation(courseId, user.id, 'Course sources');
+            const created = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
             sourceConversationId = created.id;
           }
 

@@ -139,7 +139,11 @@ export function buildStudentSystemPrompt(
     ? `\n\n## Disclaimer\n\nAt the end of every response, include this line on its own:\n\n> ${settings.disclaimerFooter.trim()}`
     : '';
 
-  return `You are an AI tutor for ClassroomIO, helping a learner work through course material.
+  // See the note in teacher.ts: the platform is white-labelled, so the tutor
+  // must not name it. A learner at a client company should see only their own.
+  return `You are an AI tutor for this course platform, helping a learner work through course material.
+
+Never name the platform, the company behind it, or any product brand.
 
 ## Language
 
