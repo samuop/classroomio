@@ -129,18 +129,26 @@
       </Popover.Content>
     </Popover.Root>
 
-    <HoverableItem>
-      {#snippet children(isHovered)}
-        <IconButton
-          onclick={handlePreview}
-          disabled={!courseApi.course?.id}
-          tooltip={$t('course.header.preview')}
-          aria-label={$t('course.header.preview')}
-        >
-          <PreviewIcon {isHovered} size={16} />
-        </IconButton>
-      {/snippet}
-    </HoverableItem>
+    <!--
+      Preview opens the public course page — the shop window an author checks
+      before publishing. A student is already inside the course, and with the
+      per-course landing page turned off on this deployment the button just
+      dropped them on the home page.
+    -->
+    {#if !$isStudentExperience}
+      <HoverableItem>
+        {#snippet children(isHovered)}
+          <IconButton
+            onclick={handlePreview}
+            disabled={!courseApi.course?.id}
+            tooltip={$t('course.header.preview')}
+            aria-label={$t('course.header.preview')}
+          >
+            <PreviewIcon {isHovered} size={16} />
+          </IconButton>
+        {/snippet}
+      </HoverableItem>
+    {/if}
   </div>
 </header>
 
