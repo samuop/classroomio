@@ -3111,6 +3111,8 @@
       "email_line": "Correo electrónico: {email}",
       "accept_button": "Aceptar invitación",
       "go_to_dashboard": "Ir al panel",
+      "session_mismatch": "Tenés la sesión abierta como {current}, y esta invitación es para {invited}.",
+      "switch_account": "Cerrar sesión y continuar",
       "messages": {
         "email_mismatch": "Has iniciado sesión con un correo electrónico diferente al de esta invitación.",
         "expired": "Este enlace de invitación ha caducado.",

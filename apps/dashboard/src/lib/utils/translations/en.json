@@ -4753,6 +4753,8 @@
       "email_line": "Email: {email}",
       "accept_button": "Accept invitation",
       "go_to_dashboard": "Go to Dashboard",
+      "session_mismatch": "You are signed in as {current}, and this invitation is for {invited}.",
+      "switch_account": "Sign out and continue",
       "messages": {
         "email_mismatch": "You are logged in with a different email from this invite.",
         "expired": "This invite link has expired.",

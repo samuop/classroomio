@@ -11,6 +11,7 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import { page } from '$app/state';
   import { t } from '$lib/utils/functions/translations';
+  import { logout } from '$lib/utils/functions/logout';
   import { ROLE } from '@cio/utils/constants';
 
   let { data } = $props();
@@ -103,6 +104,28 @@
     }
   }
 
+  /**
+   * Signing in as someone else is the normal case for whoever forwarded the
+   * invite — an admin testing it, or a shared machine. Refusing to accept is
+   * right; leaving them on a dead screen was not. The accept button was
+   * disabled, and the only other link went to a login form with the invitee's
+   * address locked in, which is useless when that person has no account yet.
+   *
+   * Dropping the session and reloading puts the page back in its anonymous
+   * state, where "Aceptar invitación" leads to signup as it should.
+   */
+  async function switchAccount() {
+    loading = true;
+
+    try {
+      await logout(false);
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to sign out before accepting invite', error);
+      loading = false;
+    }
+  }
+
   function handleNavigateAfterJoined() {
     if (inviteRoleId === ROLE.STUDENT) {
       return goto(resolve('/lms', {}));
@@ -142,7 +165,14 @@
       {$t('invite.organization.email_line', { email: data.invite.invite.email })}
     </p>
 
-    {#if !canJoinOrganization && !isAlreadyJoined}
+    {#if isInviteEmailMismatch && !isAlreadyJoined}
+      <p class="mt-3 text-center text-sm text-red-500">
+        {$t('invite.organization.session_mismatch', {
+          current: $profile.email,
+          invited: data.invite?.invite?.email ?? ''
+        })}
+      </p>
+    {:else if !canJoinOrganization && !isAlreadyJoined}
       <p class="mt-3 text-center text-sm text-red-500">{getBlockedInviteMessage()}</p>
     {/if}
   </div>
@@ -155,6 +185,10 @@
         {:else}
           {$t('invite.organization.go_to_dashboard')}
         {/if}
+      </Button>
+    {:else if isInviteEmailMismatch}
+      <Button type="button" onclick={switchAccount} disabled={loading} {loading}>
+        {$t('invite.organization.switch_account')}
       </Button>
     {:else}
       <Button type="submit" disabled={!canJoinOrganization || loading} {loading}>
