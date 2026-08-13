@@ -57,6 +57,7 @@
     "create-admin": "tsx src/scripts/create-admin.ts",
     "db:set-password": "tsx src/scripts/set-password.ts",
     "crear-empresa": "tsx src/scripts/crear-empresa.ts",
+    "seed:b2b2b": "tsx src/scripts/seed-escenario-b2b2b.ts",
     "set-allowance": "tsx src/scripts/set-allowance.ts",
     "db:setup": "tsx src/scripts/db-setup.ts",
     "db:setup:seed": "tsx src/scripts/db-setup.ts --seed",
