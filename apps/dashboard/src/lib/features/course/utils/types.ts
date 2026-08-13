@@ -362,6 +362,13 @@ export type ListStudentInvitesSuccess = Extract<ListStudentInvitesResponse, { su
 export type ListStudentInvitesData = ListStudentInvitesSuccess['data'];
 export type StudentInviteListItem = ListStudentInvitesData[number];
 
+export type ListCourseInvitationsRequest = (typeof classroomio.course)[':courseId']['invites']['students']['$get'];
+export type ListCourseInvitationsResponse = InferResponseType<ListCourseInvitationsRequest>;
+export type ListCourseInvitationsSuccess = Extract<ListCourseInvitationsResponse, { success: true }>;
+export type ListCourseInvitationsData = ListCourseInvitationsSuccess['data'];
+export type CourseInvitationItem = ListCourseInvitationsData['invitations'][number];
+export type CourseInvitationSummary = ListCourseInvitationsData['summary'];
+
 export type RevokeStudentInviteRequest =
   (typeof classroomio.course)[':courseId']['invites'][':inviteId']['revoke']['$post'];
 export type RevokeStudentInviteResponse = InferResponseType<RevokeStudentInviteRequest>;

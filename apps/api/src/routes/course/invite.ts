@@ -10,6 +10,7 @@ import {
   listStudentInvites,
   revokeStudentInvite
 } from '@api/services/course/invite';
+import { listCourseInvitations } from '@api/services/course/invitations';
 
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
@@ -36,6 +37,30 @@ export const invitesRouter = new Hono()
       );
     } catch (error) {
       return handleError(c, error, 'Failed to list invites');
+    }
+  })
+  /**
+   * GET /course/:courseId/invites/students
+   * Lists the people invited to this course and whether they joined (team/admin only).
+   *
+   * Distinct from GET / above: that lists this course's own invite *links*,
+   * while these are the per-person organization invites the audience import
+   * creates, which is what the "Invitar nuevos alumnos" box actually sends.
+   */
+  .get('/students', authMiddleware, courseTeamMemberMiddleware, zValidator('param', ZCourseInviteParam), async (c) => {
+    try {
+      const { courseId } = c.req.valid('param');
+      const result = await listCourseInvitations(courseId);
+
+      return c.json(
+        {
+          success: true,
+          data: result
+        },
+        200
+      );
+    } catch (error) {
+      return handleError(c, error, 'Failed to list course invitations');
     }
   })
   /**

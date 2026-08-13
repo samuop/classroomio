@@ -1,9 +1,12 @@
 import type {
   AddPeopleRequest,
+  CourseInvitationItem,
+  CourseInvitationSummary,
   CreateStudentInviteRequest,
   DeletePeopleRequest,
   GetStudentInviteAuditRequest,
   GetUserCourseAnalyticsRequest,
+  ListCourseInvitationsRequest,
   ListStudentInvitesRequest,
   ListPeopleRequest,
   RevokeStudentInviteRequest,
@@ -18,6 +21,17 @@ import { snackbar } from '$features/ui/snackbar/store';
  * API class for course members operations
  */
 export class PeopleApi extends BaseApiWithErrors {
+  /**
+   * People invited to the current course, with whether they joined.
+   *
+   * Kept on the api object rather than in the page so the invite modal can
+   * refresh it right after sending, without the two components having to know
+   * about each other.
+   */
+  invitations = $state<CourseInvitationItem[]>([]);
+  invitationSummary = $state<CourseInvitationSummary | null>(null);
+  isLoadingInvitations = $state(false);
+
   /**
    * Lists all course members for a course
    * @param courseId Course ID
@@ -119,6 +133,44 @@ export class PeopleApi extends BaseApiWithErrors {
     });
 
     return result?.data;
+  }
+
+  /**
+   * Loads the invitation list for a course into `invitations`.
+   * @param courseId Course ID
+   */
+  async loadInvitations(courseId: string) {
+    if (!courseId) return;
+
+    this.isLoadingInvitations = true;
+
+    try {
+      const result = await this.execute<ListCourseInvitationsRequest>({
+        requestFn: () =>
+          classroomio.course[':courseId']['invites']['students'].$get({
+            param: { courseId }
+          }),
+        logContext: 'listing course invitations',
+        onSuccess: () => {
+          this.success = true;
+          this.errors = {};
+        },
+        onError: (result) => {
+          if (typeof result === 'string') {
+            snackbar.error('course.navItem.people.invitations.load_failed');
+          }
+        }
+      });
+
+      if (result?.data) {
+        this.invitations = result.data.invitations;
+        this.invitationSummary = result.data.summary;
+      }
+
+      return result?.data;
+    } finally {
+      this.isLoadingInvitations = false;
+    }
   }
 
   /**

@@ -11,7 +11,9 @@
   import * as Avatar from '@cio/ui/base/avatar';
   import { ComingSoon, RoleBasedSecurity } from '$features/ui';
   import InvitationModal from '$features/course/components/people/invitation-modal.svelte';
+  import InvitationsSection from '$features/course/components/people/invitations-section.svelte';
   import DeleteConfirmation from '$features/course/components/people/delete-confirmation.svelte';
+  import CourseUnpublishedNotice from '$features/course/components/course-unpublished-notice.svelte';
 
   import { profile } from '$lib/utils/store/user';
   import type { CourseMembers, CourseMember } from '$features/course/utils/types';
@@ -104,6 +106,10 @@
 <DeleteConfirmation email={member.email || (member.profile && member.profile.email)} {deletePerson} />
 
 <section class="space-y-2">
+  <RoleBasedSecurity allowedRoles={[1, 2]}>
+    <CourseUnpublishedNotice class="mb-2" />
+  </RoleBasedSecurity>
+
   <div class="flex flex-col items-center justify-end gap-2 md:flex-row">
     <Search placeholder={$t('course.navItem.people.search')} bind:value={searchValue} />
     <Select.Root type="single" name="roles" bind:value={filterBy}>
@@ -240,4 +246,10 @@
       </Table.Body>
     </Table.Root>
   </div>
+
+  <RoleBasedSecurity allowedRoles={[1, 2]}>
+    <div class="pt-4">
+      <InvitationsSection courseId={courseApi.course?.id ?? ''} />
+    </div>
+  </RoleBasedSecurity>
 </section>

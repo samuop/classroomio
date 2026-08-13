@@ -1113,6 +1113,7 @@ export const getExploreCourses = async ({ orgId, profileId }: GetExploreCoursesO
  */
 export async function getCourseWithOrgData(courseId: string): Promise<{
   courseTitle: string | null;
+  orgId: string;
   orgName: string | null;
   orgSiteName: string | null;
   groupId: string | null;
@@ -1121,6 +1122,7 @@ export async function getCourseWithOrgData(courseId: string): Promise<{
     const result = await db
       .select({
         courseTitle: schema.course.title,
+        orgId: schema.organization.id,
         orgName: schema.organization.name,
         orgSiteName: schema.organization.siteName,
         groupId: schema.course.groupId

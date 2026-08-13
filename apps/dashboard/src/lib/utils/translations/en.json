@@ -2476,6 +2476,11 @@
       "preview_missing_slug": "Generate and save a course slug before previewing.",
       "discard_draft": "Discard draft"
     },
+    "unpublished_notice": {
+      "title": "This course is not published yet",
+      "description": "Students you add won't see it in their dashboard until you publish it, even though they get the email and appear here.",
+      "action": "Publish the course"
+    },
     "navItem": {
       "news_feed": {
         "heading": "News Feed",
@@ -3450,6 +3455,21 @@
         "feedback": "Copied Email to clipboard",
         "view": "View",
         "delete_profile": "Delete profile",
+        "invitations": {
+          "title": "Invitations",
+          "summary": "{joined} of {total} joined · {pending} pending",
+          "person": "Person",
+          "status": "Status",
+          "invited_at": "Invited",
+          "status_joined": "Joined",
+          "status_pending": "Pending",
+          "status_expired": "Expired",
+          "status_revoked": "Revoked",
+          "status_accepted_no_access": "Accepted, no access",
+          "email_not_sent": "no email",
+          "email_not_sent_hint": "The invitation email never went out. Resend it so they get the link.",
+          "load_failed": "Could not load invitations"
+        },
         "invite_modal": {
           "title": "Invite people",
           "invite": "Invite Tutors",

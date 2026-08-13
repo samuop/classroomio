@@ -1432,6 +1432,21 @@
         "feedback": "Correo electrónico copiado al portapapeles",
         "view": "Ver",
         "delete_profile": "Eliminar perfil",
+        "invitations": {
+          "title": "Invitaciones",
+          "summary": "{joined} de {total} ya entraron · {pending} pendientes",
+          "person": "Persona",
+          "status": "Estado",
+          "invited_at": "Invitado",
+          "status_joined": "Ya entró",
+          "status_pending": "Pendiente",
+          "status_expired": "Vencida",
+          "status_revoked": "Revocada",
+          "status_accepted_no_access": "Aceptó, sin acceso",
+          "email_not_sent": "sin correo",
+          "email_not_sent_hint": "No salió el correo de invitación. Reenviala para que le llegue el enlace.",
+          "load_failed": "No pudimos cargar las invitaciones"
+        },
         "teams": {
           "add": "Añadir",
           "add_team": "Sumá a tus compañeros de equipo o colaboradores a la organización y empiecen a trabajar juntos",
@@ -2511,6 +2526,11 @@
       "preview": "Vista previa del curso",
       "preview_missing_slug": "Generá y guardá el slug del curso antes de la vista previa.",
       "discard_draft": "Descartar borrador"
+    },
+    "unpublished_notice": {
+      "title": "Este curso todavía no está publicado",
+      "description": "Los alumnos que sumes no lo van a ver en su panel hasta que lo publiques, aunque les llegue el correo y figuren acá.",
+      "action": "Publicar el curso"
     },
     "sidebar": {
       "back_to_course": "volver al curso",

@@ -17,6 +17,7 @@
   import type { OrgTeamMember } from '$lib/utils/types/org';
   import type { OrgStudent, Tutor } from '$features/people/utils/types';
   import { TutorSelectSection, ExistingStudentsSection, BulkEmailSection } from '$features/people/components';
+  import CourseUnpublishedNotice from '$features/course/components/course-unpublished-notice.svelte';
 
   let tutors = $state<Tutor[]>([]);
   let selectedIds = $state<string[]>([]);
@@ -119,6 +120,7 @@
     }
 
     await courseApi.refreshCourse(courseId, $profile.id);
+    await peopleApi.loadInvitations(courseId);
   }
 
   async function inviteNewStudents(recipientCsv: string, sendEmail: boolean) {
@@ -133,6 +135,9 @@
     }
 
     await courseApi.refreshCourse(courseId, $profile.id);
+    // Brand-new invitees have no profile yet, so refreshCourse alone leaves the
+    // screen looking as if nothing happened. This is where they show up.
+    await peopleApi.loadInvitations(courseId);
   }
 
   async function onSubmit() {
@@ -179,6 +184,8 @@
     <Dialog.Header>
       <Dialog.Title>{$t('course.navItem.people.invite_modal.title')}</Dialog.Title>
     </Dialog.Header>
+
+    <CourseUnpublishedNotice />
 
     <UnderlineTabs.Root bind:value={activeTab}>
       <UnderlineTabs.List class="flex flex-wrap">

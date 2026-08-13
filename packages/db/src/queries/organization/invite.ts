@@ -273,6 +273,107 @@ export async function getLatestOrgInvitesByEmails(
   }
 }
 
+export type TCourseInviteRow = {
+  id: string;
+  email: string;
+  acceptedAt: string | null;
+  acceptedByProfileId: string | null;
+  isRevoked: boolean;
+  expiresAt: string;
+  createdAt: string;
+};
+
+/**
+ * Every organization invite that granted access to one course.
+ *
+ * Course access for an invited student is not stored on a course table: the
+ * import flow writes the course ids into the invite's JSONB metadata and the
+ * accept flow reads them back (parseCourseIdsFromInviteMetadata). So the only
+ * record that "we invited this person to this course" lives in that metadata,
+ * and this containment query is how a course asks for its own invitees.
+ *
+ * Returns every row, including superseded ones — re-inviting an email revokes
+ * the old invite and inserts a new one, so the caller keeps the latest per
+ * email rather than showing the same person once per attempt.
+ */
+export async function listOrganizationInvitesForCourse(
+  organizationId: string,
+  courseId: string
+): Promise<TCourseInviteRow[]> {
+  if (!organizationId || !courseId) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select({
+        id: schema.organizationInvite.id,
+        email: schema.organizationInvite.email,
+        acceptedAt: schema.organizationInvite.acceptedAt,
+        acceptedByProfileId: schema.organizationInvite.acceptedByProfileId,
+        isRevoked: schema.organizationInvite.isRevoked,
+        expiresAt: schema.organizationInvite.expiresAt,
+        createdAt: schema.organizationInvite.createdAt
+      })
+      .from(schema.organizationInvite)
+      .where(
+        and(
+          eq(schema.organizationInvite.organizationId, organizationId),
+          sql`${schema.organizationInvite.metadata} -> 'courseIds' @> ${JSON.stringify([courseId])}::jsonb`
+        )
+      )
+      .orderBy(desc(schema.organizationInvite.createdAt));
+  } catch (error) {
+    console.error('listOrganizationInvitesForCourse error:', error);
+    throw new Error(
+      `Failed to list organization invites for course: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+export type TInviteEmailEvent = {
+  inviteId: string;
+  eventType: 'EMAIL_SENT' | 'EMAIL_FAILED';
+  createdAt: string;
+};
+
+/**
+ * Email delivery events for a set of invites, newest first.
+ *
+ * EMAIL_SENT is recorded when the mail is handed to the queue, not when it
+ * lands — see the comment in inviteTeamMembers. It answers "did we try to send
+ * this?", which is the question a teacher looking at a pending invite has.
+ */
+export async function listOrganizationInviteEmailEvents(inviteIds: string[]): Promise<TInviteEmailEvent[]> {
+  if (inviteIds.length === 0) {
+    return [];
+  }
+
+  try {
+    const rows = await db
+      .select({
+        inviteId: schema.organizationInviteAudit.inviteId,
+        eventType: schema.organizationInviteAudit.eventType,
+        createdAt: schema.organizationInviteAudit.createdAt
+      })
+      .from(schema.organizationInviteAudit)
+      .where(
+        and(
+          inArray(schema.organizationInviteAudit.inviteId, inviteIds),
+          inArray(schema.organizationInviteAudit.eventType, ['EMAIL_SENT', 'EMAIL_FAILED'])
+        )
+      )
+      .orderBy(desc(schema.organizationInviteAudit.createdAt));
+
+    return rows as TInviteEmailEvent[];
+  } catch (error) {
+    console.error('listOrganizationInviteEmailEvents error:', error);
+    throw new Error(
+      `Failed to list organization invite email events: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 /**
  * Returns the latest active (non-revoked, non-accepted, non-expired) org invite for a given org+email.
  * Used to surface a pending invite to a logged-in student on the LMS dashboard.
