@@ -56,7 +56,14 @@
 {#if isEditing}
   <InputField className={cn('w-4/6', inputClass)} bind:value={title} errorMessage={errors?.title} {autoFocus} />
 {:else}
-  <div class={cn('w-4/5', containerClass)}>
+  <!--
+    `flex-1 min-w-0`, not a fixed `w-4/5`: this sits in a flex row next to an
+    order chip and an action column, so a hard 80% plus those siblings adds up
+    to more than the row and the "Continuar" button spilled out past the card's
+    right edge. Taking the leftover space instead cannot overflow, and min-w-0
+    lets the truncated title actually truncate.
+  -->
+  <div class={cn('min-w-0 flex-1', containerClass)}>
     <div class={cn('flex items-center gap-2', rowClass)}>
       {#if showIcon}
         <CourseContentIcon type={item.type} size={iconSize} />

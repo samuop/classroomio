@@ -448,9 +448,14 @@
         </div>
 
         <RefreshPageData onRefresh={() => lessonApi.get(courseId, lessonId)} />
-      </RoleBasedSecurity>
 
-      <LanguageSelector />
+        <!--
+          Teachers only. Picking a content locale is an authoring control: for a
+          student it offered languages the lesson has no translation for, and it
+          ate 120px of a header that is already tight once the AI panel is open.
+        -->
+        <LanguageSelector />
+      </RoleBasedSecurity>
     </div>
   </Page.Action>
 </Page.Header>

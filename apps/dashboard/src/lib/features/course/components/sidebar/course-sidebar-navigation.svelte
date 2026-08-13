@@ -95,6 +95,12 @@
         title: $t('course.navItems.nav_sources'),
         url: getNavItemRoute(id, 'sources'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'sources'),
+        show() {
+          // Sources are the teacher's raw material for the AI assistant, not
+          // course content. The API already rejects students (403), so leaving
+          // the link visible only offered them a page that fails to load.
+          return !isStudent;
+        },
         icon: getNavIcon(NAV_IDS.SOURCES)
       },
       {

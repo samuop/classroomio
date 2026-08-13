@@ -23,7 +23,14 @@
   )}
   {...restProps}
 >
-  <div class="ui:flex ui:items-start ui:justify-between ui:gap-4 ui:flex-col ui:md:flex-row">
+  <!--
+    `flex-wrap` so a long title and a wide action bar stack instead of fighting.
+    The `md:` breakpoint reads the VIEWPORT, but panels like the AI assistant
+    shrink this container without changing the viewport, so a wide window could
+    still leave the title crushed into a few characters per line. Wrapping is
+    driven by the actual available width, which is the thing that matters here.
+  -->
+  <div class="ui:flex ui:items-start ui:justify-between ui:gap-4 ui:flex-col ui:md:flex-row ui:flex-wrap">
     {@render children?.()}
   </div>
 </div>

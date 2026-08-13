@@ -292,7 +292,7 @@
         ? 'border-primary-300 bg-primary-50/40 cursor-grab shadow-sm active:cursor-grabbing'
         : ''}"
     >
-      <div class="mt-0.5 mr-5">
+      <div class="mt-0.5 mr-5 shrink-0">
         <Chip value={getContentOrder(item.contentId, item.type)} />
       </div>
 
@@ -398,7 +398,7 @@
         </ContentRow>
       {/if}
 
-      <div class="ml-3 flex min-w-fit items-start gap-2">
+      <div class="ml-3 flex shrink-0 items-start gap-2">
         {#if isStudentView}
           <span class="mt-1 inline-flex items-center text-gray-500 dark:text-gray-300">
             {#if itemLocked}

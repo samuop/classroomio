@@ -629,7 +629,7 @@
               </ContentRow>
             {/if}
 
-            <div class="ml-3 flex min-w-fit items-start gap-2">
+            <div class="ml-3 flex shrink-0 items-start gap-2">
               {#if isStudentView}
                 <span class="mt-1 inline-flex items-center text-gray-500 dark:text-gray-300">
                   {#if itemLocked}

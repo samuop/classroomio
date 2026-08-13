@@ -73,7 +73,7 @@
         {/if}
       </RoleBasedSecurity>
     {:else}
-      <Page.Title>{title}</Page.Title>
+      <Page.Title class="text-balance break-words">{title}</Page.Title>
     {/if}
   </div>
 
