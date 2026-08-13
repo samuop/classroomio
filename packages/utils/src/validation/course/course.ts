@@ -66,7 +66,7 @@ export const ZCertificateSignatory = z.object({
 });
 export type TCertificateSignatory = z.infer<typeof ZCertificateSignatory>;
 
-export const ZCertificateTemplateId = z.enum(['classique', 'brutalist', 'noir', 'poster', 'minimal']);
+export const ZCertificateTemplateId = z.enum(['classique', 'diploma', 'brutalist', 'noir', 'poster', 'minimal']);
 export type TCertificateTemplateId = z.infer<typeof ZCertificateTemplateId>;
 
 /**
@@ -80,6 +80,7 @@ export type TCertificateTemplateId = z.infer<typeof ZCertificateTemplateId>;
  */
 export const ZCertificateLabels = z.object({
   presented: z.string().max(120).optional(),
+  completed: z.string().max(120).optional(),
   awardedTo: z.string().max(120).optional(),
   issued: z.string().max(120).optional(),
   reference: z.string().max(120).optional(),

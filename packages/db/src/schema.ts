@@ -766,7 +766,7 @@ export const course = pgTable(
        * silently discarded on save.
        */
       design?: {
-        templateId: 'classique' | 'brutalist' | 'noir' | 'poster' | 'minimal';
+        templateId: 'classique' | 'diploma' | 'brutalist' | 'noir' | 'poster' | 'minimal';
         accentColor: string;
         subtitle?: string;
         descriptionOverride?: string;
@@ -775,6 +775,7 @@ export const course = pgTable(
         /** Fixed wording each template prints; see `CertificateLabels` in @cio/certificates. */
         labels?: {
           presented?: string;
+          completed?: string;
           awardedTo?: string;
           issued?: string;
           reference?: string;

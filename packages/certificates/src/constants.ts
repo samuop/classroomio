@@ -20,6 +20,7 @@ export const DEFAULT_ACCENT_COLOR: string = ACCENT_COLORS[0];
  */
 export const DEFAULT_CERTIFICATE_LABELS: Required<CertificateLabels> = {
   presented: 'se certifica que',
+  completed: 'ha completado satisfactoriamente',
   awardedTo: 'Otorgado a',
   issued: 'Emitido',
   reference: 'Referencia',
@@ -85,6 +86,12 @@ export const CERTIFICATE_TEMPLATES: CertificateTemplateMeta[] = [
     label: 'Classique',
     description: 'Vintage engraved with double-rule border and seal.',
     labels: ['presented']
+  },
+  {
+    id: 'diploma',
+    label: 'Diploma',
+    description: 'Engraved diploma led by the recipient, with both marks at the foot.',
+    labels: ['presented', 'completed', 'issued', 'reference']
   },
   {
     id: 'brutalist',

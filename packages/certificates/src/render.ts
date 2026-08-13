@@ -3,6 +3,7 @@ import type { CertificateDesign, CertificateRenderData, CertificateRenderResult,
 import { CERTIFICATE_TEMPLATE_IDS } from './types';
 import { renderBrutalist } from './templates/brutalist';
 import { renderClassique } from './templates/classique';
+import { renderDiploma } from './templates/diploma';
 import { renderMinimal } from './templates/minimal';
 import { renderNoir } from './templates/noir';
 import { renderPoster } from './templates/poster';
@@ -11,6 +12,7 @@ import { renderDocument } from './document/render';
 
 const RENDERERS: Record<CertificateTemplateId, TemplateRenderer> = {
   classique: renderClassique,
+  diploma: renderDiploma,
   brutalist: renderBrutalist,
   noir: renderNoir,
   poster: renderPoster,

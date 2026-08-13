@@ -1,6 +1,6 @@
 import type { CertificateDocument } from './document/types';
 
-export const CERTIFICATE_TEMPLATE_IDS = ['classique', 'brutalist', 'noir', 'poster', 'minimal'] as const;
+export const CERTIFICATE_TEMPLATE_IDS = ['classique', 'diploma', 'brutalist', 'noir', 'poster', 'minimal'] as const;
 export type CertificateTemplateId = (typeof CERTIFICATE_TEMPLATE_IDS)[number];
 
 export interface CertificateSignatory {
@@ -20,6 +20,14 @@ export interface CertificateSignatory {
 export interface CertificateLabels {
   /** Line above the recipient's name: "— se certifica que —". */
   presented?: string;
+  /**
+   * Line below the recipient's name, introducing the course: "ha completado
+   * satisfactoriamente".
+   *
+   * Only layouts that name the person before the course have somewhere to print
+   * this; the ones that lead with the course title do not.
+   */
+  completed?: string;
   /** Heading over the recipient in grid layouts: "Otorgado a". */
   awardedTo?: string;
   /** Key for the issue date. */

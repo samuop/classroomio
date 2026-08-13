@@ -18,7 +18,7 @@
  * behalf of a client should not have to build that itself, and the slots hide
  * themselves when a course has no client set.
  */
-import type { CertificateDesign } from '../types';
+import type { CertificateDesign, CertificateTemplateId } from '../types';
 import { resolveLabels } from '../constants';
 import {
   CANVAS_HEIGHT,
@@ -299,13 +299,22 @@ function posterPreset(design: CertificateDesign): CertificateDocument {
   };
 }
 
-const PRESETS = {
+/**
+ * Partial on purpose: `diploma` has no preset of its own.
+ *
+ * A preset is a hand-placed copy of a template in fixed coordinates, and the
+ * free canvas it seeds is parked behind {@link CANVAS_EDITOR_ENABLED}. Writing
+ * one for a layout nobody can open yet would be guesswork nobody could check —
+ * so the type says the entry is missing and the fallback below handles it,
+ * rather than an alias that quietly hands out somebody else's layout.
+ */
+const PRESETS: Partial<Record<CertificateTemplateId, (design: CertificateDesign) => CertificateDocument>> = {
   classique: classiquePreset,
   minimal: minimalPreset,
   noir: noirPreset,
   brutalist: brutalistPreset,
   poster: posterPreset
-} as const;
+};
 
 /**
  * Seed a canvas from the design a course is already using.
@@ -315,7 +324,10 @@ const PRESETS = {
  * editing a preset here does not disturb any course that already switched.
  */
 export function buildPresetDocument(design: CertificateDesign): CertificateDocument {
-  const build = PRESETS[design.templateId] ?? PRESETS.classique;
+  // `classiquePreset` directly rather than through the map: with the map now
+  // partial, its entries are optional too, and the fallback has to be a function
+  // that certainly exists.
+  const build = PRESETS[design.templateId] ?? classiquePreset;
 
   return build(design);
 }
