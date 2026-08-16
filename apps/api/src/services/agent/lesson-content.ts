@@ -557,6 +557,43 @@ export function countLessonWords(content: string): number {
   return prose.split(/\s+/).filter(Boolean).length;
 }
 
+// ─── Lesson visuals ──────────────────────────────────────────────────────────
+
+/**
+ * Words below which a lesson is short enough that unbroken prose is fine.
+ *
+ * A three-paragraph definition does not need a figure, and warning about one
+ * would train the model to ignore this loop. Set at half the thin-lesson floor:
+ * anything above it is long enough that a wall of text is a real reading problem.
+ */
+const VISUAL_EXEMPT_WORD_COUNT = 350;
+
+/**
+ * Reports a lesson that teaches entirely in prose.
+ *
+ * This closes the gap that produced courses with no pictures at all. The prompt
+ * asked for diagrams "generously" and for images "at most one", and nothing ever
+ * measured the result — while depth, SVG and maths each had a warning loop, which
+ * is the one mechanism in this agent that demonstrably changes what it writes
+ * next. Stating a preference and never checking it is how the preference loses.
+ *
+ * Deliberately satisfied by EITHER a diagram or a picture, and it names the free
+ * one first: an <svg> costs nothing and the teacher can have it redrawn from the
+ * lesson page, so pushing every lesson towards a paid image would be the wrong
+ * fix for the right complaint.
+ */
+export function validateLessonVisuals(content: string): string[] {
+  if (countLessonWords(content) < VISUAL_EXEMPT_WORD_COUNT) return [];
+
+  // `<img>` counts whatever produced it: by the time content reaches here the
+  // only src the sanitizer allows through is one generate_image returned.
+  if (/<svg\b/i.test(content) || /<img\b/i.test(content)) return [];
+
+  return [
+    'This lesson is all prose — not one diagram and not one picture. A learner facing an unbroken wall of text skims it. Add at least one visual now with edit_lesson_content: draw an inline <svg> for anything with structure in it (a process, a comparison, a relationship, a sequence of steps — this is free and the teacher can edit it afterwards), or call generate_image for a scene, a human situation or a visual metaphor that a diagram cannot carry. Pick the one the material actually calls for; do not add a decorative figure.'
+  ];
+}
+
 /**
  * Thin-lesson warning, handed back through the same loop as the SVG and maths
  * checks — the one mechanism in this agent that demonstrably changes what the

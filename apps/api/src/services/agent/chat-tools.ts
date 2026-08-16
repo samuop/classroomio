@@ -24,6 +24,7 @@ import {
   repairSvgGeometry,
   validateLessonDepth,
   validateLessonMath,
+  validateLessonVisuals,
   validateSvgDiagram
 } from '@api/services/agent/lesson-content';
 import { generateLessonImage, MAX_IMAGES_PER_ROUND } from '@api/services/agent/image-generation';
@@ -114,11 +115,7 @@ function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
 
 /** Attribute-safe text for the one element the agent is handed pre-built. */
 function escapeHtmlAttribute(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /**
@@ -140,6 +137,7 @@ async function writeLessonBody(params: {
   svgWarnings: string[];
   mathWarnings: string[];
   depthWarnings: string[];
+  visualWarnings: string[];
 }> {
   const normalizedContent = normalizeAgentLessonContent(params.content, params.lessonTitle);
 
@@ -158,7 +156,11 @@ async function writeLessonBody(params: {
     normalizedContent,
     svgWarnings: validateSvgDiagram(normalizedContent),
     mathWarnings: validateLessonMath(normalizedContent),
-    depthWarnings: params.checkDepth ? validateLessonDepth(normalizedContent) : []
+    depthWarnings: params.checkDepth ? validateLessonDepth(normalizedContent) : [],
+    // Same gate as depth, and for the same reason: during a build an all-prose
+    // lesson is a defect, but a teacher editing one lesson by hand may well want
+    // exactly the paragraph they asked for and nothing else.
+    visualWarnings: params.checkDepth ? validateLessonVisuals(normalizedContent) : []
   };
 }
 
@@ -167,12 +169,15 @@ function contentWarningFields(warnings: {
   svgWarnings: string[];
   mathWarnings: string[];
   depthWarnings?: string[];
+  visualWarnings?: string[];
 }) {
   const depthWarnings = warnings.depthWarnings ?? [];
+  const visualWarnings = warnings.visualWarnings ?? [];
   const notes: string[] = [];
   if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
   if (depthWarnings.length > 0) notes.push('it is too thin to teach from');
+  if (visualWarnings.length > 0) notes.push('it has no diagram and no picture');
 
   if (notes.length === 0) return {};
 
@@ -180,6 +185,7 @@ function contentWarningFields(warnings: {
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
     ...(depthWarnings.length > 0 ? { depthWarnings } : {}),
+    ...(visualWarnings.length > 0 ? { visualWarnings } : {}),
     note: `The lesson was saved, but ${notes.join(' and ')}. Fix that now with edit_lesson_content before moving on.`
   };
 }
@@ -598,7 +604,11 @@ export function buildAgentTools(
               order: existing?.order ?? args.order,
               reused: true,
               ...(written
-                ? { contentWritten: true, contentLength: written.normalizedContent.length, ...contentWarningFields(written) }
+                ? {
+                    contentWritten: true,
+                    contentLength: written.normalizedContent.length,
+                    ...contentWarningFields(written)
+                  }
                 : {
                     note: 'This plan item was already built. Reusing the existing lesson — write its content with update_lesson_content instead of creating a duplicate.'
                   })

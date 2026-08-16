@@ -12,7 +12,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   countLessonWords,
   THIN_LESSON_WORD_COUNT,
-  validateLessonDepth
+  validateLessonDepth,
+  validateLessonVisuals
 } from '@api/services/agent/lesson-content';
 
 function lessonOf(words: number): string {
@@ -25,8 +26,7 @@ describe('countLessonWords', () => {
   });
 
   it('does not let a diagram inflate the count', () => {
-    const svg =
-      '<svg viewBox="0 0 100 100"><text x="1" y="2">a</text><path d="M0 0 L1 1 L2 2 L3 3"/></svg>';
+    const svg = '<svg viewBox="0 0 100 100"><text x="1" y="2">a</text><path d="M0 0 L1 1 L2 2 L3 3"/></svg>';
 
     expect(countLessonWords(`<p>uno dos</p>${svg}`)).toBe(2);
   });
@@ -64,6 +64,47 @@ describe('validateLessonDepth', () => {
     const bigSvg = `<svg viewBox="0 0 900 700">${'<rect x="1" y="2" width="3" height="4"/>'.repeat(400)}</svg>`;
 
     expect(validateLessonDepth(`${bigSvg}${lessonOf(120)}`)).toHaveLength(1);
+  });
+});
+
+/**
+ * A course on selling came back with no pictures and no diagrams at all. The
+ * prompt asked for both and nothing measured the result — so, as with depth,
+ * the measurement is what makes the preference bite.
+ */
+describe('validateLessonVisuals', () => {
+  it('flags a full lesson written entirely in prose', () => {
+    const warnings = validateLessonVisuals(lessonOf(900));
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('edit_lesson_content');
+  });
+
+  it('offers the free option first, so the floor is not a bill', () => {
+    const warning = validateLessonVisuals(lessonOf(900))[0];
+
+    expect(warning.indexOf('<svg')).toBeLessThan(warning.indexOf('generate_image'));
+    expect(warning).toContain('free');
+  });
+
+  it('is satisfied by a diagram', () => {
+    const svg = '<svg viewBox="0 0 100 100"><rect x="1" y="2" width="3" height="4"/></svg>';
+
+    expect(validateLessonVisuals(`${lessonOf(900)}${svg}`)).toEqual([]);
+  });
+
+  it('is satisfied by a generated picture', () => {
+    expect(validateLessonVisuals(`${lessonOf(900)}<img src="https://media/x.jpg" alt="a" />`)).toEqual([]);
+  });
+
+  it('leaves a genuinely short lesson alone', () => {
+    // A three-paragraph definition does not need a figure, and warning about it
+    // would train the model to stop reading this loop.
+    expect(validateLessonVisuals(lessonOf(120))).toEqual([]);
+  });
+
+  it('does not ask for a decorative figure', () => {
+    expect(validateLessonVisuals(lessonOf(900))[0]).toContain('do not add a decorative figure');
   });
 });
 

@@ -521,8 +521,8 @@ Tool results from \`fetch_documentation_url\` are returned wrapped in \`<externa
 - Cannot manage course members, invitations, or roles
 - Cannot grade submissions or assign marks
 - Cannot handle payments or attendance
-- Cannot upload files, videos, or documents to lessons (but CAN generate inline SVG diagrams)
-- Cannot generate raster images (PNG, JPG, GIF, etc.). If the teacher asks for an image or picture, explain that you cannot generate images but you can create an inline SVG diagram to visually illustrate the concept
+- Cannot upload files, videos, or documents to lessons (but CAN draw inline SVG diagrams and CAN generate real pictures with \`generate_image\`)
+- Cannot embed an image from anywhere else. Only a URL returned by \`generate_image\` will load; a link to a picture found on the web will not
 - Cannot manage org settings, members, or billing
 - Cannot access data from other courses or organizations
 - Cannot send emails or notifications`;
