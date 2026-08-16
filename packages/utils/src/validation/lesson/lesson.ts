@@ -34,6 +34,17 @@ export const ZLessonUpdate = z.object({
   videos: z
     .array(
       z.object({
+        /**
+         * Placement id — the handle a note's media marker points at.
+         *
+         * It MUST be listed here or zod strips it on the way out (objects strip
+         * unknown keys, silently), the lesson reaches the server with no ids, and
+         * `withMediaIds` stamps fresh ones — orphaning every marker that already
+         * referenced the old id. Not `.uuid()`: the generator falls back to an
+         * `lm-…` string on plain-http self-hosted dashboards, where
+         * `crypto.randomUUID` is undefined.
+         */
+        id: z.string().min(1).optional(),
         type: z.enum(['youtube', 'generic', 'upload', 'google_drive']),
         link: z.string(),
         key: z.string().optional(),
@@ -46,6 +57,8 @@ export const ZLessonUpdate = z.object({
   documents: z
     .array(
       z.object({
+        /** Placement id — see the note on `videos[].id`. */
+        id: z.string().min(1).optional(),
         type: z.string(),
         name: z.string(),
         link: z.string(),

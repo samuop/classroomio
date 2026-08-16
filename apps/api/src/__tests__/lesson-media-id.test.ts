@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createLessonMediaId, findLessonMediaIndex, withLessonMediaIds } from '@cio/utils/functions/lesson-media-id';
+import { ZLessonUpdate } from '@cio/utils/validation/lesson';
 
 describe('createLessonMediaId', () => {
   it('does not repeat', () => {
@@ -66,6 +67,43 @@ describe('withLessonMediaIds', () => {
     const stamped = withLessonMediaIds([{ id: '', link: 'a' }]);
 
     expect(stamped[0].id).not.toBe('');
+  });
+});
+
+/**
+ * Stamping ids is worthless if they cannot travel. `ZLessonUpdate` guards the
+ * only route a lesson takes from the editor to the database — the dashboard
+ * parses with it before sending AND the route re-parses on arrival — and a zod
+ * object drops unknown keys without saying so. When `id` was missing from the
+ * schema, every save arrived id-less, `withMediaIds` minted fresh ones, and each
+ * note marker was left pointing at a video that no longer answered to that name:
+ * the video fell out of the note and back to the top of the lesson.
+ */
+describe('ZLessonUpdate carries placement ids', () => {
+  it('keeps videos[].id and documents[].id', () => {
+    const parsed = ZLessonUpdate.parse({
+      videos: [{ id: 'video-1', type: 'youtube', link: 'https://youtu.be/a' }],
+      documents: [{ id: 'doc-1', type: 'pdf', name: 'n', link: 'l', key: 'k' }]
+    });
+
+    expect(parsed.videos?.[0].id).toBe('video-1');
+    expect(parsed.documents?.[0].id).toBe('doc-1');
+  });
+
+  it('accepts the non-UUID fallback id used on plain-http dashboards', () => {
+    const parsed = ZLessonUpdate.parse({
+      videos: [{ id: 'lm-abc123-xyz', type: 'upload', link: 'https://files/a.mp4' }]
+    });
+
+    expect(parsed.videos?.[0].id).toBe('lm-abc123-xyz');
+  });
+
+  it('still accepts media written before ids existed', () => {
+    const parsed = ZLessonUpdate.parse({
+      videos: [{ type: 'youtube', link: 'https://youtu.be/a' }]
+    });
+
+    expect(parsed.videos?.[0].id).toBeUndefined();
   });
 });
 
