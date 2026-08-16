@@ -47,14 +47,7 @@
 {:else}
   <!-- View Mode -->
   {#if url}
-    <iframe
-      title="Embeded Slides"
-      src={url}
-      frameborder="0"
-      width="100%"
-      height="569"
-      class="iframe my-3"
-      allowfullscreen={true}
-    ></iframe>
+    <!-- Sizing lives in `iframe.iframe` (app.css): 16:9 at every width. -->
+    <iframe title="Embeded Slides" src={url} frameborder="0" class="iframe my-3" allowfullscreen={true}></iframe>
   {/if}
 {/if}

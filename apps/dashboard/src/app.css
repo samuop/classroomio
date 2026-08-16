@@ -79,8 +79,36 @@ html .dark {
   border: 2px solid var(--scrollbarBG);
 }
 
+/*
+ * The reading column that wraps lesson content is `overflow-x-hidden`, so
+ * anything wider than it is CLIPPED, not scrollable — on a phone the content is
+ * silently lost rather than reachable. The rules below give each usual offender
+ * either a way to fit or a way to scroll on its own.
+ */
 .prose {
   color: var(--foreground);
+  /* Inherited, so it also covers li, blockquote and inline code. Long URLs and
+     identifiers are the common case in lesson text and the ones that overflow. */
+  overflow-wrap: break-word;
+}
+
+.prose img {
+  @apply h-auto max-w-full;
+}
+
+.prose iframe {
+  @apply max-w-full;
+}
+
+/*
+ * KaTeX lays display math out at its natural width; a long equation overflows
+ * the column and gets clipped mid-expression. Scrolling it is the only option
+ * that keeps every term reachable — math cannot be re-wrapped.
+ */
+.prose .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25rem;
 }
 
 .prose h1,
@@ -148,8 +176,18 @@ html .dark {
   @apply mt-2;
 }
 
+/*
+ * `display: block` turns the table into its own horizontal scroll container, so
+ * a wide table scrolls instead of being cut off by the reading column. The cost
+ * is that a narrow table no longer stretches to the full column width — it sizes
+ * to its content — which is the better default for a table of two columns anyway.
+ */
 .prose table {
-  @apply my-6 w-full border-collapse;
+  @apply my-6 border-collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .prose thead tr,
@@ -188,7 +226,7 @@ html .dark {
 }
 
 .prose pre {
-  @apply my-4 overflow-auto rounded-lg p-4;
+  @apply my-4 max-w-full overflow-auto rounded-lg p-4;
   background-color: var(--muted);
 }
 
@@ -234,19 +272,23 @@ body {
   --plyr-tooltip-color: var(--popover-foreground);
 }
 
+/*
+ * Embedded slide decks. The height used to be a flat 450px that snapped to 209px
+ * below 760px — a squat letterbox on a phone, and a sudden doubling one pixel
+ * later. Decks are 16:9, so the ratio sets the height at every width; the cap
+ * stops it growing taller than the video player next to it on a wide screen.
+ * `height: auto` is required: the element's `height` attribute would otherwise
+ * win over `aspect-ratio`.
+ */
 iframe.iframe {
   width: 100%;
   max-width: 48rem;
   margin: 0 auto;
-  height: 450px;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  max-height: 569px;
   border: 1px solid gray;
   border-radius: 5px;
-}
-
-@media (max-width: 760px) {
-  iframe.iframe {
-    height: 209px;
-  }
 }
 
 :not([data-slot='button']) > svg.lucide-icon:not(.custom) {

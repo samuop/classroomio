@@ -45,14 +45,8 @@
     {/key}
   </div>
 {:else if slideEmbedUrl}
-  <iframe
-    title="Embeded Slides"
-    src={slideEmbedUrl}
-    frameborder="0"
-    width="100%"
-    height="569"
-    class="iframe my-5"
-    allowfullscreen={true}
+  <!-- Sizing lives in `iframe.iframe` (app.css): 16:9 at every width. -->
+  <iframe title="Embeded Slides" src={slideEmbedUrl} frameborder="0" class="iframe my-5" allowfullscreen={true}
   ></iframe>
 {:else if document}
   <div class="my-5">

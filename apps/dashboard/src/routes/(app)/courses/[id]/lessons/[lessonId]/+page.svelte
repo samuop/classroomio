@@ -35,7 +35,12 @@
   });
 </script>
 
-<Page.Root class="mx-auto flex w-[90%] px-4 md:max-w-4xl lg:max-w-5xl">
+<!--
+  Full bleed on a phone: `w-[90%]` plus `px-4` spent a quarter of a narrow screen
+  on margins, and the lesson body is the one page here that is mostly prose. The
+  90% column returns from `sm` up, matching the exercise page.
+-->
+<Page.Root class="mx-auto flex w-full px-3 sm:w-[90%] sm:px-4 md:max-w-4xl lg:max-w-5xl">
   {#key data.lessonId}
     <LessonPage courseId={data.courseId} lessonId={data.lessonId} />
   {/key}

@@ -30,10 +30,12 @@
       style:max-height={iframeMaxHeight}
       style:width={iframeWidth}
     >
+      <!-- The min-height floor stops a Drive embed collapsing, but a flat 240px is
+           taller than 16:9 on a phone, which letterboxes it. Lower it below `sm`. -->
       <iframe
         src={source.url}
         title={iframeTitle}
-        class="ui:block ui:h-full ui:min-h-[240px] ui:w-full ui:border-0"
+        class="ui:block ui:h-full ui:min-h-[180px] ui:w-full ui:border-0 ui:sm:min-h-[240px]"
         style:aspect-ratio="16 / 9"
         allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
         allowfullscreen
