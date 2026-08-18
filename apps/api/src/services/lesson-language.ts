@@ -5,6 +5,7 @@ import {
   deleteLessonLanguage,
   getLessonLanguageByLessonIdAndLocale,
   getLessonLanguagesByLessonId,
+  recordLessonLanguageHistory,
   updateLessonLanguage,
   upsertLessonLanguage
 } from '@cio/db/queries/lesson/language';
@@ -67,10 +68,20 @@ export async function upsertLessonLanguageService(
       throw new AppError('Lesson not found', ErrorCodes.LESSON_NOT_FOUND, 404);
     }
 
+    // Leido ANTES de escribir: una vez hecho el upsert la version anterior ya no
+    // existe en ningun lado, y es justo la que alguien va a querer de vuelta.
+    const previous = await getLessonLanguageByLessonIdAndLocale(lessonId, (data.locale ?? 'en') as TLocale);
+
     const language = await upsertLessonLanguage({
       ...data,
       content: sanitizeOptionalHtml(data.content),
       lessonId
+    });
+
+    await recordLessonLanguageHistory({
+      lessonLanguageId: language.id,
+      oldContent: previous?.content ?? null,
+      newContent: language.content ?? null
     });
 
     if (lesson.courseId) {
