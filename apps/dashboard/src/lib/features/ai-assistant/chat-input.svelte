@@ -323,6 +323,8 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
           {#snippet actions()}
             {#if !isStudent}
               <button
+                type="button"
+                onmousedown={(event) => event.preventDefault()}
                 onclick={handlePaperclipClick}
                 disabled={isUploading}
                 class="ui:text-muted-foreground hover:ui:bg-muted shrink-0 rounded-md p-1.5 transition-colors disabled:pointer-events-none disabled:opacity-40"
@@ -339,12 +341,32 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
               <ContextIndicator {contextUsage} />
             {/if}
 
+            <!--
+              `mousedown` preventDefault: pulsar el boton NO saca el foco del
+              textarea. Con el foco se va el teclado del telefono, el panel
+              recupera esa altura, y todo lo de abajo — el boton incluido — se
+              corre hacia abajo ENTRE que apoyas el dedo y lo levantas. El clic
+              termina cayendo donde el boton ya no esta: parece que el boton no
+              anda, y Enter si, porque Enter nunca desenfoca nada.
+            -->
             {#if isStreaming}
-              <Button size="icon" variant="outline" onclick={onStop} class="size-7 shrink-0">
+              <Button
+                size="icon"
+                variant="outline"
+                onmousedown={(event: MouseEvent) => event.preventDefault()}
+                onclick={onStop}
+                class="size-7 shrink-0"
+              >
                 <SquareIcon size={12} />
               </Button>
             {:else}
-              <Button size="sm" onclick={onSend} disabled={!inputValue.trim()} class="shrink-0">
+              <Button
+                size="sm"
+                onmousedown={(event: MouseEvent) => event.preventDefault()}
+                onclick={onSend}
+                disabled={!inputValue.trim()}
+                class="shrink-0"
+              >
                 {$t('ai_assistant.send')}
               </Button>
             {/if}
