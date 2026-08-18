@@ -117,9 +117,14 @@ class ApiClient {
       headers.set('Accept', 'application/json');
     }
 
-    // Add organization ID header if available
+    // Add organization ID header if available.
+    //
+    // The active org is the DEFAULT, not an override: a caller that set the
+    // header deliberately is asking about a different company, and a consultancy
+    // admin reading one of their client companies' learners is exactly that
+    // case. Overwriting it here would send every such request to the wrong org.
     const org = get(currentOrg);
-    if (org?.id) {
+    if (org?.id && !headers.has('cio-org-id')) {
       headers.set('cio-org-id', org.id);
     }
 

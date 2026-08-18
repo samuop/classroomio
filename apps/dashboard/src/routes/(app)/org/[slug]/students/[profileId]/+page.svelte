@@ -18,12 +18,20 @@
 
   const profileId = $derived(page.params.profileId ?? '');
 
+  /**
+   * Which company's record to read. Absent for the ordinary case (a learner of
+   * the org you are in); set by the consultancy's cross-company tracking view,
+   * whose learners live in its client companies while the page context stays on
+   * the consultancy.
+   */
+  const orgIdParam = $derived(page.url.searchParams.get('org') ?? undefined);
+
   // Wait for the current org to be hydrated before fetching: the API client
   // injects the cio-org-id header from currentOrg, and the /student endpoint
   // requires it. Fetching too early (org not loaded yet) returns 400.
   $effect(() => {
     if (profileId && $currentOrg?.id) {
-      studentApi.ensureFetched(profileId);
+      studentApi.ensureFetched(profileId, orgIdParam);
     }
   });
 
