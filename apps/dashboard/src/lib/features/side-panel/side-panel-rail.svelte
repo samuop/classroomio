@@ -115,9 +115,74 @@
     });
   }
 
+  /**
+   * El alto y la posicion REALES de lo que se ve, no los del documento.
+   *
+   * El panel usaba `h-screen`, o sea `100vh`. En un telefono `100vh` es el alto
+   * CON la barra del navegador escondida, siempre mayor que lo visible: el
+   * ultimo tramo del panel — justo donde vive la caja de texto — cae abajo del
+   * borde de la pantalla. Y cuando se abre el teclado `100vh` no cambia en
+   * absoluto, asi que el input queda tapado por el teclado.
+   *
+   * `100dvh` arregla lo primero pero no lo segundo: sigue sin contar el teclado.
+   * El unico que sabe de teclados es visualViewport, que ademas se desplaza
+   * (offsetTop) cuando el navegador empuja la pagina hacia arriba. Con esos dos
+   * numeros el panel ocupa exactamente el hueco que queda libre.
+   */
+  let viewportTop = $state(0);
+  let viewportHeight = $state<number | null>(null);
+
+  const panelHeightCss = $derived(viewportHeight === null ? '100dvh' : `${viewportHeight}px`);
+
   onMount(() => {
+    const visualViewport = window.visualViewport;
+
+    const syncViewport = () => {
+      if (!visualViewport) return;
+      viewportTop = visualViewport.offsetTop;
+      viewportHeight = visualViewport.height;
+    };
+
+    syncViewport();
+    visualViewport?.addEventListener('resize', syncViewport);
+    visualViewport?.addEventListener('scroll', syncViewport);
+
     return () => {
       clearResizeListeners();
+      visualViewport?.removeEventListener('resize', syncViewport);
+      visualViewport?.removeEventListener('scroll', syncViewport);
+    };
+  });
+
+  /**
+   * Con el panel abierto en un telefono ocupa la pantalla entera, y detras
+   * seguia scrolleando el curso: se arrastraba en el panel, el panel no tenia
+   * mas para scrollear, y el gesto se lo quedaba la pagina de atras. En md+ no
+   * corresponde bloquear nada, porque ahi el panel es una columna al costado y
+   * el contenido de al lado se sigue leyendo.
+   */
+  $effect(() => {
+    if (!activeDefinition) return;
+
+    const isNarrow = window.matchMedia('(max-width: 767px)');
+    let previousOverflow: string | null = null;
+
+    const apply = () => {
+      if (isNarrow.matches && previousOverflow === null) {
+        previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+      } else if (!isNarrow.matches && previousOverflow !== null) {
+        document.body.style.overflow = previousOverflow;
+        previousOverflow = null;
+      }
+    };
+
+    apply();
+    isNarrow.addEventListener('change', apply);
+
+    return () => {
+      isNarrow.removeEventListener('change', apply);
+      if (previousOverflow !== null) document.body.style.overflow = previousOverflow;
     };
   });
 
@@ -133,12 +198,12 @@
     bind:this={railShellElement}
     data-side-panel-resizing={isRailResizing}
     class="contents"
-    style={`--side-panel-width: ${railWidth}px;`}
+    style={`--side-panel-width: ${railWidth}px; --side-panel-top: ${viewportTop}px; --side-panel-height: ${panelHeightCss};`}
   >
     <div class="hidden shrink-0 md:block md:w-(--side-panel-width)"></div>
 
     <aside
-      class="ui:bg-background fixed inset-y-0 right-0 z-100 flex h-screen w-full flex-col border-l md:w-(--side-panel-width)"
+      class="ui:bg-background fixed right-0 z-100 flex w-full flex-col overscroll-contain border-l top-(--side-panel-top) h-(--side-panel-height) md:w-(--side-panel-width)"
       aria-label={t.get(def.titleKey)}
     >
       <button
