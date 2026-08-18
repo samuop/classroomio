@@ -14,3 +14,6 @@ export type TrackingStatus = TrackingStudentRow['status'];
 
 /** Reading axis of the tracking hub. */
 export type TrackingAxis = 'student' | 'course';
+
+/** `own` = just this company; `all` = it and its client companies. */
+export type TrackingScope = 'own' | 'all';

@@ -4,8 +4,12 @@ import {
   getOrgAtRiskSettings,
   getOrgStudentProfiles,
   getOrganizationById,
-  updateOrganization
+  getTrackingScopeCompanies,
+  updateOrganization,
+  type TrackingScopeCompany
 } from '@cio/db/queries/organization';
+
+import type { TrackingScope } from '@api/services/organization/tracking';
 import { getLastActivityForProfiles } from '@cio/db/queries';
 import { getOrgComplianceLearnerRows } from '@cio/db/queries/course/compliance';
 
@@ -36,6 +40,27 @@ export interface AtRiskOverview {
     byReason: Record<AtRiskReason, number>;
   };
   learners: AtRiskLearnerRow[];
+}
+
+/** A learner row that says which company it came from. */
+export interface AtRiskScopedLearnerRow extends AtRiskLearnerRow {
+  orgId: string;
+  orgName: string;
+}
+
+export interface AtRiskScopedOverview extends Omit<AtRiskOverview, 'learners'> {
+  learners: AtRiskScopedLearnerRow[];
+  scope: TrackingScope;
+  companies: TrackingScopeCompany[];
+  hasClients: boolean;
+  /**
+   * Per-company totals.
+   *
+   * `totalStudents` cannot be recovered from `learners` — that list only holds
+   * the flagged ones — so filtering the screen to one company would otherwise
+   * have no honest denominator for "8 de N alumnos".
+   */
+  perCompany: Array<{ orgId: string; orgName: string; totalStudents: number; atRiskCount: number }>;
 }
 
 /** Stored thresholds merged onto the defaults (single source of truth = DEFAULT_AT_RISK_SETTINGS). */
@@ -164,5 +189,70 @@ export async function getAtRiskLearners(orgId: string, overrides?: TAtRiskOvervi
     thresholds,
     summary: { totalStudents, atRiskCount: learners.length, byReason },
     learners
+  };
+}
+
+/**
+ * The same scan, optionally across the asking company's client companies.
+ *
+ * Run once per company rather than as one widened query, because the thresholds
+ * and the compliance rows the scan reads are per-organisation: a client with
+ * stricter settings has to be judged by its own, not by the consultancy's.
+ *
+ * The thresholds reported back are the asking company's — they are what the
+ * settings screen edits. When clients differ, each client's rows were still
+ * decided by that client's numbers.
+ */
+export async function getAtRiskLearnersForScope(
+  orgId: string,
+  scope: TrackingScope,
+  overrides?: TAtRiskOverview
+): Promise<AtRiskScopedOverview> {
+  const companies = await getTrackingScopeCompanies(orgId);
+  const hasClients = companies.some((company) => company.isClient);
+  const covered = scope === 'all' ? companies : companies.filter((company) => company.id === orgId);
+
+  const results = await Promise.all(
+    covered.map(async (company) => ({ company, overview: await getAtRiskLearners(company.id, overrides) }))
+  );
+
+  const byReason: Record<AtRiskReason, number> = { inactive: 0, low_progress: 0, low_grade: 0, compliance: 0 };
+  const learners: AtRiskScopedLearnerRow[] = [];
+  const perCompany: AtRiskScopedOverview['perCompany'] = [];
+  let totalStudents = 0;
+  let atRiskCount = 0;
+
+  for (const { company, overview } of results) {
+    totalStudents += overview.summary.totalStudents;
+    atRiskCount += overview.summary.atRiskCount;
+    perCompany.push({
+      orgId: company.id,
+      orgName: company.name,
+      totalStudents: overview.summary.totalStudents,
+      atRiskCount: overview.summary.atRiskCount
+    });
+
+    for (const reason of Object.keys(byReason) as AtRiskReason[]) {
+      byReason[reason] += overview.summary.byReason[reason];
+    }
+
+    for (const learner of overview.learners) {
+      learners.push({ ...learner, orgId: company.id, orgName: company.name });
+    }
+  }
+
+  learners.sort((a, b) => a.orgName.localeCompare(b.orgName) || b.reasons.length - a.reasons.length);
+
+  const thresholds = results.find(({ company }) => company.id === orgId)?.overview.thresholds
+    ?? (await getOrgAtRiskSettingsService(orgId));
+
+  return {
+    thresholds,
+    summary: { totalStudents, atRiskCount, byReason },
+    learners,
+    scope,
+    companies: covered,
+    hasClients,
+    perCompany
   };
 }

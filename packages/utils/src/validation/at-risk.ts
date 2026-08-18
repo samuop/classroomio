@@ -41,7 +41,12 @@ export type TAtRiskSettingsUpdate = z.infer<typeof ZAtRiskSettingsUpdate>;
 export const ZAtRiskOverview = z.object({
   inactiveDays: z.coerce.number().int().min(1).max(365).optional(),
   lowProgressPct: z.coerce.number().int().min(0).max(100).optional(),
-  lowGradePct: z.coerce.number().int().min(0).max(100).optional()
+  lowGradePct: z.coerce.number().int().min(0).max(100).optional(),
+  /**
+   * `all` widens the scan to the asking company's client companies, matching the
+   * tracking hub's own switch. Carries no ids — the server derives them.
+   */
+  scope: z.enum(['own', 'all']).default('own')
 });
 
 export type TAtRiskOverview = z.infer<typeof ZAtRiskOverview>;

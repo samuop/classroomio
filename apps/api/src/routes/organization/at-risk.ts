@@ -7,7 +7,7 @@ import { zValidator } from '@hono/zod-validator';
 import { ZAtRiskOverview, ZAtRiskSettingsUpdate } from '@cio/utils/validation/at-risk';
 
 import {
-  getAtRiskLearners,
+  getAtRiskLearnersForScope,
   getOrgAtRiskSettingsService,
   updateOrgAtRiskSettingsService
 } from '@api/services/organization/at-risk';
@@ -33,8 +33,8 @@ export const organizationAtRiskRouter = new Hono()
   .get('/overview', authMiddleware, orgAdminMiddleware, zValidator('query', ZAtRiskOverview), async (c) => {
     try {
       const orgId = c.req.header('cio-org-id')!;
-      const overrides = c.req.valid('query');
-      const overview = await getAtRiskLearners(orgId, overrides);
+      const { scope, ...overrides } = c.req.valid('query');
+      const overview = await getAtRiskLearnersForScope(orgId, scope, overrides);
 
       return c.json({ success: true as const, data: overview });
     } catch (error) {

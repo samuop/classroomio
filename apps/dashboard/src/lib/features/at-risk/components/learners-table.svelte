@@ -11,11 +11,20 @@
   interface Props {
     rows: AtRiskLearnerRow[];
     reasonFilter?: AtRiskReason | 'all';
-    /** When set, each row is clickable and opens that learner's 360 profile. */
-    onRowClick?: (profileId: string) => void;
+    /**
+     * Show which company each learner belongs to. Only worth the column when the
+     * list spans several — inside one company it repeats the same name.
+     */
+    showCompany?: boolean;
+    /**
+     * When set, each row is clickable and opens that learner's 360 profile. The
+     * company travels with it: the record lives in the learner's company, which
+     * is not necessarily the one being viewed.
+     */
+    onRowClick?: (profileId: string, orgId: string) => void;
   }
 
-  let { rows, reasonFilter = 'all', onRowClick }: Props = $props();
+  let { rows, reasonFilter = 'all', showCompany = false, onRowClick }: Props = $props();
 
   const filtered = $derived(
     reasonFilter === 'all' ? rows : rows.filter((row) => row.reasons.includes(reasonFilter as AtRiskReason))
@@ -54,6 +63,9 @@
         <Table.Header>
           <Table.Row>
             <Table.Head>{$t('at_risk.learners.learner')}</Table.Head>
+            {#if showCompany}
+              <Table.Head>{$t('tracking.col_company')}</Table.Head>
+            {/if}
             <Table.Head>{$t('at_risk.learners.last_activity')}</Table.Head>
             <Table.Head>{$t('at_risk.learners.progress')}</Table.Head>
             <Table.Head>{$t('at_risk.learners.grade')}</Table.Head>
@@ -61,10 +73,10 @@
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {#each filtered as row (row.profileId)}
+          {#each filtered as row (`${row.orgId}:${row.profileId}`)}
             <Table.Row
               class={onRowClick ? 'ui:cursor-pointer' : ''}
-              onclick={onRowClick ? () => onRowClick(row.profileId) : undefined}
+              onclick={onRowClick ? () => onRowClick(row.profileId, row.orgId) : undefined}
             >
               <Table.Cell>
                 <div class="flex items-center gap-2">
@@ -75,6 +87,9 @@
                   </div>
                 </div>
               </Table.Cell>
+              {#if showCompany}
+                <Table.Cell class="ui:text-muted-foreground text-sm">{row.orgName}</Table.Cell>
+              {/if}
               <Table.Cell class="ui:text-muted-foreground text-sm">{formatActivity(row.daysSinceActivity)}</Table.Cell>
               <Table.Cell class="text-sm tabular-nums">{row.averageProgress}%</Table.Cell>
               <Table.Cell class="text-sm tabular-nums">{row.averageGrade}%</Table.Cell>

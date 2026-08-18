@@ -10,19 +10,21 @@ import type {
   GetAtRiskSettingsRequest,
   UpdateAtRiskSettingsRequest
 } from '../utils/types';
+import type { TrackingScope } from '$features/tracking/utils/types';
 
 class AtRiskApi extends BaseApi {
   overview = $state<AtRiskOverviewData | null>(null);
   loading = $state(false);
-  lastFetchedOrgId = $state<string | null>(null);
+  lastFetchedKey = $state<string | null>(null);
 
-  async fetchOverview(orgId: string) {
+  /** Defaults to `all` for the same reason the tracking hub does. */
+  async fetchOverview(orgId: string, scope: TrackingScope = 'all') {
     if (!orgId) return;
 
     this.loading = true;
-    this.lastFetchedOrgId = orgId;
+    this.lastFetchedKey = `${orgId}:${scope}`;
     await this.execute<GetAtRiskOverviewRequest>({
-      requestFn: () => classroomio.organization['at-risk'].overview.$get({ query: {} }),
+      requestFn: () => classroomio.organization['at-risk'].overview.$get({ query: { scope } }),
       logContext: 'fetching org at-risk overview',
       onSuccess: (response) => {
         this.overview = response.data;
@@ -31,10 +33,10 @@ class AtRiskApi extends BaseApi {
     this.loading = false;
   }
 
-  ensureFetched(orgId: string) {
-    if (this.lastFetchedOrgId === orgId) return;
+  ensureFetched(orgId: string, scope: TrackingScope = 'all') {
+    if (this.lastFetchedKey === `${orgId}:${scope}`) return;
 
-    this.fetchOverview(orgId);
+    this.fetchOverview(orgId, scope);
   }
 }
 

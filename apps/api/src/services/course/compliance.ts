@@ -16,6 +16,7 @@ import {
 } from '@cio/db/queries/course/compliance';
 import { db } from '@cio/db/drizzle';
 import { getCourseById } from '@cio/db/queries/course';
+import { getTrackingScopeCompanies, type TrackingScopeCompany } from '@cio/db/queries/organization';
 
 import { ROLE } from '@cio/utils/constants';
 import type {
@@ -817,5 +818,77 @@ export async function getOrgComplianceOverview(orgId: string): Promise<OrgCompli
       completedAt: row.completedAt,
       validUntil: row.validUntil
     }))
+  };
+}
+
+
+/* -------------------------------------------------------------------------- */
+/*  Alcance: la consultora y sus empresas cliente                             */
+/* -------------------------------------------------------------------------- */
+
+export type ScopedOrgComplianceOverview = Omit<OrgComplianceOverview, 'courses' | 'learners'> & {
+  courses: Array<OrgComplianceOverview['courses'][number] & { orgId: string; orgName: string }>;
+  learners: Array<OrgComplianceOverview['learners'][number] & { orgId: string; orgName: string }>;
+  scope: 'own' | 'all';
+  companies: TrackingScopeCompany[];
+  hasClients: boolean;
+  perCompany: Array<{ orgId: string; orgName: string; totalLearners: number; counts: Record<OrgComplianceStatus, number> }>;
+};
+
+/**
+ * The same overview, optionally across the asking company's client companies.
+ *
+ * Per company rather than one widened query for the reason the whole feature is
+ * per company: recertification rules live on each course, and each client
+ * company owns its own courses. Merging the queries would not merge the rules.
+ */
+export async function getOrgComplianceOverviewForScope(
+  orgId: string,
+  scope: 'own' | 'all'
+): Promise<ScopedOrgComplianceOverview> {
+  const companies = await getTrackingScopeCompanies(orgId);
+  const hasClients = companies.some((company) => company.isClient);
+  const covered = scope === 'all' ? companies : companies.filter((company) => company.id === orgId);
+
+  const results = await Promise.all(
+    covered.map(async (company) => ({ company, overview: await getOrgComplianceOverview(company.id) }))
+  );
+
+  const counts = emptyStatusCounts();
+  const courses: ScopedOrgComplianceOverview['courses'] = [];
+  const learners: ScopedOrgComplianceOverview['learners'] = [];
+  const perCompany: ScopedOrgComplianceOverview['perCompany'] = [];
+  let totalLearners = 0;
+
+  for (const { company, overview } of results) {
+    totalLearners += overview.summary.totalLearners;
+
+    for (const status of STATUS_KEYS) {
+      counts[status] += overview.summary.counts[status] ?? 0;
+    }
+
+    for (const course of overview.courses) {
+      courses.push({ ...course, orgId: company.id, orgName: company.name });
+    }
+    for (const learner of overview.learners) {
+      learners.push({ ...learner, orgId: company.id, orgName: company.name });
+    }
+
+    perCompany.push({
+      orgId: company.id,
+      orgName: company.name,
+      totalLearners: overview.summary.totalLearners,
+      counts: overview.summary.counts
+    });
+  }
+
+  return {
+    summary: { totalLearners, totalCourses: courses.length, counts },
+    courses,
+    learners,
+    scope,
+    companies: covered,
+    hasClients,
+    perCompany
   };
 }

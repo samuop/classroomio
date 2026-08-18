@@ -6,14 +6,17 @@
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import UsersIcon from '@lucide/svelte/icons/users';
   import { t } from '$lib/utils/functions/translations';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
   import type { ComplianceLearnerRow } from '../utils/types';
 
   interface Props {
     rows: ComplianceLearnerRow[];
     statusFilter?: ComplianceLearnerRow['status'] | 'all';
+    /** Only worth the column when the rows span several companies. */
+    showCompany?: boolean;
   }
 
-  let { rows, statusFilter = 'all' }: Props = $props();
+  let { rows, statusFilter = 'all', showCompany = false }: Props = $props();
 
   const filtered = $derived(statusFilter === 'all' ? rows : rows.filter((row) => row.status === statusFilter));
 
@@ -33,10 +36,7 @@
   }
 
   function formatDate(iso: string | null) {
-    if (!iso) return '—';
-    const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString();
+    return formatDisplayDate(iso) || '—';
   }
 </script>
 
@@ -55,6 +55,9 @@
         <Table.Header>
           <Table.Row>
             <Table.Head>{$t('compliance.learners.learner')}</Table.Head>
+            {#if showCompany}
+              <Table.Head>{$t('tracking.col_company')}</Table.Head>
+            {/if}
             <Table.Head>{$t('compliance.learners.course')}</Table.Head>
             <Table.Head>{$t('compliance.learners.status')}</Table.Head>
             <Table.Head>{$t('compliance.learners.due_date')}</Table.Head>
@@ -73,6 +76,9 @@
                   </div>
                 </div>
               </Table.Cell>
+              {#if showCompany}
+                <Table.Cell class="ui:text-muted-foreground text-sm">{row.orgName}</Table.Cell>
+              {/if}
               <Table.Cell class="text-sm">{row.courseTitle}</Table.Cell>
               <Table.Cell>
                 <Badge variant="outline" class={statusTone[row.status]}>{statusLabel(row.status)}</Badge>

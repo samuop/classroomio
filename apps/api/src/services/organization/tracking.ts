@@ -4,7 +4,9 @@ import {
 import {
   getOrgTrackingByCourse,
   getOrgTrackingByStudent,
+  getTrackingScopeCompanies,
   type TrackingCourseRow,
+  type TrackingScopeCompany,
   type TrackingStudentRow
 } from '@cio/db/queries/organization';
 
@@ -17,6 +19,10 @@ import { getAtRiskLearners } from '@api/services/organization/at-risk';
  * existing at-risk engine (so a learner's "estado" here matches the En Riesgo
  * tab exactly) and last-activity. Returns both reading axes — Por alumno and
  * Por curso — plus the summary KPIs, in one call.
+ *
+ * A consultancy reads its client companies together. That is not a nicety: its
+ * own organisation holds the master courses and no learners at all, so scoped to
+ * itself the page it exists for shows zero of everything.
  */
 
 export type TrackingStatus = 'ok' | 'attention' | 'at_risk';
@@ -29,6 +35,8 @@ export interface TrackingStudentView extends TrackingStudentRow {
   reasons: string[];
 }
 
+export type TrackingScope = 'own' | 'all';
+
 export interface TrackingOverview {
   summary: {
     totalStudents: number;
@@ -40,6 +48,11 @@ export interface TrackingOverview {
   };
   byStudent: TrackingStudentView[];
   byCourse: TrackingCourseRow[];
+  /** What this response actually covers, so the page can say so. */
+  scope: TrackingScope;
+  companies: TrackingScopeCompany[];
+  /** True when the asking company has client companies at all. */
+  hasClients: boolean;
 }
 
 function daysSince(iso: string | null, now: number): number | null {
@@ -47,18 +60,34 @@ function daysSince(iso: string | null, now: number): number | null {
   return Math.floor((now - new Date(iso).getTime()) / 86_400_000);
 }
 
-export async function getTrackingOverview(orgId: string): Promise<TrackingOverview> {
-  // Run the three sources in parallel; each is already batched internally.
-  const [byStudent, byCourse, atRisk] = await Promise.all([
-    getOrgTrackingByStudent(orgId),
-    getOrgTrackingByCourse(orgId),
-    getAtRiskLearners(orgId)
+export async function getTrackingOverview(orgId: string, scope: TrackingScope = 'own'): Promise<TrackingOverview> {
+  const companies = await getTrackingScopeCompanies(orgId);
+  const hasClients = companies.some((company) => company.isClient);
+  const covered = scope === 'all' ? companies : companies.filter((company) => company.id === orgId);
+  const orgIds = covered.map((company) => company.id);
+
+  // Run the sources in parallel; the two roll-ups are one SQL pass each.
+  //
+  // At-risk is still one call per company: its engine reads that org's
+  // thresholds and its compliance rows, both of which are per-organisation, so
+  // a client with stricter settings must be judged by its own. Cost is O(orgs ×
+  // students × courses) — fine for a consultancy's client list, and the place to
+  // look first if this page ever gets slow.
+  const [byStudent, byCourse, atRiskPerOrg] = await Promise.all([
+    getOrgTrackingByStudent(orgIds),
+    getOrgTrackingByCourse(orgIds),
+    Promise.all(orgIds.map(async (id) => ({ id, result: await getAtRiskLearners(id) })))
   ]);
 
-  // Index at-risk reasons by profile so status/reasons match the En Riesgo tab.
-  const reasonsByProfile = new Map<string, string[]>();
-  for (const learner of atRisk.learners) {
-    reasonsByProfile.set(learner.profileId, learner.reasons);
+  // Keyed by company AND profile: the same person in two client companies can be
+  // at risk in one and fine in the other, and each row must say which.
+  const reasonsByKey = new Map<string, string[]>();
+  let atRiskCount = 0;
+  for (const { id, result } of atRiskPerOrg) {
+    atRiskCount += result.summary.atRiskCount;
+    for (const learner of result.learners) {
+      reasonsByKey.set(`${id}:${learner.profileId}`, learner.reasons);
+    }
   }
 
   const activity = await getLastActivityForProfiles(byStudent.map((s) => s.profileId));
@@ -66,7 +95,7 @@ export async function getTrackingOverview(orgId: string): Promise<TrackingOvervi
 
   const studentViews: TrackingStudentView[] = byStudent.map((s) => {
     const lastActivityAt = activity.get(s.profileId) ?? null;
-    const reasons = reasonsByProfile.get(s.profileId) ?? [];
+    const reasons = reasonsByKey.get(s.key) ?? [];
 
     // "attention" = has at least one soft signal but the at-risk engine did not
     // flag it (kept simple: at-risk wins, otherwise low progress is attention).
@@ -98,12 +127,15 @@ export async function getTrackingOverview(orgId: string): Promise<TrackingOvervi
   return {
     summary: {
       totalStudents,
-      atRiskCount: atRisk.summary.atRiskCount,
+      atRiskCount,
       averageProgress,
       totalCourses: byCourse.length,
       enrolmentsPerStudent
     },
     byStudent: studentViews,
-    byCourse
+    byCourse,
+    scope,
+    companies: covered,
+    hasClients
   };
 }

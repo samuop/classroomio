@@ -12,7 +12,9 @@ export const ZDashCourseFunnel = z.object({
 });
 
 export const ZDashComplianceOverview = z.object({
-  orgId: z.string().uuid()
+  orgId: z.string().uuid(),
+  /** `all` widens the overview to the asking company's client companies. */
+  scope: z.enum(['own', 'all']).default('own')
 });
 
 export type TDashAnalyticsRange = z.infer<typeof ZDashAnalyticsRange>;

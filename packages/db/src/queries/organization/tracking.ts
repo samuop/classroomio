@@ -30,6 +30,9 @@ const STUDENT = ROLE.STUDENT;
 
 /** One (student, course) enrolment row with progress + grade. */
 export interface TrackingEnrolmentRow {
+  /** The company the enrolment belongs to — a consultancy reads several at once. */
+  orgId: string;
+  orgName: string;
   profileId: string;
   fullname: string;
   email: string;
@@ -49,11 +52,18 @@ export interface TrackingEnrolmentRow {
 }
 
 /**
- * Returns every (student, course) enrolment in the org with progress + grade,
- * computed in one aggregated query. Callers roll this up per-student or
+ * Returns every (student, course) enrolment in the given companies with progress
+ * + grade, computed in one aggregated query. Callers roll this up per-student or
  * per-course in memory (cheap — the heavy lifting is already done in SQL).
+ *
+ * Takes a LIST of companies rather than one because a consultancy's students do
+ * not live in the consultancy: they live in its client companies, and reading
+ * them one company at a time would be one round trip per client and a roll-up
+ * that has to be re-done in the caller anyway.
  */
 interface TrackingEnrolmentRaw {
+  org_id: string;
+  org_name: string | null;
   profile_id: string;
   fullname: string | null;
   email: string | null;
@@ -68,7 +78,18 @@ interface TrackingEnrolmentRaw {
   max_points: number;
 }
 
-export async function getOrgTrackingEnrolments(orgId: string): Promise<TrackingEnrolmentRow[]> {
+export async function getOrgTrackingEnrolments(orgIds: string[]): Promise<TrackingEnrolmentRow[]> {
+  if (orgIds.length === 0) return [];
+
+  // One placeholder per id, joined by hand. Interpolating the array itself
+  // (`= ANY(${orgIds}::uuid[])`) does NOT work: drizzle spreads an array into a
+  // parameter list, so the cast lands on a record and Postgres rejects it with
+  // "cannot cast type record to uuid[]".
+  const orgIdList = sql.join(
+    orgIds.map((id) => sql`${id}::uuid`),
+    sql`, `
+  );
+
   // postgres-js returns rows as a plain array from db.execute (no `.rows`).
   const result = await db.execute(sql`
     WITH enrolment AS (
@@ -78,15 +99,18 @@ export async function getOrgTrackingEnrolments(orgId: string): Promise<TrackingE
         gm.created_at    AS enrolled_at,
         gm.certificate_earned_at AS certificate_earned_at,
         c.id             AS course_id,
-        c.title          AS course_title
+        c.title          AS course_title,
+        g.organization_id AS org_id
       FROM groupmember gm
       JOIN "group" g   ON g.id = gm.group_id
       JOIN course c    ON c.group_id = gm.group_id
-      WHERE g.organization_id = ${orgId}
+      WHERE g.organization_id IN (${orgIdList})
         AND gm.role_id = ${STUDENT}
         AND gm.profile_id IS NOT NULL
     )
     SELECT
+      e.org_id,
+      org.name AS org_name,
       e.profile_id,
       p.fullname,
       COALESCE(p.email, om.email) AS email,
@@ -124,9 +148,13 @@ export async function getOrgTrackingEnrolments(orgId: string): Promise<TrackingE
       ), 0)::int AS max_points
     FROM enrolment e
     JOIN profile p ON p.id = e.profile_id
+    JOIN organization org ON org.id = e.org_id
+    -- Matched on the enrolment's OWN company: a learner's membership row (and
+    -- the email on it) belongs to the client company, not to whichever company
+    -- happens to be asking.
     LEFT JOIN organizationmember om
-      ON om.profile_id = e.profile_id AND om.organization_id = ${orgId}
-    ORDER BY p.fullname ASC, e.course_title ASC
+      ON om.profile_id = e.profile_id AND om.organization_id = e.org_id
+    ORDER BY org.name ASC, p.fullname ASC, e.course_title ASC
   `);
 
   const rows = result as unknown as TrackingEnrolmentRaw[];
@@ -140,6 +168,8 @@ export async function getOrgTrackingEnrolments(orgId: string): Promise<TrackingE
     const gradePct = maxPoints > 0 ? Math.round((earnedPoints / maxPoints) * 100) : null;
 
     return {
+      orgId: r.org_id,
+      orgName: r.org_name ?? '',
       profileId: r.profile_id,
       fullname: r.fullname ?? '',
       email: r.email ?? '',
@@ -178,6 +208,15 @@ export interface StudentCourseCell {
 }
 
 export interface TrackingStudentRow {
+  /**
+   * Composite (company + person). A learner enrolled in two of a consultancy's
+   * client companies is two rows, because their courses, their tutor and their
+   * record live in one company each — merging them would average across
+   * organisations that share nothing.
+   */
+  key: string;
+  orgId: string;
+  orgName: string;
   profileId: string;
   fullname: string;
   email: string;
@@ -196,15 +235,19 @@ export interface TrackingStudentRow {
  * alumno" of the tracking hub — a learner enrolled in five courses appears
  * once, with their per-course cells kept for the drill-down.
  */
-export async function getOrgTrackingByStudent(orgId: string): Promise<TrackingStudentRow[]> {
-  const enrolments = await getOrgTrackingEnrolments(orgId);
+export async function getOrgTrackingByStudent(orgIds: string[]): Promise<TrackingStudentRow[]> {
+  const enrolments = await getOrgTrackingEnrolments(orgIds);
 
   const byProfile = new Map<string, TrackingStudentRow>();
 
   for (const e of enrolments) {
-    let row = byProfile.get(e.profileId);
+    const key = `${e.orgId}:${e.profileId}`;
+    let row = byProfile.get(key);
     if (!row) {
       row = {
+        key,
+        orgId: e.orgId,
+        orgName: e.orgName,
         profileId: e.profileId,
         fullname: e.fullname,
         email: e.email,
@@ -215,7 +258,7 @@ export async function getOrgTrackingByStudent(orgId: string): Promise<TrackingSt
         averageGrade: 0,
         courses: []
       };
-      byProfile.set(e.profileId, row);
+      byProfile.set(key, row);
     }
 
     const isComplete = e.lessonsTotal > 0 && e.lessonsCompleted >= e.lessonsTotal;
@@ -237,7 +280,9 @@ export async function getOrgTrackingByStudent(orgId: string): Promise<TrackingSt
     row.averageGrade = meanPct(graded);
   }
 
-  return Array.from(byProfile.values()).sort((a, b) => a.fullname.localeCompare(b.fullname));
+  return Array.from(byProfile.values()).sort(
+    (a, b) => a.orgName.localeCompare(b.orgName) || a.fullname.localeCompare(b.fullname)
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -245,6 +290,8 @@ export async function getOrgTrackingByStudent(orgId: string): Promise<TrackingSt
 /* -------------------------------------------------------------------------- */
 
 export interface TrackingCourseRow {
+  orgId: string;
+  orgName: string;
   courseId: string;
   courseTitle: string;
   enrolledCount: number;
@@ -259,15 +306,34 @@ export interface TrackingCourseRow {
  * One row per course, aggregated across its enrolled students. The eje "Por
  * curso" of the tracking hub. A student in several courses is counted in each.
  */
-export async function getOrgTrackingByCourse(orgId: string): Promise<TrackingCourseRow[]> {
-  const enrolments = await getOrgTrackingEnrolments(orgId);
+export async function getOrgTrackingByCourse(orgIds: string[]): Promise<TrackingCourseRow[]> {
+  const enrolments = await getOrgTrackingEnrolments(orgIds);
 
-  const byCourse = new Map<string, { title: string; progress: number[]; grades: number[]; completed: number; count: number }>();
+  const byCourse = new Map<
+    string,
+    {
+      orgId: string;
+      orgName: string;
+      title: string;
+      progress: number[];
+      grades: number[];
+      completed: number;
+      count: number;
+    }
+  >();
 
   for (const e of enrolments) {
     let agg = byCourse.get(e.courseId);
     if (!agg) {
-      agg = { title: e.courseTitle, progress: [], grades: [], completed: 0, count: 0 };
+      agg = {
+        orgId: e.orgId,
+        orgName: e.orgName,
+        title: e.courseTitle,
+        progress: [],
+        grades: [],
+        completed: 0,
+        count: 0
+      };
       byCourse.set(e.courseId, agg);
     }
     agg.count += 1;
@@ -278,6 +344,8 @@ export async function getOrgTrackingByCourse(orgId: string): Promise<TrackingCou
 
   return Array.from(byCourse.entries())
     .map(([courseId, agg]) => ({
+      orgId: agg.orgId,
+      orgName: agg.orgName,
       courseId,
       courseTitle: agg.title,
       enrolledCount: agg.count,
@@ -285,5 +353,43 @@ export async function getOrgTrackingByCourse(orgId: string): Promise<TrackingCou
       averageGrade: meanPct(agg.grades),
       completedCount: agg.completed
     }))
-    .sort((a, b) => a.courseTitle.localeCompare(b.courseTitle));
+    .sort((a, b) => a.orgName.localeCompare(b.orgName) || a.courseTitle.localeCompare(b.courseTitle));
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Which companies a tracking request covers                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface TrackingScopeCompany {
+  id: string;
+  name: string;
+  /**
+   * True only for a client OF THE ASKING COMPANY.
+   *
+   * Not "has a parent": a client company asking about itself has one, and
+   * reading the flag that way told Cliente Norte it had clients of its own and
+   * offered it a scope switch that could only ever show the same rows.
+   */
+  isClient: boolean;
+}
+
+/**
+ * The company asking, plus its client companies.
+ *
+ * Resolved on the server from `parent_organization_id` and never taken from the
+ * request: the caller is only ever authorised for the org in `cio-org-id`, so a
+ * list of ids arriving from the browser would be a way to read another
+ * consultancy's learners.
+ */
+export async function getTrackingScopeCompanies(orgId: string): Promise<TrackingScopeCompany[]> {
+  const result = await db.execute(sql`
+    SELECT id, name, (parent_organization_id = ${orgId}) AS is_client
+      FROM organization
+     WHERE id = ${orgId} OR parent_organization_id = ${orgId}
+     ORDER BY (parent_organization_id = ${orgId}) NULLS FIRST, name ASC
+  `);
+
+  const rows = result as unknown as Array<{ id: string; name: string | null; is_client: boolean }>;
+
+  return rows.map((row) => ({ id: row.id, name: row.name ?? '', isClient: Boolean(row.is_client) }));
 }

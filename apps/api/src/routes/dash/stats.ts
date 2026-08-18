@@ -7,9 +7,10 @@ import {
   ZIngestBatch,
   ZLoginActivity
 } from '@cio/utils/validation/dash';
+import { assertOrgAccess } from '@api/utils/org-scope';
 import { authMiddleware } from '@api/middlewares/auth';
 import { getCurrentUserLoginStreak, getOrganisationAnalytics, getStudentLoginActivity } from '@api/services/dash';
-import { getOrgComplianceOverview } from '@api/services/course/compliance';
+import { getOrgComplianceOverviewForScope } from '@api/services/course/compliance';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
@@ -42,6 +43,7 @@ export const dashAnalyticsRouter = new Hono()
   .get('/stats', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashStats), async (c) => {
     try {
       const { orgId, siteName } = c.req.valid('query');
+      assertOrgAccess(c, orgId);
 
       const result = await getOrganisationAnalytics(orgId, siteName);
 
@@ -53,6 +55,7 @@ export const dashAnalyticsRouter = new Hono()
   .get('/login-activity', authMiddleware, orgAdminMiddleware, zValidator('query', ZLoginActivity), async (c) => {
     try {
       const { orgId, days } = c.req.valid('query');
+      assertOrgAccess(c, orgId, { requireAdmin: true });
 
       const result = await getStudentLoginActivity(orgId!, days);
 
@@ -74,6 +77,7 @@ export const dashAnalyticsRouter = new Hono()
   .get('/landing-stats', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashAnalyticsRange), async (c) => {
     try {
       const { orgId, days } = c.req.valid('query');
+      assertOrgAccess(c, orgId);
       const bust = c.req.query('bust') === '1';
       const result = await getLandingStats(orgId, days, bust);
 
@@ -90,6 +94,7 @@ export const dashAnalyticsRouter = new Hono()
     async (c) => {
       try {
         const { orgId, days } = c.req.valid('query');
+        assertOrgAccess(c, orgId);
         const bust = c.req.query('bust') === '1';
         const result = await getCountryBreakdown(orgId, days, bust);
 
@@ -102,6 +107,7 @@ export const dashAnalyticsRouter = new Hono()
   .get('/course-funnel', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashCourseFunnel), async (c) => {
     try {
       const { orgId, days, courseId } = c.req.valid('query');
+      assertOrgAccess(c, orgId);
       const bust = c.req.query('bust') === '1';
       const result = await getCourseFunnel(orgId, days, courseId, bust);
 
@@ -113,6 +119,7 @@ export const dashAnalyticsRouter = new Hono()
   .get('/popular-types', authMiddleware, orgMemberMiddleware, zValidator('query', ZDashAnalyticsRange), async (c) => {
     try {
       const { orgId, days } = c.req.valid('query');
+      assertOrgAccess(c, orgId);
       const bust = c.req.query('bust') === '1';
       const result = await getPopularTypes(orgId, days, bust);
 
@@ -128,8 +135,9 @@ export const dashAnalyticsRouter = new Hono()
     zValidator('query', ZDashComplianceOverview),
     async (c) => {
       try {
-        const { orgId } = c.req.valid('query');
-        const result = await getOrgComplianceOverview(orgId);
+        const { orgId, scope } = c.req.valid('query');
+        assertOrgAccess(c, orgId, { requireAdmin: true });
+        const result = await getOrgComplianceOverviewForScope(orgId, scope);
 
         return c.json({ success: true, data: result }, 200);
       } catch (error) {
