@@ -1,5 +1,9 @@
 import { AppError } from '@api/utils/errors';
-import { DEFAULT_AT_RISK_SETTINGS, type TAtRiskOverview, type TAtRiskSettings } from '@cio/utils/validation/at-risk';
+import {
+  DEFAULT_AT_RISK_SETTINGS,
+  type TAtRiskSettings,
+  type TAtRiskThresholdOverrides
+} from '@cio/utils/validation/at-risk';
 import {
   getOrgAtRiskSettings,
   getOrgStudentProfiles,
@@ -98,7 +102,7 @@ export async function updateOrgAtRiskSettingsService(
  * batched with `Promise.all`. Scan cost is O(students × courses); a single
  * aggregated SQL query would be the future optimization for very large orgs.
  */
-export async function getAtRiskLearners(orgId: string, overrides?: TAtRiskOverview): Promise<AtRiskOverview> {
+export async function getAtRiskLearners(orgId: string, overrides?: TAtRiskThresholdOverrides): Promise<AtRiskOverview> {
   const thresholds = await getOrgAtRiskSettingsService(orgId);
   if (overrides) {
     if (overrides.inactiveDays !== undefined) thresholds.inactiveDays = overrides.inactiveDays;
@@ -206,7 +210,7 @@ export async function getAtRiskLearners(orgId: string, overrides?: TAtRiskOvervi
 export async function getAtRiskLearnersForScope(
   orgId: string,
   scope: TrackingScope,
-  overrides?: TAtRiskOverview
+  overrides?: TAtRiskThresholdOverrides
 ): Promise<AtRiskScopedOverview> {
   const companies = await getTrackingScopeCompanies(orgId);
   const hasClients = companies.some((company) => company.isClient);

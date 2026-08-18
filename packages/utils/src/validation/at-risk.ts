@@ -50,3 +50,11 @@ export const ZAtRiskOverview = z.object({
 });
 
 export type TAtRiskOverview = z.infer<typeof ZAtRiskOverview>;
+
+/**
+ * The threshold half of that query. `scope` chooses which companies are scanned,
+ * which is not something a threshold can be overridden with — the functions that
+ * take "overrides" mean the bars, and saying so keeps the two from being mixed up
+ * at the call site.
+ */
+export type TAtRiskThresholdOverrides = Omit<TAtRiskOverview, 'scope'>;
