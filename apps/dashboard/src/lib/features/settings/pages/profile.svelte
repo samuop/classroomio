@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { resolve } from '$app/paths';
   import type { TLocale } from '@cio/db/types';
   import { profile } from '$lib/utils/store/user';
   import { CircleCheckBig } from '@lucide/svelte';
@@ -219,4 +220,18 @@
       </Field.Field>
     </Field.Group>
   </Field.Set>
+
+  <Field.Separator />
+
+  <!--
+    Attribution and licence. The AGPL asks that the offer of source stay reachable
+    for every user of the service, not that it sit in the main navigation. Every
+    role lands on this page (/lms/settings and /org/[slug]/settings both render it),
+    so this one line covers everyone without putting the fork's origin in the menu.
+  -->
+  <p class="ui:text-muted-foreground px-1 text-xs">
+    <a href={resolve('/legal', {})} class="ui:hover:text-foreground underline underline-offset-2">
+      {$t('legal.menu_link')}
+    </a>
+  </p>
 </Field.Group>

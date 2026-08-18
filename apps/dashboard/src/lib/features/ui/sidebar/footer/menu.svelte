@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation';
   import { basePath } from '$lib/utils/store/app';
   import * as DropdownMenu from '@cio/ui/base/dropdown-menu';
-  import InfoIcon from '@lucide/svelte/icons/info';
   import LogOutIcon from '@lucide/svelte/icons/log-out';
   import BuildingIcon from '@lucide/svelte/icons/building-2';
   import * as Sidebar from '@cio/ui/base/sidebar';
@@ -119,18 +118,6 @@
 
               <DropdownMenu.Separator />
             {/if}
-
-            <!-- Licence/attribution must always be reachable (AGPL fork requirement). -->
-            <div class="space-y-4">
-              <DropdownMenu.Item class="m-0">
-                <a href={resolve('/legal', {})} class="flex h-full w-full items-center justify-start space-x-2 text-start">
-                  <InfoIcon size={20} />
-                  <p class="text-sm dark:text-white">{$t('legal.menu_link')}</p>
-                </a>
-              </DropdownMenu.Item>
-            </div>
-
-            <DropdownMenu.Separator />
 
             <DropdownMenu.Item onclick={() => goto(resolve(`/logout`, {}))}>
               <span class="flex items-center gap-2">

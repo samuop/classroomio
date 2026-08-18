@@ -91,21 +91,12 @@ export const baseNavConfig: NavItemConfig[] = [
     matchPattern: '^/lms/explore(/.*)?$'
   },
   {
+    // Integrations (Telegram) are disabled for this deployment, so Settings has
+    // a single page left: a plain link beats a collapsible with one child.
     titleKey: 'lms_navigation.settings',
     path: '/settings',
     icon: SettingsIcon,
-    useHashUrl: true,
-    matchPattern: '^/lms/settings(/.*)?$',
-    items: [
-      {
-        titleKey: 'Profile',
-        path: '/settings'
-      },
-      {
-        titleKey: 'Integrations',
-        path: '/settings/integrations'
-      }
-    ]
+    matchPattern: '^/lms/settings(/.*)?$'
   }
 ];
 
