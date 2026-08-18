@@ -10,6 +10,7 @@
   import { courseApi } from '$features/course/api';
   import { SafeHtmlContent } from '@cio/ui/custom/safe-html-content';
   import { t } from '$lib/utils/functions/translations';
+  import { formatDisplayDateTime } from '$lib/utils/functions/date';
 
   import { snackbar } from '$features/ui/snackbar/store';
   import type { TLocale } from '@cio/db/types';
@@ -57,30 +58,41 @@
     }
   }
 
-  function formatTimestamp(timestamp) {
-    const options: Intl.DateTimeFormatOptions = {
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: true
-    };
-    const date = new Date(timestamp + 'Z');
-    return new Intl.DateTimeFormat('en-US', options).format(date);
+  function formatTimestamp(timestamp: string | Date) {
+    // El backend manda UTC sin sufijo; el helper lo pasa a hora argentina.
+    const raw = typeof timestamp === 'string' && !timestamp.endsWith('Z') ? `${timestamp}Z` : timestamp;
+    return formatDisplayDateTime(raw instanceof Date ? raw.toISOString() : raw);
   }
 
   function handleDrawerClose() {
     dispatch('close');
   }
 
-  function getMinutes(time: Date) {
-    return new Date(time).getMinutes();
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && open) handleDrawerClose();
+  }
+
+  /**
+   * Identidad de una version = su instante exacto.
+   *
+   * Antes se comparaba `getMinutes()`, que es el minuto DEL RELOJ (0-59): dos
+   * versiones separadas por una hora, o por un dia, que cayeran en el mismo
+   * minuto se descartaban entre si. Con el historial lleno habria tirado casi
+   * todo y dejado como mucho 60 entradas.
+   */
+  function versionKey(time: Date | string) {
+    return new Date(time).getTime();
   }
 
   function removeDuplicate(history: LessonHistory[]) {
-    return history.filter(
-      (obj1, i, arr) => arr.findIndex((obj2) => getMinutes(obj2.timestamp) === getMinutes(obj1.timestamp)) === i
-    );
+    const seen: Record<number, true> = {};
+
+    return history.filter((entry) => {
+      const key = versionKey(entry.timestamp);
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
   }
 
   function fetchLessonHistory(lessonId: string, locale: TLocale, endRange: number) {
@@ -108,9 +120,11 @@
           lesson_id: item.lessonId ?? ''
         });
 
-        const existingTimestamps = new Set(lessonHistory.map((item) => new Date(item.timestamp).getMinutes()));
+        const existingTimestamps: Record<number, true> = {};
+        for (const item of lessonHistory) existingTimestamps[versionKey(item.timestamp)] = true;
+
         const newEntries = data
-          .filter((item) => !existingTimestamps.has(new Date(item.timestamp ?? 0).getMinutes()))
+          .filter((item) => !existingTimestamps[versionKey(item.timestamp ?? 0)])
           .map(toLessonHistory);
         lessonHistory = removeDuplicate([...lessonHistory, ...newEntries]);
 
@@ -188,11 +202,20 @@
   });
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 <aside class="drawer bg-gray-100 dark:bg-neutral-800" class:open>
   <div class="panel bg-white dark:bg-black">
     <div class="w-full p-10 pr-80">
-      <div class="flex items-start gap-x-10">
-        <Button variant="outline" onclick={handleDrawerClose}>
+      <!--
+        Fijo y por encima de todo. El panel es `position: fixed` de ancho completo
+        arrancando en x=0, asi que su esquina superior izquierda cae DEBAJO del
+        sidebar del curso, que se pinta encima: el boton de volver existia y era
+        intocable, y no habia ninguna otra forma de salir salvo recargar. Ahora
+        vive arriba a la derecha, sobre el panel, y Escape tambien cierra.
+      -->
+      <div class="fixed top-4 right-4 z-20 flex items-start gap-x-3">
+        <Button variant="outline" onclick={handleDrawerClose} aria-label="Cerrar">
           <ArrowLeftIcon size={16} />
         </Button>
 
@@ -201,7 +224,6 @@
             <Button loading={contentRestoreLoading} onclick={restoreSelectedVersion}>
               {$t('course.navItem.lessons.version_history.restore_version')}
             </Button>
-            >
           </div>
         {/if}
       </div>
@@ -254,7 +276,6 @@
         <Button loading={isMoreHistoryLoading} onclick={loadMoreHistory}>
           {$t('course.navItem.lessons.version_history.fetch_more_versions')}
         </Button>
-        >
       </div>
     </div>
   </div>
