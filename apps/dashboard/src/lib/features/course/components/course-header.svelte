@@ -20,6 +20,7 @@
   import { openCoursePreview } from '$features/course/utils/course-preview';
   import { getActiveCourseNavKey } from '$features/course/utils/functions';
   import { toggleAiAssistant } from '$features/ai-assistant/utils/store';
+  import { isAssistantBlocked } from '$features/ai-assistant/utils/availability';
   import { t } from '$lib/utils/functions/translations';
   import { DeleteModal } from '$features/ui';
   import CoursePublishBadge from './course-publish-badge.svelte';
@@ -30,6 +31,9 @@
   const isPublicCourse = $derived(courseApi.course?.type === 'PUBLIC');
   const isDraftCourse = $derived(!$isStudentExperience && courseApi.course?.isPublished === false);
   const activeNavKey = $derived(getActiveCourseNavKey(page.url.pathname, courseApi.course?.id ?? ''));
+
+  /** Un examen es lo unico que mide al alumno; ahi el asistente ni aparece. */
+  const hideAiAssistant = $derived(isAssistantBlocked(page.url.pathname, $isStudentExperience));
 
   let discardModalOpen = $state(false);
   let isDiscarding = $state(false);
@@ -99,10 +103,12 @@
       </Button>
     {/if}
 
-    <Button variant="outline" size="sm" onclick={toggleAiAssistant}>
-      <SparklesIcon size={14} />
-      {$t('course.navItems.nav_ai_assistant')}
-    </Button>
+    {#if !hideAiAssistant}
+      <Button variant="outline" size="sm" onclick={toggleAiAssistant}>
+        <SparklesIcon size={14} />
+        {$t('course.navItems.nav_ai_assistant')}
+      </Button>
+    {/if}
 
     <Popover.Root>
       <Popover.Trigger>

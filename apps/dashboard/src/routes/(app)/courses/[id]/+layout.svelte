@@ -15,7 +15,10 @@
   import ContentCreateModal from '$features/course/components/content/content-create-modal.svelte';
   import CourseCompletionModal from '$features/course/components/ceritficate/course-completion-modal.svelte';
   import { aiAssistantPanelDefinition } from '$features/ai-assistant';
-  import { initialChatPrompt, openAiAssistant } from '$features/ai-assistant/utils/store';
+  import { AI_ASSISTANT_PANEL_ID, initialChatPrompt, openAiAssistant } from '$features/ai-assistant/utils/store';
+  import { isAssistantBlocked } from '$features/ai-assistant/utils/availability';
+  import { isStudentExperience } from '$lib/utils/store/app';
+  import { page } from '$app/state';
   import { sidePanel, SidePanelRail } from '$features/side-panel';
   import { transcriptPanelDefinition } from '$features/course/components/lesson/video/transcript-panel-definition';
   import { get } from 'svelte/store';
@@ -79,6 +82,17 @@
   });
 
   const isExercisePage = $derived(!!data.exerciseId);
+
+  /**
+   * Esconder el boton no alcanza: el panel es de alcance 'course', asi que
+   * sobrevive el paso de una leccion al ejercicio y el alumno entraria al examen
+   * con el chat ya abierto al costado.
+   */
+  $effect(() => {
+    if (!isAssistantBlocked(page.url.pathname, $isStudentExperience)) return;
+
+    sidePanel.closeIfActive(AI_ASSISTANT_PANEL_ID);
+  });
 
   function clampSidebarWidth(width: number) {
     return Math.min(COURSE_SIDEBAR_MAX_WIDTH, Math.max(COURSE_SIDEBAR_MIN_WIDTH, width));

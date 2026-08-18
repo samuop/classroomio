@@ -50,6 +50,11 @@ class SidePanelStore {
     this.panelProps = {};
   }
 
+  /** Closes a specific panel, leaving any other one alone. */
+  closeIfActive(id: string) {
+    if (this.activePanelId === id) this.close();
+  }
+
   closeIfScope(scope: SidePanelScope) {
     if (!this.activePanelId) return;
 
