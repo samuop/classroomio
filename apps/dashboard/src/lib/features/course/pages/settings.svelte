@@ -27,6 +27,8 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import { generateSlug } from '@cio/utils/functions';
   import { DEFAULT_COMPLIANCE_SETTINGS } from '../utils/compliance-utils';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
+  import type { TComplianceSettings } from '@cio/utils/validation/course';
   import { DeleteModal } from '$features/ui';
   import { courseApi } from '$features/course/api';
   import { tagApi } from '$features/tag/api';
@@ -53,6 +55,57 @@
   });
   let avatar: string | undefined;
   let openDeleteModal = $state(false);
+
+  /* ── Reglas de recertificación ─────────────────────────────────────────── */
+
+  let compliance = $state<TComplianceSettings>({ ...DEFAULT_COMPLIANCE_SETTINGS });
+  /** Se carga una sola vez por curso: es editable y no debe pisarse al tipear. */
+  let complianceLoadedFor = $state<string | null>(null);
+  let recordatoriosTexto = $state((DEFAULT_COMPLIANCE_SETTINGS.reminderDaysBefore ?? []).join(', '));
+
+  $effect(() => {
+    const curso = courseApi.course;
+    if (!curso?.id || complianceLoadedFor === curso.id) return;
+
+    complianceLoadedFor = curso.id;
+    const guardado = (curso.compliance ?? null) as TComplianceSettings | null;
+    compliance = { ...DEFAULT_COMPLIANCE_SETTINGS, ...(guardado ?? {}) };
+    recordatoriosTexto = (compliance.reminderDaysBefore ?? []).join(', ');
+  });
+
+  /** Acota el número al rango válido; un valor ilegible deja el anterior. */
+  function setCompliance(campo: 'retakeIntervalMonths' | 'gracePeriodDays' | 'passingScore', bruto: string, minimo: number, maximo: number) {
+    const numero = Number(bruto);
+    if (!Number.isFinite(numero)) return;
+
+    compliance = { ...compliance, [campo]: Math.min(maximo, Math.max(minimo, Math.round(numero))) };
+    hasUnsavedChanges = true;
+  }
+
+  /**
+   * "30, 7, 1" → [30, 7, 1]. Se conserva el texto tal cual se escribió para no
+   * pelear con la coma mientras se tipea, y se guarda la lista ya ordenada.
+   */
+  function setRecordatorios(bruto: string) {
+    recordatoriosTexto = bruto;
+
+    const dias = bruto
+      .split(',')
+      .map((parte) => Number(parte.trim()))
+      .filter((dia) => Number.isFinite(dia) && dia > 0 && dia <= 365)
+      .sort((a, b) => b - a);
+
+    compliance = { ...compliance, reminderDaysBefore: dias };
+    hasUnsavedChanges = true;
+  }
+
+  /** Cuándo vencería si alguien lo aprobara hoy — el intervalo en concreto. */
+  const proximoVencimiento = $derived.by(() => {
+    const fecha = new Date();
+    fecha.setMonth(fecha.getMonth() + (compliance.retakeIntervalMonths || 0));
+
+    return formatDisplayDate(fecha);
+  });
   let selectedTagIds = $state<string[]>([]);
   let initialTagIds = $state<string[]>([]);
   let loadedCourseTagsForId = $state<string | null>(null);
@@ -169,8 +222,9 @@
         isPublished: $settings.isPublished,
         metadata: metadataPayload,
         slug: courseApi.course.slug ?? undefined,
-        compliance:
-          $settings.type === 'COMPLIANCE' ? (courseApi.course.compliance ?? DEFAULT_COMPLIANCE_SETTINGS) : undefined,
+        // Lo EDITADO en el formulario. Antes se reenviaba lo ya guardado, que
+        // es la razón por la que ninguna regla podía cambiarse nunca.
+        compliance: $settings.type === 'COMPLIANCE' ? compliance : undefined,
         callout: $settings.type === 'PUBLIC' ? sanitizeCalloutForSave($settings.callout) : null
       };
 
@@ -605,6 +659,79 @@
       </div>
     {/if}
   </Field.Set>
+
+  <!--
+    Reglas de recertificación. Antes solo se podía marcar el curso como "de
+    cumplimiento" y quedaba con los valores de fábrica (12 meses, sin gracia)
+    sin ninguna pantalla para cambiarlos — la vigencia es LA decisión de un
+    curso obligatorio y no había dónde tomarla.
+  -->
+  {#if $settings.type === 'COMPLIANCE'}
+    <Field.Separator />
+
+    <Field.Set>
+      <Field.Legend>{$t('course.navItem.settings.compliance_rules.legend')}</Field.Legend>
+      <Field.Description>{$t('course.navItem.settings.compliance_rules.description')}</Field.Description>
+
+      <Field.Group>
+        <Field.Field>
+          <Field.Label>{$t('course.navItem.settings.compliance_rules.interval')}</Field.Label>
+          <InputField
+            type="number"
+            value={String(compliance.retakeIntervalMonths)}
+            onInputChange={(event) => setCompliance('retakeIntervalMonths', event.currentTarget.value, 1, 120)}
+          />
+          <Field.Description>
+            {$t('course.navItem.settings.compliance_rules.interval_hint', { fecha: proximoVencimiento })}
+          </Field.Description>
+        </Field.Field>
+
+        <Field.Field>
+          <Field.Label>{$t('course.navItem.settings.compliance_rules.grace')}</Field.Label>
+          <InputField
+            type="number"
+            value={String(compliance.gracePeriodDays ?? 0)}
+            onInputChange={(event) => setCompliance('gracePeriodDays', event.currentTarget.value, 0, 365)}
+          />
+          <Field.Description>{$t('course.navItem.settings.compliance_rules.grace_hint')}</Field.Description>
+        </Field.Field>
+
+        <Field.Field>
+          <Field.Label>{$t('course.navItem.settings.compliance_rules.reminders')}</Field.Label>
+          <InputField
+            value={recordatoriosTexto}
+            placeholder="30, 7, 1"
+            onInputChange={(event) => setRecordatorios(event.currentTarget.value)}
+          />
+          <Field.Description>{$t('course.navItem.settings.compliance_rules.reminders_hint')}</Field.Description>
+        </Field.Field>
+
+        <Field.Field>
+          <Field.Label>{$t('course.navItem.settings.compliance_rules.passing')}</Field.Label>
+          <InputField
+            type="number"
+            value={String(compliance.passingScore ?? 80)}
+            onInputChange={(event) => setCompliance('passingScore', event.currentTarget.value, 0, 100)}
+          />
+          <Field.Description>{$t('course.navItem.settings.compliance_rules.passing_hint')}</Field.Description>
+        </Field.Field>
+
+        <Field.Field orientation="horizontal">
+          <Switch
+            checked={compliance.isMandatory ?? true}
+            onCheckedChange={(checked) => {
+              compliance = { ...compliance, isMandatory: checked };
+              hasUnsavedChanges = true;
+            }}
+          />
+          <div>
+            <Field.Label>{$t('course.navItem.settings.compliance_rules.mandatory')}</Field.Label>
+            <Field.Description>{$t('course.navItem.settings.compliance_rules.mandatory_hint')}</Field.Description>
+          </div>
+        </Field.Field>
+      </Field.Group>
+    </Field.Set>
+  {/if}
 
   {#if $settings.type === 'PUBLIC' && $settings.callout}
     <Field.Separator />
