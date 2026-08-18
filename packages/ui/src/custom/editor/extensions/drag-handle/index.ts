@@ -92,6 +92,107 @@ function calcNodePos(pos: number, view: EditorView) {
   return pos;
 }
 
+/**
+ * The element that actually scrolls behind the editor.
+ *
+ * Not assumed to be the window: this editor is embedded in an app shell capped
+ * at `max-h-svh`, so `window.scrollTo` can be a no-op while a panel two levels
+ * up is the thing with a scrollbar. Walking up from the editor and asking each
+ * ancestor whether it both overflows AND is allowed to scroll finds the right
+ * one wherever the consumer puts us; the document is the fallback.
+ */
+function findScrollParent(node: HTMLElement | null): HTMLElement {
+  let current: HTMLElement | null = node;
+
+  while (current && current !== document.body) {
+    const { overflowY } = getComputedStyle(current);
+    const scrolls = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+
+    if (scrolls && current.scrollHeight > current.clientHeight) return current;
+
+    current = current.parentElement;
+  }
+
+  return (document.scrollingElement as HTMLElement) ?? document.documentElement;
+}
+
+/** Pixels per frame at the very edge. Ramped by how deep into the zone the pointer is. */
+const MAX_AUTO_SCROLL_STEP = 18;
+
+/**
+ * Scrolls the page while a block is dragged towards the top or bottom edge, so
+ * a block can be moved somewhere that is not already on screen.
+ *
+ * Driven by requestAnimationFrame rather than by the drag events themselves.
+ * `drag` only fires while the pointer MOVES, so the obvious implementation
+ * stops scrolling exactly when the user does what feels natural — holds still
+ * at the edge and waits for the page to come to them. The loop keeps going
+ * until the pointer leaves the zone or the drag ends.
+ *
+ * Speed ramps with depth into the zone: a nudge past the threshold creeps, the
+ * last few pixels move fast. A single fixed step is either too slow to cross a
+ * long lesson or too fast to stop where you meant to.
+ */
+function attachDragAutoScroll(view: EditorView, threshold: number): () => void {
+  let pointerY: number | null = null;
+  let frame: number | null = null;
+
+  const stop = () => {
+    pointerY = null;
+    if (frame !== null) {
+      cancelAnimationFrame(frame);
+      frame = null;
+    }
+  };
+
+  const step = () => {
+    frame = null;
+    if (pointerY === null) return;
+
+    const scroller = findScrollParent(view.dom as HTMLElement);
+    // The document scrolls against the viewport; an element against its own box.
+    const isDocument = scroller === document.scrollingElement || scroller === document.documentElement;
+    const top = isDocument ? 0 : scroller.getBoundingClientRect().top;
+    const bottom = isDocument ? window.innerHeight : scroller.getBoundingClientRect().bottom;
+
+    const fromTop = pointerY - top;
+    const fromBottom = bottom - pointerY;
+    let delta = 0;
+
+    if (fromTop < threshold) {
+      delta = -MAX_AUTO_SCROLL_STEP * Math.min(1, (threshold - fromTop) / threshold);
+    } else if (fromBottom < threshold) {
+      delta = MAX_AUTO_SCROLL_STEP * Math.min(1, (threshold - fromBottom) / threshold);
+    }
+
+    // `behavior: 'smooth'` is deliberately not used. Each call would restart an
+    // animation towards a new target every frame, which fights itself and
+    // crawls; frame-by-frame integer steps ARE the smooth scroll here.
+    if (delta !== 0) scroller.scrollBy(0, delta);
+
+    frame = requestAnimationFrame(step);
+  };
+
+  const onDragOver = (event: DragEvent) => {
+    pointerY = event.clientY;
+    if (frame === null) frame = requestAnimationFrame(step);
+  };
+
+  // Listened for on the document, not on the handle: once the pointer leaves the
+  // editor the source element stops hearing about the drag, and the edge of the
+  // screen is precisely where it has left.
+  document.addEventListener('dragover', onDragOver);
+  document.addEventListener('dragend', stop);
+  document.addEventListener('drop', stop);
+
+  return () => {
+    stop();
+    document.removeEventListener('dragover', onDragOver);
+    document.removeEventListener('dragend', stop);
+    document.removeEventListener('drop', stop);
+  };
+}
+
 export function DragHandlePlugin(options: GlobalDragHandleOptions & { pluginKey: string }) {
   let listType = '';
   function handleDragStart(event: DragEvent, view: EditorView) {
@@ -210,17 +311,13 @@ export function DragHandlePlugin(options: GlobalDragHandleOptions & { pluginKey:
 
       dragHandleElement.addEventListener('dragstart', onDragHandleDragStart);
 
-      function onDragHandleDrag(e: DragEvent) {
+      function onDragHandleDrag() {
         hideDragHandle();
-        const scrollY = window.scrollY;
-        if (e.clientY < options.scrollTreshold) {
-          window.scrollTo({ top: scrollY - 30, behavior: 'smooth' });
-        } else if (window.innerHeight - e.clientY < options.scrollTreshold) {
-          window.scrollTo({ top: scrollY + 30, behavior: 'smooth' });
-        }
       }
 
       dragHandleElement.addEventListener('drag', onDragHandleDrag);
+
+      const detachAutoScroll = attachDragAutoScroll(view, options.scrollTreshold);
 
       hideDragHandle();
 
@@ -237,6 +334,7 @@ export function DragHandlePlugin(options: GlobalDragHandleOptions & { pluginKey:
           dragHandleElement?.removeEventListener('drag', onDragHandleDrag);
           dragHandleElement?.removeEventListener('dragstart', onDragHandleDragStart);
           dragHandleElement = null;
+          detachAutoScroll();
           view?.dom?.parentElement?.removeEventListener('mouseout', hideHandleOnEditorOut);
         }
       };
