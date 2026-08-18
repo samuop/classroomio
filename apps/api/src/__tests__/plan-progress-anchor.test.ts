@@ -103,12 +103,7 @@ describe('buildPlanProgressAnchor — resolution by registry binding', () => {
   });
 
   it('ignores a binding whose row no longer exists (teacher deleted it)', () => {
-    const progress = buildPlanProgressAnchor(
-      plan,
-      sections,
-      [],
-      registry([{ key: 's1.1', entityId: 'deleted-uuid' }])
-    );
+    const progress = buildPlanProgressAnchor(plan, sections, [], registry([{ key: 's1.1', entityId: 'deleted-uuid' }]));
 
     expect(progress?.items.find((entry) => entry.key === 's1.1')?.status).toBe('missing');
   });
@@ -131,7 +126,8 @@ describe('buildPlanProgressAnchor — resolution by registry binding', () => {
 
     expect(progress?.pendingCount).toBe(0);
     expect(progress?.emptyCount).toBe(0);
-    expect(progress?.anchorText).toContain('Every item in the approved plan is present');
+    // Completeness is read from the counts now; a finished plan injects no text.
+    expect(progress?.anchorText).toBe('');
   });
 
   it('counts sections in the totals so the UI percentage covers the whole plan', () => {
@@ -258,5 +254,50 @@ describe('buildPlanProgressAnchor — section order', () => {
     // A wrong order the model cannot fix would otherwise spin rounds forever.
     expect(progress?.pendingCount).toBe(0);
     expect(progress?.emptyCount).toBe(0);
+  });
+});
+
+/**
+ * A finished build must stop talking.
+ *
+ * The anchor is gated only on "has a plan ever been approved in this
+ * conversation", so it rides along on every later turn. While work remains that
+ * is the point. Once everything is built it used to keep announcing, under a
+ * heading reading "source of truth", that the course matched the plan and there
+ * was nothing to do — and that outranked whatever the teacher had just asked.
+ * Observed: a request for an illustration answered with build status, twice, and
+ * then the answer to the model's own follow-up question answered with build
+ * status again.
+ */
+describe('buildPlanProgressAnchor — completed plan', () => {
+  const builtItems = [
+    { id: 'lesson-uuid', type: 'lesson', title: 'Introducción', sectionId: 'sec-uuid', hasNoteContent: true },
+    { id: 'ex-uuid', type: 'exercise', title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 4 }
+  ];
+
+  const builtRegistry = registry([
+    { key: 's1.1', entityId: 'lesson-uuid' },
+    { key: 's1.2', entityId: 'ex-uuid' }
+  ]);
+
+  it('injects nothing once every item is built', () => {
+    const progress = buildPlanProgressAnchor(plan, sections, builtItems, builtRegistry);
+
+    // Empty, not merely reworded: the caller skips injection on a falsy string.
+    expect(progress?.anchorText).toBe('');
+  });
+
+  it('still reports progress, so the UI checklist keeps working', () => {
+    const progress = buildPlanProgressAnchor(plan, sections, builtItems, builtRegistry);
+
+    expect(progress?.pendingCount).toBe(0);
+    expect(progress?.emptyCount).toBe(0);
+    expect(progress?.completed).toBe(progress?.total);
+  });
+
+  it('keeps speaking while anything is still missing', () => {
+    const progress = buildPlanProgressAnchor(plan, sections, [], registry());
+
+    expect(progress?.anchorText).toContain('YOU ARE NOT DONE');
   });
 });

@@ -457,9 +457,25 @@ export function buildPlanProgressAnchor(
       items: progressItems,
       total,
       completed,
-      anchorText: `## Plan Progress (source of truth)
-
-Every item in the approved plan is present, has content, and sits in plan order. The course matches the plan. If the teacher hasn't asked for anything new, you are done — do NOT recreate existing items.`
+      /**
+       * Nothing to steer, so nothing is injected.
+       *
+       * This used to carry "The course matches the plan… you are done", and the
+       * anchor rides along on EVERY turn for the rest of the conversation — the
+       * gate is only "has a plan ever been approved". So once a build finished,
+       * every later request arrived alongside a server-written block headed
+       * "source of truth" announcing there was nothing to do. Asked for an
+       * illustration, the model answered with build status; asked again, it
+       * answered with build status; given the answer to its own question, it
+       * answered with build status. The teacher's actual request kept losing to
+       * a heading that outranked it.
+       *
+       * The counts below still travel to the UI checklist. What is gone is the
+       * instruction, because a finished build has none to give: the anchor
+       * exists to stop the model losing track MID-build, and there is no build
+       * left to track.
+       */
+      anchorText: ''
     };
   }
 
