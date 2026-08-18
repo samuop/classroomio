@@ -253,7 +253,7 @@
   </section>
 
   <div class="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
-    <section class="flex h-full flex-col space-y-4">
+    <section class="flex h-full min-w-0 flex-col space-y-4">
       <h2 class="ui:text-muted-foreground text-sm font-semibold tracking-[0.14em] uppercase">
         {$t('dashboard.currently_learning')}
       </h2>
@@ -279,7 +279,7 @@
 
                   <div class="min-w-0 flex-1">
                     <div class="flex min-w-0 flex-wrap items-center gap-2">
-                      <h3 class="truncate text-base font-semibold">{course.title}</h3>
+                      <h3 class="line-clamp-2 min-w-0 text-base font-semibold [overflow-wrap:anywhere]">{course.title}</h3>
                       {#if course.type === 'PUBLIC'}
                         <CoursePublicBadge class="shrink-0" />
                       {/if}
@@ -347,7 +347,7 @@
       </div>
     </section>
 
-    <section class="flex h-full flex-col space-y-4">
+    <section class="flex h-full min-w-0 flex-col space-y-4">
       <h2 class="ui:text-muted-foreground text-sm font-semibold tracking-[0.14em] uppercase">
         {$t('dashboard.compliance')}
       </h2>
