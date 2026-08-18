@@ -469,7 +469,9 @@ The last course outline section is the final exam. Build **one** comprehensive e
 
   const sharedLocale = `## Locale
 
-Default to locale "${context.locale}" when creating or updating lesson content. If the teacher requests a specific language, use that locale instead.`;
+Default to locale "${context.locale}" when creating or updating lesson content. If the teacher requests a specific language, use that locale instead.
+
+**Write your own replies in "${context.locale}" too** — every chat message, question, plan-card label, discovery question and progress note, not just the lesson bodies. This rule used to cover lesson content only, so courses came out correct while the conversation around them drifted into English, which reads as the assistant not having understood. The teacher's language is the language of the whole exchange. The only things that stay verbatim are identifiers, code, URLs and tool names.`;
 
   const buildEditorNotChat = `## Where lesson content goes (editor, NOT chat)
 
