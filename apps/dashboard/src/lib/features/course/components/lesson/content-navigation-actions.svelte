@@ -1,36 +1,38 @@
 <script lang="ts">
+  /**
+   * The ‹ › pair in the page header: pure movement through the course, in
+   * content order, with the arrow keys wired to match.
+   *
+   * Marking a lesson complete used to live here too. It does not any more —
+   * asking at the top of a page whether you have read it is asking before the
+   * reading, and it crowded a header that is already tight on a phone. That
+   * action now sits at the END of the lesson, merged with going on, in
+   * `lesson-completion-footer.svelte`. These arrows deliberately claim nothing:
+   * a student can jump back to re-read without altering their record.
+   */
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
-  import { CircleCheckIcon } from '$features/ui/icons';
   import { Button } from '@cio/ui/base/button';
   import * as Tooltip from '@cio/ui/base/tooltip';
-  import { isOrgStudent } from '$lib/utils/store/app';
   import { t } from '$lib/utils/functions/translations';
-  import { courseApi, lessonApi } from '$features/course/api';
+  import { courseApi } from '$features/course/api';
   import { getOrderedNavigableContent, getContentRoute } from '$features/course/utils/content';
   import { ContentType } from '@cio/utils/constants/content';
-  import { snackbar } from '$features/ui/snackbar/store';
   import type { CourseContentItem } from '$features/course/utils/types';
-  import { openCourseCompletionModal } from '$features/course/store/course-completion-modal';
 
   interface Props {
     lessonId?: string;
-    courseId: string;
-    /** When on an exercise page, pass this to show prev/next content in content order (no mark-complete). */
+    /** When on an exercise page, pass this instead so the arrows walk content order from there. */
     exerciseId?: string;
   }
 
-  let { lessonId, courseId, exerciseId }: Props = $props();
-
-  let isMarkingComplete = $state(false);
+  let { lessonId, exerciseId }: Props = $props();
 
   const navigableContentItems = $derived(getOrderedNavigableContent(courseApi.course));
 
-  const lessonItems = $derived(navigableContentItems.filter((item) => item.type === ContentType.Lesson));
-
-  /** Prev/next content items in full content order (immediate neighbors; locked content is hidden in the UI so we don't skip). */
+  /** Immediate neighbours in full content order (locked content is hidden in the UI, so nothing is skipped). */
   const prevNextContent = $derived.by(() => {
     const currentId = lessonId ?? exerciseId;
     const currentType = lessonId ? ContentType.Lesson : ContentType.Exercise;
@@ -54,77 +56,6 @@
 
   const isPrevDisabled = $derived(!prevNextContent.prev);
   const isNextDisabled = $derived(!prevNextContent.next);
-  const isLessonComplete = $derived.by(() => {
-    if (!lessonId) return false;
-    const lesson = lessonItems.find((l) => l.id === lessonId);
-    return lesson?.isComplete ?? false;
-  });
-
-  const showMarkComplete = $derived(!!lessonId && !exerciseId);
-
-  const currentLessonItem = $derived(lessonId ? lessonItems.find((l) => l.id === lessonId) : null);
-  const isLessonLocked = $derived($isOrgStudent && currentLessonItem && !(currentLessonItem.isUnlocked ?? false));
-  const isMarkCompleteDisabled = $derived(isMarkingComplete || isLessonLocked || isLessonComplete);
-
-  async function markLessonComplete(currentLessonId: string) {
-    isMarkingComplete = true;
-
-    const lesson = lessonItems.find((entry) => entry.id === currentLessonId);
-    const currentIsComplete = lesson?.isComplete ?? lessonApi.lesson?.isComplete ?? false;
-
-    const isComplete = !currentIsComplete;
-
-    await lessonApi.updateCompletion(courseId, currentLessonId, isComplete);
-
-    if (lessonApi.success) {
-      snackbar.success('snackbar.lessons.success.complete_marked');
-      updateCourseContentCompletion(currentLessonId, isComplete);
-
-      const allComplete =
-        $isOrgStudent &&
-        isComplete &&
-        navigableContentItems.length > 0 &&
-        navigableContentItems.every((item) => item.isComplete);
-
-      if (allComplete) {
-        openCourseCompletionModal(courseId);
-      }
-    } else {
-      snackbar.error('snackbar.lessons.error.try_later');
-    }
-
-    isMarkingComplete = false;
-  }
-
-  function updateCourseContentCompletion(currentLessonId: string, isComplete: boolean) {
-    if (!courseApi.course?.content) return;
-
-    if (courseApi.course.content.grouped) {
-      courseApi.course = {
-        ...courseApi.course,
-        content: {
-          ...courseApi.course.content,
-          sections: courseApi.course.content.sections.map((section) => ({
-            ...section,
-            items: section.items.map((item) =>
-              item.type === ContentType.Lesson && item.id === currentLessonId ? { ...item, isComplete } : item
-            )
-          }))
-        }
-      };
-      return;
-    }
-
-    courseApi.course = {
-      ...courseApi.course,
-      content: {
-        ...courseApi.course.content,
-        items: courseApi.course.content.items.map((item) =>
-          item.type === ContentType.Lesson && item.id === currentLessonId ? { ...item, isComplete } : item
-        )
-      }
-    };
-  }
 
   const INTERACTIVE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
@@ -144,55 +75,40 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex items-center gap-2">
-  {#if showMarkComplete && lessonId}
-    <Button
-      size="sm"
-      variant="secondary"
-      onclick={() => markLessonComplete(lessonId)}
-      loading={isMarkingComplete}
-      disabled={isMarkCompleteDisabled}
-    >
-      <CircleCheckIcon size={14} filled={isLessonComplete} />
-      <span class="text-xs">{$t('course.navItem.lessons.mark_as')} {$t('course.navItem.lessons.complete')}</span>
-    </Button>
-  {/if}
+<Tooltip.Provider>
+  <div class="flex items-center gap-1">
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onclick={() => goToContent(prevNextContent.prev)}
+          disabled={isPrevDisabled}
+          aria-label={$t('course.navItem.lessons.prev')}
+        >
+          <ChevronLeftIcon size={14} />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" sideOffset={4}>
+        {$t('course.navItem.lessons.prev_shortcut')}
+      </Tooltip.Content>
+    </Tooltip.Root>
 
-  <Tooltip.Provider>
-    <div class="flex items-center gap-1">
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            onclick={() => goToContent(prevNextContent.prev)}
-            disabled={isPrevDisabled}
-            aria-label={$t('course.navItem.lessons.prev')}
-          >
-            <ChevronLeftIcon size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content side="bottom" sideOffset={4}>
-          {$t('course.navItem.lessons.prev_shortcut')}
-        </Tooltip.Content>
-      </Tooltip.Root>
-
-      <Tooltip.Root>
-        <Tooltip.Trigger>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            onclick={() => goToContent(prevNextContent.next)}
-            disabled={isNextDisabled}
-            aria-label={$t('course.navItem.lessons.next')}
-          >
-            <ChevronRightIcon size={14} />
-          </Button>
-        </Tooltip.Trigger>
-        <Tooltip.Content side="bottom" sideOffset={4}>
-          {$t('course.navItem.lessons.next_shortcut')}
-        </Tooltip.Content>
-      </Tooltip.Root>
-    </div>
-  </Tooltip.Provider>
-</div>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onclick={() => goToContent(prevNextContent.next)}
+          disabled={isNextDisabled}
+          aria-label={$t('course.navItem.lessons.next')}
+        >
+          <ChevronRightIcon size={14} />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" sideOffset={4}>
+        {$t('course.navItem.lessons.next_shortcut')}
+      </Tooltip.Content>
+    </Tooltip.Root>
+  </div>
+</Tooltip.Provider>

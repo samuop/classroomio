@@ -37,6 +37,7 @@
 
   import {
     ContentNavigationActions,
+    LessonCompletionFooter,
     LanguageSelector,
     LessonPageEditHeader,
     Comments,
@@ -402,7 +403,7 @@
   <Page.Action>
     <div class="flex items-center gap-2">
       {#if mode === MODES.view && $isOrgStudent}
-        <ContentNavigationActions {lessonId} {courseId} />
+        <ContentNavigationActions {lessonId} />
       {/if}
 
       <RoleBasedSecurity allowedRoles={[1, 2]}>
@@ -525,6 +526,15 @@
               <Component {mode} {lessonId} />
             {/each}
 
+            <!--
+              Antes de los comentarios a proposito: el paso siguiente no puede
+              quedar enterrado bajo un hilo que puede ser largo. Terminas de leer,
+              avanzas, y recien ahi discutis si queres.
+            -->
+            {#if $isOrgStudent}
+              <LessonCompletionFooter {lessonId} {courseId} />
+            {/if}
+
             {#if $currentOrg.customization?.apps?.comments}
               <hr class="my-2" />
 
@@ -551,6 +561,16 @@
             </Button>
           {/if}
         </Empty>
+
+        <!--
+          Una leccion sin material es un error del curso, no del alumno. El boton
+          del header estaba siempre, asi que podia completarla y seguir; sin esto
+          el pie vive solo en la rama con contenido y su progreso queda trabado en
+          una leccion que no tiene nada para leer.
+        -->
+        {#if $isOrgStudent}
+          <LessonCompletionFooter {lessonId} {courseId} />
+        {/if}
       {/if}
     </div>
   {/snippet}

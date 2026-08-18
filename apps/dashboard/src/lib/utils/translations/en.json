@@ -3317,7 +3317,14 @@
         "unlock_all": "Unlock all",
         "lock_all": "Lock all",
         "unlock_all_done": "All course content has been unlocked.",
-        "lock_all_done": "All course content has been locked."
+        "lock_all_done": "All course content has been locked.",
+        "footer": {
+          "position": "Lesson {current} of {total}",
+          "complete_and_continue": "Complete and continue",
+          "complete_and_finish": "Complete and finish",
+          "completed": "Completed",
+          "go_next": "Next"
+        }
       },
       "attendance": {
         "title": "Attendance",

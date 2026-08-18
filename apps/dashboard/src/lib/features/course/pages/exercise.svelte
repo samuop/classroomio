@@ -395,7 +395,7 @@
   <Page.Action>
     <div class="flex items-center gap-2">
       {#if $isOrgStudent && courseApi.course?.id && exerciseId}
-        <ContentNavigationActions courseId={courseApi.course.id} {exerciseId} />
+        <ContentNavigationActions {exerciseId} />
       {/if}
 
       <RoleBasedSecurity allowedRoles={[1, 2]}>

@@ -2417,7 +2417,14 @@
         "unlock_all": "Desbloquear todo",
         "lock_all": "Bloquear todo",
         "unlock_all_done": "Se desbloqueó todo el contenido del curso.",
-        "lock_all_done": "Se bloqueó todo el contenido del curso."
+        "lock_all_done": "Se bloqueó todo el contenido del curso.",
+        "footer": {
+          "position": "Lección {current} de {total}",
+          "complete_and_continue": "Completar y continuar",
+          "complete_and_finish": "Completar y terminar",
+          "completed": "Completado",
+          "go_next": "Siguiente"
+        }
       },
       "news_feed": {
         "heading": "Noticias",
