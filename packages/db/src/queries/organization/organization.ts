@@ -482,7 +482,8 @@ export const getOrganizationAudienceMember = async (orgId: string, memberId: num
   const email = row.email?.trim() ?? '';
   const name = row.fullname?.trim() || (email.includes('@') ? email.split('@')[0] : email) || '';
   const createdAtRaw = row.profileId ? row.profileCreatedAt : row.memberCreatedAt;
-  const createdAt = createdAtRaw ? new Date(createdAtRaw).toDateString() : '';
+  // ISO crudo — ver la nota en el listado.
+  const createdAt = createdAtRaw ? new Date(createdAtRaw).toISOString() : '';
 
   return {
     id: row.memberId,
@@ -725,7 +726,10 @@ export const getOrganizationAudience = async (orgId: string, options: GetOrganiz
       const email = row.email?.trim() ?? '';
       const name = row.fullname?.trim() || (email.includes('@') ? email.split('@')[0] : email) || '';
       const createdAtRaw = row.profileId ? row.profileCreatedAt : row.memberCreatedAt;
-      const createdAt = createdAtRaw ? new Date(createdAtRaw).toDateString() : '';
+      // ISO crudo, sin formatear: el servidor no sabe en qué idioma ni en qué
+      // zona se va a leer. `toDateString()` devolvía "Mon Aug 17 2026" —inglés,
+      // y en la zona del servidor— y no había forma de arreglarlo desde la UI.
+      const createdAt = createdAtRaw ? new Date(createdAtRaw).toISOString() : '';
 
       return {
         id: row.memberId,

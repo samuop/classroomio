@@ -9,6 +9,7 @@
   import { resolve } from '$app/paths';
   import type { OrganizationAudienceMember } from '$features/org/utils/types';
   import { t } from '$lib/utils/functions/translations';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
   import {
     canResendAudienceInvite,
     canRevokeAudienceInvite,
@@ -72,7 +73,7 @@
   <Table.Cell>
     <Badge variant={statusBadgeVariant(row.status)}>{$t(statusLabelKey(row.status))}</Badge>
   </Table.Cell>
-  <Table.Cell>{row.createdAt}</Table.Cell>
+  <Table.Cell>{formatDisplayDate(row.createdAt)}</Table.Cell>
   <Table.Cell class="text-right">
     {#if showRowActions}
       <DropdownMenu.Root>
