@@ -93,48 +93,84 @@ function calcNodePos(pos: number, view: EditorView) {
 }
 
 /**
- * The element that actually scrolls behind the editor.
+ * The nearest ancestor that can actually scroll the way we need to go.
  *
- * Not assumed to be the window: this editor is embedded in an app shell capped
- * at `max-h-svh`, so `window.scrollTo` can be a no-op while a panel two levels
- * up is the thing with a scrollbar. Walking up from the editor and asking each
- * ancestor whether it both overflows AND is allowed to scroll finds the right
- * one wherever the consumer puts us; the document is the fallback.
+ * Asked fresh for each direction rather than picked once, because "has
+ * overflow-y: auto and is taller than its box" is not the same question as "can
+ * this thing move right now". A panel already scrolled to its bottom answers yes
+ * to the first and no to the second, and the page behind it is what should move.
+ *
+ * The walk starts at the element under the POINTER, not at the editor: by the
+ * time you are at the edge of the screen the pointer is usually outside the
+ * editor entirely, and the thing under it is what the user expects to scroll.
  */
-function findScrollParent(node: HTMLElement | null): HTMLElement {
-  let current: HTMLElement | null = node;
+function findScrollableAncestor(from: Element | null, direction: -1 | 1): HTMLElement | null {
+  let current: HTMLElement | null = from instanceof HTMLElement ? from : null;
 
-  while (current && current !== document.body) {
+  while (current && current !== document.body && current !== document.documentElement) {
     const { overflowY } = getComputedStyle(current);
-    const scrolls = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+    const canOverflow = overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
 
-    if (scrolls && current.scrollHeight > current.clientHeight) return current;
+    if (canOverflow) {
+      const remaining =
+        direction < 0 ? current.scrollTop : current.scrollHeight - current.clientHeight - current.scrollTop;
+
+      // A one-pixel gap is rounding, not somewhere to scroll to.
+      if (remaining > 1) return current;
+    }
 
     current = current.parentElement;
   }
 
-  return (document.scrollingElement as HTMLElement) ?? document.documentElement;
+  return null;
 }
 
 /** Pixels per frame at the very edge. Ramped by how deep into the zone the pointer is. */
 const MAX_AUTO_SCROLL_STEP = 18;
 
+/** Never let the edge zones eat more than this much of the viewport, top and bottom each. */
+const MAX_ZONE_FRACTION = 0.15;
+
+/** Below this the zone is too small to aim at on a short window. */
+const MIN_ZONE_PX = 48;
+
 /**
- * Scrolls the page while a block is dragged towards the top or bottom edge, so
- * a block can be moved somewhere that is not already on screen.
+ * How close to the top or bottom edge counts as "asking to scroll".
  *
- * Driven by requestAnimationFrame rather than by the drag events themselves.
- * `drag` only fires while the pointer MOVES, so the obvious implementation
- * stops scrolling exactly when the user does what feels natural — holds still
- * at the edge and waits for the page to come to them. The loop keeps going
- * until the pointer leaves the zone or the drag ends.
+ * The caller's number is treated as a wish, not an instruction. One consumer
+ * passes 1000, and the whole point of a threshold is the part of the screen it
+ * does NOT cover: a zone taller than the window makes every pixel an edge, so
+ * the page scrolled upward wherever the pointer went and never scrolled down at
+ * all. Clamping to a fraction of the viewport guarantees a dead middle to aim
+ * at, which is where a block actually gets dropped.
+ */
+function edgeZone(requested: number, viewportHeight: number): number {
+  const cap = Math.max(MIN_ZONE_PX, viewportHeight * MAX_ZONE_FRACTION);
+  return Math.min(Math.max(requested, 0) || cap, cap);
+}
+
+/**
+ * Scrolls while a block is dragged towards the top or bottom of the WINDOW, so a
+ * block can be moved somewhere that is not already on screen.
  *
- * Speed ramps with depth into the zone: a nudge past the threshold creeps, the
- * last few pixels move fast. A single fixed step is either too slow to cross a
- * long lesson or too fast to stop where you meant to.
+ * The edges are the window's, not some container's, because that is the edge the
+ * person is looking at. Which element then does the scrolling is a separate
+ * question, answered per frame by walking up from under the pointer — this
+ * editor is nested inside a lesson page inside a course shell, and which of
+ * those owns the scrollbar is not something the editor should have to know.
+ *
+ * Driven by requestAnimationFrame rather than by the drag events. `dragover`
+ * fires on movement, so an event-driven version stops scrolling exactly when the
+ * user does the natural thing and holds still at the edge waiting for the page
+ * to come to them.
+ *
+ * Speed ramps with depth into the zone: a nudge past the line creeps, the last
+ * few pixels move fast. One fixed step is either too slow to cross a long lesson
+ * or too fast to stop where you meant to.
  */
 function attachDragAutoScroll(view: EditorView, threshold: number): () => void {
   let pointerY: number | null = null;
+  let pointerX = 0;
   let frame: number | null = null;
 
   const stop = () => {
@@ -149,32 +185,48 @@ function attachDragAutoScroll(view: EditorView, threshold: number): () => void {
     frame = null;
     if (pointerY === null) return;
 
-    const scroller = findScrollParent(view.dom as HTMLElement);
-    // The document scrolls against the viewport; an element against its own box.
-    const isDocument = scroller === document.scrollingElement || scroller === document.documentElement;
-    const top = isDocument ? 0 : scroller.getBoundingClientRect().top;
-    const bottom = isDocument ? window.innerHeight : scroller.getBoundingClientRect().bottom;
+    const viewportHeight = window.innerHeight;
+    const zone = edgeZone(threshold, viewportHeight);
 
-    const fromTop = pointerY - top;
-    const fromBottom = bottom - pointerY;
+    const fromTop = pointerY;
+    const fromBottom = viewportHeight - pointerY;
+
     let delta = 0;
-
-    if (fromTop < threshold) {
-      delta = -MAX_AUTO_SCROLL_STEP * Math.min(1, (threshold - fromTop) / threshold);
-    } else if (fromBottom < threshold) {
-      delta = MAX_AUTO_SCROLL_STEP * Math.min(1, (threshold - fromBottom) / threshold);
+    if (fromTop < zone) {
+      delta = -MAX_AUTO_SCROLL_STEP * Math.min(1, (zone - fromTop) / zone);
+    } else if (fromBottom < zone) {
+      delta = MAX_AUTO_SCROLL_STEP * Math.min(1, (zone - fromBottom) / zone);
     }
 
-    // `behavior: 'smooth'` is deliberately not used. Each call would restart an
-    // animation towards a new target every frame, which fights itself and
-    // crawls; frame-by-frame integer steps ARE the smooth scroll here.
-    if (delta !== 0) scroller.scrollBy(0, delta);
+    if (delta !== 0) {
+      const direction: -1 | 1 = delta < 0 ? -1 : 1;
+      const under = document.elementFromPoint(pointerX, Math.min(Math.max(pointerY, 0), viewportHeight - 1));
+      const scroller = findScrollableAncestor(under ?? (view.dom as HTMLElement), direction);
+
+      // `behavior: 'smooth'` is deliberately not used. Each call would restart an
+      // animation towards a new target every frame, which fights itself and
+      // crawls; frame-by-frame integer steps ARE the smooth scroll here.
+      //
+      // And if the element we picked did not actually move, the window gets the
+      // scroll instead. An `overflow-x: hidden` wrapper computes to
+      // `overflow-y: auto` whether its author meant it or not, and a couple of
+      // pixels of sub-pixel rounding is enough to make one look scrollable — a
+      // decoy that would otherwise swallow every frame while the page sat still.
+      if (scroller) {
+        const before = scroller.scrollTop;
+        scroller.scrollBy(0, delta);
+        if (scroller.scrollTop === before) window.scrollBy(0, delta);
+      } else {
+        window.scrollBy(0, delta);
+      }
+    }
 
     frame = requestAnimationFrame(step);
   };
 
   const onDragOver = (event: DragEvent) => {
     pointerY = event.clientY;
+    pointerX = event.clientX;
     if (frame === null) frame = requestAnimationFrame(step);
   };
 

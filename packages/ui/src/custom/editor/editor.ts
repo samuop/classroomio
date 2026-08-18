@@ -51,7 +51,19 @@ export default (
           autolink: true,
           linkOnPaste: true
         },
-        codeBlock: false
+        codeBlock: false,
+        /**
+         * La línea que muestra DÓNDE va a caer el bloque que estás arrastrando.
+         *
+         * StarterKit ya la trae, pero sin configurar la dibuja negra y de 1px:
+         * sobre el fondo oscuro del editor es literalmente invisible, así que
+         * arrastrar un video era apuntar a ciegas y soltar a ver qué pasaba.
+         * Con el color de marca y 3px se ve en los dos temas.
+         */
+        dropcursor: {
+          color: 'var(--primary)',
+          width: 3
+        }
       }),
       Highlight.configure({
         multicolor: true

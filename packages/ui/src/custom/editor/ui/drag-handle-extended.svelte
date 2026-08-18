@@ -34,7 +34,10 @@
     const plugin = DragHandlePlugin({
       pluginKey: pluginKey,
       dragHandleWidth: 20,
-      scrollTreshold: 1000,
+      // 1000 hacía que toda la ventana fuese "borde": la página se iba para
+      // arriba en cualquier posición del mouse y nunca bajaba. El plugin igual
+      // lo acota, pero el valor honesto va acá.
+      scrollTreshold: 120,
       dragHandleSelector: '.drag-handle',
       excludedTags: ['pre', 'code', 'table p'],
       customNodes: [],
