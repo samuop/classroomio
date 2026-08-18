@@ -20,10 +20,12 @@
     video: LessonVideo;
     index: number;
     isEditMode: boolean;
+    /** No tiene marcador en la nota, asi que el alumno no lo ve en ningun lado. */
+    isUnplaced?: boolean;
     onRemove: () => void;
   }
 
-  let { video, index, isEditMode, onRemove }: Props = $props();
+  let { video, index, isEditMode, isUnplaced = false, onRemove }: Props = $props();
 
   const thumbnailUrl = $derived(getVideoThumbnailUrl(video));
   const title = $derived(getVideoTitle(video, index));
@@ -97,6 +99,12 @@
     {#if durationFormatted}
       <div class="absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
         {durationFormatted}
+      </div>
+    {/if}
+
+    {#if isEditMode && isUnplaced}
+      <div class="absolute top-2 left-2 rounded bg-amber-500/90 px-1.5 py-0.5 text-xs font-medium text-black">
+        {$t('course.navItem.lessons.materials.tabs.video.unplaced_badge')}
       </div>
     {/if}
   </div>

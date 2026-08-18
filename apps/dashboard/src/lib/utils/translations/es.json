@@ -2340,7 +2340,9 @@
                 "course_fallback": "Curso",
                 "menu_aria": "Opciones de video"
               },
-              "view_transcript": "Ver transcripción"
+              "view_transcript": "Ver transcripción",
+              "unplaced_badge": "Sin ubicar",
+              "unplaced_warning": "{count} video(s) no están ubicados en la nota, así que el alumno no los ve. Insertalos donde quieras desde el menú de la nota, o eliminalos."
             },
             "slide": {
               "title": "diapositiva",

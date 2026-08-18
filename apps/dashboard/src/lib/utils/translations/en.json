@@ -2725,7 +2725,9 @@
                 "language": "Language: {language}",
                 "empty": "No transcript yet. You can generate one from this card’s menu after the video is uploaded.",
                 "loading": "Loading transcript…"
-              }
+              },
+              "unplaced_badge": "Not placed",
+              "unplaced_warning": "{count} video(s) are not placed in the note, so students do not see them. Insert them wherever you want from the note menu, or remove them."
             },
             "document": {
               "title": "Docs",
