@@ -20,9 +20,23 @@
     if (!data.exercise || isLockedForStudent) return;
 
     const meta = get(questionnaireMetaData);
-    if (meta.isFinished && meta.exerciseId === data.exerciseId) {
-      return;
-    }
+
+    /**
+     * Solo un ejercicio DISTINTO justifica tirar el intento que hay en curso.
+     *
+     * Antes habia una salida temprana mas: si el alumno ya habia terminado ESTE
+     * ejercicio, no se cargaba nada. La idea era no pisarle el intento, pero
+     * `hydrateExercisePageData` no toca las respuestas — solo llena el
+     * cuestionario (titulo, preguntas, secciones). Lo unico que borra el intento
+     * es `reset()`, y para eso ya esta la comparacion de abajo.
+     *
+     * Navegando desde el curso no se notaba: el store todavia tenia las
+     * preguntas de la visita anterior, asi que saltear la carga era invisible. En
+     * una RECARGA el store arranca vacio, la carga se salteaba igual, y el examen
+     * aparecia sin preguntas — con la nota del alumno al lado sobre un total de
+     * cero, porque el puntaje venia de la entrega y el total del cuestionario que
+     * nunca se cargo.
+     */
     if (meta.exerciseId != null && meta.exerciseId !== data.exerciseId) {
       reset();
     }
