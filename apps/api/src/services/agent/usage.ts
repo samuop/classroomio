@@ -54,9 +54,23 @@ const MODEL_COST_MULTIPLIER: Record<string, number> = {
   'kimi-k2.6': 4
 };
 
+/**
+ * What a model's tokens are billed at, and whether that number was measured.
+ *
+ * Exported because the platform panel now offers whatever models Google reports,
+ * not a hand-kept list. A model nobody priced still has to be counted at
+ * something, and 1× is that something — but the panel says so out loud instead
+ * of presenting a guess as a fact, which is the whole difference between an
+ * under-reported cap and an informed choice.
+ */
+export function getModelCostMultiplier(model: string): { multiplier: number; isMeasured: boolean } {
+  const known = MODEL_COST_MULTIPLIER[model];
+
+  return known === undefined ? { multiplier: 1, isMeasured: false } : { multiplier: known, isMeasured: true };
+}
+
 function computeCostUnits(promptTokens: number, completionTokens: number, model: string): number {
-  const multiplier = MODEL_COST_MULTIPLIER[model] ?? 1;
-  return Math.round((promptTokens + completionTokens) * multiplier);
+  return Math.round((promptTokens + completionTokens) * getModelCostMultiplier(model).multiplier);
 }
 
 async function getPlanAllowance(orgId: string): Promise<{ planName: string; allowance: number }> {

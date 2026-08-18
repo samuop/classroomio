@@ -46,22 +46,16 @@ export const platformOrganizationsRouter = new Hono()
       return handleError(c, error, 'Failed to create organization');
     }
   })
-  .get(
-    '/:orgId',
-    authMiddleware,
-    platformAdminMiddleware,
-    zValidator('param', ZPlatformOrgIdParam),
-    async (c) => {
-      try {
-        const { orgId } = c.req.valid('param');
-        const detail = await getOrganizationDetail(orgId);
+  .get('/:orgId', authMiddleware, platformAdminMiddleware, zValidator('param', ZPlatformOrgIdParam), async (c) => {
+    try {
+      const { orgId } = c.req.valid('param');
+      const detail = await getOrganizationDetail(orgId);
 
-        return c.json({ success: true as const, data: detail });
-      } catch (error) {
-        return handleError(c, error, 'Failed to fetch organization');
-      }
+      return c.json({ success: true as const, data: detail });
+    } catch (error) {
+      return handleError(c, error, 'Failed to fetch organization');
     }
-  )
+  })
   .put(
     '/:orgId',
     authMiddleware,
@@ -107,8 +101,8 @@ export const platformOrganizationsRouter = new Hono()
     async (c) => {
       try {
         const { orgId } = c.req.valid('param');
-        const { planName } = c.req.valid('json');
-        const result = await setOrganizationPlan(orgId, planName);
+        const { planName, aiTokenAllowance, aiModel } = c.req.valid('json');
+        const result = await setOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel);
 
         return c.json({ success: true as const, data: result });
       } catch (error) {

@@ -24,22 +24,33 @@
   <title>{$t('platform.orgs.page_title')} - {brandName}</title>
 </svelte:head>
 
-<Page.Header>
-  <Page.HeaderContent>
-    <Button variant="ghost" size="sm" class="ui:-ml-2 ui:mb-1 ui:w-fit" onclick={goBack}>
-      <ArrowLeftIcon class="ui:mr-1 size-4" />
-      {$t('platform.orgs.back')}
-    </Button>
-    <Page.Title>{$t('platform.orgs.page_title')}</Page.Title>
-    <Page.Subtitle>{$t('platform.orgs.page_description')}</Page.Subtitle>
-  </Page.HeaderContent>
-</Page.Header>
-<Page.Body>
-  {#snippet child()}
-    {#if isPlatformAdmin}
-      <PlatformOrganizationsPage />
-    {:else}
-      <Empty icon={ShieldIcon} title={$t('platform.access_denied_title')} description={$t('platform.access_denied_body')} />
-    {/if}
-  {/snippet}
-</Page.Body>
+<!--
+  Page.Root is what gives the page its gutters — without it the header and the
+  table sit flush against the window edge. Wider cap than the other list pages
+  because this table carries seven columns.
+-->
+<Page.Root class="mx-auto w-full max-w-7xl px-4 md:px-6">
+  <Page.Header>
+    <Page.HeaderContent>
+      <Button variant="ghost" size="sm" class="ui:-ml-2 ui:mb-1 ui:w-fit" onclick={goBack}>
+        <ArrowLeftIcon class="ui:mr-1 size-4" />
+        {$t('platform.orgs.back')}
+      </Button>
+      <Page.Title>{$t('platform.orgs.page_title')}</Page.Title>
+      <Page.Subtitle>{$t('platform.orgs.page_description')}</Page.Subtitle>
+    </Page.HeaderContent>
+  </Page.Header>
+  <Page.Body>
+    {#snippet child()}
+      {#if isPlatformAdmin}
+        <PlatformOrganizationsPage />
+      {:else}
+        <Empty
+          icon={ShieldIcon}
+          title={$t('platform.access_denied_title')}
+          description={$t('platform.access_denied_body')}
+        />
+      {/if}
+    {/snippet}
+  </Page.Body>
+</Page.Root>

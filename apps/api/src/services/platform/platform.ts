@@ -1,4 +1,5 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
+import { isSelectableChatModel } from '@api/services/platform/settings';
 import {
   getPlatformOrganizationDetail,
   listPlatformOrganizations,
@@ -90,8 +91,19 @@ export async function suspendOrganization(orgId: string, suspend: boolean, readO
  * Assigns a plan to an organization (platform admin action). Changing the plan
  * immediately changes its token allowance, student limit, and feature access.
  */
-export async function setOrganizationPlan(orgId: string, planName: PlatformPlanName) {
-  const result = await setPlatformOrganizationPlan(orgId, planName);
+export async function setOrganizationPlan(
+  orgId: string,
+  planName: PlatformPlanName,
+  aiTokenAllowance?: number | null,
+  aiModel?: string | null
+) {
+  // Checked against the same list the panel offers (Google's, when it answers),
+  // so a model can never be offered and then rejected on save.
+  if (typeof aiModel === 'string' && !(await isSelectableChatModel(aiModel))) {
+    throw new AppError(`Unsupported chat model: ${aiModel}`, ErrorCodes.VALIDATION_ERROR, 400);
+  }
+
+  const result = await setPlatformOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel);
   if (!result) {
     throw new AppError('Organization not found', ErrorCodes.ORGANIZATION_NOT_FOUND, 404);
   }

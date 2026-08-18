@@ -28,9 +28,37 @@ export const ZPlatformSuspendOrg = z.object({
 export type TPlatformSuspendOrg = z.infer<typeof ZPlatformSuspendOrg>;
 
 export const ZPlatformSetPlan = z.object({
-  planName: z.enum(['BASIC', 'EARLY_ADOPTER', 'ENTERPRISE'])
+  planName: z.enum(['BASIC', 'EARLY_ADOPTER', 'ENTERPRISE']),
+  /**
+   * This organisation's own monthly token cap, overriding the plan's default.
+   *
+   * Three states, and they mean different things: omit it to leave the current
+   * cap untouched, send `null` to drop the override and go back to the plan's
+   * number, or send a count to set one. Zero is legitimate — it turns AI off for
+   * the organisation without touching its plan or its data.
+   *
+   * The ceiling is a guard against a typo costing real money: at Flash-Lite
+   * prices a mis-keyed extra digit is the difference between a month's budget
+   * and ten of them.
+   */
+  aiTokenAllowance: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+  /**
+   * Run this organisation on a specific chat model instead of the deployment's.
+   *
+   * Same three states as the cap: omit to keep, null to clear, a name to set.
+   * The name is validated against the selectable list on the server rather than
+   * here, because that list lives with the cost multipliers it must agree with.
+   */
+  aiModel: z.string().trim().min(1).max(100).nullable().optional()
 });
 export type TPlatformSetPlan = z.infer<typeof ZPlatformSetPlan>;
+
+/** Deployment-wide settings editable from the platform panel. */
+export const ZPlatformSettingsUpdate = z.object({
+  /** null clears the stored choice and hands resolution back to the environment. */
+  chatModel: z.string().trim().min(1).max(100).nullable()
+});
+export type TPlatformSettingsUpdate = z.infer<typeof ZPlatformSettingsUpdate>;
 
 export const ZPlatformDomainAction = z.object({
   action: z.enum(['connect', 'refresh', 'remove']),

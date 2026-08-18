@@ -84,6 +84,7 @@ import {
   type TeacherPromptMode
 } from '@cio/ai-assistant';
 import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
+import { providerConfigForOrg } from '@api/services/platform/settings';
 import { buildSystemPrompt, buildContextMessage } from '@cio/ai-assistant/prompt';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { redis } from '@api/utils/redis/redis';
@@ -577,12 +578,13 @@ const agentCoreRouter = new Hono()
       const isTeamMember = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
       const role = isTeamMember ? AgentRole.TEACHER : AgentRole.STUDENT;
 
-      // The model/provider is an operator decision, not a user one: it is chosen
-      // entirely by which API key is set in the environment (see
-      // pickAnyConfiguredProvider). Any `model` sent by the client is ignored so
-      // that switching the platform's AI provider is a single .env change and the
-      // client never learns which model is in use.
-      const providerConfig = pickAnyConfiguredProvider();
+      // The model/provider is an operator decision, not a user one. The PROVIDER
+      // still comes from which API key is set in the environment; the MODEL now
+      // comes from the platform panel (this organisation's override, else the
+      // deployment setting, else the environment) so changing it is a save
+      // rather than an edit-and-restart. Any `model` sent by the client is
+      // ignored either way — it never learns which one is in use.
+      const providerConfig = await providerConfigForOrg(orgId);
 
       if (!providerConfig) {
         throw new AppError('AI assistant is not configured', 'AI_NOT_CONFIGURED', 503);
@@ -675,28 +677,25 @@ const agentCoreRouter = new Hono()
       // Cache activation: as long as a document is attached and the role is TEACHER
       // (not student tutor) and we're not editing a single lesson, the cache is
       // worth activating. Reasons:
-//   1. Building an approved plan (hasApprovedPlan) — dozens of tool calls read
-//      the same material. Cache hits compound.
-//   2. Planning a course FROM a document on an EMPTY course (genuine
-//      build-from-scratch). Cache helps the first chat turn too.
-//   3. EDITING an existing course that has a source attached — every edit
-//      turn reads the source material again. Without a cache, each turn
-//      re-bills the full ~100k-token prompt. With a cache, the material is
-//      paid once per 5-min window.
-//   4. Single-lesson edits (lessonId present) are NEVER cache-eligible —
-//      they're cheap inline reads and the cache doesn't pay back there.
-// The policy used to say "only on empty course" to avoid paying for one-off
-//      reads. That's obsolete now: the Sources panel pins documents to the
-//      course so the instructor WILL re-read them across edits, and the cache
-//      handle is keyed per-(org, course, contentHash) so it costs the org
-//      nothing to maintain.
-      const hasApprovedPlanForCache =
-        role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
+      //   1. Building an approved plan (hasApprovedPlan) — dozens of tool calls read
+      //      the same material. Cache hits compound.
+      //   2. Planning a course FROM a document on an EMPTY course (genuine
+      //      build-from-scratch). Cache helps the first chat turn too.
+      //   3. EDITING an existing course that has a source attached — every edit
+      //      turn reads the source material again. Without a cache, each turn
+      //      re-bills the full ~100k-token prompt. With a cache, the material is
+      //      paid once per 5-min window.
+      //   4. Single-lesson edits (lessonId present) are NEVER cache-eligible —
+      //      they're cheap inline reads and the cache doesn't pay back there.
+      // The policy used to say "only on empty course" to avoid paying for one-off
+      //      reads. That's obsolete now: the Sources panel pins documents to the
+      //      course so the instructor WILL re-read them across edits, and the cache
+      //      handle is keyed per-(org, course, contentHash) so it costs the org
+      //      nothing to maintain.
+      const hasApprovedPlanForCache = role === AgentRole.TEACHER ? !!getLatestImplementationPlan(messages) : false;
       const hasDocumentAttached = !!context?.documentId;
-      const isSingleLessonEdit =
-        role === AgentRole.TEACHER && !!context?.lessonId;
-      const cacheEligiblePhase =
-        role === AgentRole.TEACHER && hasDocumentAttached && !isSingleLessonEdit;
+      const isSingleLessonEdit = role === AgentRole.TEACHER && !!context?.lessonId;
+      const cacheEligiblePhase = role === AgentRole.TEACHER && hasDocumentAttached && !isSingleLessonEdit;
 
       // Capa 2b: ask the provider to cache this turn's material, when it is the
       // kind of provider that has to be asked. MiniMax/Claude get a
@@ -731,10 +730,7 @@ const agentCoreRouter = new Hono()
       // a no-op and we fall back to inlining the text as before.
       let searchableDocumentId: string | null = null;
       const isEditWithDocument =
-        role === AgentRole.TEACHER &&
-        !!context?.documentId &&
-        existingSections.length > 0 &&
-        !cacheEligiblePhase;
+        role === AgentRole.TEACHER && !!context?.documentId && existingSections.length > 0 && !cacheEligiblePhase;
       if (isEditWithDocument && context?.documentId) {
         try {
           const docText = await getDocumentText(context.documentId, user.id, redis);
@@ -911,8 +907,7 @@ const agentCoreRouter = new Hono()
       //
       // The tagging itself stays Anthropic-only, guarded by `isAnthropicCompatible`
       // at each tag site — Gemini has nothing to tag.
-      const hasInlineDocumentContext =
-        role === AgentRole.TEACHER && !!documentText && documentText.length > 0;
+      const hasInlineDocumentContext = role === AgentRole.TEACHER && !!documentText && documentText.length > 0;
 
       // Same idea for the source pack, which is the far bigger block and lives in
       // its own message (see below).
@@ -955,10 +950,16 @@ const agentCoreRouter = new Hono()
           ]);
           const progress = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems, registry);
           if (progress) {
+            // The checklist still gets the counts even when there is no anchor
+            // text: the UI shows "15/15 built", which is information, while the
+            // prompt gets silence, which is the absence of a distraction.
             planProgress = progress;
-            contextMessageText = contextMessageText
-              ? `${contextMessageText}\n\n${progress.anchorText}`
-              : progress.anchorText;
+
+            if (progress.anchorText) {
+              contextMessageText = contextMessageText
+                ? `${contextMessageText}\n\n${progress.anchorText}`
+                : progress.anchorText;
+            }
           }
         } catch (err) {
           // Never block the chat on the anchor — it's an enhancement, not required.
@@ -980,13 +981,7 @@ const agentCoreRouter = new Hono()
 
       const agentTools =
         role === AgentRole.STUDENT
-          ? buildStudentAgentTools(
-              orgId,
-              user.id,
-              courseId,
-              studentPolicy!.settings,
-              agentContext.locale as TLocale
-            )
+          ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings, agentContext.locale as TLocale)
           : buildAgentTools(orgId, user.id, courseId, messages, {
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
@@ -1085,7 +1080,7 @@ const agentCoreRouter = new Hono()
       // 1.25x on every build turn instead of being read back at 0.1x — the exact
       // opposite of what the cache is for.
       const sourcePackMessage = sourcePack?.text
-        ? ({
+        ? {
             role: 'user' as const,
             content: [{ type: 'text' as const, text: sourcePack.text }],
             ...(isAnthropicCompatible && hasSourcePackContext
@@ -1095,12 +1090,12 @@ const agentCoreRouter = new Hono()
                   }
                 }
               : {})
-          })
+          }
         : null;
 
       const contextMessage =
         contextMessageText.length > 0
-          ? ({
+          ? {
               role: 'user' as const,
               content: [{ type: 'text' as const, text: contextMessageText }],
               // Only tagged on the legacy inline-document path (single-lesson
@@ -1114,7 +1109,7 @@ const agentCoreRouter = new Hono()
                     }
                   }
                 : {})
-            })
+            }
           : null;
 
       const modelMessages = [
@@ -1388,9 +1383,7 @@ const agentCoreRouter = new Hono()
           // without calling the tool is indistinguishable from a turn that
           // worked — both just end. `phase` and `toolsOffered` are here because
           // the first question is always "was the tool even available?".
-          const toolCalls = steps.flatMap((step) =>
-            step.toolCalls.map((call) => call.toolName)
-          );
+          const toolCalls = steps.flatMap((step) => step.toolCalls.map((call) => call.toolName));
           console.log(
             `[agent.chat] phase=${teacherPromptMode} finish=${resultFinishReason} steps=${steps.length} ` +
               `toolsOffered=${activeToolNames?.length ?? 'all'} toolCalls=[${toolCalls.join(', ') || 'NONE'}] ` +
@@ -1411,12 +1404,7 @@ const agentCoreRouter = new Hono()
                 listCourseSections(courseId),
                 readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => [])
               ]);
-              const finalProgress = buildPlanProgressAnchor(
-                approvedPlan,
-                finalSections,
-                finalItems,
-                finalRegistry
-              );
+              const finalProgress = buildPlanProgressAnchor(approvedPlan, finalSections, finalItems, finalRegistry);
               if (finalProgress) {
                 // The checklist the UI renders comes from HERE — reconciled after the
                 // round's writes landed, so it reports what exists rather than what

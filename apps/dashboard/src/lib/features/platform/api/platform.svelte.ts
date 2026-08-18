@@ -33,6 +33,36 @@ class PlatformApi extends BaseApiWithErrors {
   pagination = $state<PlatformOrgsPagination | null>(null);
   detail = $state<PlatformOrgDetail | null>(null);
 
+  /** Deployment-wide chat model, and the models the server will accept. */
+  chatModel = $state<string | null>(null);
+  selectableChatModels = $state<
+    Array<{ id: string; multiplier: number; isMeasuredCost: boolean; isLive: boolean }>
+  >([]);
+
+  async loadSettings() {
+    return this.execute({
+      requestFn: () => classroomio.platform.settings.$get(),
+      logContext: 'loading platform settings',
+      onSuccess: (response) => {
+        this.chatModel = response.data.chatModel;
+        // The list comes from the server so it cannot drift from the cost
+        // multipliers it has to agree with.
+        this.selectableChatModels = [...response.data.selectableChatModels];
+      }
+    });
+  }
+
+  async setChatModel(chatModel: string | null) {
+    return this.execute({
+      requestFn: () => classroomio.platform.settings.$put({ json: { chatModel } }),
+      logContext: 'updating platform chat model',
+      onSuccess: (response) => {
+        this.chatModel = response.data.chatModel;
+        snackbar.success('platform.snackbar.settings_updated');
+      }
+    });
+  }
+
   async listOrganizations(params: ListParams = {}) {
     const query = {
       page: String(params.page ?? 1),
@@ -134,10 +164,22 @@ class PlatformApi extends BaseApiWithErrors {
     });
   }
 
-  async setPlan(orgId: string, planName: PlatformPlanName) {
+  /**
+   * `aiTokenAllowance` is optional on purpose and its three states reach the
+   * server unchanged: omitted keeps the current cap, null clears the override
+   * back to the plan's default, a number sets it.
+   */
+  async setPlan(orgId: string, planName: PlatformPlanName, aiTokenAllowance?: number | null, aiModel?: string | null) {
     return this.execute<SetPlatformOrgPlanRequest>({
       requestFn: () =>
-        classroomio.platform.organizations[':orgId'].plan.$put({ param: { orgId }, json: { planName } }),
+        classroomio.platform.organizations[':orgId'].plan.$put({
+          param: { orgId },
+          json: {
+            planName,
+            ...(aiTokenAllowance === undefined ? {} : { aiTokenAllowance }),
+            ...(aiModel === undefined ? {} : { aiModel })
+          }
+        }),
       logContext: 'updating organization plan',
       onSuccess: async () => {
         snackbar.success('platform.snackbar.plan_updated');

@@ -1081,6 +1081,20 @@
           "empty_groups": "Aún no hay etiquetas disponibles"
         },
         "compliance": "Cumplimiento",
+        "compliance_rules": {
+          "legend": "Reglas de recertificación",
+          "description": "Cada cuánto vence este curso y qué pasa cuando se pasa la fecha.",
+          "interval": "Vigencia (meses)",
+          "interval_hint": "Quien lo apruebe hoy queda vigente hasta el {fecha}.",
+          "grace": "Días de gracia",
+          "grace_hint": "Después de vencer, cuántos días sigue contando como \"en período de gracia\" antes de pasar a no conforme. Cero = vence y queda no conforme el mismo día.",
+          "reminders": "Avisar con (días de anticipación)",
+          "reminders_hint": "Separados por coma. Ejemplo: 30, 7, 1.",
+          "passing": "Nota mínima para aprobar (%)",
+          "passing_hint": "Debajo de esta nota la recertificación no se da por cumplida.",
+          "mandatory": "Obligatorio",
+          "mandatory_hint": "Los cursos obligatorios se cuentan en el tablero de Cumplimiento aunque el alumno no los haya empezado."
+        },
         "public": "Público",
         "convert_to_public_blocked": "Este curso tiene preguntas que no se pueden calificar automáticamente, por lo que aún no se puede hacer público.",
         "fix_blocking_questions": "Corregir preguntas de bloqueo",
@@ -2342,7 +2356,9 @@
                 "activities": "Generar actividades lectivas"
               },
               "insert_media": "Insertar material",
-              "insert_media_empty": "Esta lección todavía no tiene videos, diapositivas ni documentos."
+              "insert_media_empty": "Esta lección todavía no tiene videos, diapositivas ni documentos.",
+              "insert_media_add_video": "Subir un video acá…",
+              "insert_media_add_document": "Subir un documento acá…"
             }
           },
           "media_not_found": "El material al que apunta esta nota ya no está en la lección."
@@ -3412,7 +3428,14 @@
   "platform": {
     "access_denied_title": "Solo administradores de plataforma",
     "access_denied_body": "Necesitás acceso de administrador de plataforma para gestionar las empresas.",
+    "settings": {
+      "chat_model": "Modelo de IA de la plataforma",
+      "chat_model_hint": "Vale para todas las empresas, salvo las que tengan uno propio. Toma efecto en la próxima llamada, sin reiniciar.",
+      "chat_model_env": "Usar el del archivo .env",
+      "chat_model_offline": "No se pudo consultar a Google: se muestra la lista de respaldo. Un “≈” significa que ese modelo no tiene costo medido y se cuenta a 1×."
+    },
     "snackbar": {
+      "settings_updated": "Configuración de la plataforma guardada",
       "org_created": "Empresa creada",
       "org_updated": "Empresa actualizada",
       "org_suspended": "Empresa suspendida",
@@ -3430,6 +3453,12 @@
     "detail": {
       "plan": "Plan",
       "plan_hint": "Cambiar el plan ajusta al instante la cuota de tokens, el límite de alumnos y las funciones disponibles.",
+      "allowance": "Tope de fichas por mes",
+      "allowance_save": "Guardar",
+      "allowance_hint": "Solo para esta empresa. Vacío usa el valor del plan ({plan}). Cero apaga la IA sin tocar el plan.",
+      "model": "Modelo de IA",
+      "model_inherit": "Usar el modelo de la plataforma",
+      "model_hint": "Solo para esta empresa. Entre paréntesis, cuánto consume del tope comparado con el más barato.",
       "members": "Miembros",
       "tokens_all_time": "Tokens (histórico)",
       "domains_title": "Dominios",
@@ -3452,6 +3481,9 @@
       "empty": "No se encontraron empresas",
       "no_plan": "Sin plan",
       "total_count": "{count} empresas",
+      "client_count": "{count} clientes",
+      "client_of": "Cliente de {name}",
+      "toggle_clients": "Mostrar u ocultar las empresas cliente",
       "col_name": "Nombre",
       "col_plan": "Plan",
       "col_tokens": "Tokens (mes)",
@@ -4825,6 +4857,10 @@
     "tab_compliance": "Cumplimiento",
     "axis_student": "Por alumno",
     "axis_course": "Por curso",
+    "col_company": "Empresa",
+    "scope_label": "Alcance",
+    "scope_all": "Todas las empresas",
+    "scope_own": "Solo {name}",
     "kpi_students": "Alumnos",
     "kpi_students_sub": "en {count, plural, one {# curso activo} other {# cursos activos}}",
     "kpi_avg_progress": "Avance promedio",

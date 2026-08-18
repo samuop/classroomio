@@ -3664,3 +3664,26 @@ export const deadLetterJob = pgTable(
     index('idx_dead_letter_job_org_created').on(table.organizationId, table.createdAt)
   ]
 );
+
+/**
+ * Deployment-wide operator settings, editable from the platform panel.
+ *
+ * A key/value table rather than columns because these are operational knobs the
+ * platform owner flips between deploys — the alternative was another env var and
+ * another restart, which is exactly what this replaces. The API keys stay in the
+ * environment: a secret in a table an admin screen can read is a different kind
+ * of thing from a model name.
+ *
+ * Per-ORGANISATION overrides do NOT live here. They ride in the organisation's
+ * active plan payload next to `aiTokenAllowance`, so one row answers "what is
+ * this organisation allowed and how does it run".
+ */
+export const platformSetting = pgTable('platform_setting', {
+  /** Stable identifier, e.g. `chat_model`. */
+  key: text().primaryKey().notNull(),
+  value: jsonb().$type<Record<string, unknown>>().notNull(),
+  updatedByProfileId: uuid('updated_by_profile_id').references(() => profile.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' })
+    .default(sql`timezone('utc'::text, now())`)
+    .notNull()
+});

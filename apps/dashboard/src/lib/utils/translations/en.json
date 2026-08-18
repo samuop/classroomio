@@ -7,6 +7,10 @@
     "tab_compliance": "Compliance",
     "axis_student": "By student",
     "axis_course": "By course",
+    "col_company": "Company",
+    "scope_label": "Scope",
+    "scope_all": "All companies",
+    "scope_own": "Only {name}",
     "kpi_students": "Students",
     "kpi_students_sub": "in {count, plural, one {# active course} other {# active courses}}",
     "kpi_avg_progress": "Average progress",
@@ -2638,7 +2642,9 @@
                 "activities": "Generate Lesson Activities"
               },
               "insert_media": "Insert material",
-              "insert_media_empty": "This lesson has no videos, slides or documents yet."
+              "insert_media_empty": "This lesson has no videos, slides or documents yet.",
+              "insert_media_add_video": "Upload a video here…",
+              "insert_media_add_document": "Upload a document here…"
             },
             "slide": {
               "title": "Slide",
@@ -3942,6 +3948,20 @@
         "live_class": "Live class",
         "self_paced": "Self paced",
         "compliance": "Compliance",
+        "compliance_rules": {
+          "legend": "Recertification rules",
+          "description": "How often this course expires and what happens once it does.",
+          "interval": "Valid for (months)",
+          "interval_hint": "Anyone passing it today stays valid until {fecha}.",
+          "grace": "Grace period (days)",
+          "grace_hint": "After expiry, how many days it still counts as \"in grace period\" before turning non-compliant. Zero = non-compliant the same day.",
+          "reminders": "Remind this many days before",
+          "reminders_hint": "Comma separated. For example: 30, 7, 1.",
+          "passing": "Passing score (%)",
+          "passing_hint": "Below this score the recertification does not count as met.",
+          "mandatory": "Mandatory",
+          "mandatory_hint": "Mandatory courses appear on the Compliance board even for learners who never started them."
+        },
         "public": "Public",
         "convert_to_public_blocked": "This course has questions that can’t be auto-graded, so it can’t be made Public yet.",
         "fix_blocking_questions": "Fix blocking questions",
@@ -5145,7 +5165,14 @@
   "platform": {
     "access_denied_title": "Platform admins only",
     "access_denied_body": "You need platform administrator access to manage organizations.",
+    "settings": {
+      "chat_model": "Platform AI model",
+      "chat_model_hint": "Applies to every organization except those with their own. Takes effect on the next call, no restart.",
+      "chat_model_env": "Use the one from .env",
+      "chat_model_offline": "Google could not be reached — showing the fallback list. A “≈” means nobody has priced that model and it is counted at 1×."
+    },
     "snackbar": {
+      "settings_updated": "Platform settings saved",
       "org_created": "Organization created",
       "org_updated": "Organization updated",
       "org_suspended": "Organization suspended",
@@ -5163,6 +5190,12 @@
     "detail": {
       "plan": "Plan",
       "plan_hint": "Changing the plan instantly adjusts the token allowance, student limit, and available features.",
+      "allowance": "Monthly token cap",
+      "allowance_save": "Save",
+      "allowance_hint": "This organization only. Empty uses the plan's value ({plan}). Zero turns AI off without changing the plan.",
+      "model": "AI model",
+      "model_inherit": "Use the platform's model",
+      "model_hint": "This organization only. In brackets, how fast it burns the cap compared with the cheapest.",
       "members": "Members",
       "tokens_all_time": "Tokens (all time)",
       "domains_title": "Domains",
@@ -5185,6 +5218,9 @@
       "empty": "No organizations found",
       "no_plan": "No plan",
       "total_count": "{count} organizations",
+      "client_count": "{count} clients",
+      "client_of": "Client of {name}",
+      "toggle_clients": "Show or hide client companies",
       "col_name": "Name",
       "col_plan": "Plan",
       "col_tokens": "Tokens (mo)",
