@@ -1,9 +1,22 @@
-import type {
-  CertificateDesign,
-  CertificateLabels,
-  CertificateTemplateId,
-  CertificateTemplateMeta
-} from './types';
+import type { CertificateDesign, CertificateLabels, CertificateTemplateId, CertificateTemplateMeta } from './types';
+
+/**
+ * El tamano de la hoja del certificado, en pixeles de lienzo.
+ *
+ * Es apaisado y no es ninguna hoja de oficina. Importa que sea un solo numero y
+ * no un literal repetido: el PDF salia en 612x792pt — Carta VERTICAL, el default
+ * de Chrome — con el certificado encogido arriba, porque a Cloudflare no se le
+ * decia nada.
+ * Ahora estas dos constantes mandan en tres lugares a la vez — la caja del
+ * documento (BASE_STYLES), la hoja del PDF y el viewport del PNG — asi no puede
+ * volver a pasar que el diseno mida una cosa y el archivo exportado otra.
+ *
+ * (`CANVAS_WIDTH`/`CANVAS_HEIGHT` de `document/types` valen lo mismo y son del
+ * editor de lienzo aparcado; viven aparte para no armar un ciclo de imports.
+ * Si algun dia cambia esta hoja, hay que cambiarlas tambien.)
+ */
+export const CERTIFICATE_PAGE_WIDTH = 1100;
+export const CERTIFICATE_PAGE_HEIGHT = 780;
 
 export const ACCENT_COLORS = ['#7a1f1f', '#1e3a8a', '#ff4500', '#d4af37', '#0a0a0a', '#065f46'] as const;
 

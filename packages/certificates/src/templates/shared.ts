@@ -1,4 +1,6 @@
 import {
+  CERTIFICATE_PAGE_HEIGHT,
+  CERTIFICATE_PAGE_WIDTH,
   DEFAULT_BRAND_LOGO_HEIGHT,
   MAX_BRAND_LOGO_HEIGHT,
   MIN_BRAND_LOGO_HEIGHT
@@ -204,8 +206,20 @@ export const FONTS_LINK_HREF =
   'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Cinzel:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Bodoni+Moda:ital,wght@0,400;0,700;1,400&family=Archivo+Black&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@400;500;700&display=swap';
 
 export const BASE_STYLES = `
+  /*
+    La hoja del PDF. MEDIDO contra Cloudflare, no deducido:
+    - sin decir nada          -> 612x792pt (Carta VERTICAL, el default de Chrome)
+    - pdfOptions.width/height -> IGNORADO, sigue en 612x792
+    - format a4 + landscape   -> 842.9x595.9pt (entra, pero el diseno queda con marco)
+    - este @page + preferCSSPageSize -> 824.9x585.1pt = el diseno exacto
+    Por eso la medida vive aca, en el CSS, y no en las opciones del PDF: es el
+    unico lugar desde donde Cloudflare la escucha. Quien renderiza tiene que
+    mandar 'preferCSSPageSize: true' o esto no se aplica.
+    En pantalla no hace nada: @page solo existe para medios paginados.
+  */
+  @page { size: ${CERTIFICATE_PAGE_WIDTH}px ${CERTIFICATE_PAGE_HEIGHT}px; margin: 0; }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 1100px; height: 780px; background: transparent; }
+  html, body { width: ${CERTIFICATE_PAGE_WIDTH}px; height: ${CERTIFICATE_PAGE_HEIGHT}px; background: transparent; }
   body { -webkit-font-smoothing: antialiased; }
-  .cert { width: 1100px; height: 780px; position: relative; overflow: hidden; }
+  .cert { width: ${CERTIFICATE_PAGE_WIDTH}px; height: ${CERTIFICATE_PAGE_HEIGHT}px; position: relative; overflow: hidden; }
 `;

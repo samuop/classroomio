@@ -49,7 +49,36 @@ async function readRenderedBuffer(response: Response, kind: 'PDF' | 'PNG'): Prom
   return buffer;
 }
 
-export const getCloudflarePdfBuffer = async (html: string, styles?: string) => {
+/**
+ * Puppeteer's PDF options, forwarded verbatim by Cloudflare.
+ *
+ * Optional because the two callers want opposite things: a certificate is one
+ * fixed landscape sheet, and a course download is an ordinary flowing document
+ * that should keep Chrome's default paper. Leaving this out is what a normal
+ * document looks like.
+ */
+export interface CloudflarePdfOptions {
+  /**
+   * Obedece el `@page` del CSS. Es la UNICA forma de fijar la hoja aca:
+   * `width`/`height` existen en Puppeteer pero Cloudflare los descarta sin
+   * avisar — medido, el PDF volvia en 612x792pt igual — asi que ni figuran en
+   * este tipo, para que nadie los use esperando que hagan algo.
+   */
+  preferCSSPageSize?: boolean;
+  format?: string;
+  landscape?: boolean;
+  printBackground?: boolean;
+  margin?: { top: string; right: string; bottom: string; left: string };
+  pageRanges?: string;
+}
+
+export interface CloudflareViewport {
+  width: number;
+  height: number;
+  deviceScaleFactor?: number;
+}
+
+export const getCloudflarePdfBuffer = async (html: string, styles?: string, pdfOptions?: CloudflarePdfOptions) => {
   console.log('Generating PDF with Cloudflare API...');
   try {
     const pdfResponse = await fetch(
@@ -62,7 +91,8 @@ export const getCloudflarePdfBuffer = async (html: string, styles?: string) => {
         },
         body: JSON.stringify({
           html: html,
-          addStyleTag: [{ content: `${styles}` }]
+          addStyleTag: [{ content: `${styles}` }],
+          ...(pdfOptions ? { pdfOptions } : {})
         })
       }
     );
@@ -78,9 +108,10 @@ export const getCloudflarePdfBuffer = async (html: string, styles?: string) => {
 
 /**
  * Renders HTML to a PNG via Cloudflare Browser Rendering's `/screenshot` endpoint.
- * The viewport is fixed to 1100x780 to match the certificate canvas.
+ * The viewport comes from the caller so the image cannot drift from the page
+ * size the same design is printed at.
  */
-export const getCloudflarePngBuffer = async (html: string, styles?: string) => {
+export const getCloudflarePngBuffer = async (html: string, styles?: string, viewport?: CloudflareViewport) => {
   console.log('Generating PNG with Cloudflare API...');
   try {
     const response = await fetch(
@@ -94,7 +125,7 @@ export const getCloudflarePngBuffer = async (html: string, styles?: string) => {
         body: JSON.stringify({
           html,
           addStyleTag: styles ? [{ content: styles }] : undefined,
-          viewport: { width: 1100, height: 780, deviceScaleFactor: 2 },
+          viewport: { deviceScaleFactor: 2, ...viewport },
           screenshotOptions: { type: 'png', omitBackground: false, fullPage: false }
         })
       }
