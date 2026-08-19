@@ -41,14 +41,24 @@ type AppSetupParams = {
 };
 
 /**
- * Los caminos donde la persona está justo aceptando una invitación.
+ * Los caminos donde todavía no se sabe a qué empresa viene la persona.
  *
- * Aceptar es lo que decide a qué empresa entra. Auto-inscribirla mientras
- * tanto la anota de ALUMNO en la dueña del dominio antes de que acepte —
- * y en el dominio de una consultora la dueña casi nunca es su empresa.
+ * Aceptar la invitación es lo que lo decide. Auto-inscribirla antes la anota de
+ * ALUMNO en la dueña del dominio, y en el dominio de una consultora la dueña
+ * casi nunca es su empresa: termina entrando a la empresa equivocada, con el
+ * rol equivocado, y de paso le ensucia la audiencia a un cliente que no es.
+ *
+ * Las pantallas de registro y de acceso cuentan: el camino de una invitación
+ * pasa por `/signup?redirect=/invite/...`, y apenas se crea la cuenta hay
+ * sesión y esto corre — con la invitación todavía sin aceptar.
  */
-function isAcceptingAnInvite(pathname: string): boolean {
-  return pathname.startsWith('/invite/') || /^\/course\/[^/]+\/enroll\/?$/.test(pathname);
+function isBeforeChoosingAnOrg(pathname: string): boolean {
+  return (
+    pathname.startsWith('/invite/') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/login') ||
+    /^\/course\/[^/]+\/enroll\/?$/.test(pathname)
+  );
 }
 
 /*
@@ -79,7 +89,7 @@ class AppInitApi extends BaseApi {
     // API side (no-ops for existing members so invited admins/tutors keep
     // their roles). Runs BEFORE the account fetch so the returned org list
     // already reflects the new membership.
-    if (params.isOrgSite && params.orgId && !isAcceptingAnInvite(window.location.pathname)) {
+    if (params.isOrgSite && params.orgId && !isBeforeChoosingAnOrg(window.location.pathname)) {
       await this.autoEnrollOnTenantSite(params.orgId);
     }
 
