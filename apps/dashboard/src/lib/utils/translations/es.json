@@ -3518,12 +3518,13 @@
       "plan_label": "Plan",
       "cancel": "Cancelar",
       "create_submit": "Crear",
-      "rename_title": "Renombrar empresa",
+      "rename_title": "Editar empresa",
       "rename_submit": "Guardar",
       "suspend_title": "Suspender empresa",
       "suspend_body": "Los miembros de {name} perderán acceso hasta que la reactives. ¿Continuar?",
       "reactivate_title": "Reactivar empresa",
-      "reactivate_body": "¿Restaurar el acceso para los miembros de {name}?"
+      "reactivate_body": "¿Restaurar el acceso para los miembros de {name}?",
+      "site_name_hint": "Es la dirección de la empresa. Cambiarlo hace que la anterior deje de funcionar."
     }
   },
   "pricing": {

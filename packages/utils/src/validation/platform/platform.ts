@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { ZSiteName } from '../organization/site-name';
 
 /** Query params for the cross-org listing. Values arrive as strings. */
 export const ZPlatformOrgListQuery = z.object({
@@ -16,7 +17,20 @@ export const ZPlatformOrgIdParam = z.object({
 export type TPlatformOrgIdParam = z.infer<typeof ZPlatformOrgIdParam>;
 
 export const ZPlatformUpdateOrg = z.object({
-  name: z.string().min(2).max(120).optional()
+  name: z.string().min(2).max(120).optional(),
+  /**
+   * Cambiar el subdominio de una empresa.
+   *
+   * Antes no habia forma de tocarlo en ningun lado: se fijaba al crear y quedaba
+   * asi para siempre, aunque tuviera un error de tipeo. Y como no se validaba
+   * como hostname, un error de tipeo podia dejar la empresa en una direccion que
+   * ni siquiera resuelve.
+   *
+   * Es un cambio con consecuencias — la direccion vieja deja de funcionar — asi
+   * que vive solo en el panel de plataforma, no en la configuracion que ve cada
+   * empresa.
+   */
+  siteName: ZSiteName.optional()
 });
 export type TPlatformUpdateOrg = z.infer<typeof ZPlatformUpdateOrg>;
 
@@ -73,11 +87,7 @@ export const ZPlatformCreateOrg = z.object({
     .min(2)
     .max(120)
     .refine((val) => !/^[-]|[-]$/.test(val), { message: 'validations.organization_name.hyphen_rule' }),
-  siteName: z
-    .string()
-    .min(3)
-    .max(63)
-    .refine((val) => !/^[-]|[-]$/.test(val), { message: 'validations.site_name.hyphen_rule' }),
+  siteName: ZSiteName,
   /** Email of the user who becomes the org's admin owner. */
   ownerEmail: z.string().email(),
   /**

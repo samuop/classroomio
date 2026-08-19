@@ -5255,12 +5255,13 @@
       "plan_label": "Plan",
       "cancel": "Cancel",
       "create_submit": "Create",
-      "rename_title": "Rename organization",
+      "rename_title": "Edit company",
       "rename_submit": "Save",
       "suspend_title": "Suspend organization",
       "suspend_body": "Members of {name} will lose access until you reactivate it. Continue?",
       "reactivate_title": "Reactivate organization",
-      "reactivate_body": "Restore access for members of {name}?"
+      "reactivate_body": "Restore access for members of {name}?",
+      "site_name_hint": "It is the company's address. Changing it stops the old one from working."
     }
   },
   "clients": {

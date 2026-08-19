@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-import { blockedSubdomain } from '@cio/utils/constants';
+import { ZSiteName } from '../organization/site-name';
 
 export const ZCreateWorkspace = z.object({
   name: z
@@ -9,15 +9,7 @@ export const ZCreateWorkspace = z.object({
     .refine((val) => !/^[-]|[-]$/.test(val), {
       message: 'Workspace name cannot start or end with a hyphen'
     }),
-  siteName: z
-    .string()
-    .min(5)
-    .refine((val) => !/^[-]|[-]$/.test(val), {
-      message: 'Site name cannot start or end with a hyphen'
-    })
-    .refine((val) => !blockedSubdomain.includes(val), {
-      message: 'Sitename already exists.'
-    })
+  siteName: ZSiteName
 });
 
 export type TCreateWorkspace = z.infer<typeof ZCreateWorkspace>;

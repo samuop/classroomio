@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { TENANT_ROOT_DOMAIN } from '@cio/utils/constants';
+  import { toSiteName } from '@cio/utils/validation/organization';
   import { onMount } from 'svelte';
   import * as Card from '@cio/ui/base/card';
   import * as Table from '@cio/ui/base/table';
@@ -46,6 +48,7 @@
   // Rename dialog
   let renameTarget = $state<PlatformOrg | null>(null);
   let renameValue = $state('');
+  let renameSiteName = $state('');
 
   // Suspend confirmation
   let suspendTarget = $state<{ org: PlatformOrg; suspend: boolean } | null>(null);
@@ -122,9 +125,7 @@
   });
 
   function toggleClients(orgId: string) {
-    collapsedIds = collapsedIds.includes(orgId)
-      ? collapsedIds.filter((id) => id !== orgId)
-      : [...collapsedIds, orgId];
+    collapsedIds = collapsedIds.includes(orgId) ? collapsedIds.filter((id) => id !== orgId) : [...collapsedIds, orgId];
   }
 
   function onSearchInput(value: string) {
@@ -191,12 +192,20 @@
   function openRename(org: PlatformOrg) {
     renameTarget = org;
     renameValue = org.name;
+    renameSiteName = org.siteName ?? '';
   }
 
   async function onRename() {
     if (!renameTarget) return;
 
-    await platformApi.renameOrganization(renameTarget.id, renameValue.trim());
+    const nextSiteName = toSiteName(renameSiteName);
+    const siteNameChanged = nextSiteName !== (renameTarget.siteName ?? '');
+
+    await platformApi.renameOrganization(
+      renameTarget.id,
+      renameValue.trim(),
+      siteNameChanged ? nextSiteName : undefined
+    );
     if (platformApi.success) renameTarget = null;
   }
 
@@ -502,6 +511,24 @@
     <Field.Field>
       <Field.Label>{$t('platform.orgs.name_label')}</Field.Label>
       <Input bind:value={renameValue} />
+    </Field.Field>
+
+    <!--
+      El subdominio se escribe ya normalizado mientras se tipea, en vez de
+      corregirlo al guardar. Es una direccion: si el operador ve `pinturas` y
+      guarda `Pinturas `, la que vale es la que no vio. Abajo se muestra el host
+      completo que va a quedar.
+    -->
+    <Field.Field>
+      <Field.Label>{$t('platform.orgs.site_name_label')}</Field.Label>
+      <Input value={renameSiteName} oninput={(event) => (renameSiteName = toSiteName(event.currentTarget.value))} />
+      <Field.Description>
+        {#if renameSiteName}
+          {`https://${renameSiteName}.${TENANT_ROOT_DOMAIN}`}
+        {:else}
+          {$t('platform.orgs.site_name_hint')}
+        {/if}
+      </Field.Description>
     </Field.Field>
 
     <Dialog.Footer>

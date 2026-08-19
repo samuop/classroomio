@@ -9,3 +9,4 @@ export * from './login-link';
 export * from './token-auth';
 export * from './automation-key';
 export * from './search';
+export * from './site-name';

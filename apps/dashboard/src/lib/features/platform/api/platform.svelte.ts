@@ -35,9 +35,9 @@ class PlatformApi extends BaseApiWithErrors {
 
   /** Deployment-wide chat model, and the models the server will accept. */
   chatModel = $state<string | null>(null);
-  selectableChatModels = $state<
-    Array<{ id: string; multiplier: number; isMeasuredCost: boolean; isLive: boolean }>
-  >([]);
+  selectableChatModels = $state<Array<{ id: string; multiplier: number; isMeasuredCost: boolean; isLive: boolean }>>(
+    []
+  );
 
   async loadSettings() {
     return this.execute({
@@ -141,9 +141,16 @@ class PlatformApi extends BaseApiWithErrors {
     });
   }
 
-  async renameOrganization(orgId: string, name: string) {
+  async renameOrganization(orgId: string, name: string, siteName?: string) {
     return this.execute<UpdatePlatformOrgRequest>({
-      requestFn: () => classroomio.platform.organizations[':orgId'].$put({ param: { orgId }, json: { name } }),
+      requestFn: () =>
+        classroomio.platform.organizations[':orgId'].$put({
+          param: { orgId },
+          // Solo va si cambio: mandarlo siempre haria que cada renombrado
+          // reescriba el subdominio, y ahi cualquier normalizacion silenciosa se
+          // volveria un cambio de direccion que nadie pidio.
+          json: { name, ...(siteName ? { siteName } : {}) }
+        }),
       logContext: 'renaming platform organization',
       onSuccess: (response) => {
         this.applyOrgUpdate(response.data);

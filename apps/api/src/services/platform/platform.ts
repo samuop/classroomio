@@ -22,7 +22,7 @@ import { getProfileByEmail, markUserAndProfileEmailVerified, updateProfile } fro
 
 import type { TPlatformCreateOrg } from '@cio/utils/validation/platform';
 import { auth } from '@cio/db/auth';
-import { checkSiteNameExists } from '@cio/db/queries/organization';
+import { checkSiteNameExists, getOrganizationById } from '@cio/db/queries/organization';
 import { createOrganizationWithOwner } from '@api/services/onboarding';
 import { getCourseBaseUrl } from '@api/services/widget-payload';
 import { updateOrg } from '@api/services/organization';
@@ -69,7 +69,25 @@ export async function getOrganizationDetail(orgId: string) {
   };
 }
 
-export async function updateOrganization(orgId: string, data: { name?: string }) {
+export async function updateOrganization(orgId: string, data: { name?: string; siteName?: string }) {
+  // Cambiar el subdominio mueve la direccion de una empresa entera, asi que
+  // antes hay que estar seguro de que esta libre. La columna tiene un unique y
+  // reventaria igual, pero con un 500 en vez de decir cual es el problema.
+  //
+  // Reasignarle a una empresa el nombre que ya tiene no es un choque: sin esta
+  // salida, guardar el formulario sin tocar ese campo fallaria.
+  if (data.siteName) {
+    const current = await getOrganizationById(orgId);
+
+    if (!current) {
+      throw new AppError('Organization not found', ErrorCodes.ORGANIZATION_NOT_FOUND, 404);
+    }
+
+    if (current.siteName !== data.siteName && (await checkSiteNameExists(data.siteName))) {
+      throw new AppError(`Site name '${data.siteName}' already exists`, ErrorCodes.SITENAME_EXISTS, 409, 'siteName');
+    }
+  }
+
   const updated = await updatePlatformOrganization(orgId, data);
   if (!updated) {
     throw new AppError('Organization not found', ErrorCodes.ORGANIZATION_NOT_FOUND, 404);

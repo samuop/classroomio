@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { ZSiteName } from '../organization/site-name';
 
 const fullnameValidation = z.string().min(5);
 
@@ -10,12 +11,7 @@ export const ZOnboardingCreateOrg = z.object({
     .refine((val) => !/^[-]|[-]$/.test(val), {
       message: 'validations.organization_name.hyphen_rule'
     }),
-  siteName: z
-    .string()
-    .min(5)
-    .refine((val) => !/^[-]|[-]$/.test(val), {
-      message: 'validations.site_name.hyphen_rule'
-    })
+  siteName: ZSiteName
 });
 export type TOnboardingCreateOrg = z.infer<typeof ZOnboardingCreateOrg>;
 

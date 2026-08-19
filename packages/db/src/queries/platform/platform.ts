@@ -266,7 +266,7 @@ export async function getPlatformOrganizationDetail(orgId: string): Promise<Plat
 /** Updates platform-editable org fields (name only for now). Returns the row or null. */
 export async function updatePlatformOrganization(
   orgId: string,
-  data: { name?: string }
+  data: { name?: string; siteName?: string }
 ): Promise<TOrganization | null> {
   try {
     const [updated] = await db
