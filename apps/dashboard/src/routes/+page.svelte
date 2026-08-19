@@ -31,9 +31,7 @@
   // page (course catalogue) would flash before that redirect fires.
   const isLoggedIn = $derived(!!data.locals?.user);
 
-  const pageTitle = $derived(
-    data.isOrgSite && data.org ? data.org.name : brandName
-  );
+  const pageTitle = $derived(data.isOrgSite && data.org ? data.org.name : brandName);
 
   const authAction = $derived(
     $user.isLoggedIn
@@ -64,7 +62,11 @@
       if (!appInitApi.loading) {
         appInitApi.setupApp(data.locals, {
           isOrgSite: data.isOrgSite,
-          orgSiteName: data.orgSiteName
+          orgSiteName: data.orgSiteName,
+          // `orgId` va a propósito ausente: acá no auto-inscribimos. Estos dos
+          // sólo dicen de quién es el dominio, para elegir bien la empresa.
+          hostOrgId: data.org?.id ?? null,
+          hostOrgParentId: data.org?.parentOrganizationId ?? null
         });
       }
 

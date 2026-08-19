@@ -27,6 +27,17 @@ type AppSetupParams = {
   orgSiteName: string;
   /** Tenant org id from `getOrgSiteInfo`; used to auto-enroll the user if they aren't a member yet. */
   orgId?: string | null;
+  /**
+   * La empresa dueña del dominio, y su madre si esa dueña es a su vez una
+   * empresa cliente. Es a quién PERTENECE el host, aparte de `orgId`, que
+   * existe sólo para decidir si hay que auto-inscribir.
+   *
+   * Hace falta porque en el dominio de una consultora el usuario puede no ser
+   * miembro de la consultora en sí, sino de una de sus empresas cliente. Sin
+   * esto no hay forma de saber que esa empresa cliente es la de acá.
+   */
+  hostOrgId?: string | null;
+  hostOrgParentId?: string | null;
 };
 
 /*
@@ -153,10 +164,23 @@ class AppInitApi extends BaseApi {
     // dominio, que es justamente la que el usuario acaba de elegir a mano.
     const accountRootId = (org: (typeof this.data.organizations)[number]) => org.parentOrganizationId ?? org.id;
 
-    const hostOrg =
+    // La dueña del dominio, cuando el usuario es miembro de ELLA.
+    const domainOwnerOrg =
       params?.isOrgSite && params.orgSiteName
         ? this.data.organizations.find((org) => org.siteName === params.orgSiteName)
         : undefined;
+
+    // Y si no lo es: cualquier empresa suya de la misma cuenta que el dominio.
+    //
+    // Sin esto, alguien invitado a una empresa CLIENTE de la consultora entraba
+    // por el dominio de la consultora y aterrizaba en la primera empresa de su
+    // lista — otra cuenta, otra marca — porque la única forma de reconocer el
+    // host era ser miembro de la dueña, y de la hija no alcanzaba.
+    const hostAccountRootId = params?.isOrgSite ? (params.hostOrgParentId ?? params.hostOrgId ?? undefined) : undefined;
+
+    const hostOrg =
+      domainOwnerOrg ??
+      (hostAccountRootId ? this.data.organizations.find((org) => accountRootId(org) === hostAccountRootId) : undefined);
 
     const lastOrgSiteName = localStorage.getItem('classroomio_org_sitename');
     const lastOrg = this.data.organizations.find((org) => org.siteName === lastOrgSiteName);

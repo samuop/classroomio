@@ -70,7 +70,9 @@
       appInitApi.setupApp($session.data as App.Locals, {
         isOrgSite: data.isOrgSite,
         orgSiteName: data.orgSiteName,
-        orgId: data.org?.id ?? null
+        orgId: data.org?.id ?? null,
+        hostOrgId: data.org?.id ?? null,
+        hostOrgParentId: data.org?.parentOrganizationId ?? null
       });
     }
   });
