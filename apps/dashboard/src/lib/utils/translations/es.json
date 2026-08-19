@@ -5289,6 +5289,7 @@
     "col_progress": "Avance",
     "col_certificates": "Certificados",
     "col_not_started": "Sin empezar",
-    "col_tokens": "Fichas (mes)"
+    "col_tokens": "Fichas (mes)",
+    "delete_action": "Eliminar empresa"
   }
 }

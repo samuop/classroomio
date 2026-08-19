@@ -6,7 +6,11 @@
   import { Progress } from '@cio/ui/base/progress';
   import { Spinner } from '@cio/ui/base/spinner';
   import BuildingIcon from '@lucide/svelte/icons/building-2';
+  import Trash2Icon from '@lucide/svelte/icons/trash-2';
+  import { Button } from '@cio/ui/base/button';
+  import { DeleteModal } from '$features/ui';
 
+  import { accountApi } from '$features/account/api/account.svelte';
   import { clientsApi } from '$features/clients/api/clients.svelte';
   import { currentOrg } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
@@ -34,6 +38,31 @@
   /** Clients with nobody enrolled yet read as "—", not as a real 0% of nothing. */
   function progressLabel(client: { studentCount: number; averageProgress: number }) {
     return client.studentCount === 0 ? '—' : `${client.averageProgress}%`;
+  }
+
+  /**
+   * Borrar vive aca porque es donde se lo busca.
+   *
+   * Estaba solo en Configuracion → Espacios de trabajo, una tercera pantalla:
+   * el operador entraba a "Clientes", que es la lista de sus empresas cliente,
+   * y no habia forma de sacar una. La ruta que se usa es la misma de siempre, y
+   * el servidor sigue poniendo los limites — solo una empresa hija de esta
+   * cuenta, nunca la madre.
+   */
+  let deleteTarget = $state<{ orgId: string; name: string } | null>(null);
+  let isDeleting = $state(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    isDeleting = true;
+    await accountApi.deleteWorkspace(deleteTarget.orgId);
+    isDeleting = false;
+
+    if (accountApi.success) {
+      deleteTarget = null;
+      clientsApi.loadOverview();
+    }
   }
 </script>
 
@@ -90,6 +119,7 @@
                 <Table.Head class="text-right">{$t('clients.col_certificates')}</Table.Head>
                 <Table.Head class="text-right">{$t('clients.col_not_started')}</Table.Head>
                 <Table.Head class="text-right">{$t('clients.col_tokens')}</Table.Head>
+                <Table.Head class="w-10"></Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -122,6 +152,17 @@
                     {/if}
                   </Table.Cell>
                   <Table.Cell class="text-right tabular-nums">{formatNumber(client.tokensThisPeriod)}</Table.Cell>
+                  <Table.Cell class="text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="ui:text-muted-foreground hover:ui:text-destructive"
+                      aria-label={$t('clients.delete_action')}
+                      onclick={() => (deleteTarget = { orgId: client.orgId, name: client.name })}
+                    >
+                      <Trash2Icon size={16} />
+                    </Button>
+                  </Table.Cell>
                 </Table.Row>
               {/each}
             </Table.Body>
@@ -131,3 +172,9 @@
     </Card.Root>
   {/if}
 </div>
+
+<DeleteModal
+  bind:open={() => deleteTarget !== null, (isOpen) => !isOpen && (deleteTarget = null)}
+  onDelete={confirmDelete}
+  isLoading={isDeleting}
+/>

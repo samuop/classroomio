@@ -5280,6 +5280,7 @@
     "col_progress": "Progress",
     "col_certificates": "Certificates",
     "col_not_started": "Not started",
-    "col_tokens": "Tokens (month)"
+    "col_tokens": "Tokens (month)",
+    "delete_action": "Delete company"
   }
 }
