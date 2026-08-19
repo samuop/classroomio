@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, asc, count, desc, eq, gte, ilike, isNotNull, or, sql, sum } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, isNotNull, isNull, or, sql, sum } from 'drizzle-orm';
 
 import { alias } from 'drizzle-orm/pg-core';
 import type { TOrganization } from '@db/types';
@@ -61,13 +61,21 @@ export async function listPlatformOrganizations(
   // Searching a consultancy's name deliberately returns its clients too: in a
   // tree, "Egea" meaning only the one row would hide exactly what you opened
   // the panel to see.
+  // Las dadas de baja no se listan tampoco aca. El panel de plataforma es el
+  // lugar mas plausible para reactivar una en el futuro, pero mientras eso no
+  // exista, mostrarlas seria mostrar filas que no se pueden hacer nada con ellas.
+  const notDeleted = isNull(schema.organization.deletedAt);
+
   const searchFilter = search
-    ? or(
-        ilike(schema.organization.name, `%${search}%`),
-        ilike(schema.organization.siteName, `%${search}%`),
-        ilike(parentOrg.name, `%${search}%`)
+    ? and(
+        notDeleted,
+        or(
+          ilike(schema.organization.name, `%${search}%`),
+          ilike(schema.organization.siteName, `%${search}%`),
+          ilike(parentOrg.name, `%${search}%`)
+        )
       )
-    : undefined;
+    : notDeleted;
 
   // Active plan for the org (isActive = true), if any.
   const activePlan = db
@@ -108,7 +116,7 @@ export async function listPlatformOrganizations(
       clientCount: count().mapWith(Number).as('client_count')
     })
     .from(schema.organization)
-    .where(isNotNull(schema.organization.parentOrganizationId))
+    .where(and(isNotNull(schema.organization.parentOrganizationId), isNull(schema.organization.deletedAt)))
     .groupBy(schema.organization.parentOrganizationId)
     .as('client_counts');
 

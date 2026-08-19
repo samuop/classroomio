@@ -37,7 +37,12 @@ export async function listWorkspacesForAccount(
     const rows = await dbClient
       .select()
       .from(schema.organization)
-      .where(or(eq(schema.organization.id, primaryOrgId), eq(schema.organization.parentOrganizationId, primaryOrgId)));
+      .where(
+        and(
+          or(eq(schema.organization.id, primaryOrgId), eq(schema.organization.parentOrganizationId, primaryOrgId)),
+          isNull(schema.organization.deletedAt)
+        )
+      );
 
     return rows as TOrganization[];
   } catch (error) {
@@ -51,7 +56,12 @@ export async function countWorkspacesForAccount(primaryOrgId: string, dbClient: 
     const [row] = await dbClient
       .select({ count: count() })
       .from(schema.organization)
-      .where(or(eq(schema.organization.id, primaryOrgId), eq(schema.organization.parentOrganizationId, primaryOrgId)));
+      .where(
+        and(
+          or(eq(schema.organization.id, primaryOrgId), eq(schema.organization.parentOrganizationId, primaryOrgId)),
+          isNull(schema.organization.deletedAt)
+        )
+      );
 
     return row?.count ?? 0;
   } catch (error) {
@@ -147,7 +157,8 @@ export async function deleteSecondaryWorkspace(orgId: string): Promise<{ deleted
     const [row] = await db
       .select({
         id: schema.organization.id,
-        parentOrganizationId: schema.organization.parentOrganizationId
+        parentOrganizationId: schema.organization.parentOrganizationId,
+        deletedAt: schema.organization.deletedAt
       })
       .from(schema.organization)
       .where(eq(schema.organization.id, orgId))
@@ -161,7 +172,19 @@ export async function deleteSecondaryWorkspace(orgId: string): Promise<{ deleted
       return { deleted: false, reason: 'IS_PRIMARY' };
     }
 
-    await db.delete(schema.organization).where(eq(schema.organization.id, orgId));
+    // Ya estaba dada de baja: sin esto, un doble click volveria a mover la fecha.
+    if (row.deletedAt) {
+      return { deleted: true };
+    }
+
+    // Baja logica, no DELETE: la mitad de las claves foraneas que apuntan a
+    // `organization` no borran en cascada, asi que una empresa con un curso o un
+    // miembro adentro reventaba el borrado con un 500 sin explicacion.
+    await db
+      .update(schema.organization)
+      .set({ deletedAt: new Date().toISOString() })
+      .where(eq(schema.organization.id, orgId));
+
     return { deleted: true };
   } catch (error) {
     console.error('deleteSecondaryWorkspace error:', error);

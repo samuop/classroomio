@@ -8,14 +8,18 @@ import type {
   TOrganization,
   TOrganizationPlan
 } from '@db/types';
-import { and, asc, count, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
 import type { TAudienceSortBy, TAudienceSortOrder } from '@cio/utils/validation/organization';
 
 export function getOrgIdBySiteName(siteName: string) {
-  return db.select().from(schema.organization).where(eq(schema.organization.siteName, siteName)).limit(1);
+  return db
+    .select()
+    .from(schema.organization)
+    .where(and(eq(schema.organization.siteName, siteName), isNull(schema.organization.deletedAt)))
+    .limit(1);
 }
 
 /**
@@ -27,7 +31,13 @@ export async function getVerifiedCustomDomainHostnames(): Promise<string[]> {
     const rows = await db
       .select({ customDomain: schema.organization.customDomain })
       .from(schema.organization)
-      .where(and(eq(schema.organization.isCustomDomainVerified, true), isNotNull(schema.organization.customDomain)));
+      .where(
+        and(
+          eq(schema.organization.isCustomDomainVerified, true),
+          isNotNull(schema.organization.customDomain),
+          isNull(schema.organization.deletedAt)
+        )
+      );
 
     return [...new Set(rows.map((row) => row.customDomain?.trim().toLowerCase()).filter(Boolean) as string[])];
   } catch (error) {
@@ -88,7 +98,11 @@ export const getOrganizationByProfileId = async (profileId: string): Promise<Org
     .from(schema.organization)
     .leftJoin(schema.organizationmember, eq(schema.organization.id, schema.organizationmember.organizationId))
     .leftJoin(schema.organizationPlan, eq(schema.organization.id, schema.organizationPlan.orgId))
-    .where(eq(schema.organizationmember.profileId, profileId));
+    // Una empresa dada de baja desaparece de todos lados: del selector, de la
+    // lista de la cuenta y de cualquier resolucion por dominio. La fila sigue
+    // existiendo — su siteName sigue tomado y nada queda huerfano — pero para el
+    // producto ya no esta.
+    .where(and(eq(schema.organizationmember.profileId, profileId), isNull(schema.organization.deletedAt)));
 
   // Group by organization and collect plans into an array
   const organizationMap = new Map<
@@ -292,7 +306,9 @@ export const getOrganizationBySiteName = async (siteName: string): Promise<TOrga
   const [organization] = await db
     .select()
     .from(schema.organization)
-    .where(eq(schema.organization.siteName, siteName))
+    // `checkSiteNameExists` (arriba) NO filtra a proposito: una empresa dada de
+    // baja conserva su nombre de sitio, porque la fila sigue ahi y el unique tambien.
+    .where(and(eq(schema.organization.siteName, siteName), isNull(schema.organization.deletedAt)))
     .limit(1);
 
   return organization || null;
@@ -310,7 +326,8 @@ export const getOrganizationByCustomDomain = async (customDomain: string): Promi
     .where(
       and(
         eq(schema.organization.customDomain, customDomain.toLowerCase()),
-        eq(schema.organization.isCustomDomainVerified, true)
+        eq(schema.organization.isCustomDomainVerified, true),
+        isNull(schema.organization.deletedAt)
       )
     )
     .limit(1);
@@ -566,7 +583,10 @@ export const getUserOrgRolesMap = async (profileId: string): Promise<Record<stri
         roleId: schema.organizationmember.roleId
       })
       .from(schema.organizationmember)
-      .where(eq(schema.organizationmember.profileId, profileId));
+      // Se une con `organization` solo para descartar las dadas de baja: si no,
+      // el permiso sobrevive a la baja y una URL guardada sigue entrando.
+      .innerJoin(schema.organization, eq(schema.organization.id, schema.organizationmember.organizationId))
+      .where(and(eq(schema.organizationmember.profileId, profileId), isNull(schema.organization.deletedAt)));
 
     const map: Record<string, number> = {};
     for (const row of rows) {
@@ -786,9 +806,7 @@ export const getOrgStudentProfiles = async (orgId: string): Promise<OrgStudentPr
     })
     .from(schema.organizationmember)
     .innerJoin(schema.profile, eq(schema.organizationmember.profileId, schema.profile.id))
-    .where(
-      and(eq(schema.organizationmember.organizationId, orgId), eq(schema.organizationmember.roleId, ROLE.STUDENT))
-    )
+    .where(and(eq(schema.organizationmember.organizationId, orgId), eq(schema.organizationmember.roleId, ROLE.STUDENT)))
     .orderBy(asc(schema.profile.fullname));
 
   return rows.map((row) => ({
@@ -1051,9 +1069,7 @@ export const getOrganizationPlanBySubscriptionId = async (
     return plan ?? null;
   } catch (error) {
     console.error('getOrganizationPlanBySubscriptionId error:', error);
-    throw new Error(
-      `Failed to fetch organization plan: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    throw new Error(`Failed to fetch organization plan: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 

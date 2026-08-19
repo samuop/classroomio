@@ -59,6 +59,7 @@ export async function getClientCompanyRollups(parentOrgId: string, since: string
       SELECT id, name, "siteName" AS site_name
         FROM organization
        WHERE parent_organization_id = ${parentOrgId}
+         AND deleted_at IS NULL
     ),
     enrolment AS (
       SELECT

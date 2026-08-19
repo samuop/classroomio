@@ -2277,6 +2277,22 @@ export const organization = pgTable(
     disableEmailPassword: boolean('disable_email_password').default(false),
     disableGoogleAuth: boolean('disable_google_auth').default(false),
     parentOrganizationId: uuid('parent_organization_id'),
+    /**
+     * Baja logica de una empresa cliente.
+     *
+     * El borrado real es un `DELETE` sobre esta fila, y de las 23 claves foraneas
+     * que apuntan aca solo 13 borran en cascada: `group`, `quiz`,
+     * `organizationmember`, `organization_plan`, `ai_token_usage` y cinco mas la
+     * bloquean. O sea que una empresa con cualquier dato adentro — un curso, un
+     * miembro — no se podia borrar, y el error salia como un 500 sin explicacion.
+     *
+     * Marcarla es lo que se puede hacer sin decidir hoy que pasa con los datos
+     * de una empresa dada de baja, que es una decision de negocio y no de
+     * esquema. Toda consulta que LISTA o RESUELVE empresas filtra por esto; la
+     * fila sigue existiendo, asi que su `siteName` sigue tomado y nada queda
+     * huerfano.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
     readOnlyUntil: timestamp('read_only_until', { withTimezone: true, mode: 'string' }),
     aiTutorSettings: jsonb('ai_tutor_settings')
       .default({
