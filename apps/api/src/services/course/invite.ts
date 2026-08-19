@@ -27,6 +27,7 @@ import type { TCreateCourseInvite } from '@cio/utils/validation/course/invite';
 import type { TNewCourseInviteAudit } from '@db/types';
 import crypto from 'node:crypto';
 import { getDashboardBaseUrl } from '@api/config/dashboard-url';
+import { resolveOrgUrlIdentityBySiteName } from '@api/utils/org-url';
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName } from '@cio/email';
@@ -192,8 +193,10 @@ function getInviteStatus(invite: {
  * Builds the course enroll URL for invite links (emails, etc.).
  * Uses DASHBOARD_URL when set (self-hosted), otherwise org subdomain in production.
  */
-export function buildEnrollLink(courseSlug: string, token: string, orgSiteName?: string): string {
-  const base = getDashboardBaseUrl(orgSiteName);
+export async function buildEnrollLink(courseSlug: string, token: string, orgSiteName?: string): Promise<string> {
+  // Async porque hay que ir a buscar el dominio de la empresa (y el de su madre,
+  // si es una empresa cliente): aca solo llega el nombre del sitio como texto.
+  const base = getDashboardBaseUrl(await resolveOrgUrlIdentityBySiteName(orgSiteName));
   return `${base}/course/${encodeURIComponent(courseSlug)}/enroll?invite_token=${encodeURIComponent(token)}`;
 }
 
@@ -338,7 +341,7 @@ async function createSingleInvite(
 
   return {
     ...created,
-    inviteLink: buildEnrollLink(courseSlug, token, orgSiteName ?? undefined)
+    inviteLink: await buildEnrollLink(courseSlug, token, orgSiteName ?? undefined)
   };
 }
 
@@ -351,7 +354,7 @@ async function sendStudentJoinEmails(input: {
   studentEmail: string;
 }) {
   try {
-    const loginUrl = getDashboardBaseUrl(input.orgSiteName ?? undefined);
+    const loginUrl = getDashboardBaseUrl(await resolveOrgUrlIdentityBySiteName(input.orgSiteName));
     await enqueueTransactionalEmail('studentCourseWelcome', {
       to: input.studentEmail,
       fields: {

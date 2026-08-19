@@ -1,4 +1,4 @@
-import { getOrganizationById } from '@cio/db/queries/organization';
+import { getOrganizationById, getOrganizationBySiteName } from '@cio/db/queries/organization';
 import type { TOrgUrlIdentity } from '@api/config/dashboard-url';
 
 interface TOrgWithParent extends TOrgUrlIdentity {
@@ -43,4 +43,23 @@ export async function resolveOrgUrlIdentity(org: TOrgWithParent): Promise<TOrgUr
     customDomain: parent.customDomain,
     isCustomDomainVerified: true
   };
+}
+
+/**
+ * Lo mismo, pero cuando lo unico que se tiene a mano es el nombre del sitio.
+ *
+ * Los caminos de invitacion a un CURSO arrastran el `orgSiteName` como texto a
+ * traves de varias capas, no la fila de la empresa. Sin esta busqueda, el link
+ * para inscribirse cae al dominio raiz del despliegue: el alumno de una empresa
+ * cliente recibe el mail de su empresa y el boton lo manda a la marca de la
+ * consultora que le vendio la plataforma a SU consultora.
+ */
+export async function resolveOrgUrlIdentityBySiteName(siteName?: string | null): Promise<TOrgUrlIdentity> {
+  if (!siteName) return {};
+
+  const org = await getOrganizationBySiteName(siteName);
+
+  if (!org) return { siteName };
+
+  return resolveOrgUrlIdentity(org);
 }
