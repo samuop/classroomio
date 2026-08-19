@@ -28,6 +28,7 @@ import { updateOrganizationAudienceMember } from '@cio/db/queries/organization';
 import { ROLE } from '@cio/utils/constants';
 import crypto from 'node:crypto';
 import { getDashboardBaseUrl, type TOrgUrlIdentity } from '@api/config/dashboard-url';
+import { resolveOrgUrlIdentity } from '@api/utils/org-url';
 import { getProfilesByEmails } from '@cio/db/queries/auth';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '../course/compliance';
 
@@ -199,7 +200,7 @@ async function enrollAudienceStudentProfilesInCourses(
   }
 
   let emailsSent = 0;
-  const loginUrl = getDashboardBaseUrl(organization);
+  const loginUrl = getDashboardBaseUrl(await resolveOrgUrlIdentity(organization));
 
   if (shouldSendEmail && toInsert.length > 0) {
     const emailPromises = toInsert
@@ -258,7 +259,7 @@ async function enrollAudienceStudentProfilesInPrograms(
   }
 
   const programNameById = new Map(programs.map((program) => [program.id, program.name || 'Program']));
-  const loginUrl = getDashboardBaseUrl(organization);
+  const loginUrl = getDashboardBaseUrl(await resolveOrgUrlIdentity(organization));
   const validProgramIds = programs.map((program) => program.id);
   const validProfiles = uniqueProfileIds.filter((profileId) => validProfileIds.has(profileId));
   const pairs = validProfiles.flatMap((profileId) => validProgramIds.map((programId) => ({ programId, profileId })));
@@ -391,7 +392,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
       const invite = inviteByEmail.get(email)!;
       const token = tokenByEmail.get(email)!;
       try {
-        const inviteLink = buildInviteLink(token, organization);
+        const inviteLink = buildInviteLink(token, await resolveOrgUrlIdentity(organization));
         await enqueueTransactionalEmail('studentOrgInvite', {
           to: email,
           fields: {
@@ -681,7 +682,7 @@ export async function resendAudienceInvite(orgId: string, data: TAudienceInviteB
 
   let emailSent = false;
   try {
-    const inviteLink = buildInviteLink(token, organization);
+    const inviteLink = buildInviteLink(token, await resolveOrgUrlIdentity(organization));
     await enqueueTransactionalEmail('studentOrgInvite', {
       to: emailToUse,
       fields: {

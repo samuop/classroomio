@@ -25,6 +25,7 @@ import type { TNewOrganizationInviteAudit } from '@db/types';
 import crypto from 'node:crypto';
 import { db, type DbOrTxClient } from '@cio/db/drizzle';
 import { getDashboardBaseUrl, type TOrgUrlIdentity } from '@api/config/dashboard-url';
+import { resolveOrgUrlIdentity } from '@api/utils/org-url';
 import { parseCourseIdsFromInviteMetadata, parseProgramIdsFromInviteMetadata } from '@api/utils/org';
 import { markUserAndProfileEmailVerified } from '@cio/db/queries/auth/profile';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
@@ -217,6 +218,8 @@ export async function inviteTeamMembers(orgId: string, emails: string[], roleId:
 
   const expiresAt = new Date(Date.now() + ORG_INVITE_EXPIRY_MS).toISOString();
   const roleName = getRoleLabel(roleId);
+  // Una sola vez para todo el lote: es la misma empresa en cada vuelta.
+  const urlIdentity = await resolveOrgUrlIdentity(organization);
 
   for (const email of emailsToInvite) {
     try {
@@ -246,7 +249,7 @@ export async function inviteTeamMembers(orgId: string, emails: string[], roleId:
         }
       });
 
-      const inviteLink = buildInviteLink(token, organization);
+      const inviteLink = buildInviteLink(token, urlIdentity);
 
       try {
         await enqueueTransactionalEmail('inviteTeacher', {
