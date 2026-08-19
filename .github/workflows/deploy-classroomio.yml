@@ -206,12 +206,23 @@ jobs:
       # cacheRead. Para volver a MiniMax, borrar estas dos líneas.
       # OJO: NO agregar providerOptions.google.cachedContent — es un 400 contra
       # cualquier petición que lleve herramientas. Ver knowledge/gemini-provider.md.
+      #
+      # CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_RENDERING_API_KEY: emiten los
+      # certificados. El PDF se arma mandando el HTML del certificado a Cloudflare
+      # Browser Rendering (Chrome headless por REST), porque la API es Node y no
+      # tiene con qué maquetar CSS. Sin las dos, la descarga falla diciendo que
+      # faltan. Van como secretos propios y NO dentro de VPS_CIO_API_ENV: si algún
+      # día se los pone en el blob, hay que borrar estas dos líneas, porque lo
+      # apendeado después pisa lo del blob y una línea vacía lo borraría.
+      # El token es propio, con permiso "Browser Rendering - Edit"; no sirve el de DNS.
       - name: Write API .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             "cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_API_ENV }}
           JINA_API_KEY=${{ secrets.JINA_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_RENDERING_API_KEY=${{ secrets.CLOUDFLARE_RENDERING_API_KEY }}
           PUBLIC_IS_SELFHOSTED=false
           AUTH_COOKIE_DOMAIN=
           CHAT_PROVIDER=google
