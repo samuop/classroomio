@@ -24,7 +24,7 @@ import { ROLE } from '@cio/utils/constants';
 import type { TNewOrganizationInviteAudit } from '@db/types';
 import crypto from 'node:crypto';
 import { db, type DbOrTxClient } from '@cio/db/drizzle';
-import { getDashboardBaseUrl } from '@api/config/dashboard-url';
+import { getDashboardBaseUrl, type TOrgUrlIdentity } from '@api/config/dashboard-url';
 import { parseCourseIdsFromInviteMetadata, parseProgramIdsFromInviteMetadata } from '@api/utils/org';
 import { markUserAndProfileEmailVerified } from '@cio/db/queries/auth/profile';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
@@ -56,8 +56,13 @@ function normalizeEmails(emails: string[]): string[] {
   return [...new Set(emails.map((email) => email.toLowerCase().trim()).filter(Boolean))];
 }
 
-function buildInviteLink(token: string): string {
-  return `${getDashboardBaseUrl()}/invite/${encodeURIComponent(token)}`;
+/**
+ * La empresa va SIEMPRE, no es opcional: sin ella el link sale al dominio raiz
+ * del despliegue, y a un cliente con dominio propio lo estariamos mandando a la
+ * marca de la consultora, a un host donde ademas su sesion no vale.
+ */
+function buildInviteLink(token: string, org: TOrgUrlIdentity): string {
+  return `${getDashboardBaseUrl(org)}/invite/${encodeURIComponent(token)}`;
 }
 
 function getRoleLabel(roleId: number): string {
@@ -241,7 +246,7 @@ export async function inviteTeamMembers(orgId: string, emails: string[], roleId:
         }
       });
 
-      const inviteLink = buildInviteLink(token);
+      const inviteLink = buildInviteLink(token, organization);
 
       try {
         await enqueueTransactionalEmail('inviteTeacher', {

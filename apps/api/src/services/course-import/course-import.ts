@@ -128,12 +128,9 @@ async function ensureCourseSlug(courseId: string, title: string | null | undefin
   return updated.slug ?? uniqueSlug;
 }
 
+/** Ver la nota en `course/landing-page.ts`: la regla la aplica getDashboardBaseUrl. */
 function buildCourseBaseUrl(organization: TOrganization) {
-  if (organization.customDomain && organization.isCustomDomainVerified) {
-    return `https://${organization.customDomain}`;
-  }
-
-  return getDashboardBaseUrl(organization.siteName ?? undefined);
+  return getDashboardBaseUrl(organization);
 }
 
 async function resolveCourseUrl(organizationId: string, courseId: string, title: string) {

@@ -48,14 +48,16 @@ export async function ensureCourseSlug(courseId: string, title: string | null | 
   return updated.slug ?? uniqueSlug;
 }
 
+/**
+ * El "dominio propio verificado gana" vivia aca duplicado, y en
+ * `course-import.ts` otra vez. Ahora lo sabe `getDashboardBaseUrl`, que es
+ * quien arma TODAS las URLs — asi las invitaciones dejan de ser el unico lugar
+ * que no aplicaba la regla, que es exactamente el bug que hubo.
+ */
 export function buildCourseBaseUrl(
   organization: Pick<TOrganization, 'customDomain' | 'isCustomDomainVerified' | 'siteName'>
 ) {
-  if (organization.customDomain && organization.isCustomDomainVerified) {
-    return `https://${organization.customDomain}`;
-  }
-
-  return getDashboardBaseUrl(organization.siteName ?? undefined);
+  return getDashboardBaseUrl(organization);
 }
 
 export async function resolveCourseUrl(organizationId: string, courseId: string, title: string) {

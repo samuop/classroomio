@@ -27,7 +27,7 @@ import { updateOrganizationAudienceMember } from '@cio/db/queries/organization';
 
 import { ROLE } from '@cio/utils/constants';
 import crypto from 'node:crypto';
-import { getDashboardBaseUrl } from '@api/config/dashboard-url';
+import { getDashboardBaseUrl, type TOrgUrlIdentity } from '@api/config/dashboard-url';
 import { getProfilesByEmails } from '@cio/db/queries/auth';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '../course/compliance';
 
@@ -62,8 +62,12 @@ function generateToken(): string {
   return crypto.randomBytes(32).toString('base64url');
 }
 
-function buildInviteLink(token: string): string {
-  return `${getDashboardBaseUrl()}/invite/${encodeURIComponent(token)}`;
+/**
+ * Mismo criterio que en el invite del equipo: el link tiene que caer en el
+ * dominio de la empresa que invita, no en el dominio raiz del despliegue.
+ */
+function buildInviteLink(token: string, org: TOrgUrlIdentity): string {
+  return `${getDashboardBaseUrl(org)}/invite/${encodeURIComponent(token)}`;
 }
 
 function getExpiryLabel(expiresAtIso: string): string {
@@ -195,7 +199,7 @@ async function enrollAudienceStudentProfilesInCourses(
   }
 
   let emailsSent = 0;
-  const loginUrl = getDashboardBaseUrl(organization.siteName ?? undefined);
+  const loginUrl = getDashboardBaseUrl(organization);
 
   if (shouldSendEmail && toInsert.length > 0) {
     const emailPromises = toInsert
@@ -254,7 +258,7 @@ async function enrollAudienceStudentProfilesInPrograms(
   }
 
   const programNameById = new Map(programs.map((program) => [program.id, program.name || 'Program']));
-  const loginUrl = getDashboardBaseUrl(organization.siteName ?? undefined);
+  const loginUrl = getDashboardBaseUrl(organization);
   const validProgramIds = programs.map((program) => program.id);
   const validProfiles = uniqueProfileIds.filter((profileId) => validProfileIds.has(profileId));
   const pairs = validProfiles.flatMap((profileId) => validProgramIds.map((programId) => ({ programId, profileId })));
@@ -387,7 +391,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
       const invite = inviteByEmail.get(email)!;
       const token = tokenByEmail.get(email)!;
       try {
-        const inviteLink = buildInviteLink(token);
+        const inviteLink = buildInviteLink(token, organization);
         await enqueueTransactionalEmail('studentOrgInvite', {
           to: email,
           fields: {
@@ -677,7 +681,7 @@ export async function resendAudienceInvite(orgId: string, data: TAudienceInviteB
 
   let emailSent = false;
   try {
-    const inviteLink = buildInviteLink(token);
+    const inviteLink = buildInviteLink(token, organization);
     await enqueueTransactionalEmail('studentOrgInvite', {
       to: emailToUse,
       fields: {
