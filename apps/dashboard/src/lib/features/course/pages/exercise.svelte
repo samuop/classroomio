@@ -375,6 +375,16 @@
   }
 </script>
 
+<!--
+  `z-100` no es un numero al azar: el editor de texto de una pregunta se dibuja
+  con `z-50` propio, asi que una sub-barra en la banda normal de pagina (z-10)
+  se le pasaba por debajo al scrollear. Vive en la banda del marco fijo
+  (Z_LAYER.CHROME, ver packages/ui/src/base/z-layers.ts) y `top-12` la deja
+  justo debajo del encabezado del curso.
+
+  Esto tapaba TODO menu que se abriera encima del examen — hasta que los
+  desplegables pasaron a la banda OVERLAY (150), que esta arriba del marco.
+-->
 <Page.Header isSticky={true} class="top-12! z-100! min-h-[36px]">
   <Page.HeaderContent>
     <Page.Title class="flex flex-col gap-2">
@@ -428,7 +438,7 @@
                     <span class="sr-only">{$t('course.navItem.lessons.exercises.all_exercises.add')}</span>
                   </Button>
                 </DropdownMenu.Trigger>
-                <DropdownMenu.Content align="center" class="z-201!">
+                <DropdownMenu.Content align="center">
                   <DropdownMenu.Item onclick={addQuestionFromHeader}>
                     {$t('course.navItem.lessons.exercises.all_exercises.add_question')}
                   </DropdownMenu.Item>

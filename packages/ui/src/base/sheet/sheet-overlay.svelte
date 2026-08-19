@@ -1,3 +1,4 @@
+<!-- Capa MODAL (ui:z-200): se apodera de la pantalla, tapa el marco fijo. Ver ../z-layers.ts. -->
 <script lang="ts">
   import { Dialog as SheetPrimitive } from 'bits-ui';
   import { cn } from '../../../src/tools';
@@ -9,7 +10,7 @@
   bind:ref
   data-slot="sheet-overlay"
   class={cn(
-    'ui:data-[state=open]:animate-in ui:data-[state=closed]:animate-out ui:data-[state=closed]:fade-out-0 ui:data-[state=open]:fade-in-0 ui:fixed ui:inset-0 ui:z-50 ui:bg-black/50',
+    'ui:data-[state=open]:animate-in ui:data-[state=closed]:animate-out ui:data-[state=closed]:fade-out-0 ui:data-[state=open]:fade-in-0 ui:fixed ui:inset-0 ui:z-200 ui:bg-black/50',
     className
   )}
   {...restProps}

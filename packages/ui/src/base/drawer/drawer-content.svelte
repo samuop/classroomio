@@ -1,3 +1,4 @@
+<!-- Capa MODAL (ui:z-200): se apodera de la pantalla, tapa el marco fijo. Ver ../z-layers.ts. -->
 <script lang="ts">
   import { Drawer as DrawerPrimitive } from 'vaul-svelte';
   import DrawerOverlay from './drawer-overlay.svelte';
@@ -20,7 +21,7 @@
     bind:ref
     data-slot="drawer-content"
     class={cn(
-      'ui:group/drawer-content ui:bg-background ui:fixed ui:z-50 ui:flex ui:h-auto ui:flex-col',
+      'ui:group/drawer-content ui:bg-background ui:fixed ui:z-200 ui:flex ui:h-auto ui:flex-col',
       'ui:data-[vaul-drawer-direction=top]:inset-x-0 ui:data-[vaul-drawer-direction=top]:top-0 ui:data-[vaul-drawer-direction=top]:mb-24 ui:data-[vaul-drawer-direction=top]:max-h-[80vh] ui:data-[vaul-drawer-direction=top]:rounded-b-lg ui:data-[vaul-drawer-direction=top]:border-b',
       'ui:data-[vaul-drawer-direction=bottom]:inset-x-0 ui:data-[vaul-drawer-direction=bottom]:bottom-0 ui:data-[vaul-drawer-direction=bottom]:mt-24 ui:data-[vaul-drawer-direction=bottom]:max-h-[80vh] ui:data-[vaul-drawer-direction=bottom]:rounded-t-lg ui:data-[vaul-drawer-direction=bottom]:border-t',
       'ui:data-[vaul-drawer-direction=right]:inset-y-0 ui:data-[vaul-drawer-direction=right]:end-0 ui:data-[vaul-drawer-direction=right]:w-3/4 ui:data-[vaul-drawer-direction=right]:border-s ui:data-[vaul-drawer-direction=right]:sm:max-w-sm',
