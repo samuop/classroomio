@@ -141,15 +141,29 @@ class AppInitApi extends BaseApi {
     // On a tenant site, pin currentOrg to that tenant — never fall back to
     // localStorage / the user's first org, which is what was making a user
     // logged in on dblocked.* see the Dblocked dashboard on ciodevs.*.
-    let nextOrg: (typeof this.data.organizations)[number] | undefined;
-    if (params?.isOrgSite && params.orgSiteName) {
-      nextOrg = this.data.organizations.find((org) => org.siteName === params.orgSiteName);
-    }
+    //
+    // Salvo dentro de la MISMA cuenta. Una consultora y sus empresas cliente
+    // comparten un dominio, y el ancla tal cual estaba las volvía inadmi­nistrables:
+    // el selector guardaba la elección y recargaba, y la recarga la pisaba — se
+    // elegía la empresa hija y la pantalla volvía sola a la madre, siempre.
+    //
+    // La protección original sigue en pie, porque lo que se compara es la RAÍZ de
+    // la cuenta: una empresa de otro cliente nunca le gana al dominio. Lo único
+    // que ahora puede ganarle es una empresa de la misma cuenta que el dueño del
+    // dominio, que es justamente la que el usuario acaba de elegir a mano.
+    const accountRootId = (org: (typeof this.data.organizations)[number]) => org.parentOrganizationId ?? org.id;
 
-    if (!nextOrg) {
-      const lastOrgSiteName = localStorage.getItem('classroomio_org_sitename');
-      nextOrg = this.data.organizations.find((org) => org.siteName === lastOrgSiteName) ?? this.data.organizations[0];
-    }
+    const hostOrg =
+      params?.isOrgSite && params.orgSiteName
+        ? this.data.organizations.find((org) => org.siteName === params.orgSiteName)
+        : undefined;
+
+    const lastOrgSiteName = localStorage.getItem('classroomio_org_sitename');
+    const lastOrg = this.data.organizations.find((org) => org.siteName === lastOrgSiteName);
+
+    const lastOrgIsSameAccount = Boolean(hostOrg && lastOrg && accountRootId(hostOrg) === accountRootId(lastOrg));
+
+    const nextOrg = lastOrgIsSameAccount ? lastOrg : (hostOrg ?? lastOrg ?? this.data.organizations[0]);
 
     currentOrg.set(mergeAccountOrgFromServer(nextOrg));
 
