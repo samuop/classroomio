@@ -40,6 +40,17 @@ type AppSetupParams = {
   hostOrgParentId?: string | null;
 };
 
+/**
+ * Los caminos donde la persona está justo aceptando una invitación.
+ *
+ * Aceptar es lo que decide a qué empresa entra. Auto-inscribirla mientras
+ * tanto la anota de ALUMNO en la dueña del dominio antes de que acepte —
+ * y en el dominio de una consultora la dueña casi nunca es su empresa.
+ */
+function isAcceptingAnInvite(pathname: string): boolean {
+  return pathname.startsWith('/invite/') || /^\/course\/[^/]+\/enroll\/?$/.test(pathname);
+}
+
 /*
   Manages everything related to loading the logged in user and setting up the organization.
 */
@@ -68,7 +79,7 @@ class AppInitApi extends BaseApi {
     // API side (no-ops for existing members so invited admins/tutors keep
     // their roles). Runs BEFORE the account fetch so the returned org list
     // already reflects the new membership.
-    if (params.isOrgSite && params.orgId) {
+    if (params.isOrgSite && params.orgId && !isAcceptingAnInvite(window.location.pathname)) {
       await this.autoEnrollOnTenantSite(params.orgId);
     }
 
@@ -138,6 +149,28 @@ class AppInitApi extends BaseApi {
     this.setOrgStore(params);
   }
 
+  /** La empresa que nombra un camino `/org/<nombre>/...`, si el usuario es miembro. */
+  private findOrgInPath(pathname: string) {
+    if (!this.data?.success) {
+      return undefined;
+    }
+
+    const [, section, rawSiteName] = pathname.split('/');
+    if (section !== 'org' || !rawSiteName) {
+      return undefined;
+    }
+
+    let siteName: string;
+    try {
+      siteName = decodeURIComponent(rawSiteName);
+    } catch {
+      // Un `%` suelto en la URL rompe el decode; el nombre crudo sigue sirviendo.
+      siteName = rawSiteName;
+    }
+
+    return this.data.organizations.find((org) => org.siteName === siteName);
+  }
+
   setOrgStore(params?: AppSetupParams) {
     if (!this.data?.success || !this.data) {
       return;
@@ -187,7 +220,26 @@ class AppInitApi extends BaseApi {
 
     const lastOrgIsSameAccount = Boolean(hostOrg && lastOrg && accountRootId(hostOrg) === accountRootId(lastOrg));
 
-    const nextOrg = lastOrgIsSameAccount ? lastOrg : (hostOrg ?? lastOrg ?? this.data.organizations[0]);
+    // La empresa nombrada en la URL gana sobre todo lo demás.
+    //
+    // En el dominio de una consultora conviven la consultora y sus empresas
+    // cliente, y lo ÚNICO que las distingue es el `/org/<nombre>` del camino.
+    // Nada acá lo miraba: quien era administrador de una empresa cliente y
+    // además había quedado de alumno de la consultora abría la URL de su
+    // empresa y veía la de la consultora, con su rol de alumno.
+    //
+    // Sin `trim()`: un nombre de sitio guardado con un espacio al final llega
+    // como `%20` y tiene que seguir coincidiendo con lo que hay en la base.
+    const pathOrg = this.findOrgInPath(window.location.pathname);
+
+    const nextOrg = pathOrg ?? (lastOrgIsSameAccount ? lastOrg : (hostOrg ?? lastOrg ?? this.data.organizations[0]));
+
+    // Abrir la URL de una empresa es elegirla, igual que elegirla en el
+    // selector — que guarda exactamente esto. Sin la línea, volver a `/lms`
+    // devolvía al usuario a la empresa equivocada.
+    if (pathOrg?.siteName) {
+      localStorage.setItem('classroomio_org_sitename', pathOrg.siteName);
+    }
 
     currentOrg.set(mergeAccountOrgFromServer(nextOrg));
 

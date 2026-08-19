@@ -2,6 +2,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import {
   createOrganizationMember,
   getOrganizationById,
+  getOrganizationByProfileId,
   getOrganizationMemberIdByOrgAndProfile
 } from '@cio/db/queries/organization';
 
@@ -40,6 +41,24 @@ export async function autoEnrollStudent(userId: string, orgId: string): Promise<
   const organization = await getOrganizationById(orgId);
   if (!organization) {
     throw new AppError('Organization not found', ErrorCodes.NOT_FOUND, 404);
+  }
+
+  // Ya pertenece a esta cuenta por otra de sus empresas: no lo inscribas.
+  //
+  // En el dominio de una consultora conviven la consultora y sus empresas
+  // cliente. A alguien invitado como administrador de una empresa cliente,
+  // entrar por ese dominio lo anotaba de ALUMNO de la consultora: le ensuciaba
+  // la audiencia a quien no correspondía y, peor, lo volvía miembro de la dueña
+  // del dominio, que es la empresa en la que el dashboard lo hacía aterrizar —
+  // veía la consultora, con rol de alumno, en vez de su propia empresa.
+  //
+  // La comprobación de arriba no alcanza porque mira SOLO esta empresa.
+  const accountRootId = organization.parentOrganizationId ?? organization.id;
+  const memberships = await getOrganizationByProfileId(userId);
+  const belongsToAccount = memberships.some((org) => (org.parentOrganizationId ?? org.id) === accountRootId);
+
+  if (belongsToAccount) {
+    return { alreadyMember: true };
   }
 
   if (organization.disableSignup) {
