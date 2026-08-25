@@ -3146,7 +3146,8 @@
       "domains_tab": "Domínios",
       "teams_tab": "Equipes",
       "ai_credits_tab": "AI Credits",
-      "ai_tutor_tab": "Tutor de IA"
+      "ai_tutor_tab": "Tutor de IA",
+      "notifications_tab": "Notificações por e-mail"
     },
     "subheadings": {
       "view_site": "Ver site"
@@ -4518,6 +4519,69 @@
       "finalizing": "Salvando…",
       "done": "Pronto",
       "failed": "Falha no upload"
+    }
+  },
+  "notifications": {
+    "title": "Email notifications",
+    "subtitle": "Which emails the platform sends on its own. Changes save as you make them.",
+    "loading": "Loading notifications…",
+    "save_failed": "We couldn't save that change. Please try again.",
+    "broadcast": "Whole team",
+    "groups": {
+      "students": {
+        "title": "To learners",
+        "description": "Emails that reach the people taking the course."
+      },
+      "team": {
+        "title": "To tutors and admins",
+        "description": "Emails that reach whoever teaches or administers. The flagged ones go to the whole course team, so a course with four tutors sends four emails."
+      }
+    },
+    "always": {
+      "title": "Always sent",
+      "description": "Sign-up, email verification, password reset and change, and invitations. Account emails can't be turned off — without them nobody can get in; invitations already have their own checkbox when you invite someone."
+    },
+    "items": {
+      "newsfeedPost": {
+        "title": "A teacher posts an announcement",
+        "description": "Goes to every course member except the author."
+      },
+      "submissionStatusChanged": {
+        "title": "Their submission changes status",
+        "description": "When it moves to In progress or is Graded."
+      },
+      "courseCompleted": {
+        "title": "They finish the course",
+        "description": "With a link to their certificate."
+      },
+      "paymentProofRequested": {
+        "title": "They're asked for proof of payment",
+        "description": "Paid courses only."
+      },
+      "programGoalReminder": {
+        "title": "A goal deadline is coming up",
+        "description": "Following the lead time set on each program goal."
+      },
+      "exerciseSubmitted": {
+        "title": "A learner submits an exercise",
+        "description": "Tells you there's something to grade."
+      },
+      "studentJoinedCourse": {
+        "title": "A learner joins the course",
+        "description": "One email per new enrolment."
+      },
+      "newsfeedComment": {
+        "title": "Someone comments on their post",
+        "description": "Only the author gets it."
+      },
+      "addedAsTeacher": {
+        "title": "They're added as a teacher",
+        "description": "When they join a course team."
+      },
+      "purchaseRequested": {
+        "title": "A learner asks to buy a course",
+        "description": "Paid courses only."
+      }
     }
   }
 }

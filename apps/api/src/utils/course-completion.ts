@@ -6,6 +6,7 @@ import {
 import { setMemberCertificateEarned, setMemberCertificationEmailSent } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName } from '@cio/email';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 
 export function calcCourseProgressPercent(params: {
@@ -68,6 +69,8 @@ export function scheduleCertificationCompletionWork(params: {
       }
 
       const base = getDashboardBaseUrl(courseRow.orgSiteName ?? undefined);
+      if (!(await isNotificationEnabled(courseRow.orgId, 'courseCompleted'))) return;
+
       const certificateUrl = `${base}/courses/${courseId}/certificates`;
 
       await enqueueTransactionalEmail('studentCourseCompletion', {

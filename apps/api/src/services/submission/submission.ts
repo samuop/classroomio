@@ -13,6 +13,7 @@ import type {
   TSubmissionUpdate
 } from '@cio/utils/validation/submission';
 import { buildEmailFromName } from '@cio/email';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueRawEmail } from '@api/services/jobs';
 import {
   createSubmission,
@@ -948,6 +949,8 @@ async function sendSubmissionUpdateEmail(submissionId: string, newStatusId: numb
 
   const orgName = orgResult?.orgName || 'ClassroomIO';
 
+  if (!(await isNotificationEnabled(orgResult?.orgId, 'submissionStatusChanged'))) return;
+
   const statusText = LEGACY_BOARD_STATUS_LABELS[newStatusId] || 'Updated';
   const baseUrl = getDashboardBaseUrl();
   const exerciseLink = `${baseUrl}/courses/${fullSubmission.courseId}/exercises/${fullSubmission.exercise.id}`;
@@ -1024,6 +1027,8 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
   const orgResult = await getOrganizationByCourseId(courseId);
 
   const orgName = orgResult?.orgName || 'ClassroomIO';
+
+  if (!(await isNotificationEnabled(orgResult?.orgId, 'exerciseSubmitted'))) return;
 
   const baseUrl = getDashboardBaseUrl();
   const exerciseLink = `${baseUrl}/courses/${courseId}/exercises/${exerciseId}`;

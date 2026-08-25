@@ -231,6 +231,11 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/at-risk'
       },
       {
+        titleKey: 'settings.tabs.notifications_tab',
+        path: '/settings/notifications',
+        requiresAdmin: true
+      },
+      {
         titleKey: 'settings.tabs.auth_tab',
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
         path: '/settings/auth',
@@ -260,6 +265,10 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'at-risk',
         titleKey: 'settings.tabs.at_risk_tab'
+      },
+      {
+        path: 'notifications',
+        titleKey: 'settings.tabs.notifications_tab'
       },
       {
         path: 'customize-lms',

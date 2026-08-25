@@ -783,6 +783,25 @@ export const getOrgAtRiskSettings = async (
   return row?.settings?.atRisk ?? null;
 };
 
+/**
+ * Los avisos que esta empresa tiene apagados o encendidos.
+ *
+ * Espeja a `getOrgAtRiskSettings` — los dos viven bajo `organization.settings`.
+ * Devuelve lo GUARDADO, sin defaults: resolverlos es tarea del servicio, que es
+ * el único que conoce el catálogo.
+ */
+export const getOrgNotificationSettings = async (
+  orgId: string
+): Promise<NonNullable<TOrganization['settings']>['notifications'] | null> => {
+  const [row] = await db
+    .select({ settings: schema.organization.settings })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, orgId))
+    .limit(1);
+
+  return row?.settings?.notifications ?? null;
+};
+
 export interface OrgStudentProfile {
   profileId: string;
   fullname: string;

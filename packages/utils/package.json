@@ -37,6 +37,10 @@
       "types": "./dist/validation/constants.d.ts",
       "default": "./dist/validation/constants.js"
     },
+    "./validation/notifications": {
+      "types": "./dist/validation/notifications.d.ts",
+      "default": "./dist/validation/notifications.js"
+    },
     "./validation/*": {
       "types": "./dist/validation/*/index.d.ts",
       "default": "./dist/validation/*/index.js"

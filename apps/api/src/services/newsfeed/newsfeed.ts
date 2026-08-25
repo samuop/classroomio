@@ -20,6 +20,7 @@ import {
 import { env } from '@api/config/env';
 import { EMAIL_BRAND_NAME, EMAIL_REPLY_TO, buildEmailFromName } from '@cio/email';
 import { getDashboardBaseUrl } from '@api/config/dashboard-url';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 
 /**
@@ -357,6 +358,8 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
       return;
     }
 
+    if (!(await isNotificationEnabled(feedData.organization?.id, 'newsfeedPost'))) return;
+
     const orgName = feedData.organization?.name || EMAIL_BRAND_NAME;
     // `getDashboardBaseUrl` y no el dominio armado a mano: esto apuntaba a
     // `<org>.classroomio.com`, o sea que el enlace de un aviso de curso llevaba
@@ -404,6 +407,8 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
     if (!feedData.author?.email) {
       return;
     }
+
+    if (!(await isNotificationEnabled(feedData.organization?.id, 'newsfeedComment'))) return;
 
     const orgName = feedData.organization?.name || EMAIL_BRAND_NAME;
     // Ver la nota de `sendNewsfeedPostEmail`.

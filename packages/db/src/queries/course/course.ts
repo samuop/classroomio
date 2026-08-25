@@ -665,6 +665,8 @@ export type TCourseCertificationRow = {
     emailMessage?: string | null;
   } | null;
   title: string;
+  /** Para consultar si la empresa tiene encendido el aviso de certificado. */
+  orgId: string;
   orgSiteName: string | null;
   orgName: string;
 };
@@ -677,6 +679,7 @@ export async function getCourseCertificationRow(courseId: string): Promise<TCour
         compliance: schema.course.compliance,
         certificate: schema.course.certificate,
         title: schema.course.title,
+        orgId: schema.organization.id,
         orgSiteName: schema.organization.siteName,
         orgName: schema.organization.name
       })
@@ -1151,10 +1154,17 @@ export async function getCourseWithOrgData(courseId: string): Promise<{
  * @param courseId Course ID
  * @returns Organization name or null if not found
  */
-export async function getOrganizationByCourseId(courseId: string): Promise<{ orgName: string | null } | null> {
+export async function getOrganizationByCourseId(
+  courseId: string
+): Promise<{ orgId: string; orgName: string | null } | null> {
   try {
     const result = await db
       .select({
+        // `orgId` además del nombre: los correos que salen desde un curso
+        // necesitan saber de qué empresa son para poder consultar si ese aviso
+        // está encendido. Antes sólo se traía el nombre, que sirve para firmar
+        // el correo pero no para decidir si mandarlo.
+        orgId: schema.organization.id,
         orgName: schema.organization.name
       })
       .from(schema.organization)

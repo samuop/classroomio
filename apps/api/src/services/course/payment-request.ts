@@ -3,6 +3,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
 import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { trackServerEvent, SERVER_EVENTS } from '@cio/analytics';
 
@@ -43,33 +44,37 @@ export async function createPaymentRequest(data: PaymentRequestData) {
     const teacherEmail = teacherResult[0].email;
 
     try {
-      await enqueueTransactionalEmail('teacherStudentBuyRequest', {
-        to: teacherEmail,
-        fields: {
-          courseName,
-          studentEmail: data.studentEmail,
-          studentFullname: data.studentFullname
-        },
-        from: buildEmailFromName(EMAIL_BRAND_NAME),
-        idempotencyKey: `payment-request:teacher:${data.courseId}:${data.studentEmail}`
-      });
+      if (await isNotificationEnabled(course.orgId, 'purchaseRequested')) {
+        await enqueueTransactionalEmail('teacherStudentBuyRequest', {
+          to: teacherEmail,
+          fields: {
+            courseName,
+            studentEmail: data.studentEmail,
+            studentFullname: data.studentFullname
+          },
+          from: buildEmailFromName(EMAIL_BRAND_NAME),
+          idempotencyKey: `payment-request:teacher:${data.courseId}:${data.studentEmail}`
+        });
+      }
     } catch (emailError) {
       console.error('Failed to enqueue teacher buy request email:', emailError);
     }
 
     try {
-      await enqueueTransactionalEmail('studentProvePayment', {
-        to: data.studentEmail,
-        fields: {
-          courseName,
-          teacherEmail,
-          studentFullname: data.studentFullname,
-          orgName
-        },
-        from: buildEmailFromName(`${orgName} - ClassroomIO`),
-        replyTo: teacherEmail,
-        idempotencyKey: `payment-request:student:${data.courseId}:${data.studentEmail}`
-      });
+      if (await isNotificationEnabled(course.orgId, 'paymentProofRequested')) {
+        await enqueueTransactionalEmail('studentProvePayment', {
+          to: data.studentEmail,
+          fields: {
+            courseName,
+            teacherEmail,
+            studentFullname: data.studentFullname,
+            orgName
+          },
+          from: buildEmailFromName(orgName),
+          replyTo: teacherEmail,
+          idempotencyKey: `payment-request:student:${data.courseId}:${data.studentEmail}`
+        });
+      }
     } catch (emailError) {
       console.error('Failed to enqueue student payment proof email:', emailError);
     }

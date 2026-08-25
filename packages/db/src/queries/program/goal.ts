@@ -102,6 +102,8 @@ export async function listAssignmentsForReminderScan(): Promise<
     email: string | null;
     programId: string;
     programName: string;
+    /** Para consultar si la empresa tiene encendido el recordatorio. */
+    organizationId: string;
     organizationName: string;
     organizationSiteName: string | null;
   }>
@@ -115,6 +117,7 @@ export async function listAssignmentsForReminderScan(): Promise<
         email: schema.programMember.email,
         programId: schema.program.id,
         programName: schema.program.name,
+        organizationId: schema.organization.id,
         organizationName: schema.organization.name,
         organizationSiteName: schema.organization.siteName
       })
@@ -139,6 +142,7 @@ export async function listAssignmentsForReminderScan(): Promise<
         email: row.email,
         programId: row.programId,
         programName: row.programName,
+        organizationId: row.organizationId,
         organizationName: row.organizationName,
         organizationSiteName: row.organizationSiteName
       }));

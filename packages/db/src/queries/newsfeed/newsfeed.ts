@@ -398,6 +398,8 @@ export async function getNewsfeedForEmail(
     email: string | null;
   } | null;
   organization: {
+    /** Necesario para consultar si la empresa tiene ese aviso encendido. */
+    id: string;
     name: string | null;
     siteName: string | null;
   } | null;
@@ -459,6 +461,7 @@ export async function getNewsfeedForEmail(
           }
         : null,
       organization: {
+        id: row.organization.id,
         name: row.organization.name,
         siteName: row.organization.siteName
       },

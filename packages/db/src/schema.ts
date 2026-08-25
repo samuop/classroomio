@@ -2136,6 +2136,12 @@ export const organization = pgTable(
         styleReferenceUrl?: string | null;
         styleNote?: string;
       };
+      /**
+       * Qué correos automáticos manda esta empresa. Claves opcionales: lo que
+       * falte cae en el default del catálogo. `NOTIFICATION_IDS` en @cio/utils
+       * es la fuente de verdad; esto sólo mantiene honesto el tipo de Drizzle.
+       */
+      notifications?: Record<string, boolean>;
     }>(),
     landingpage: jsonb().default({}).$type<{
       header?: {

@@ -23,6 +23,7 @@ import {
   updateProgramGoal as updateProgramGoalQuery,
   upsertProgramGoalAssignments
 } from '@cio/db/queries/program';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { ROLE } from '@cio/utils/constants';
 import type { TCreateProgramGoal, TUpdateProgramGoal } from '@cio/utils/validation/program';
 
@@ -412,6 +413,8 @@ export async function runProgramGoalReminderScan(): Promise<{
     const dayKey = now.toISOString().slice(0, 10);
 
     try {
+      if (!(await isNotificationEnabled(row.organizationId, 'programGoalReminder'))) continue;
+
       await enqueueTransactionalEmail('programGoalReminder', {
         to: row.email,
         fields: {

@@ -16,6 +16,7 @@ import { resolveOrgUrlIdentityBySiteName } from '@api/utils/org-url';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName } from '@cio/email';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { ensureComplianceEnrollmentRecordsForProfiles } from './compliance';
 
@@ -105,8 +106,9 @@ export async function addMember(
           }
 
           const teachersResult = await getCourseTeachers({ courseId });
+          const avisarAlEquipo = await isNotificationEnabled(courseOrgData.orgId, 'studentJoinedCourse');
 
-          if (teachersResult.length > 0 && studentEmail && studentName) {
+          if (avisarAlEquipo && teachersResult.length > 0 && studentEmail && studentName) {
             const teacherEmails = teachersResult.map((t) => t.email).filter((email): email is string => email !== null);
 
             if (teacherEmails.length > 0) {
@@ -195,6 +197,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
     const inviteLink = `${baseUrl}/org/${orgSiteName}/courses`;
 
     const teacherEmailPromises: Promise<unknown>[] = [];
+    const avisarAlDocente = await isNotificationEnabled(courseOrgData.orgId, 'addedAsTeacher');
 
     addedMembers.forEach((member, index) => {
       const memberData = members[index];
@@ -202,7 +205,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
       const email = memberData.email;
       const name = memberData.name;
 
-      if ((roleId === ROLE.ADMIN || roleId === ROLE.TUTOR) && email && name) {
+      if (avisarAlDocente && (roleId === ROLE.ADMIN || roleId === ROLE.TUTOR) && email && name) {
         teacherEmailPromises.push(
           enqueueTransactionalEmail('teacherCourseWelcome', {
             to: email,

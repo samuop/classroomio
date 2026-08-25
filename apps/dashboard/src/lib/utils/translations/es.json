@@ -4279,7 +4279,8 @@
       "ai_credits_tab": "Créditos de IA",
       "ai_tutor_tab": "Tutor de IA",
       "ai_images_tab": "Imágenes de IA",
-      "at_risk_tab": "Estudiantes en riesgo"
+      "at_risk_tab": "Estudiantes en riesgo",
+      "notifications_tab": "Avisos por correo"
     },
     "subheadings": {
       "view_site": "Ver sitio"
@@ -5296,5 +5297,68 @@
     "col_not_started": "Sin empezar",
     "col_tokens": "Fichas (mes)",
     "delete_action": "Eliminar empresa"
+  },
+  "notifications": {
+    "title": "Avisos por correo",
+    "subtitle": "Qué correos manda la plataforma sola, sin que nadie los pida. Los cambios se guardan al momento.",
+    "loading": "Cargando los avisos…",
+    "save_failed": "No pudimos guardar el cambio. Volvé a intentar.",
+    "broadcast": "A todo el equipo",
+    "groups": {
+      "students": {
+        "title": "A los alumnos",
+        "description": "Correos que le llegan a quien está cursando."
+      },
+      "team": {
+        "title": "A tutores y administradores",
+        "description": "Correos que le llegan a quien da clase o administra. Los marcados van a todo el equipo del curso, así que un curso con cuatro tutores manda cuatro correos."
+      }
+    },
+    "always": {
+      "title": "Los que siempre salen",
+      "description": "Registro, verificación de correo, recuperar y cambiar contraseña, e invitaciones. Los de cuenta no se apagan porque sin ellos nadie puede entrar; las invitaciones ya tienen su propia casilla al momento de invitar."
+    },
+    "items": {
+      "newsfeedPost": {
+        "title": "Un docente publica un aviso",
+        "description": "Le llega a todos los miembros del curso, menos a quien publicó."
+      },
+      "submissionStatusChanged": {
+        "title": "Cambia el estado de su entrega",
+        "description": "Cuando pasa a En progreso o queda Calificada."
+      },
+      "courseCompleted": {
+        "title": "Termina el curso",
+        "description": "Con el enlace a su certificado."
+      },
+      "paymentProofRequested": {
+        "title": "Le piden comprobante de pago",
+        "description": "Sólo en cursos pagos."
+      },
+      "programGoalReminder": {
+        "title": "Se acerca la fecha de un objetivo",
+        "description": "Según la anticipación configurada en cada objetivo del programa."
+      },
+      "exerciseSubmitted": {
+        "title": "Un alumno entrega un ejercicio",
+        "description": "Avisa que hay algo para corregir."
+      },
+      "studentJoinedCourse": {
+        "title": "Un alumno se suma al curso",
+        "description": "Avisa cada inscripción nueva."
+      },
+      "newsfeedComment": {
+        "title": "Comentan un aviso suyo",
+        "description": "Le llega sólo a quien lo publicó."
+      },
+      "addedAsTeacher": {
+        "title": "Lo agregan como docente",
+        "description": "Cuando lo suman al equipo de un curso."
+      },
+      "purchaseRequested": {
+        "title": "Un alumno pide comprar un curso",
+        "description": "Sólo en cursos pagos."
+      }
+    }
   }
 }

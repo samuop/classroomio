@@ -52,6 +52,7 @@ import { autoEnrollStudent } from '@api/services/organization/auto-enroll';
 import { organizationAiTutorRouter } from '@api/routes/organization/ai-tutor';
 import { organizationAiImagesRouter } from '@api/routes/organization/ai-images';
 import { organizationAtRiskRouter } from '@api/routes/organization/at-risk';
+import { organizationNotificationsRouter } from '@api/routes/organization/notifications';
 import { organizationClientsRouter } from '@api/routes/organization/clients';
 import { organizationTrackingRouter } from '@api/routes/organization/tracking';
 import { authMiddleware } from '@api/middlewares/auth';
@@ -701,6 +702,7 @@ export const organizationRouter = new Hono()
   .route('/ai-tutor', organizationAiTutorRouter)
   .route('/ai-images', organizationAiImagesRouter)
   .route('/at-risk', organizationAtRiskRouter)
+  .route('/notifications', organizationNotificationsRouter)
   .route('/clients', organizationClientsRouter)
   .route('/tracking', organizationTrackingRouter)
   .route('/:orgId/quiz', quizRouter);

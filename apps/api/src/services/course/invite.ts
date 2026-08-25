@@ -11,6 +11,7 @@ import {
   revokeCourseInvite,
   selectCourseInviteAcceptBundleByTokenHash
 } from '@cio/db/queries/course/invite';
+import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { createOrganizationMember, getOrganizationMemberIdByOrgAndProfile } from '@cio/db/queries/organization';
 import { addGroupMember, getGroupMemberIdByGroupAndProfile } from '@cio/db/queries/group';
 import {
@@ -374,6 +375,9 @@ async function sendStudentJoinEmails(input: {
     if (teachers.length === 0) {
       return;
     }
+
+    const courseOrg = await getCourseWithOrgData(input.courseId);
+    if (!(await isNotificationEnabled(courseOrg?.orgId, 'studentJoinedCourse'))) return;
 
     const studentProfile = await getProfileById(input.studentId);
     const studentName = studentProfile?.fullname || input.studentEmail;
