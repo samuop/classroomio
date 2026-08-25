@@ -1,21 +1,18 @@
-import path from 'node:path';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
+
+import { INTEGRATION_TESTS, testAlias } from './vitest.shared';
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@api': path.resolve(__dirname, 'src'),
-      // Vite does not follow the `./queries/*` subpath pattern in @cio/db's
-      // exports map, so any suite that transitively imported
-      // `@cio/db/queries/...` failed to collect at all — ai-credits-usage.test.ts
-      // has been red for that reason alone. Pointing at the built output lets
-      // vite resolve the subpath as a plain directory (…/queries/agent/index.js).
-      '@cio/db': path.resolve(__dirname, '../../packages/db/dist')
-    }
+    alias: testAlias
   },
   test: {
     globals: true,
     environment: 'node',
+    // Los `.int.test.ts` necesitan un Postgres levantado, así que quedan afuera
+    // de la corrida normal: `pnpm test` tiene que pasar en una máquina sin
+    // Docker. Se corren aparte con `pnpm test:db`.
+    exclude: [...configDefaults.exclude, INTEGRATION_TESTS],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

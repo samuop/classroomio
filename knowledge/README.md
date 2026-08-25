@@ -16,6 +16,15 @@ where we left off.
 - [`dashboard-csp-and-ssr.md`](./dashboard-csp-and-ssr.md) — broken uploaded
   images (CSP vs `PUBLIC_MEDIA_HOST`, absolute URLs frozen in the DB) and the
   `$features/ui` barrel that 500s every server-rendered route.
+- [`branding-y-correos.md`](./branding-y-correos.md) — cómo se sacó toda la marca
+  ClassroomIO de lo que ve el usuario (incluido el cartel que aparecía justo
+  cuando una pantalla se rompía), qué se conserva por licencia, y el layout de
+  correo compartido con SaaS-RRHH.
+- [`auditoria.md`](./auditoria.md) — qué queda registrado de cada request (quién,
+  cuándo, qué endpoint, desde qué dispositivo, cuánto tardó) y de cada error, en
+  `audit_event` / `audit_incident`. Un solo middleware, un solo mapa de rutas, y
+  el reportador del navegador para lo que el servidor no puede ver. Se consulta
+  con la skill `/auditoria`.
 - [`agent-build-harness.md`](./agent-build-harness.md) — how sources become a
   built course: the plan registry (why the agent duplicated sections),
   server-measured progress, autonomous rounds, and the source pack / cache split.

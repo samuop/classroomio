@@ -56,6 +56,16 @@ export const handleError = (
 ) => {
   console.error('Error in route:', error);
 
+  // Deja el detalle a mano para el middleware de auditoría, que corre después de
+  // que este handler ya devolvió la respuesta y sólo vería el número de status.
+  // El stack se guarda siempre acá; el middleware decide si vale la pena
+  // persistirlo (sólo para 5xx: en un 4xx esperable no aporta y ocupa).
+  c.set('auditError', {
+    message: error instanceof Error ? error.message : String(error),
+    code: error instanceof AppError ? error.code : fallbackCode,
+    stack: error instanceof Error ? error.stack : undefined
+  });
+
   if (error instanceof AppError) {
     const isServerError = error.statusCode >= 500;
     const responseCode = isServerError ? (fallbackCode ?? error.code) : error.code;

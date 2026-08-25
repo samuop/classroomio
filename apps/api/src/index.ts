@@ -6,8 +6,10 @@ import { app } from '@api/app';
 import { configureOpenAPI } from '@api/utils/openapi';
 import { connectRedis } from '@api/utils/redis/redis';
 import { env } from '@api/config/env';
+import { isEmailSenderConfigured } from '@cio/email';
 import { preloadVerifiedCustomDomainOriginsRegistry } from '@api/utils/origins';
 import { serve } from '@hono/node-server';
+import { startAuditPurge } from '@api/utils/audit-purge';
 import { showRoutes } from 'hono/dev';
 
 // Start server
@@ -20,6 +22,17 @@ async function startServer() {
   preloadVerifiedCustomDomainOriginsRegistry().then(() => {
     console.log('Verified custom domain origins preloaded');
   });
+
+  startAuditPurge();
+
+  // Sin SMTP_SENDER, el remitente cae en un placeholder inválido a propósito
+  // (para no salir firmado por un tercero) y TODO correo rebota. Que se vea acá
+  // y no en el primer reclamo de un alumno que nunca recibió la invitación.
+  if (!isEmailSenderConfigured()) {
+    console.warn(
+      '[email] SMTP_SENDER no está configurado: los correos saldrán con una dirección inválida y van a rebotar.'
+    );
+  }
 
   serve({ fetch: app.fetch, port: API_PORT });
 

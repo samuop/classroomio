@@ -3703,3 +3703,96 @@ export const platformSetting = pgTable('platform_setting', {
     .default(sql`timezone('utc'::text, now())`)
     .notNull()
 });
+
+// ─── Auditoría ───────────────────────────────────────────────────────────────
+//
+// Dos tablas que responden dos preguntas distintas:
+//
+//   `audit_event`    — qué hizo una persona: qué endpoint llamó, cuándo, con qué
+//                      usuario, desde qué dispositivo y cuánto tardó.
+//   `audit_incident` — qué salió mal: errores del servidor, errores del
+//                      navegador, requests fallidos y requests lentos.
+//
+// **Ninguna de las dos tiene claves foráneas, y es a propósito.** Una FK con
+// ON DELETE CASCADE borraría el registro justo cuando más importa: al eliminar
+// una organización o dar de baja a un usuario se perdería la historia de lo que
+// esa persona hizo. Por eso el usuario y la organización se guardan
+// desnormalizados (`user_label`, `org_id` suelto): la fila sobrevive al borrado
+// del registro que la originó, que es la definición de un registro de auditoría.
+//
+// El `session_id` es el de Better Auth (tabla `session`), tampoco con FK: esa
+// tabla se purga al cerrar sesión o al vencer, y el id sirve igual para agrupar
+// todo lo que hizo una misma sesión.
+
+export const auditEvent = pgTable(
+  'audit_event',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    /** Organización activa del request (header `cio-org-id`). Null en rutas de plataforma. */
+    orgId: uuid('org_id'),
+    userId: uuid('user_id'),
+    /** Snapshot del email al momento del hecho: si el usuario se borra, la fila sigue diciendo quién fue. */
+    userLabel: text('user_label'),
+    /** Rol global de Better Auth (`user.role`), ej. platform admin. */
+    userRole: text('user_role'),
+    /** Rol dentro de la organización activa (el número de `organizationmember.roleId`). */
+    orgRole: integer('org_role'),
+    sessionId: uuid('session_id'),
+    /** Nombre legible de la acción, o `MÉTODO /ruta` si no está declarada en el mapa. */
+    action: text().notNull(),
+    entity: text(),
+    entityId: text('entity_id'),
+    /** Solo campos declarados en el mapa de auditoría. NUNCA el body del request. */
+    metadata: jsonb().$type<Record<string, unknown>>(),
+    ip: text(),
+    device: text(),
+    browser: text(),
+    userAgent: text('user_agent'),
+    method: text(),
+    route: text(),
+    status: integer(),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    index('idx_audit_event_created').on(table.createdAt),
+    index('idx_audit_event_org_created').on(table.orgId, table.createdAt),
+    index('idx_audit_event_user_created').on(table.userId, table.createdAt),
+    index('idx_audit_event_action_created').on(table.action, table.createdAt),
+    index('idx_audit_event_entity').on(table.entity, table.entityId)
+  ]
+);
+
+export const auditIncident = pgTable(
+  'audit_incident',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    /** BACKEND_ERROR | FRONTEND_ERROR | REQUEST_FAILED | SLOW_REQUEST */
+    kind: text().notNull(),
+    /** BACKEND | FRONTEND — quién la reportó, no dónde nació el problema. */
+    source: text().notNull(),
+    message: text().notNull(),
+    stack: text(),
+    code: text(),
+    status: integer(),
+    route: text(),
+    method: text(),
+    durationMs: integer('duration_ms'),
+    orgId: uuid('org_id'),
+    userId: uuid('user_id'),
+    userLabel: text('user_label'),
+    sessionId: uuid('session_id'),
+    ip: text(),
+    device: text(),
+    browser: text(),
+    userAgent: text('user_agent'),
+    metadata: jsonb().$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    index('idx_audit_incident_created').on(table.createdAt),
+    index('idx_audit_incident_kind_created').on(table.kind, table.createdAt),
+    index('idx_audit_incident_org_created').on(table.orgId, table.createdAt),
+    index('idx_audit_incident_status_created').on(table.status, table.createdAt)
+  ]
+);

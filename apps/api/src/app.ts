@@ -9,6 +9,8 @@ import { API_SERVER_URL } from '@api/constants';
 import { Hono } from '@api/utils/hono';
 import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
+import { auditRequest } from '@api/middlewares/audit-request';
+import { auditRouter } from '@api/routes/audit';
 import { auth } from '@cio/db/auth';
 import { communityRouter } from '@api/routes/community';
 import { courseRouter } from '@api/routes/course';
@@ -90,11 +92,22 @@ export const app = new Hono()
     await next();
   })
   .use('*', rateLimiter)
+  // Auditoría: va DESPUÉS del middleware de sesión (necesita `c.get('user')`) y
+  // envuelve a todo lo de abajo, así ve el status y el tiempo real de cada
+  // request sin que ninguna ruta tenga que acordarse de instrumentarse.
+  //
+  // También va después de `rateLimiter`, y eso es a propósito: un 429 no llega
+  // acá porque el limitador corta sin llamar a next(). Ponerlo antes haría que
+  // un cliente en bucle de reintentos escribiera una fila por cada rechazo —
+  // la auditoría amplificando justo la avalancha que el limitador está
+  // frenando. Los 429 se ven igual, reportados desde el navegador, que sí tiene
+  // un tope propio de reportes por ventana.
+  .use('*', auditRequest)
 
   // Routes
   .get('/', (c) =>
     c.json({
-      message: `"Welcome to Classroomio.com API - docs are at ${API_SERVER_URL}/docs"`
+      message: `API - docs are at ${API_SERVER_URL}/docs`
     })
   )
   .use('/api/auth/sign-up/*', signupGuard)
@@ -215,6 +228,7 @@ export const app = new Hono()
   .route('/internal', internalRouter)
   .route('/agent', agentRouter)
   .route('/platform', platformRouter)
+  .route('/audit', auditRouter)
 
   // Error handling
   .onError((err, c) => {

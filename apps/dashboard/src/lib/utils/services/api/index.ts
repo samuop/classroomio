@@ -1,35 +1,45 @@
 import { type ApiClientConfig, ApiError, type RequestConfig } from './types';
 
-import { dev } from '$app/environment';
 import { DEFAULT_CONFIG } from './constants';
 import { delay } from './utils';
 import { hcWithType } from '@cio/api/rpc-types';
 import { get } from 'svelte/store';
 import { currentOrg } from '$lib/utils/store/org';
 import type { Cookies } from '@sveltejs/kit';
-import { env } from '$env/dynamic/public';
 import { getCioCookieString } from '$lib/utils/functions/cookies';
 import { AGENT_CONTENT_TYPE } from '@cio/utils/constants';
+import {
+  isSlowRequest,
+  reportIncident,
+  shouldReportFailedRequest
+} from '$lib/utils/services/audit/report-incident';
 
-export const getRequestBaseUrl = () => {
-  if (typeof window === 'undefined') {
-    // When on the server, we want to hit the private url which is the docker container of `api` or the private network url of `api`.
-    // if that isn't set then it will fallback to the public url of the `api`
-    return process.env.PRIVATE_SERVER_URL || env.PUBLIC_SERVER_URL;
+// Importado Y re-exportado: `export { x } from './y'` reexporta pero NO trae el
+// nombre al ámbito de este módulo, y `classroomio` de más abajo lo llama. Con
+// sólo el re-export, cada render en el servidor moría con
+// "getRequestBaseUrl is not defined" y toda página SSR devolvía 500.
+import { getRequestBaseUrl } from './base-url';
+
+export { getRequestBaseUrl };
+
+/**
+ * La ruta pelada de una URL, como la ve la API.
+ *
+ * Sin origen (que es siempre el mismo) y sin querystring (que puede llevar
+ * términos de búsqueda), y sin el prefijo `/proxy` que agrega el navegador
+ * cuando habla con la API del mismo origen. Así la fila que reporta el
+ * navegador y la que registra el servidor dicen la misma ruta y se pueden
+ * cruzar.
+ */
+function routePathOf(url: string): string {
+  try {
+    const { pathname } = new URL(url, 'http://placeholder');
+
+    return pathname.startsWith('/proxy/') ? pathname.slice('/proxy'.length) : pathname;
+  } catch {
+    return url.slice(0, 200);
   }
-
-  // Self-hosted: dashboard and API are on different subdomains of the
-  // operator's apex. Browser calls go straight to PUBLIC_SERVER_URL;
-  // cookies cross subdomains via AUTH_COOKIE_DOMAIN. No Worker proxy.
-  if (env.PUBLIC_IS_SELFHOSTED === 'true' || dev) {
-    return env.PUBLIC_SERVER_URL ?? '';
-  }
-
-  // Cloud (multi-tenant): same-origin via the Cloudflare Worker `/proxy`
-  // prefix so auth cookies stay host-only on whichever tenant or BYOD
-  // domain the user is currently visiting. The Worker strips `/proxy` before forwarding to the API
-  return `${window.location.origin}/proxy`;
-};
+}
 
 function isAgentRequest(input: RequestInfo | URL): boolean {
   try {
@@ -101,7 +111,59 @@ class ApiClient {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
+  /**
+   * Mide y reporta cada llamada, y delega el trabajo real a `performRequest`.
+   *
+   * Este es el único punto por el que pasa TODA la conversación del dashboard
+   * con la API —el cliente RPC de Hono lo usa como `fetch`—, así que
+   * instrumentarlo acá cubre cada pantalla sin tocar ninguna.
+   *
+   * Qué se reporta y qué no: sólo lo que el servidor NO puede ver por su cuenta.
+   * Un 403 ya quedó registrado del lado de la API con más contexto del que tiene
+   * el navegador; duplicarlo sólo ensucia la tabla. Un error de red, en cambio,
+   * significa que el request nunca llegó — para el servidor no existió.
+   */
   private async makeRequest(input: RequestInfo | URL, requestConfig: RequestConfig = {}): Promise<Response> {
+    const startedAt = performance.now();
+    const method = (requestConfig.method ?? 'GET').toUpperCase();
+    const route = routePathOf(typeof input === 'string' ? input : input.toString());
+
+    try {
+      const response = await this.performRequest(input, requestConfig);
+      const durationMs = Math.round(performance.now() - startedAt);
+
+      if (isSlowRequest(durationMs)) {
+        reportIncident({
+          kind: 'SLOW_REQUEST',
+          message: `${method} ${route} tardó ${durationMs}ms desde el navegador`,
+          route,
+          method,
+          status: response.status,
+          durationMs
+        });
+      }
+
+      return response;
+    } catch (error) {
+      const durationMs = Math.round(performance.now() - startedAt);
+      const status = error instanceof ApiError ? (error.status ?? 0) : 0;
+
+      if (shouldReportFailedRequest(status, error)) {
+        reportIncident({
+          kind: 'REQUEST_FAILED',
+          message: error instanceof Error ? error.message : String(error),
+          route,
+          method,
+          status,
+          durationMs
+        });
+      }
+
+      throw error;
+    }
+  }
+
+  private async performRequest(input: RequestInfo | URL, requestConfig: RequestConfig = {}): Promise<Response> {
     const { timeout = this.config.timeout, retries = this.config.retries, ...fetchConfig } = requestConfig;
 
     // The Hono RPC client already builds a full URL using the base it was

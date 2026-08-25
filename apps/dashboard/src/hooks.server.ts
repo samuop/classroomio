@@ -5,7 +5,17 @@ import { proxyRequestToApi, shouldForwardToApi } from '$lib/utils/proxy-api-requ
 import { type Handle, type HandleServerError, redirect } from '@sveltejs/kit';
 import { isPublicApiRoute, isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
 import { ROUTE } from '$lib/utils/constants/routes';
+import { reportIncident } from '$lib/utils/services/audit/report-incident';
 
+/**
+ * Errores del servidor de SvelteKit: los que tira un `load` de servidor o el
+ * renderizado en SSR.
+ *
+ * Se reenvían la cookie y el User-Agent originales porque la incidencia viaja
+ * desde ESTE proceso a la API, no desde el navegador. Sin ellos la fila quedaría
+ * a nombre de nadie y con "Servidor" como dispositivo, que es cierto pero
+ * inútil: lo que interesa saber es a quién se le rompió la pantalla.
+ */
 export const handleError: HandleServerError = ({ error, event, status, message }) => {
   const err = error as Error;
   console.error('[handleError]', {
@@ -16,6 +26,23 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     name: err?.name,
     msg: err?.message,
     stack: err?.stack
+  });
+
+  const forwarded: Record<string, string> = {};
+  for (const header of ['cookie', 'user-agent', 'cf-connecting-ip', 'x-forwarded-for']) {
+    const value = event.request.headers.get(header);
+    if (value) forwarded[header] = value;
+  }
+
+  reportIncident({
+    kind: 'FRONTEND_ERROR',
+    message: err?.message || message || 'Error al renderizar en el servidor',
+    stack: err?.stack,
+    status,
+    route: event.url.pathname,
+    method: event.request.method,
+    headers: forwarded,
+    metadata: { origin: 'sveltekit.handleError.server', routeId: event.route.id }
   });
 };
 

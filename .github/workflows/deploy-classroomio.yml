@@ -215,6 +215,14 @@ jobs:
       # día se los pone en el blob, hay que borrar estas dos líneas, porque lo
       # apendeado después pisa lo del blob y una línea vacía lo borraría.
       # El token es propio, con permiso "Browser Rendering - Edit"; no sirve el de DNS.
+      #
+      # AUDIT_*: las dos perillas de la auditoría. Van explícitas aunque coincidan
+      # con el default del código, porque son decisiones de operación y no de
+      # programación: SLOW_REQUEST_MS es a partir de cuántos ms un request se
+      # anota como lento, y RETENTION_DAYS cuánto se guarda antes de que la purga
+      # diaria lo borre — o sea, hasta cuándo se puede reconstruir qué pasó. Un
+      # año es lo que hace falta para investigar un incidente viejo sin que la
+      # tabla crezca sin techo. Para apagar la purga: AUDIT_PURGE_DISABLED=1.
       - name: Write API .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
@@ -227,6 +235,8 @@ jobs:
           AUTH_COOKIE_DOMAIN=
           CHAT_PROVIDER=google
           GOOGLE_MODEL=gemini-3.5-flash-lite
+          AUDIT_SLOW_REQUEST_MS=2000
+          AUDIT_RETENTION_DAYS=365
           ENVEOF
 
       # Las líneas de abajo pisan al secreto (dotenv se queda con la última

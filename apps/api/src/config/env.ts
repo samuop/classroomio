@@ -1,5 +1,14 @@
 import * as z from 'zod';
 
+/** Un entero positivo tomado del entorno, o el default si no viene o no sirve. */
+function positiveNumber(value: string | undefined, fallback: number): number {
+  if (value === undefined || value === '') return fallback;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : fallback;
+}
+
 const envSchema = z.object({
   // Legacy Cloudflare R2 config (used when OBJECT_STORAGE_* vars are absent)
   CLOUDFLARE_ACCESS_KEY: z.string().optional(),
@@ -78,6 +87,21 @@ const envSchema = z.object({
 
       return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 15;
     }),
+  /**
+   * Auditoría. A partir de cuántos milisegundos un request se considera lento y
+   * queda registrado como incidencia (default 2000).
+   */
+  AUDIT_SLOW_REQUEST_MS: z
+    .string()
+    .optional()
+    .transform((v) => positiveNumber(v, 2000)),
+  /** Días que se conserva el registro de auditoría antes de purgarse (default 365). */
+  AUDIT_RETENTION_DAYS: z
+    .string()
+    .optional()
+    .transform((v) => positiveNumber(v, 365)),
+  /** '1' apaga la purga diaria del registro de auditoría. */
+  AUDIT_PURGE_DISABLED: z.string().optional(),
   /** Sentry error tracking (server-side). Leave SENTRY_DSN unset to disable. */
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().optional(),
