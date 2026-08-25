@@ -60,3 +60,32 @@ storybook-static
 .svelte-kit/
 
 company/
+
+# ── Cosas que NO se publican ─────────────────────────────────────────────
+# Este fork es un repositorio PÚBLICO. Lo de acá abajo se queda en la máquina.
+
+# Skills de Claude Code: son herramientas de trabajo, no parte del producto, y
+# describen cómo se opera producción (rutas del VPS, consultas contra la base
+# real). `add-landing-template` y `frontend-design` venían rastreadas de antes;
+# se destrackearon con `git rm --cached -r skills/` — los archivos siguen en
+# disco, sólo dejaron de subirse.
+skills/
+
+# Resultados de tests: reportes, cobertura y cachés. Los archivos *.test.ts sí
+# se versionan (son código); lo que sale de correrlos, no.
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+junit*.xml
+.vitest-reports/
+vitest.config.ts.timestamp-*
+playwright-report/
+.last-run.json
+
+# Volcados y notas sueltas que suelen quedar tras depurar
+*.dump
+*.sql.gz
+*.pgdump
+scratch/
+tmp/
