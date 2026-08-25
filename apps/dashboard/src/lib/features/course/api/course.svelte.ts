@@ -59,6 +59,17 @@ export class CourseApi extends BaseApiWithErrors {
     memberId: ''
   });
 
+  /**
+   * Distingue "todavía no llegó el curso" de "no se va a poder traer".
+   *
+   * Sin esto son el mismo estado: cuando la API responde 404 (un curso borrado,
+   * por ejemplo) `this.course` se queda en null igual que mientras carga, y la
+   * pantalla dibuja el spinner para siempre. `execute` sí guarda el motivo en
+   * `this.error`, pero `get()` devuelve `this.course` y quien llama no puede
+   * saber por qué vino vacío.
+   */
+  courseLoadFailed = $state(false);
+
   private loadedCourseId = $state<string | null>(null);
   private isCourseDirty = $state(false);
   private inFlightCourseRequest: Promise<Course | null> | null = null;
@@ -246,12 +257,22 @@ export class CourseApi extends BaseApiWithErrors {
       return this.inFlightCourseRequest;
     }
 
+    // Un intento nuevo arranca limpio, o el fallo anterior taparía esta carga.
+    this.courseLoadFailed = false;
+
     const request = (async () => {
       const course = await this.get(courseId);
-      if (course) {
+
+      // Comparar el id no es paranoia: cuando el pedido falla, `get()` devuelve
+      // el curso que ya estaba en el store, no null. Con un `if (course)` pelado,
+      // pasar de un curso abierto a otro que da 404 daba el curso VIEJO por
+      // bueno y marcaba el nuevo como cargado — y volvíamos al spinner eterno.
+      if (course?.id === courseId) {
         this.setCourse(course, profileId);
         this.loadedCourseId = courseId;
         this.isCourseDirty = false;
+      } else {
+        this.courseLoadFailed = true;
       }
       return this.course;
     })();

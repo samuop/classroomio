@@ -2202,6 +2202,11 @@
           "form_title": "Conte-nos sobre seu produto"
         }
       }
+    },
+    "load_error": {
+      "title": "Não foi possível abrir este curso",
+      "description": "Pode ter sido excluído ou você já não tem acesso. Se achar que é um erro, avise o administrador da sua organização.",
+      "action": "Voltar aos meus cursos"
     }
   },
   "courses": {

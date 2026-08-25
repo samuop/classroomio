@@ -2202,6 +2202,11 @@
           "form_title": "Fortæl os om dit produkt"
         }
       }
+    },
+    "load_error": {
+      "title": "Vi kunne ikke åbne dette kursus",
+      "description": "Det kan være slettet, eller du har måske ikke længere adgang. Hvis du mener, det er en fejl, så sig til til din organisations administrator.",
+      "action": "Tilbage til mine kurser"
     }
   },
   "courses": {

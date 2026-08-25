@@ -4077,6 +4077,11 @@
       "snackbar_cache_refresh_failed": "Could not refresh the cache",
       "refresh_cache_aria": "Refresh cache for this source",
       "reconciling": "Syncing cache…"
+    },
+    "load_error": {
+      "title": "We couldn't open this course",
+      "description": "It may have been deleted, or you may no longer have access. If you think this is a mistake, let your organization admin know.",
+      "action": "Back to my courses"
     }
   },
   "community": {

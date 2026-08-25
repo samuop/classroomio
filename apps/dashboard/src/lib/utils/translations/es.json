@@ -2885,6 +2885,11 @@
       "snackbar_cache_refresh_failed": "No se pudo refrescar la caché",
       "refresh_cache_aria": "Refrescar caché de esta fuente",
       "reconciling": "Sincronizando caché…"
+    },
+    "load_error": {
+      "title": "No pudimos abrir este curso",
+      "description": "Puede que lo hayan eliminado o que ya no tengas acceso. Si creés que es un error, avisale a la persona que administra tu empresa.",
+      "action": "Volver a mis cursos"
     }
   },
   "courses": {

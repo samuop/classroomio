@@ -2202,6 +2202,11 @@
           "form_title": "Parlez-nous de votre produit"
         }
       }
+    },
+    "load_error": {
+      "title": "Impossible d'ouvrir ce cours",
+      "description": "Il a peut-être été supprimé, ou vous n'y avez plus accès. Si vous pensez qu'il s'agit d'une erreur, prévenez l'administrateur de votre organisation.",
+      "action": "Retour à mes cours"
     }
   },
   "courses": {

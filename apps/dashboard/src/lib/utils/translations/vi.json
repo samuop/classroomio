@@ -2202,6 +2202,11 @@
           "form_title": "Hãy cho chúng tôi biết về sản phẩm của bạn"
         }
       }
+    },
+    "load_error": {
+      "title": "Không thể mở khóa học này",
+      "description": "Khóa học có thể đã bị xóa hoặc bạn không còn quyền truy cập. Nếu bạn cho rằng đây là nhầm lẫn, hãy báo cho quản trị viên tổ chức của bạn.",
+      "action": "Quay lại khóa học của tôi"
     }
   },
   "courses": {

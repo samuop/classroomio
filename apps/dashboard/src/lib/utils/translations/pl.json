@@ -2202,6 +2202,11 @@
           "form_title": "Opowiedz nam o swoim produkcie"
         }
       }
+    },
+    "load_error": {
+      "title": "Nie udało się otworzyć tego kursu",
+      "description": "Mógł zostać usunięty lub nie masz już do niego dostępu. Jeśli uważasz, że to pomyłka, powiadom administratora swojej organizacji.",
+      "action": "Wróć do moich kursów"
     }
   },
   "courses": {

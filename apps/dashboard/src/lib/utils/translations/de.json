@@ -2202,6 +2202,11 @@
           "form_title": "Erzählen Sie uns von Ihrem Produkt"
         }
       }
+    },
+    "load_error": {
+      "title": "Dieser Kurs konnte nicht geöffnet werden",
+      "description": "Möglicherweise wurde er gelöscht oder du hast keinen Zugriff mehr. Wenn du glaubst, dass es ein Fehler ist, wende dich an die Administration deiner Organisation.",
+      "action": "Zurück zu meinen Kursen"
     }
   },
   "courses": {

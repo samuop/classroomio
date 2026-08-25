@@ -4,6 +4,9 @@
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { Empty } from '@cio/ui/custom/empty';
   import { Spinner } from '@cio/ui/base/spinner';
+  import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+  import { resolve } from '$app/paths';
+  import { getCourseScreenState } from '$features/course/utils/course-screen-state';
   import { CourseSidebar } from '$features/course/components/sidebar';
   import { CourseHeader } from '$features/course/components';
   import { brandName } from '$lib/utils/branding';
@@ -63,9 +66,16 @@
     courseApi.ensureCourse(data.courseId, $profile.id);
   });
 
-  const isCourseReady = $derived.by(() => {
-    return courseApi.course?.id === data.courseId && !!courseApi.group.id;
-  });
+  const courseScreenState = $derived(
+    getCourseScreenState({
+      requestedCourseId: data.courseId,
+      loadedCourseId: courseApi.course?.id,
+      hasGroup: !!courseApi.group.id,
+      loadFailed: courseApi.courseLoadFailed
+    })
+  );
+
+  const isCourseReady = $derived(courseScreenState === 'ready');
 
   const user: CourseMember | undefined = $derived(
     courseApi.group.people.find((person) => person.profileId === $profile.id)
@@ -187,7 +197,21 @@
     <ContentCreateModal />
     <CourseCompletionModal />
 
-    {#if !isCourseReady}
+    {#if courseScreenState === 'error'}
+      <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
+        <Empty
+          title={$t('course.load_error.title')}
+          description={$t('course.load_error.description')}
+          icon={TriangleAlertIcon}
+          iconClass="h-8 w-8"
+          variant="page"
+        >
+          <Button onclick={() => goto(resolve('/courses', {}))}>
+            {$t('course.load_error.action')}
+          </Button>
+        </Empty>
+      </div>
+    {:else if courseScreenState === 'loading'}
       <div class="mx-auto flex h-[calc(100vh-56px)] w-full items-center justify-center">
         <Empty
           title={$t('course.loading.title')}
