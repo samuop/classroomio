@@ -2,7 +2,11 @@ import * as Sentry from '@sentry/sveltekit';
 import { dev } from '$app/environment';
 import { env } from '$env/dynamic/public';
 import { handleErrorWithSentry } from '@sentry/sveltekit';
-import { installBrowserErrorReporting, reportIncident } from '$lib/utils/services/audit/report-incident';
+import {
+  installBrowserErrorReporting,
+  reportIncident,
+  shouldReportRenderError
+} from '$lib/utils/services/audit/report-incident';
 
 const dsn = env.PUBLIC_SENTRY_DSN?.trim();
 const isSelfHosted = env.PUBLIC_IS_SELFHOSTED === 'true';
@@ -40,6 +44,9 @@ installBrowserErrorReporting();
  */
 export const handleError = handleErrorWithSentry(({ error, event, status, message }) => {
   console.error('[handleError]', status, event.url.pathname, error);
+
+  // Un 404 no es una falla de la aplicacion; ver shouldReportRenderError.
+  if (!shouldReportRenderError(status)) return;
 
   reportIncident({
     kind: 'FRONTEND_ERROR',

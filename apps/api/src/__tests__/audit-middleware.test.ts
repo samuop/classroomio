@@ -68,12 +68,20 @@ function buildApp() {
       .use('*', auditRequest)
       // Va DESPUÉS de la auditoría a propósito: replica a `authMiddleware` y
       // `orgMemberMiddleware`, que en la app real corren dentro de cada ruta.
+      //
+      // `orgRoles` y no `userRole`: este arnés ponía `userRole`, que sólo escribe
+      // `orgMemberMiddleware`. Las rutas de administración usan
+      // `orgTeamMemberMiddleware`, que NO lo escribe — así que el test afirmaba
+      // un rol que producción nunca producía y pasaba en verde con `org_role`
+      // nulo en el 100% de las filas reales. Un arnés que finge un contexto que
+      // la app no arma no prueba la app: prueba el arnés. `orgRoles` sí lo deja
+      // `app.ts` para toda sesión, pase por el middleware que pase.
       .use('*', async (c, next) => {
         if (currentUser) {
           c.set('user' as never, currentUser as never);
           c.set('session' as never, { id: SESSION } as never);
           c.set('orgId' as never, ORG as never);
-          c.set('userRole' as never, 1 as never);
+          c.set('orgRoles' as never, { [ORG]: 1 } as never);
         }
 
         await next();

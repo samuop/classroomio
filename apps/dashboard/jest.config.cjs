@@ -16,6 +16,14 @@ module.exports = {
     '\\.[jt]sx?$': 'babel-jest'
   },
   moduleNameMapper: {
+    // Los alias VIRTUALES de SvelteKit: no son archivos, los genera Vite en el
+    // build. Sin estos mapeos, cualquier modulo que importe uno es intesteable
+    // -- y estan en la base de casi todo (base-url, el reportador de
+    // incidencias, las utilidades de sesion), asi que dejaban fuera del alcance
+    // de los tests buena parte del dashboard.
+    '^\\$app/environment$': '<rootDir>/test/mocks/app-environment.ts',
+    '^\\$env/dynamic/public$': '<rootDir>/test/mocks/env-dynamic-public.ts',
+    '^\\$env/static/public$': '<rootDir>/test/mocks/env-static-public.ts',
     // SvelteKit's own aliases, which Jest knows nothing about.
     '^\\$lib/(.*)$': '<rootDir>/src/lib/$1',
     '^\\$features/(.*)$': '<rootDir>/src/lib/features/$1',

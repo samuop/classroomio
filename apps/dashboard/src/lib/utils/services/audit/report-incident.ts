@@ -158,6 +158,29 @@ export function shouldReportFailedRequest(status: number, error: unknown): boole
 }
 
 /**
+ * ¿Vale la pena registrar como incidencia este error de SvelteKit?
+ *
+ * `handleError` se dispara para TODO lo que rompe una navegación, y eso incluye
+ * el 404 de una ruta que sencillamente no existe. Un 404 no es una falla de la
+ * aplicación: es la respuesta correcta a un pedido por algo que no está.
+ *
+ * Los primeros que aparecieron en producción fueron `/favicon.ico`: el navegador
+ * lo pide solo cuando la página no declara ícono, y acá **a propósito** no se
+ * declara ninguno (el único que traía el repo era la marca ajena). O sea que
+ * estábamos registrando como incidencia una consecuencia esperada de una
+ * decisión deliberada. Cualquier escáner probando rutas al azar llenaría la
+ * tabla igual, y como el tope es de 20 reportes cada cinco minutos, esa basura
+ * DESPLAZA incidencias de verdad.
+ *
+ * Los demás 4xx sí se reportan, y la diferencia importa: un 403 al cargar una
+ * página lo tira una guarda de permisos de SvelteKit, no la API, así que este es
+ * el único lugar donde se entera de que existió. Justo lo que uno quiere ver.
+ */
+export function shouldReportRenderError(status: number): boolean {
+  return status !== 404;
+}
+
+/**
  * Engancha los errores que SvelteKit no atrapa: los de código suelto y las
  * promesas rechazadas sin `catch`.
  *

@@ -5,7 +5,7 @@ import { proxyRequestToApi, shouldForwardToApi } from '$lib/utils/proxy-api-requ
 import { type Handle, type HandleServerError, redirect } from '@sveltejs/kit';
 import { isPublicApiRoute, isPublicRoute } from '$lib/utils/functions/routes/isPublicRoute';
 import { ROUTE } from '$lib/utils/constants/routes';
-import { reportIncident } from '$lib/utils/services/audit/report-incident';
+import { reportIncident, shouldReportRenderError } from '$lib/utils/services/audit/report-incident';
 
 /**
  * Errores del servidor de SvelteKit: los que tira un `load` de servidor o el
@@ -27,6 +27,9 @@ export const handleError: HandleServerError = ({ error, event, status, message }
     msg: err?.message,
     stack: err?.stack
   });
+
+  // Un 404 no es una falla de la aplicacion; ver shouldReportRenderError.
+  if (!shouldReportRenderError(status)) return;
 
   const forwarded: Record<string, string> = {};
   for (const header of ['cookie', 'user-agent', 'cf-connecting-ip', 'x-forwarded-for']) {

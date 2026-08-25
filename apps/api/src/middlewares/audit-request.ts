@@ -21,6 +21,29 @@ import { SLOW_REQUEST_MS, findInAuditMap, genericAction, isExcluded, isWrite } f
 import { clientInfoFromHeaders } from '@api/utils/client-info';
 import { recordEvent, recordIncident } from '@api/services/audit';
 
+/**
+ * El rol que la persona tiene EN la empresa del request.
+ *
+ * Antes esto salía de `c.get('userRole')`, que **sólo escribe
+ * `orgMemberMiddleware`**. Las rutas de administración (`/team`, `/audience`,
+ * `/tracking/overview`) usan `orgTeamMemberMiddleware`, que calcula el mismo rol
+ * y nunca lo pone en el contexto: el resultado era `org_role` NULO en el 100% de
+ * las filas, justo en las rutas donde saber si quien miró era admin o tutor es
+ * todo el punto de auditar.
+ *
+ * Resolverlo desde `orgRoles` — que `app.ts` deja siempre en el contexto para
+ * cualquier sesión — saca del medio la dependencia de que cada middleware se
+ * acuerde de avisar. Un middleware nuevo no puede volver a romperlo por omisión.
+ */
+export function resolveOrgRole(
+  orgRoles: Record<string, number> | undefined,
+  orgId: string | null
+): number | null {
+  if (!orgId) return null;
+
+  return orgRoles?.[orgId] ?? null;
+}
+
 export const auditRequest = async (c: Context, next: Next) => {
   const startedAt = performance.now();
 
@@ -113,7 +136,7 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
     userId,
     userLabel: user.email ?? null,
     userRole: user.role ?? null,
-    orgRole: c.get('userRole') ?? null,
+    orgRole: resolveOrgRole(c.get('orgRoles'), orgId),
     sessionId,
     action: mapped?.action ?? genericAction(method, path),
     entity: mapped?.entity ?? null,

@@ -59,7 +59,9 @@ const app = new Hono()
     c.set('user' as never, { id: USER, email: MARK, role: null } as never);
     c.set('session' as never, { id: SESSION } as never);
     c.set('orgId' as never, ORG as never);
-    c.set('userRole' as never, 1 as never);
+    // Ver la nota de `audit-middleware.test.ts`: `orgRoles` es lo que arma
+    // `app.ts` para toda sesión; `userRole` sólo lo pone una rama.
+    c.set('orgRoles' as never, { [ORG]: 1 } as never);
 
     await next();
   })
