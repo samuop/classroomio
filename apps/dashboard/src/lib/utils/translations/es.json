@@ -4280,7 +4280,8 @@
       "ai_tutor_tab": "Tutor de IA",
       "ai_images_tab": "Imágenes de IA",
       "at_risk_tab": "Estudiantes en riesgo",
-      "notifications_tab": "Avisos por correo"
+      "notifications_tab": "Avisos por correo",
+      "email_templates_tab": "Texto de los correos"
     },
     "subheadings": {
       "view_site": "Ver sitio"
@@ -5360,5 +5361,23 @@
         "description": "Sólo en cursos pagos."
       }
     }
+  },
+  "email_templates": {
+    "title": "Texto de los correos",
+    "subtitle": "Reescribí el asunto y el cuerpo de los correos automáticos. Lo que dejes en blanco vuelve al texto original.",
+    "loading": "Cargando los textos…",
+    "customized": "Editado",
+    "subject": "Asunto",
+    "body": "Cuerpo",
+    "body_help": "Podés usar negrita, cursiva, listas y enlaces. Lo demás se quita al guardar, porque no todos los clientes de correo lo muestran igual.",
+    "variables": "Variables disponibles",
+    "variables_help": "Tocá una para agregarla al final del cuerpo. Se reemplazan al enviar por el dato real.",
+    "missing_warning": "Sacaste una variable importante. El correo se va a enviar igual, pero sin esto puede quedar inservible:",
+    "save": "Guardar",
+    "reset": "Volver al original",
+    "unsaved": "Sin guardar",
+    "saved": "Texto guardado",
+    "reset_done": "Se restauró el texto original",
+    "save_failed": "No pudimos guardar el texto. Volvé a intentar."
   }
 }

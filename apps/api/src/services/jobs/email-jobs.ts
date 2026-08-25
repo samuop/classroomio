@@ -3,6 +3,7 @@ import { EmailRegistry, type EmailId, type EmailSchemaFor } from '@cio/email';
 import * as z from 'zod';
 
 import { logRedisUnavailableOnce } from '@api/utils/redis/redis';
+import { resolveEmailOverride } from '@api/services/organization/email-template';
 
 type Recipient = string | string[];
 
@@ -20,6 +21,11 @@ export interface EnqueueTemplateEmailInput<TId extends EmailId> extends CommonOp
   fields: z.infer<EmailSchemaFor<TId>>;
   from?: string;
   replyTo?: string;
+  /**
+   * De qué empresa sale el correo. Sirve para buscar el texto que esa empresa
+   * (o su consultora) haya reescrito. Sin esto sale el de fábrica.
+   */
+  orgId?: string | null;
 }
 
 export interface EnqueueRawEmailInput extends CommonOptions {
@@ -73,16 +79,32 @@ export async function enqueueTransactionalEmail<TId extends EmailId>(
   const recipients = toRecipientArray(input.to);
   const jobIds: string[] = [];
 
+  // El texto reescrito se resuelve UNA vez, acá, y no en cada punto de envío:
+  // los catorce correos pasan por esta función, así que es el único lugar donde
+  // no se puede olvidar. Si la empresa no tocó nada, `override` es null y todo
+  // sigue exactamente como antes.
+  const override = await resolveEmailOverride(input.orgId, template, validatedFields);
+
   for (const recipient of recipients) {
     const jobId = await enqueueEmailSend(
-      {
-        kind: 'template',
-        template,
-        to: recipient,
-        fields: validatedFields,
-        from: input.from,
-        replyTo: input.replyTo
-      },
+      override
+        ? {
+            // Ya renderizado: el worker no necesita saber nada de esto.
+            kind: 'raw',
+            to: recipient,
+            subject: override.subject,
+            content: override.content,
+            from: input.from,
+            replyTo: input.replyTo
+          }
+        : {
+            kind: 'template',
+            template,
+            to: recipient,
+            fields: validatedFields,
+            from: input.from,
+            replyTo: input.replyTo
+          },
       { idempotencyKey: recipientKey(input.idempotencyKey, recipient, recipients.length) }
     );
 

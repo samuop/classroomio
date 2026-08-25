@@ -365,6 +365,7 @@ async function sendStudentJoinEmails(input: {
         loginUrl
       },
       from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
+      orgId: (await getCourseWithOrgData(input.courseId))?.orgId,
       idempotencyKey: `course-welcome:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -395,6 +396,7 @@ async function sendStudentJoinEmails(input: {
         studentEmail: input.studentEmail
       },
       from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
+      orgId: courseOrg?.orgId,
       idempotencyKey: `teacher-student-joined:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -450,6 +452,7 @@ async function createEmailInviteAndSend(input: {
         expiresAt: getExpiryLabel(createdInvite.expiresAt)
       },
       from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
+      orgId: (await getCourseWithOrgData(input.courseId))?.orgId,
       idempotencyKey: `course-invite-email:${createdInvite.id}`
     });
 

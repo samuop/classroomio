@@ -84,6 +84,7 @@ export function scheduleCertificationCompletionWork(params: {
           customMessage: courseRow.certificate?.emailMessage ?? null
         },
         from: buildEmailFromName(await resolveSenderName(courseRow.orgId)),
+        orgId: courseRow.orgId,
         idempotencyKey: `course-completion:${groupMemberId}`
       });
 

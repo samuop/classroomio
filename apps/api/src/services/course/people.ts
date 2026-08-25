@@ -99,6 +99,7 @@ export async function addMember(
                   loginUrl
                 },
                 from: buildEmailFromName(await resolveSenderName(courseOrgData.orgId)),
+                orgId: courseOrgData.orgId,
                 idempotencyKey: `course-people-student-welcome:${courseId}:${studentEmail}`
               });
             } catch (emailError) {
@@ -122,6 +123,7 @@ export async function addMember(
                     studentEmail
                   },
                   from: buildEmailFromName(await resolveSenderName(courseOrgData.orgId)),
+                  orgId: courseOrgData.orgId,
                   idempotencyKey: `course-people-teacher-joined:${courseId}:${studentEmail}`
                 });
               } catch (emailError) {
@@ -220,6 +222,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
               inviteLink
             },
             from: remitente,
+            orgId: courseOrgData.orgId,
             idempotencyKey: `teacher-course-welcome:${courseId}:${email}`
           }).catch((emailError) => {
             console.error(`Failed to enqueue welcome email to ${email}:`, emailError);

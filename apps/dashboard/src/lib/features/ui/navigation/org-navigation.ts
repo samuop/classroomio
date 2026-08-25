@@ -236,6 +236,11 @@ export const baseNavConfig: NavItemConfig[] = [
         requiresAdmin: true
       },
       {
+        titleKey: 'settings.tabs.email_templates_tab',
+        path: '/settings/email-templates',
+        requiresAdmin: true
+      },
+      {
         titleKey: 'settings.tabs.auth_tab',
         matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
         path: '/settings/auth',
@@ -269,6 +274,10 @@ export const baseNavConfig: NavItemConfig[] = [
       {
         path: 'notifications',
         titleKey: 'settings.tabs.notifications_tab'
+      },
+      {
+        path: 'email-templates',
+        titleKey: 'settings.tabs.email_templates_tab'
       },
       {
         path: 'customize-lms',

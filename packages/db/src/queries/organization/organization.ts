@@ -798,7 +798,7 @@ export const getOrgAtRiskSettings = async (
  * apunte a un ancestro colgaría la consulta para siempre, y esto corre en el
  * camino de un correo.
  */
-export const getRootOrganizationName = async (orgId: string): Promise<string | null> => {
+export const getRootOrganization = async (orgId: string): Promise<{ id: string; name: string | null } | null> => {
   const result = await db.execute(sql`
     WITH RECURSIVE cadena AS (
       SELECT id, name, parent_organization_id, 1 AS nivel
@@ -810,12 +810,25 @@ export const getRootOrganizationName = async (orgId: string): Promise<string | n
         JOIN cadena c ON o.id = c.parent_organization_id
        WHERE c.nivel < 10
     )
-    SELECT name FROM cadena ORDER BY nivel DESC LIMIT 1
+    SELECT id, name FROM cadena ORDER BY nivel DESC LIMIT 1
   `);
 
-  const rows = result as unknown as Array<{ name: string | null }>;
+  const rows = result as unknown as Array<{ id: string; name: string | null }>;
 
-  return rows[0]?.name ?? null;
+  return rows[0] ?? null;
+};
+
+/** Sólo el nombre de la raíz — con lo que se firman los correos. */
+export const getRootOrganizationName = async (orgId: string): Promise<string | null> => {
+  return (await getRootOrganization(orgId))?.name ?? null;
+};
+
+/**
+ * Sólo el id de la raíz — de quién son los textos de los correos y cualquier
+ * otro ajuste que la consultora define una vez para todos sus clientes.
+ */
+export const getRootOrganizationId = async (orgId: string): Promise<string | null> => {
+  return (await getRootOrganization(orgId))?.id ?? null;
 };
 
 /**

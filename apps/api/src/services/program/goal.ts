@@ -426,6 +426,7 @@ export async function runProgramGoalReminderScan(): Promise<{
           requiredCount: row.assignment.requiredCount ?? 0,
           loginUrl: `${loginUrl}/lms/programs/${row.programId}`
         },
+        orgId: row.organizationId,
         idempotencyKey: `program-goal-reminder:${row.assignment.id}:${daysUntilDue}:${dayKey}`
       });
       remindersEnqueued += 1;

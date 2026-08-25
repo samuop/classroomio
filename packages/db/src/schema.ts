@@ -3802,3 +3802,37 @@ export const auditIncident = pgTable(
     index('idx_audit_incident_status_created').on(table.status, table.createdAt)
   ]
 );
+
+/**
+ * El asunto y el cuerpo que una empresa reescribió para un correo automático.
+ *
+ * Una fila por (empresa, correo), y sólo para los que se tocaron: lo que no
+ * está acá sale con el texto de fábrica. Así "restaurar el original" es borrar
+ * la fila, y no queda una copia del default congelada que se desactualice
+ * cuando el texto de fábrica mejore.
+ *
+ * **Sin clave foránea**, igual que la auditoría: un CASCADE al borrar la
+ * empresa se llevaría los textos, y un borrado de empresa suele deshacerse.
+ * `organization_id` se limpia con el borrado real, si alguna vez ocurre.
+ */
+export const organizationEmailTemplate = pgTable(
+  'organization_email_template',
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    organizationId: uuid('organization_id').notNull(),
+    /** El id del correo en el registro de @cio/email (`teacherStudentJoined`, …). */
+    emailId: varchar('email_id', { length: 64 }).notNull(),
+    /** `null` = usar el asunto de fábrica. */
+    subject: text(),
+    /** `null` = usar el cuerpo de fábrica. HTML ya saneado al guardar. */
+    body: text(),
+    updatedByProfileId: uuid('updated_by_profile_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => [
+    // Una sola fila por empresa y correo: sin esto, dos guardados simultáneos
+    // dejan dos versiones y gana la que la consulta devuelva primero.
+    uniqueIndex('uniq_org_email_template').on(table.organizationId, table.emailId)
+  ]
+);

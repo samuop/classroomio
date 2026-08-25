@@ -386,6 +386,7 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
       },
       from: buildEmailFromName(await resolveSenderName(feedData.organization?.id)),
       replyTo: feedData.author?.email || EMAIL_REPLY_TO,
+      orgId: feedData.organization?.id,
       idempotencyKey: `newsfeed:post:${feedId}`
     });
   } catch (error) {

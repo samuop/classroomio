@@ -262,6 +262,7 @@ export async function inviteTeamMembers(orgId: string, emails: string[], roleId:
             expiresAt: getExpiryLabel(expiresAt),
             inviteLink
           },
+          orgId: orgId,
           idempotencyKey: `org-invite-teacher:${invite.id}`
         });
 

@@ -54,6 +54,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
             studentFullname: data.studentFullname
           },
           from: buildEmailFromName(EMAIL_BRAND_NAME),
+          orgId: course.orgId,
           idempotencyKey: `payment-request:teacher:${data.courseId}:${data.studentEmail}`
         });
       }
@@ -73,6 +74,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
           },
           from: buildEmailFromName(await resolveSenderName(course.orgId)),
           replyTo: teacherEmail,
+          orgId: course.orgId,
           idempotencyKey: `payment-request:student:${data.courseId}:${data.studentEmail}`
         });
       }

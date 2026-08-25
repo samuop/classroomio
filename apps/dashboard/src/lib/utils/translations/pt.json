@@ -3147,7 +3147,8 @@
       "teams_tab": "Equipes",
       "ai_credits_tab": "AI Credits",
       "ai_tutor_tab": "Tutor de IA",
-      "notifications_tab": "Notificações por e-mail"
+      "notifications_tab": "Notificações por e-mail",
+      "email_templates_tab": "Texto dos e-mails"
     },
     "subheadings": {
       "view_site": "Ver site"
@@ -4583,5 +4584,23 @@
         "description": "Paid courses only."
       }
     }
+  },
+  "email_templates": {
+    "title": "Email wording",
+    "subtitle": "Rewrite the subject and body of the automatic emails. Anything you leave blank goes back to the original.",
+    "loading": "Loading wording…",
+    "customized": "Edited",
+    "subject": "Subject",
+    "body": "Body",
+    "body_help": "You can use bold, italics, lists and links. Anything else is stripped on save, because email clients don't render it consistently.",
+    "variables": "Available variables",
+    "variables_help": "Tap one to append it to the body. They're replaced with the real value when the email is sent.",
+    "missing_warning": "You removed an important variable. The email will still send, but without this it may be useless:",
+    "save": "Save",
+    "reset": "Restore original",
+    "unsaved": "Unsaved",
+    "saved": "Wording saved",
+    "reset_done": "Original wording restored",
+    "save_failed": "We couldn't save the wording. Please try again."
   }
 }

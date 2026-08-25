@@ -5,3 +5,4 @@ export * from './automation-key';
 export * from './automation-usage';
 export * from './tracking';
 export * from './clients';
+export * from './email-template';

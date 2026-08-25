@@ -217,6 +217,7 @@ async function enrollAudienceStudentProfilesInCourses(
               loginUrl
             },
             from: buildEmailFromName(await resolveSenderName(organization.id)),
+            orgId: organization.id,
             idempotencyKey: `audience-course-welcome:${p.groupId}:${p.profileId}`
           });
           emailsSent++;
@@ -299,6 +300,7 @@ async function enrollAudienceStudentProfilesInPrograms(
                 loginUrl
               },
               from: buildEmailFromName(await resolveSenderName(organization.id)),
+              orgId: organization.id,
               idempotencyKey: `audience-program-welcome:${pair.programId}:${pair.profileId}`
             });
             emailsSent++;
@@ -404,6 +406,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
             courseNames: accessNamesLabel
           },
           from: buildEmailFromName(await resolveSenderName(organization.id)),
+          orgId: organization.id,
           idempotencyKey: `student-org-invite:${invite.id}`
         });
 
@@ -694,6 +697,7 @@ export async function resendAudienceInvite(orgId: string, data: TAudienceInviteB
         courseNames: accessNamesLabel
       },
       from: buildEmailFromName(await resolveSenderName(organization.id)),
+      orgId: organization.id,
       idempotencyKey: `student-org-invite:${invite.id}`
     });
 

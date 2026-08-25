@@ -36,3 +36,5 @@ export { getDefaultTemplate } from './templates/default';
 
 // Export email registry for introspection (optional)
 export { EmailRegistry } from './core/registry';
+export { applyVariables, getEditableEmails, isEditableEmail } from './core/editable';
+export type { EditableEmail } from './core/editable';
