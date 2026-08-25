@@ -69,6 +69,11 @@ company/
 # real). `add-landing-template` y `frontend-design` venían rastreadas de antes;
 # se destrackearon con `git rm --cached -r skills/` — los archivos siguen en
 # disco, sólo dejaron de subirse.
+#
+# OJO con dónde vive una skill: Claude Code SÓLO descubre las que están en
+# `.claude/skills/<nombre>/SKILL.md`. La carpeta `skills/` de la raíz no la mira
+# nadie — una skill puesta ahí existe pero su comando nunca aparece. El patrón de
+# abajo no lleva `/` inicial, así que tapa las dos ubicaciones.
 skills/
 
 # Resultados de tests: reportes, cobertura y cachés. Los archivos *.test.ts sí
