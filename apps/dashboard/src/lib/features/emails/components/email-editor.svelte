@@ -29,8 +29,23 @@
   let form = $state<EmailBlocks>({ ...template.values });
   /** Un botón sin texto es un correo sin botón, y eso es una elección válida. */
   let conBoton = $state(template.values.ctaLabel.trim() !== '');
-  let campos = $state<Partial<Record<EmailBlockKey, HTMLInputElement | HTMLTextAreaElement | null>>>({});
+  /**
+   * Dónde está el cursor, para insertar una variable ahí.
+   *
+   * El elemento se toma del propio evento de foco y NO con `bind:ref`. Ése fue
+   * el bug que rompió la pantalla en producción: `bind:ref={campos.subject}`
+   * sobre un objeto vacío le pasa `undefined` a una prop que tiene valor por
+   * defecto, y Svelte 5 corta el render con `props_invalid_value` al montar.
+   * Además es más simple: el foco es exactamente el momento en que este dato
+   * empieza a importar.
+   */
   let campoActivo = $state<EmailBlockKey>('body');
+  let elementoActivo: HTMLInputElement | HTMLTextAreaElement | null = null;
+
+  function enfocar(clave: EmailBlockKey, evento: FocusEvent) {
+    campoActivo = clave;
+    elementoActivo = evento.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+  }
 
   let correoPrueba = $state('');
   let errorPrueba = $state('');
@@ -64,7 +79,7 @@
   function insertarVariable(nombre: string) {
     const marcador = `{${nombre}}`;
     const clave = campoActivo;
-    const elemento = campos[clave];
+    const elemento = elementoActivo;
 
     if (!elemento) {
       form[clave] = `${form[clave]}${marcador}`;
@@ -130,8 +145,7 @@
       <Input
         id="asunto-{template.id}"
         bind:value={form.subject}
-        bind:ref={campos.subject}
-        onfocus={() => (campoActivo = 'subject')}
+        onfocus={(evento) => enfocar('subject', evento)}
         disabled={!editable}
         maxlength={200}
       />
@@ -143,8 +157,7 @@
       <Input
         id="titulo-{template.id}"
         bind:value={form.heading}
-        bind:ref={campos.heading}
-        onfocus={() => (campoActivo = 'heading')}
+        onfocus={(evento) => enfocar('heading', evento)}
         disabled={!editable}
         maxlength={300}
       />
@@ -156,8 +169,7 @@
       <Textarea
         id="cuerpo-{template.id}"
         bind:value={form.body}
-        bind:ref={campos.body}
-        onfocus={() => (campoActivo = 'body')}
+        onfocus={(evento) => enfocar('body', evento)}
         disabled={!editable}
         rows={10}
         maxlength={5000}
@@ -188,8 +200,7 @@
             <Input
               id="cta-texto-{template.id}"
               bind:value={form.ctaLabel}
-              bind:ref={campos.ctaLabel}
-              onfocus={() => (campoActivo = 'ctaLabel')}
+              onfocus={(evento) => enfocar('ctaLabel', evento)}
               disabled={!editable}
               maxlength={80}
             />
@@ -199,8 +210,7 @@
             <Input
               id="cta-url-{template.id}"
               bind:value={form.ctaUrl}
-              bind:ref={campos.ctaUrl}
-              onfocus={() => (campoActivo = 'ctaUrl')}
+              onfocus={(evento) => enfocar('ctaUrl', evento)}
               disabled={!editable}
               maxlength={500}
               class="font-mono text-sm"
@@ -216,8 +226,7 @@
       <Textarea
         id="pie-{template.id}"
         bind:value={form.footer}
-        bind:ref={campos.footer}
-        onfocus={() => (campoActivo = 'footer')}
+        onfocus={(evento) => enfocar('footer', evento)}
         disabled={!editable}
         rows={2}
         maxlength={1000}

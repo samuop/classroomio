@@ -1,16 +1,28 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-
   import * as Page from '@cio/ui/base/page';
   import InfoIcon from '@lucide/svelte/icons/info';
 
   import { EmailEditor, EmailList, buildEmailRows, emailsApi } from '$features/emails';
   import { brandName } from '$lib/utils/branding';
+  import { currentOrg } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
 
   let seleccionado = $state('');
+  let pedido = $state(false);
 
-  onMount(() => {
+  /**
+   * Esperar a que la empresa esté elegida antes de pedir nada.
+   *
+   * El cliente de la API pone el encabezado `cio-org-id` leyendo `currentOrg`
+   * **en el momento del pedido**, y ese store lo llena el arranque de la app,
+   * que es asincrónico. Con `onMount` a secas, una recarga en frío de esta URL
+   * dispara el pedido antes de que llegue la empresa: sale sin encabezado y la
+   * API contesta 400 `ORG_ID_REQUIRED`. Pasó en producción.
+   */
+  $effect(() => {
+    if (pedido || !$currentOrg?.id) return;
+
+    pedido = true;
     void emailsApi.fetchAll();
   });
 
@@ -43,7 +55,9 @@
 
   <Page.Body>
     {#snippet child()}
-      {#if emailsApi.loading}
+      {#if !pedido || emailsApi.loading}
+        <!-- `!pedido` también: antes de que salga el pedido no hay nada cargado
+             y sin esto la pantalla parpadea vacía, que se lee como rota. -->
         <p class="ui:text-muted-foreground text-sm">{$t('emails.loading')}</p>
       {:else if emailsApi.loadFailed}
         <!-- "Cargando" y "falló" son estados distintos: si comparten uno, un
