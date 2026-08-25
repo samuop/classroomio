@@ -18,7 +18,8 @@ import {
 } from '@cio/db/queries/newsfeed';
 
 import { env } from '@api/config/env';
-import { buildEmailFromName } from '@cio/email';
+import { EMAIL_BRAND_NAME, EMAIL_REPLY_TO, buildEmailFromName } from '@cio/email';
+import { getDashboardBaseUrl } from '@api/config/dashboard-url';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 
 /**
@@ -356,9 +357,13 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
       return;
     }
 
-    const orgName = feedData.organization?.name || 'ClassroomIO';
-    const orgSiteName = feedData.organization?.siteName || 'app';
-    const postLink = `https://${orgSiteName}.classroomio.com/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
+    const orgName = feedData.organization?.name || EMAIL_BRAND_NAME;
+    // `getDashboardBaseUrl` y no el dominio armado a mano: esto apuntaba a
+    // `<org>.classroomio.com`, o sea que el enlace de un aviso de curso llevaba
+    // al alumno a un dominio que no es el de su empresa NI el de este
+    // despliegue. El helper respeta el dominio propio verificado de cada
+    // empresa, que es lo que ya hacen el resto de los correos.
+    const postLink = `${getDashboardBaseUrl(feedData.organization ?? undefined)}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
 
     const recipients = feedData.courseMembers
       .map((member) => member.email)
@@ -375,8 +380,8 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
         postLink,
         orgName
       },
-      from: buildEmailFromName(`${orgName} - ClassroomIO`),
-      replyTo: feedData.author?.email || 'noreply@classroomio.com',
+      from: buildEmailFromName(orgName),
+      replyTo: feedData.author?.email || EMAIL_REPLY_TO,
       idempotencyKey: `newsfeed:post:${feedId}`
     });
   } catch (error) {
@@ -400,9 +405,9 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
       return;
     }
 
-    const orgName = feedData.organization?.name || 'ClassroomIO';
-    const orgSiteName = feedData.organization?.siteName || 'app';
-    const postLink = `https://${orgSiteName}.classroomio.com/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
+    const orgName = feedData.organization?.name || EMAIL_BRAND_NAME;
+    // Ver la nota de `sendNewsfeedPostEmail`.
+    const postLink = `${getDashboardBaseUrl(feedData.organization ?? undefined)}/courses/${feedData.courseId}?feedId=${feedData.feedId}`;
 
     await enqueueTransactionalEmail('newsfeedComment', {
       to: feedData.author.email,
@@ -412,8 +417,8 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
         postLink,
         orgName
       },
-      from: buildEmailFromName(`${orgName} - ClassroomIO`),
-      replyTo: 'noreply@classroomio.com'
+      from: buildEmailFromName(orgName),
+      replyTo: EMAIL_REPLY_TO
     });
   } catch (error) {
     console.error('Error sending newsfeed comment email:', error);

@@ -30,11 +30,17 @@
   // the dashboard); fall back to the SSR-loaded tenant org; else the platform default.
   // app.html no longer emits any <link rel="icon">, so this is the ONLY one — that way the
   // org's favicon can never lose to a default with an explicit sizes="…".
-  // Sin favicon por defecto: el único que traía el repo era el isotipo de
-  // ClassroomIO, así que toda organización sin ícono propio mostraba la marca
-  // ajena en la pestaña. Sin `<link rel="icon">` el navegador dibuja su ícono
-  // genérico, que no dice nada de nadie.
-  const favicon = $derived($currentOrg.favicon || data.org?.favicon || '');
+  // El default es la marca de ESTE despliegue. Antes no había ninguno —el único
+  // que traía el repo era el isotipo de ClassroomIO, marca ajena— pero no emitir
+  // `<link rel="icon">` tiene un costo: el navegador pide `/favicon.ico` igual,
+  // por convención, y eso devolvía 404 en cada pantalla donde todavía no se
+  // resolvió la organización (login, error, un tenant sin ícono propio).
+  //
+  // El archivo se compuso a partir de los dos que la organización ya tenía
+  // cargados: el cubo aislado va sobre fondo negro, que es como Tensor presenta
+  // su marca. El fondo NO es decorativo — el isotipo es blanco puro (RGB medio
+  // 253,253,252), así que sobre una pestaña de tema claro sería invisible.
+  const favicon = $derived($currentOrg.favicon || data.org?.favicon || '/favicon.png');
 
   onMount(() => {
     console.log('Layout', data);
