@@ -32,6 +32,7 @@ import { resolveOrgUrlIdentityBySiteName } from '@api/utils/org-url';
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
 import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { getProfileByEmail, markUserAndProfileEmailVerified } from '@cio/db/queries/auth';
 import { generateSlug } from '@cio/utils/functions';
@@ -363,7 +364,7 @@ async function sendStudentJoinEmails(input: {
         courseName: input.courseName,
         loginUrl
       },
-      from: buildEmailFromName(input.orgName || EMAIL_BRAND_NAME),
+      from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
       idempotencyKey: `course-welcome:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -393,7 +394,7 @@ async function sendStudentJoinEmails(input: {
         studentName,
         studentEmail: input.studentEmail
       },
-      from: buildEmailFromName(EMAIL_BRAND_NAME),
+      from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
       idempotencyKey: `teacher-student-joined:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -448,7 +449,7 @@ async function createEmailInviteAndSend(input: {
         inviteLink: createdInvite.inviteLink,
         expiresAt: getExpiryLabel(createdInvite.expiresAt)
       },
-      from: buildEmailFromName(input.orgName || EMAIL_BRAND_NAME),
+      from: buildEmailFromName(await resolveSenderName((await getCourseWithOrgData(input.courseId))?.orgId)),
       idempotencyKey: `course-invite-email:${createdInvite.id}`
     });
 

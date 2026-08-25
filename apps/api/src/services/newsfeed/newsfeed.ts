@@ -19,6 +19,7 @@ import {
 
 import { env } from '@api/config/env';
 import { EMAIL_BRAND_NAME, EMAIL_REPLY_TO, buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { getDashboardBaseUrl } from '@api/config/dashboard-url';
 import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
@@ -383,7 +384,7 @@ async function sendNewsfeedPostEmail(feedId: string, authorId: string) {
         postLink,
         orgName
       },
-      from: buildEmailFromName(orgName),
+      from: buildEmailFromName(await resolveSenderName(feedData.organization?.id)),
       replyTo: feedData.author?.email || EMAIL_REPLY_TO,
       idempotencyKey: `newsfeed:post:${feedId}`
     });
@@ -422,7 +423,7 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
         postLink,
         orgName
       },
-      from: buildEmailFromName(orgName),
+      from: buildEmailFromName(await resolveSenderName(feedData.organization?.id)),
       replyTo: EMAIL_REPLY_TO
     });
   } catch (error) {

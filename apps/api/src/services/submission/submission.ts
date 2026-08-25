@@ -13,6 +13,7 @@ import type {
   TSubmissionUpdate
 } from '@cio/utils/validation/submission';
 import { buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueRawEmail } from '@api/services/jobs';
 import {
@@ -985,7 +986,7 @@ async function sendSubmissionUpdateEmail(submissionId: string, newStatusId: numb
   }
 
   await enqueueRawEmail({
-    from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+    from: buildEmailFromName(await resolveSenderName(orgResult?.orgId)),
     to: fullSubmission.groupmember.profile.email,
     subject: 'Submission Update',
     content,
@@ -1047,7 +1048,7 @@ async function sendExerciseSubmissionUpdateEmail(courseId: string, exerciseId: s
   if (tutorEmails.length === 0) return;
 
   await enqueueRawEmail({
-    from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+    from: buildEmailFromName(await resolveSenderName(orgResult?.orgId)),
     to: tutorEmails,
     subject: `[Submitted]: ${exercise.title}`,
     content,

@@ -784,6 +784,41 @@ export const getOrgAtRiskSettings = async (
 };
 
 /**
+ * El nombre de la empresa RAIZ de la cadena: la consultora de la que cuelga
+ * esta empresa, o ella misma si no cuelga de ninguna.
+ *
+ * Es con lo que se firman los correos. Una alumna de una empresa cliente de una
+ * consultora recibe la formación **de esa consultora**, así que el correo tiene
+ * que decir el nombre de la consultora y no el de su propio empleador — que
+ * además es el que coincide con el dominio del remitente.
+ *
+ * Recursivo y no "subir un nivel" porque la jerarquía puede crecer: hoy son dos
+ * escalones, y una regla que asuma dos se rompe callada al agregar el tercero.
+ * El tope de 10 es una guarda contra ciclos: un `parent_organization_id` que
+ * apunte a un ancestro colgaría la consulta para siempre, y esto corre en el
+ * camino de un correo.
+ */
+export const getRootOrganizationName = async (orgId: string): Promise<string | null> => {
+  const result = await db.execute(sql`
+    WITH RECURSIVE cadena AS (
+      SELECT id, name, parent_organization_id, 1 AS nivel
+        FROM organization
+       WHERE id = ${orgId}
+      UNION ALL
+      SELECT o.id, o.name, o.parent_organization_id, c.nivel + 1
+        FROM organization o
+        JOIN cadena c ON o.id = c.parent_organization_id
+       WHERE c.nivel < 10
+    )
+    SELECT name FROM cadena ORDER BY nivel DESC LIMIT 1
+  `);
+
+  const rows = result as unknown as Array<{ name: string | null }>;
+
+  return rows[0]?.name ?? null;
+};
+
+/**
  * Los avisos que esta empresa tiene apagados o encendidos.
  *
  * Espeja a `getOrgAtRiskSettings` — los dos viven bajo `organization.settings`.

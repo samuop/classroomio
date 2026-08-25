@@ -16,6 +16,7 @@ import { resolveOrgUrlIdentityBySiteName } from '@api/utils/org-url';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { ensureComplianceEnrollmentRecordsForProfiles } from './compliance';
@@ -97,7 +98,7 @@ export async function addMember(
                   courseName,
                   loginUrl
                 },
-                from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+                from: buildEmailFromName(await resolveSenderName(courseOrgData.orgId)),
                 idempotencyKey: `course-people-student-welcome:${courseId}:${studentEmail}`
               });
             } catch (emailError) {
@@ -120,7 +121,7 @@ export async function addMember(
                     studentName,
                     studentEmail
                   },
-                  from: buildEmailFromName('ClassroomIO'),
+                  from: buildEmailFromName(await resolveSenderName(courseOrgData.orgId)),
                   idempotencyKey: `course-people-teacher-joined:${courseId}:${studentEmail}`
                 });
               } catch (emailError) {
@@ -198,6 +199,9 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
 
     const teacherEmailPromises: Promise<unknown>[] = [];
     const avisarAlDocente = await isNotificationEnabled(courseOrgData.orgId, 'addedAsTeacher');
+    // Fuera del bucle: el remitente es el mismo para todos los docentes del
+    // curso, y adentro ni siquiera compila (el callback de forEach no es async).
+    const remitente = buildEmailFromName(await resolveSenderName(courseOrgData.orgId));
 
     addedMembers.forEach((member, index) => {
       const memberData = members[index];
@@ -215,7 +219,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
               courseName,
               inviteLink
             },
-            from: buildEmailFromName(`${orgName} (via ClassroomIO.com)`),
+            from: remitente,
             idempotencyKey: `teacher-course-welcome:${courseId}:${email}`
           }).catch((emailError) => {
             console.error(`Failed to enqueue welcome email to ${email}:`, emailError);

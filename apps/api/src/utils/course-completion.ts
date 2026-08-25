@@ -6,6 +6,7 @@ import {
 import { setMemberCertificateEarned, setMemberCertificationEmailSent } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
 import { buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 
@@ -82,7 +83,7 @@ export function scheduleCertificationCompletionWork(params: {
           certificateUrl,
           customMessage: courseRow.certificate?.emailMessage ?? null
         },
-        from: buildEmailFromName(`${courseRow.orgName} (via ClassroomIO.com)`),
+        from: buildEmailFromName(await resolveSenderName(courseRow.orgId)),
         idempotencyKey: `course-completion:${groupMemberId}`
       });
 

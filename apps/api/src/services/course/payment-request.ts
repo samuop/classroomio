@@ -3,6 +3,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
 import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { isNotificationEnabled } from '@api/services/organization/notifications';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { trackServerEvent, SERVER_EVENTS } from '@cio/analytics';
@@ -70,7 +71,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
             studentFullname: data.studentFullname,
             orgName
           },
-          from: buildEmailFromName(orgName),
+          from: buildEmailFromName(await resolveSenderName(course.orgId)),
           replyTo: teacherEmail,
           idempotencyKey: `payment-request:student:${data.courseId}:${data.studentEmail}`
         });

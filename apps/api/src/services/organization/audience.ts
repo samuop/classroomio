@@ -6,6 +6,7 @@ import type {
 } from '@cio/utils/validation/organization';
 import { addGroupMembers, enrollUsersInCourseGroups, getExistingGroupMembers } from '@cio/db/queries/group';
 import { buildEmailFromName } from '@cio/email';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { addProgramMember, getExistingProgramMembers, getProgramsByOrg } from '@cio/db/queries/program';
 import {
@@ -215,7 +216,7 @@ async function enrollAudienceStudentProfilesInCourses(
               courseName: courseTitleByGroupId.get(p.groupId) || 'Course',
               loginUrl
             },
-            from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+            from: buildEmailFromName(await resolveSenderName(organization.id)),
             idempotencyKey: `audience-course-welcome:${p.groupId}:${p.profileId}`
           });
           emailsSent++;
@@ -297,7 +298,7 @@ async function enrollAudienceStudentProfilesInPrograms(
                 programName: programNameById.get(pair.programId) || 'Program',
                 loginUrl
               },
-              from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+              from: buildEmailFromName(await resolveSenderName(organization.id)),
               idempotencyKey: `audience-program-welcome:${pair.programId}:${pair.profileId}`
             });
             emailsSent++;
@@ -402,7 +403,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
             expiresAt: getExpiryLabel(expiresAt),
             courseNames: accessNamesLabel
           },
-          from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+          from: buildEmailFromName(await resolveSenderName(organization.id)),
           idempotencyKey: `student-org-invite:${invite.id}`
         });
 
@@ -692,7 +693,7 @@ export async function resendAudienceInvite(orgId: string, data: TAudienceInviteB
         expiresAt: getExpiryLabel(expiresAt),
         courseNames: accessNamesLabel
       },
-      from: buildEmailFromName(`${organization.name} (via ClassroomIO.com)`),
+      from: buildEmailFromName(await resolveSenderName(organization.id)),
       idempotencyKey: `student-org-invite:${invite.id}`
     });
 
