@@ -28,6 +28,6 @@ export const studentOrgInviteEmail = defineEmail({
       </div>
     `;
 
-    return getDefaultTemplate(content);
+    return getDefaultTemplate(content, { sender: fields.orgName });
   }
 });

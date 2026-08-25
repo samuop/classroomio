@@ -21,6 +21,6 @@ export const studentCourseWelcomeEmail = defineEmail({
       <p>${fields.orgName}</p>
     `;
 
-    return getDefaultTemplate(content);
+    return getDefaultTemplate(content, { sender: fields.orgName });
   }
 });

@@ -30,8 +30,11 @@
   // the dashboard); fall back to the SSR-loaded tenant org; else the platform default.
   // app.html no longer emits any <link rel="icon">, so this is the ONLY one — that way the
   // org's favicon can never lose to a default with an explicit sizes="…".
-  const DEFAULT_FAVICON = '/logo-32.png';
-  const favicon = $derived($currentOrg.favicon || data.org?.favicon || DEFAULT_FAVICON);
+  // Sin favicon por defecto: el único que traía el repo era el isotipo de
+  // ClassroomIO, así que toda organización sin ícono propio mostraba la marca
+  // ajena en la pestaña. Sin `<link rel="icon">` el navegador dibuja su ícono
+  // genérico, que no dice nada de nadie.
+  const favicon = $derived($currentOrg.favicon || data.org?.favicon || '');
 
   onMount(() => {
     console.log('Layout', data);
@@ -79,7 +82,9 @@
 </script>
 
 <svelte:head>
-  <link rel="icon" href={favicon} />
+  {#if favicon}
+    <link rel="icon" href={favicon} />
+  {/if}
 </svelte:head>
 
 <div>

@@ -152,7 +152,7 @@
             alt={$t('components.settings.customize_lms.auth_background.preview_alt')}
             src={$currentOrg.customization.auth.backgroundImage
               ? $currentOrg.customization.auth.backgroundImage
-              : '/images/classroomio-course-img-template.jpg'}
+              : '/images/course-img-template.jpg'}
             class="relative mt-2 h-[200px] w-[280px] rounded-md object-cover md:mt-0"
           />
         </div>

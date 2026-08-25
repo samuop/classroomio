@@ -1108,7 +1108,7 @@
           "audit_actor": "Ator",
           "audit_ip": "PI",
           "scan_qr": "Digitalize QR",
-          "classroomio_brand": "ClassroomIO. com",
+          "classroomio_brand": "[[brand]]. com",
           "snackbar_invite_link_copied": "Link de convite copiado",
           "snackbar_invite_link_regenerated": "Um novo link de convite foi gerado",
           "snackbar_failed_generate_link": "Falha ao gerar link de convite",
@@ -2148,7 +2148,7 @@
     },
     "creator": {
       "heading": "Qual curso você deseja criar?",
-      "placeholder": "Peça ao ClassroomIO para criar um curso para você...",
+      "placeholder": "Peça ao [[brand]] para criar um curso para você...",
       "type": {
         "self_paced": "Individualizado",
         "live_class": "Aula ao vivo"
@@ -2413,7 +2413,7 @@
         "save": "Salvar",
         "your_domain": "Seu domínio",
         "custom_domain_error": "Você não pode adicionar um domínio de nível superior como domínio personalizado. Em vez disso, use um subdomínio como 'cursos.[seusite].com' ou 'www.[seusite].com'.",
-        "custom_domain_not_classroomio": "O domínio não pode conter 'classroomio'",
+        "custom_domain_not_classroomio": "O domínio não pode conter '[[brand]]'",
         "custom_domain_success": "Domínio personalizado adicionado com sucesso",
         "dns_description": "Defina o seguinte registro em seu provedor DNS para continuar:",
         "dns_type": "Tipo",
@@ -2484,12 +2484,12 @@
     "goto": "Vá para",
     "courses": "Cursos",
     "home": "Página inicial",
-    "classroomio_home": "Página inicial do ClassroomIO",
+    "classroomio_home": "Página inicial do [[brand]]",
     "dashboard": "Painel",
     "discussion": "Discussão",
     "people": "Pessoas",
     "goto_lms": "Acesse o LMS",
-    "goto_home": "Vá para a página inicial do ClassroomIO",
+    "goto_home": "Vá para a página inicial do [[brand]]",
     "login": "Entrar",
     "signup": "Inscreva-se",
     "redirecting": "Redirecionando",
@@ -2590,7 +2590,7 @@
     "compliance": "Conformidade"
   },
   "media_manager": {
-    "page_title": "Gerenciador de mídia - ClassroomIO",
+    "page_title": "Gerenciador de mídia - [[brand]]",
     "heading": "Gerente de mídia",
     "empty": "Nenhum recurso encontrado",
     "usage": {
@@ -2724,7 +2724,7 @@
       "provider": "Usamos a Polar para ajudar a gerenciar seu faturamento",
       "open_billing": "Faturamento aberto",
       "error": "Ocorreu um erro ao abrir o faturamento",
-      "page_subtitle": "Your plan, billing portal, and how you pay for ClassroomIO.",
+      "page_subtitle": "Your plan, billing portal, and how you pay for [[brand]].",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits usados este mês",
       "ai_bonus_credits": "AI credits bônus disponíveis"
@@ -2732,7 +2732,7 @@
     "integrations": {
       "heading": "Telegrama",
       "sub_heading": "Conecte sua conta ao Telegram para ser notificado sobre qualquer alteração no aplicativo.",
-      "step_authenticate": "Passo 1: Autentique sua conta por meio do bot ClassroomIO.",
+      "step_authenticate": "Passo 1: Autentique sua conta por meio do bot [[brand]].",
       "open_bot_button": "Abrir bot",
       "step_chatId": "Passo 2: Insira o ID de bate-papo fornecido pelo bot.",
       "connect_button": "Conectar",
@@ -3052,7 +3052,7 @@
       "gallery": {
         "heading": "Temas populares",
         "description": "Feito com recursos básicos que você pode personalizar facilmente – sem necessidade de codificação.",
-        "by_classroomio": "da ClassroomIO",
+        "by_classroomio": "da [[brand]]",
         "add": "Adicionar",
         "upgrade": "Atualizar",
         "apply_theme": "Aplicar tema",
@@ -3125,7 +3125,7 @@
         "accepted": "Aceito:",
         "validation_error": "O tamanho do arquivo excede o limite máximo:"
       },
-      "page_subtitle": "Your name, email, and how you appear wherever you work in ClassroomIO."
+      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]]."
     },
     "tabs": {
       "profile_tab": "Perfil",
@@ -3483,7 +3483,7 @@
     "snackbar_error": "erro ao enviar código"
   },
   "public_courses": {
-    "page_title": "Cursos - ClassroomIO",
+    "page_title": "Cursos - [[brand]]",
     "heading": "Cursos",
     "subtitle": "Navegue por todos os cursos publicados",
     "clear_filters": "Limpar filtros",
@@ -3498,7 +3498,7 @@
     }
   },
   "tags_admin": {
-    "page_title": "Tags - ClassroomIO",
+    "page_title": "Tags - [[brand]]",
     "heading": "Etiquetas",
     "create": "Criar",
     "tag_modal": {
@@ -3550,7 +3550,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Junte-se a {orgName} no ClassroomIO",
+      "page_title": "Junte-se a {orgName} no [[brand]]",
       "invitation_student": "Você foi convidado para {orgName} como aluno.",
       "invitation_teacher": "Você foi convidado para {orgName} como professor.",
       "invitation_admin": "Você foi convidado para {orgName} como administrador.",
@@ -3578,20 +3578,20 @@
         "title": "Configuração do cliente",
         "description": "Use uma chave com escopo organizacional por integração. Se uma chave for rotacionada ou revogada, o cliente para de funcionar até que o novo segredo seja configurado.",
         "claude_code_description": "Registra `@classroomio/mcp` com Claude Code usando a chave gerada com escopo organizacional.",
-        "codex_description": "Adiciona o servidor ClassroomIO MCP ao Codex com a mesma chave com escopo organizacional.",
+        "codex_description": "Adiciona o servidor [[brand]] MCP ao Codex com a mesma chave com escopo organizacional.",
         "cursor_description": "Cole isso em `~/.cursor/mcp.json` ou na configuração do MCP do seu espaço de trabalho.",
         "opencode_description": "Adicione isso a `opencode.json` na raiz do projeto ou a `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "Chaves MCP",
-        "description": "Essas chaves autenticam a organização atual quando um cliente MCP chama ClassroomIO por meio de `@classroomio/mcp`.",
+        "description": "Essas chaves autenticam a organização atual quando um cliente MCP chama [[brand]] por meio de `@classroomio/mcp`.",
         "generate": "Gerar chave MCP",
         "secret_once": "Este segredo é mostrado uma vez. Copie-o para o seu cliente MCP agora.",
         "modal": {
           "title": "Create MCP key",
           "description": "Choose a name for this MCP key before it is generated.",
           "name_label": "Key name",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "[[brand]] OpenCode",
           "cancel": "Cancel",
           "save": "Create key"
         }
@@ -3607,17 +3607,17 @@
         "rate_limits_description": "Solicitações de leitura/gravação/publicação permitidas por minuto.",
         "used_label": "Usado:"
       },
-      "page_subtitle": "Connect AI tools to ClassroomIO with org-scoped keys you can rotate anytime."
+      "page_subtitle": "Connect AI tools to [[brand]] with org-scoped keys you can rotate anytime."
     },
     "api": {
-      "subtitle": "Manage API keys to integrate with the ClassroomIO public API.",
+      "subtitle": "Manage API keys to integrate with the [[brand]] public API.",
       "keys": {
         "title": "API keys",
-        "description": "These keys authenticate the current organization when calling the ClassroomIO public API.",
+        "description": "These keys authenticate the current organization when calling the [[brand]] public API.",
         "generate": "Generate API key",
         "secret_once": "This secret is shown once. Copy it and store it securely.",
         "empty_title": "No API keys yet",
-        "empty_description": "Create the first org-scoped API key to use the ClassroomIO public API.",
+        "empty_description": "Create the first org-scoped API key to use the [[brand]] public API.",
         "modal": {
           "title": "Create API key",
           "description": "Choose a name for this API key before it is generated.",
@@ -3663,7 +3663,7 @@
       "disabled_description": "Somente administradores da organização podem criar, alternar ou revogar chaves de automação. Os professores podem revisar as instruções de configuração aqui."
     },
     "zapier": {
-      "page_subtitle": "Automate ClassroomIO with thousands of apps through Zapier. Coming soon."
+      "page_subtitle": "Automate [[brand]] with thousands of apps through Zapier. Coming soon."
     }
   },
   "programs": {
@@ -4099,7 +4099,7 @@
       "border_radius": "Raio da borda",
       "font_family": "Família de fontes",
       "font_scale": "Escala de tamanho da fonte",
-      "show_powered_by": "Mostrar a marca Classroomio",
+      "show_powered_by": "Mostrar a marca [[brand]]",
       "custom_css": "CSS personalizado",
       "custom_css_locked": "Atualize para ativar CSS personalizado.",
       "embed_code": "Incorporar código",

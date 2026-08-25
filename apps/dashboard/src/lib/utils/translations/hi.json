@@ -1108,7 +1108,7 @@
           "audit_actor": "अभिनेता",
           "audit_ip": "आईपी",
           "scan_qr": "QR स्कैन करें",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "[[brand]].com",
           "snackbar_invite_link_copied": "आमंत्रण लिंक कॉपी किया गया",
           "snackbar_invite_link_regenerated": "एक नया आमंत्रण लिंक तैयार किया गया है",
           "snackbar_failed_generate_link": "आमंत्रण लिंक जनरेट करने में विफल",
@@ -2148,7 +2148,7 @@
     },
     "creator": {
       "heading": "आप कौन सा कोर्स बनाना चाहते हैं?",
-      "placeholder": "ClassroomIO से आपके लिए एक पाठ्यक्रम बनाने के लिए कहें...",
+      "placeholder": "[[brand]] से आपके लिए एक पाठ्यक्रम बनाने के लिए कहें...",
       "type": {
         "self_paced": "स्वयं गति",
         "live_class": "लाइव क्लास"
@@ -2413,7 +2413,7 @@
         "save": "सहेजें",
         "your_domain": "आपका डोमेन",
         "custom_domain_error": "आप किसी शीर्ष स्तरीय डोमेन को कस्टम डोमेन के रूप में नहीं जोड़ सकते. इसके बजाय, 'courses.[yourwebsite].com' या 'www.[yourwebsite].com' जैसे उपडोमेन का उपयोग करें।",
-        "custom_domain_not_classroomio": "डोमेन में 'classroomio' नहीं हो सकता",
+        "custom_domain_not_classroomio": "डोमेन में '[[brand]]' नहीं हो सकता",
         "custom_domain_success": "कस्टम डोमेन सफलतापूर्वक जोड़ा गया",
         "dns_description": "जारी रखने के लिए अपने DNS प्रदाता पर निम्नलिखित रिकॉर्ड सेट करें:",
         "dns_type": "प्रकार",
@@ -2724,7 +2724,7 @@
       "provider": "हम आपकी बिलिंग प्रबंधित करने में सहायता के लिए पोलर का उपयोग करते हैं",
       "open_billing": "बिलिंग खोलें",
       "error": "बिलिंग खोलते समय एक त्रुटि उत्पन्न हुई",
-      "page_subtitle": "Your plan, billing portal, and how you pay for ClassroomIO.",
+      "page_subtitle": "Your plan, billing portal, and how you pay for [[brand]].",
       "ai_credits": "AI credits",
       "ai_tokens_used": "इस महीने उपयोग किए गए AI credits",
       "ai_bonus_credits": "bonus AI credits उपलब्ध"
@@ -2732,7 +2732,7 @@
     "integrations": {
       "heading": "टेलीग्राम",
       "sub_heading": "एप्लिकेशन में किसी भी बदलाव की सूचना पाने के लिए अपने खाते को टेलीग्राम से कनेक्ट करें।",
-      "step_authenticate": "चरण 1: ClassroomIO बॉट के माध्यम से अपने खाते को प्रमाणित करें।",
+      "step_authenticate": "चरण 1: [[brand]] बॉट के माध्यम से अपने खाते को प्रमाणित करें।",
       "open_bot_button": "बॉट खोलें",
       "step_chatId": "चरण 2: बॉट द्वारा आपको दी गई चैट आईडी दर्ज करें।",
       "connect_button": "कनेक्ट करें",
@@ -3125,7 +3125,7 @@
         "accepted": "स्वीकृत:",
         "validation_error": "फ़ाइल का आकार अधिकतम सीमा से अधिक है:"
       },
-      "page_subtitle": "Your name, email, and how you appear wherever you work in ClassroomIO."
+      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]]."
     },
     "tabs": {
       "profile_tab": "प्रोफाइल",
@@ -3550,7 +3550,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "ClassroomIO पर {orgName} से जुड़ें",
+      "page_title": "[[brand]] पर {orgName} से जुड़ें",
       "invitation_student": "आपको {orgName} में छात्र के रूप में आमंत्रित किया गया है।",
       "invitation_teacher": "आपको {orgName} में शिक्षक के रूप में आमंत्रित किया गया है।",
       "invitation_admin": "आपको {orgName} में व्यवस्थापक के रूप में आमंत्रित किया गया है।",
@@ -3584,14 +3584,14 @@
       },
       "keys": {
         "title": "एमसीपी कुंजी",
-        "description": "जब कोई MCP क्लाइंट `@classroomio/mcp` के माध्यम से ClassroomIO को कॉल करता है तो ये कुंजियाँ वर्तमान संगठन को प्रमाणित करती हैं।",
+        "description": "जब कोई MCP क्लाइंट `@classroomio/mcp` के माध्यम से [[brand]] को कॉल करता है तो ये कुंजियाँ वर्तमान संगठन को प्रमाणित करती हैं।",
         "generate": "MCP कुंजी जनरेट करें",
         "secret_once": "यह रहस्य एक बार दिखाया गया है। अब इसे अपने MCP क्लाइंट में कॉपी करें।",
         "modal": {
           "title": "Create MCP key",
           "description": "Choose a name for this MCP key before it is generated.",
           "name_label": "Key name",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "[[brand]] OpenCode",
           "cancel": "Cancel",
           "save": "Create key"
         }
@@ -3607,17 +3607,17 @@
         "rate_limits_description": "प्रति मिनट पढ़ने/लिखने/प्रकाशित करने के अनुरोधों की अनुमति है।",
         "used_label": "प्रयुक्त:"
       },
-      "page_subtitle": "Connect AI tools to ClassroomIO with org-scoped keys you can rotate anytime."
+      "page_subtitle": "Connect AI tools to [[brand]] with org-scoped keys you can rotate anytime."
     },
     "api": {
-      "subtitle": "Manage API keys to integrate with the ClassroomIO public API.",
+      "subtitle": "Manage API keys to integrate with the [[brand]] public API.",
       "keys": {
         "title": "API keys",
-        "description": "These keys authenticate the current organization when calling the ClassroomIO public API.",
+        "description": "These keys authenticate the current organization when calling the [[brand]] public API.",
         "generate": "Generate API key",
         "secret_once": "This secret is shown once. Copy it and store it securely.",
         "empty_title": "No API keys yet",
-        "empty_description": "Create the first org-scoped API key to use the ClassroomIO public API.",
+        "empty_description": "Create the first org-scoped API key to use the [[brand]] public API.",
         "modal": {
           "title": "Create API key",
           "description": "Choose a name for this API key before it is generated.",
@@ -3663,7 +3663,7 @@
       "disabled_description": "केवल संगठन व्यवस्थापक ही स्वचालन कुंजियाँ बना सकते हैं, घुमा सकते हैं या निरस्त कर सकते हैं। शिक्षक यहां सेटअप निर्देशों की समीक्षा कर सकते हैं।"
     },
     "zapier": {
-      "page_subtitle": "Automate ClassroomIO with thousands of apps through Zapier. Coming soon."
+      "page_subtitle": "Automate [[brand]] with thousands of apps through Zapier. Coming soon."
     }
   },
   "programs": {

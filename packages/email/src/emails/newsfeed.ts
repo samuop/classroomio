@@ -22,7 +22,7 @@ export const newsfeedPostEmail = defineEmail({
       </div>
     `;
 
-    return getDefaultTemplate(content);
+    return getDefaultTemplate(content, { sender: fields.orgName });
   }
 });
 
@@ -44,6 +44,6 @@ export const newsfeedCommentEmail = defineEmail({
       </div>
     `;
 
-    return getDefaultTemplate(content);
+    return getDefaultTemplate(content, { sender: fields.orgName });
   }
 });

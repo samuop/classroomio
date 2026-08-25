@@ -63,7 +63,7 @@
           <div class="p-5">
             <span class="flex flex-col items-start gap-3 pb-5 lg:flex-row">
               <img
-                src={course.logo || '/images/classroomio-course-img-template.jpg'}
+                src={course.logo || '/images/course-img-template.jpg'}
                 alt="course"
                 class="hidden lg:block lg:h-[60px] lg:w-[60px]"
               />

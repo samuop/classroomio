@@ -119,7 +119,7 @@
           <div class="flex items-center justify-between gap-4">
             <div class="flex w-4/5 items-center gap-4">
               <img
-                src={course.logo || '/images/classroomio-course-img-template.jpg'}
+                src={course.logo || '/images/course-img-template.jpg'}
                 alt={course.title}
                 class="h-20 w-24 rounded-md"
               />

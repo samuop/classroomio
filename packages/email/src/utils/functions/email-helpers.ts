@@ -1,5 +1,5 @@
 import { FromData } from '../types';
-import { EMAIL_FROM } from '../constants';
+import { EMAIL_BRAND_NAME, EMAIL_FROM } from '../constants';
 
 // Accepts both `"Name" <a@b.com>` and `Name <a@b.com>` (quotes optional), as
 // well as a bare `a@b.com`. Returns the display name and the clean email.
@@ -34,7 +34,7 @@ function stripClassroomioBranding(name: string): string {
 
   // If the name WAS just "ClassroomIO" (or empty after stripping), use the brand.
   if (!cleaned || /^classroomio$/i.test(cleaned)) {
-    cleaned = process.env.EMAIL_BRAND_NAME?.trim() || 'Egea Consultoria';
+    cleaned = EMAIL_BRAND_NAME;
   }
 
   return cleaned;

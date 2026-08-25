@@ -28,6 +28,6 @@ export const studentCourseCompletionEmail = defineEmail({
       <p>Saludos,<br/>${fields.orgName}</p>
     `;
 
-    return getDefaultTemplate(content);
+    return getDefaultTemplate(content, { sender: fields.orgName });
   }
 });

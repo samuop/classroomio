@@ -1108,7 +1108,7 @@
           "audit_actor": "Skuespiller",
           "audit_ip": "IP",
           "scan_qr": "Scan QR",
-          "classroomio_brand": "ClassroomIO.com",
+          "classroomio_brand": "[[brand]].com",
           "snackbar_invite_link_copied": "Invitationslinket er kopieret",
           "snackbar_invite_link_regenerated": "Et nyt invitationslink er blevet genereret",
           "snackbar_failed_generate_link": "Kunne ikke generere invitationslink",
@@ -2148,7 +2148,7 @@
     },
     "creator": {
       "heading": "Hvilket kursus vil du lave?",
-      "placeholder": "Bed ClassroomIO om at oprette et kursus til dig...",
+      "placeholder": "Bed [[brand]] om at oprette et kursus til dig...",
       "type": {
         "self_paced": "Selv tempo",
         "live_class": "Live klasse"
@@ -2413,7 +2413,7 @@
         "save": "Gem",
         "your_domain": "Dit domæne",
         "custom_domain_error": "Du kan ikke tilføje et topniveaudomæne som brugerdefineret domæne. Brug i stedet et underdomæne som 'kurser.[dit websted].com' eller 'www.[dit websted].com'.",
-        "custom_domain_not_classroomio": "Domæne må ikke indeholde \"classroomio\"",
+        "custom_domain_not_classroomio": "Domæne må ikke indeholde \"[[brand]]\"",
         "custom_domain_success": "Tilpasset domæne blev tilføjet",
         "dns_description": "Indstil følgende registrering på din DNS-udbyder for at fortsætte:",
         "dns_type": "Type",
@@ -2484,12 +2484,12 @@
     "goto": "Gå til",
     "courses": "Kurser",
     "home": "Hjem",
-    "classroomio_home": "ClassroomIO Hjem",
+    "classroomio_home": "[[brand]] Hjem",
     "dashboard": "Dashboard",
     "discussion": "Diskussion",
     "people": "Mennesker",
     "goto_lms": "Gå til LMS",
-    "goto_home": "Gå til ClassroomIO Home",
+    "goto_home": "Gå til [[brand]] Home",
     "login": "Log ind",
     "signup": "Tilmeld dig",
     "redirecting": "Omdirigerer",
@@ -2590,7 +2590,7 @@
     "compliance": "Overholdelse"
   },
   "media_manager": {
-    "page_title": "Media Manager - ClassroomIO",
+    "page_title": "Media Manager - [[brand]]",
     "heading": "Mediemanager",
     "empty": "Ingen aktiver fundet",
     "usage": {
@@ -2724,7 +2724,7 @@
       "provider": "Vi bruger Polar til at hjælpe med at administrere din fakturering",
       "open_billing": "Åben fakturering",
       "error": "Der opstod en fejl under åbning af fakturering",
-      "page_subtitle": "Your plan, billing portal, and how you pay for ClassroomIO.",
+      "page_subtitle": "Your plan, billing portal, and how you pay for [[brand]].",
       "ai_credits": "AI credits",
       "ai_tokens_used": "AI credits brugt denne måned",
       "ai_bonus_credits": "bonus AI credits tilgængelige"
@@ -2732,7 +2732,7 @@
     "integrations": {
       "heading": "Telegram",
       "sub_heading": "Tilslut din konto til telegram for at få besked om enhver ændring i applikationen.",
-      "step_authenticate": "Trin 1: Godkend din konto via ClassroomIO-bot.",
+      "step_authenticate": "Trin 1: Godkend din konto via [[brand]]-bot.",
       "open_bot_button": "Åbn Bot",
       "step_chatId": "Trin 2: Indtast det chat-id, du har fået af botten.",
       "connect_button": "Forbind",
@@ -3052,7 +3052,7 @@
       "gallery": {
         "heading": "Populære temaer",
         "description": "Lavet med kernefunktioner, du nemt kan tilpasse - ingen kodning nødvendig.",
-        "by_classroomio": "af ClassroomIO",
+        "by_classroomio": "af [[brand]]",
         "add": "Tilføj",
         "upgrade": "Opgrader",
         "apply_theme": "Anvend tema",
@@ -3125,7 +3125,7 @@
         "accepted": "Accepteret:",
         "validation_error": "Filstørrelsen overstiger den maksimale grænse:"
       },
-      "page_subtitle": "Your name, email, and how you appear wherever you work in ClassroomIO."
+      "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]]."
     },
     "tabs": {
       "profile_tab": "Profil",
@@ -3483,7 +3483,7 @@
     "snackbar_error": "fejl under afsendelse af kode"
   },
   "public_courses": {
-    "page_title": "Kurser - ClassroomIO",
+    "page_title": "Kurser - [[brand]]",
     "heading": "Kurser",
     "subtitle": "Gennemse alle offentliggjorte kurser",
     "clear_filters": "Ryd filtre",
@@ -3498,7 +3498,7 @@
     }
   },
   "tags_admin": {
-    "page_title": "Tags - ClassroomIO",
+    "page_title": "Tags - [[brand]]",
     "heading": "Tags",
     "create": "Opret",
     "tag_modal": {
@@ -3550,7 +3550,7 @@
   },
   "invite": {
     "organization": {
-      "page_title": "Tilmeld dig {orgName} på ClassroomIO",
+      "page_title": "Tilmeld dig {orgName} på [[brand]]",
       "invitation_student": "Du er blevet inviteret til {orgName} som elev.",
       "invitation_teacher": "Du er blevet inviteret til {orgName} som lærer.",
       "invitation_admin": "Du er blevet inviteret til {orgName} som administrator.",
@@ -3578,20 +3578,20 @@
         "title": "Klient opsætning",
         "description": "Brug én nøgle med organisationsomfang pr. integration. Hvis en nøgle roteres eller tilbagekaldes, holder klienten op med at arbejde, indtil den nye hemmelighed er konfigureret.",
         "claude_code_description": "Registrerer `@classroomio/mcp` med Claude Code ved hjælp af den genererede org-omfangede nøgle.",
-        "codex_description": "Tilføjer ClassroomIO MCP-serveren til Codex med den samme org-omfattede nøgle.",
+        "codex_description": "Tilføjer [[brand]] MCP-serveren til Codex med den samme org-omfattede nøgle.",
         "cursor_description": "Indsæt dette i `~/.cursor/mcp.json` eller dit arbejdsområde MCP-konfiguration.",
         "opencode_description": "Tilføj dette til `opencode.json` i projektroden eller `~/.config/opencode/opencode.json`."
       },
       "keys": {
         "title": "MCP nøgler",
-        "description": "Disse nøgler autentificerer den aktuelle organisation, når en MCP-klient ringer til ClassroomIO gennem `@classroomio/mcp`.",
+        "description": "Disse nøgler autentificerer den aktuelle organisation, når en MCP-klient ringer til [[brand]] gennem `@classroomio/mcp`.",
         "generate": "Generer MCP-nøgle",
         "secret_once": "Denne hemmelighed vises én gang. Kopier det til din MCP-klient nu.",
         "modal": {
           "title": "Create MCP key",
           "description": "Choose a name for this MCP key before it is generated.",
           "name_label": "Key name",
-          "name_placeholder": "ClassroomIO OpenCode",
+          "name_placeholder": "[[brand]] OpenCode",
           "cancel": "Cancel",
           "save": "Create key"
         }
@@ -3607,17 +3607,17 @@
         "rate_limits_description": "Læs/skriv/publicér anmodninger tilladt pr. minut.",
         "used_label": "Brugt:"
       },
-      "page_subtitle": "Connect AI tools to ClassroomIO with org-scoped keys you can rotate anytime."
+      "page_subtitle": "Connect AI tools to [[brand]] with org-scoped keys you can rotate anytime."
     },
     "api": {
-      "subtitle": "Manage API keys to integrate with the ClassroomIO public API.",
+      "subtitle": "Manage API keys to integrate with the [[brand]] public API.",
       "keys": {
         "title": "API keys",
-        "description": "These keys authenticate the current organization when calling the ClassroomIO public API.",
+        "description": "These keys authenticate the current organization when calling the [[brand]] public API.",
         "generate": "Generate API key",
         "secret_once": "This secret is shown once. Copy it and store it securely.",
         "empty_title": "No API keys yet",
-        "empty_description": "Create the first org-scoped API key to use the ClassroomIO public API.",
+        "empty_description": "Create the first org-scoped API key to use the [[brand]] public API.",
         "modal": {
           "title": "Create API key",
           "description": "Choose a name for this API key before it is generated.",
@@ -3663,7 +3663,7 @@
       "disabled_description": "Kun organisationsadministratorer kan oprette, rotere eller tilbagekalde automatiseringsnøgler. Lærere kan gennemgå opsætningsinstruktionerne her."
     },
     "zapier": {
-      "page_subtitle": "Automate ClassroomIO with thousands of apps through Zapier. Coming soon."
+      "page_subtitle": "Automate [[brand]] with thousands of apps through Zapier. Coming soon."
     }
   },
   "programs": {
@@ -4099,7 +4099,7 @@
       "border_radius": "Grænseradius",
       "font_family": "Fontfamilie",
       "font_scale": "Skriftstørrelsesskala",
-      "show_powered_by": "Vis Classroomio branding",
+      "show_powered_by": "Vis [[brand]] branding",
       "custom_css": "Brugerdefineret CSS",
       "custom_css_locked": "Opgrader for at aktivere tilpasset CSS.",
       "embed_code": "Integrer kode",

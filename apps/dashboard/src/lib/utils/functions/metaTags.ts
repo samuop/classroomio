@@ -9,7 +9,16 @@ const isSelfHosted = PUBLIC_IS_SELFHOSTED === 'true';
 const DEFAULT_TITLE = `${brandName} | Learning Platform`;
 const DEFAULT_DESCRIPTION =
   'A flexible, user-friendly platform for creating, managing, and delivering courses for companies and training organisations';
-const CLOUD_OG_IMAGE = '/logo-512.png';
+/**
+ * Sin imagen por defecto, a propósito.
+ *
+ * Acá había `/logo-512.png`, que es el isotipo de ClassroomIO: cada link que se
+ * compartía sin imagen propia previsualizaba con la marca del proyecto
+ * original — incluso una consultora mandándole un curso a su cliente. Antes que
+ * prestar una marca ajena, no se manda imagen y la vista previa queda sólo con
+ * título y descripción.
+ */
+const NO_OG_IMAGE = null;
 
 /**
  * The picture that shows when a link to this platform is shared.
@@ -20,7 +29,7 @@ const CLOUD_OG_IMAGE = '/logo-512.png';
  * hosted") sent the bundled upstream logo as the preview for every shared link,
  * including a consultancy sharing a course with its own client.
  */
-function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): string {
+function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): string | null {
   const envUrl = env.PUBLIC_OG_IMAGE_URL?.trim();
   if (envUrl) return envUrl;
 
@@ -39,7 +48,7 @@ function resolveOgImageUrl(url: URL, orgSiteInfo: OrgSiteInfo): string {
     }
   }
 
-  return CLOUD_OG_IMAGE;
+  return NO_OG_IMAGE;
 }
 
 export function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): MetaTagsProps {
@@ -67,23 +76,28 @@ export function getBaseMetaTags(url: URL, orgSiteInfo: OrgSiteInfo): MetaTagsPro
       title,
       description,
       siteName,
-      images: [
-        {
-          url: ogImageUrl,
-          alt: `${siteName} OG Image`,
-          width: 1920,
-          height: 1080,
-          secureUrl: ogImageUrl,
-          type: 'image/png'
-        }
-      ]
+      // Sin imagen no va la clave: `images: [{ url: null }]` emitiría una
+      // etiqueta og:image vacía, que para un scraper es peor que la ausencia.
+      ...(ogImageUrl
+        ? {
+            images: [
+              {
+                url: ogImageUrl,
+                alt: `${siteName} OG Image`,
+                width: 1920,
+                height: 1080,
+                secureUrl: ogImageUrl,
+                type: 'image/png'
+              }
+            ]
+          }
+        : {})
     },
     twitter: {
-      cardType: 'summary_large_image' as const,
+      cardType: ogImageUrl ? ('summary_large_image' as const) : ('summary' as const),
       title,
       description,
-      image: ogImageUrl,
-      imageAlt: `${siteName} OG Image`
+      ...(ogImageUrl ? { image: ogImageUrl, imageAlt: `${siteName} OG Image` } : {})
     }
   });
 }

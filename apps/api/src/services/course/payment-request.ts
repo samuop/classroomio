@@ -2,7 +2,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getCourseWithOrgData } from '@cio/db/queries/course';
-import { buildEmailFromName } from '@cio/email';
+import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { trackServerEvent, SERVER_EVENTS } from '@cio/analytics';
 
@@ -26,7 +26,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
     }
 
     const courseName = course.courseTitle || '';
-    const orgName = course.orgName || 'ClassroomIO';
+    const orgName = course.orgName || EMAIL_BRAND_NAME;
     const groupId = course.groupId;
 
     if (!groupId) {
@@ -50,7 +50,7 @@ export async function createPaymentRequest(data: PaymentRequestData) {
           studentEmail: data.studentEmail,
           studentFullname: data.studentFullname
         },
-        from: buildEmailFromName('ClassroomIO'),
+        from: buildEmailFromName(EMAIL_BRAND_NAME),
         idempotencyKey: `payment-request:teacher:${data.courseId}:${data.studentEmail}`
       });
     } catch (emailError) {

@@ -31,6 +31,7 @@ export type { EmailId, EmailSchemaFor } from './utils/types';
 // Re-export low-level utilities
 export { deliverEmail } from './send';
 export { buildEmailFromName } from './utils/functions/email-helpers';
+export { EMAIL_BRAND_NAME, isEmailSenderConfigured } from './utils/constants';
 export { getDefaultTemplate } from './templates/default';
 
 // Export email registry for introspection (optional)

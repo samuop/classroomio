@@ -30,7 +30,7 @@ import { getDashboardBaseUrl } from '@api/config/dashboard-url';
 import { resolveOrgUrlIdentityBySiteName } from '@api/utils/org-url';
 import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
-import { buildEmailFromName } from '@cio/email';
+import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { getProfileByEmail, markUserAndProfileEmailVerified } from '@cio/db/queries/auth';
 import { generateSlug } from '@cio/utils/functions';
@@ -362,7 +362,7 @@ async function sendStudentJoinEmails(input: {
         courseName: input.courseName,
         loginUrl
       },
-      from: buildEmailFromName(`${input.orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(input.orgName || EMAIL_BRAND_NAME),
       idempotencyKey: `course-welcome:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -389,7 +389,7 @@ async function sendStudentJoinEmails(input: {
         studentName,
         studentEmail: input.studentEmail
       },
-      from: buildEmailFromName('ClassroomIO'),
+      from: buildEmailFromName(EMAIL_BRAND_NAME),
       idempotencyKey: `teacher-student-joined:${input.courseId}:${input.studentId}`
     });
   } catch (error) {
@@ -444,7 +444,7 @@ async function createEmailInviteAndSend(input: {
         inviteLink: createdInvite.inviteLink,
         expiresAt: getExpiryLabel(createdInvite.expiresAt)
       },
-      from: buildEmailFromName(`${input.orgName} (via ClassroomIO.com)`),
+      from: buildEmailFromName(input.orgName || EMAIL_BRAND_NAME),
       idempotencyKey: `course-invite-email:${createdInvite.id}`
     });
 
@@ -535,7 +535,7 @@ export async function createStudentInvite(courseId: string, createdByProfileId: 
     };
   }
 
-  const orgName = courseOrgData.orgName || 'ClassroomIO';
+  const orgName = courseOrgData.orgName || EMAIL_BRAND_NAME;
   const courseName = courseOrgData.courseTitle || course[0].title || 'Course';
 
   const inviteResults = await Promise.all(
