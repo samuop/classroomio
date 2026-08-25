@@ -1,11 +1,9 @@
 import * as z from 'zod';
 
 import { defineEmail } from '../send';
-import { getDefaultTemplate } from '../templates';
 
 export const programGoalReminderEmail = defineEmail({
   id: 'programGoalReminder',
-  subject: 'Recordatorio: un objetivo de tu programa vence pronto',
   schema: z.object({
     orgName: z.string().min(1),
     programName: z.string().min(1),
@@ -15,26 +13,30 @@ export const programGoalReminderEmail = defineEmail({
     requiredCount: z.number().int(),
     loginUrl: z.string().min(1)
   }),
-  render: (fields) => {
-    const dueLine =
+  /**
+   * "vence mañana" no es un dato, es una frase que depende del dato. Se calcula
+   * acá y llega al texto como una variable más: quien escribe el correo no tiene
+   * por qué saber que atrás hay un `if`.
+   *
+   * Van en texto plano a propósito: se interpolan DESPUÉS de convertir
+   * `*negrita*`, así que un asterisco acá saldría literal. La énfasis se pone en
+   * la plantilla —`*{progress}*`— que es donde el admin también puede sacarla.
+   */
+  derived: (fields) => ({
+    dueLine:
       fields.daysUntilDue <= 0
-        ? `<p>Este objetivo está <strong>vencido</strong>.</p>`
+        ? 'Este objetivo está vencido.'
         : fields.daysUntilDue === 1
-          ? `<p>Este objetivo vence <strong>mañana</strong>.</p>`
-          : `<p>Este objetivo vence en <strong>${fields.daysUntilDue} días</strong>.</p>`;
-
-    const progress = `${fields.completedCount} de ${fields.requiredCount} cursos completados`;
-
-    const content = `
-      <p>Hola,</p>
-      <p>Te recordamos que el objetivo <strong>${fields.goalTitle}</strong> de tu programa <strong>${fields.programName}</strong> en ${fields.orgName} necesita tu atención.</p>
-      ${dueLine}
-      <p>Tu progreso hasta ahora: <strong>${progress}</strong>.</p>
-      <p><a href="${fields.loginUrl}">Iniciá sesión</a> para continuar.</p>
-      <p>Saludos,</p>
-      <p>${fields.orgName}</p>
-    `;
-
-    return getDefaultTemplate(content, { sender: fields.orgName });
+          ? 'Este objetivo vence mañana.'
+          : `Este objetivo vence en ${fields.daysUntilDue} días.`,
+    progress: `${fields.completedCount} de ${fields.requiredCount} cursos completados`
+  }),
+  blocks: {
+    subject: 'Recordatorio: un objetivo de tu programa vence pronto',
+    heading: '',
+    body: 'Hola,\n\nTe recordamos que el objetivo *{goalTitle}* de tu programa *{programName}* en {orgName} necesita tu atención.\n\n{dueLine}\n\nTu progreso hasta ahora: *{progress}*.\n\nSaludos,\n{orgName}',
+    ctaLabel: 'Continuar',
+    ctaUrl: '{loginUrl}',
+    footer: ''
   }
 });

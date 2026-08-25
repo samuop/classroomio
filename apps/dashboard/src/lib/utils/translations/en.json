@@ -567,8 +567,7 @@
       "domains_tab": "Domains",
       "teams_tab": "Teams",
       "workspaces_tab": "Client companies",
-      "notifications_tab": "Email notifications",
-      "email_templates_tab": "Email wording"
+      "emails_tab": "Emails"
     },
     "profile": {
       "page_subtitle": "Your name, email, and how you appear wherever you work in [[brand]].",
@@ -5290,85 +5289,142 @@
     "col_tokens": "Tokens (month)",
     "delete_action": "Delete company"
   },
-  "notifications": {
-    "title": "Email notifications",
-    "subtitle": "Which emails the platform sends on its own. Changes save as you make them.",
-    "loading": "Loading notifications…",
-    "save_failed": "We couldn't save that change. Please try again.",
-    "broadcast": "Whole team",
+  "emails": {
+    "title": "Automatic emails",
+    "subtitle": "Which emails the system sends, and what each one says. You write text — the platform handles the design.",
+    "loading": "Loading emails…",
+    "load_failed": "Could not load the emails.",
     "groups": {
-      "students": {
-        "title": "To learners",
-        "description": "Emails that reach the people taking the course."
+      "student": {
+        "title": "To students",
+        "description": "What the people taking the courses receive."
       },
       "team": {
-        "title": "To tutors and admins",
-        "description": "Emails that reach whoever teaches or administers. The flagged ones go to the whole course team, so a course with four tutors sends four emails."
+        "title": "To the team",
+        "description": "What teachers and admins receive."
+      },
+      "always": {
+        "title": "Always sent",
+        "description": "Access and invitations. The text is editable; sending is not, because without them nobody gets in."
       }
     },
-    "always": {
-      "title": "Always sent",
-      "description": "Sign-up, email verification, password reset and change, and invitations. Account emails can't be turned off — without them nobody can get in; invitations already have their own checkbox when you invite someone."
+    "state": {
+      "on": "ON",
+      "off": "PAUSED",
+      "always": "ALWAYS"
     },
+    "always_hint": "This email is part of a flow and cannot be turned off. The text can still be edited.",
+    "broadcast": "To the whole team",
+    "customized": "Edited",
+    "no_text": "This one is still built in code: it can be turned off, but the text is not editable yet.",
+    "inherited": "{owner} writes these texts. You can read exactly what your people will get, but they are edited from that workspace.",
+    "fields": {
+      "subject": "Subject",
+      "subject_help": "What shows up in the inbox.",
+      "heading": "Heading",
+      "heading_help": "Large heading inside the email. Leave it empty for none.",
+      "body": "Message",
+      "body_help": "Plain text. A blank line starts a new paragraph, and *between asterisks* comes out bold.",
+      "cta": "Button",
+      "cta_on": "WITH BUTTON",
+      "cta_off": "NO BUTTON",
+      "cta_label": "Button text",
+      "cta_url": "Where it goes",
+      "cta_url_help": "Almost always a variable: pick one from the list above.",
+      "footer": "Footnote",
+      "footer_help": "Small print at the end. Empty = no note."
+    },
+    "variables": {
+      "title": "Available variables",
+      "help": "Tap one to insert it at the cursor. It is replaced with the real value when the email is sent.",
+      "copied": "Inserted"
+    },
+    "missing_warning": "The text no longer uses these variables, and the email stops making sense without them:",
+    "preview": {
+      "title": "Preview",
+      "updating": "updating…",
+      "subject": "Subject",
+      "loading": "Building the preview…",
+      "failed": "Could not build the preview.",
+      "help": "With sample data. Same renderer the real send uses."
+    },
+    "test": {
+      "title": "Send yourself a test",
+      "placeholder": "your-email@example.com",
+      "send": "Send test",
+      "sending": "Sending…",
+      "sent": "Test email sent",
+      "failed": "Could not send the test.",
+      "invalid": "Enter a valid email address.",
+      "help": "Uses what you have typed right now, even if it is not saved."
+    },
+    "save": "Save",
+    "saved": "Email saved",
+    "save_failed": "Could not save.",
+    "reset": "Back to the original",
+    "reset_done": "Original text restored",
+    "unsaved": "Unsaved",
     "items": {
       "newsfeedPost": {
-        "title": "A teacher posts an announcement",
-        "description": "Goes to every course member except the author."
+        "title": "New post on the wall",
+        "description": "When a teacher posts on a course wall. Goes to every student in the course."
       },
       "submissionStatusChanged": {
-        "title": "Their submission changes status",
-        "description": "When it moves to In progress or is Graded."
+        "title": "Submission status changed",
+        "description": "When a submission moves to Submitted, In progress or Graded."
       },
-      "courseCompleted": {
-        "title": "They finish the course",
-        "description": "With a link to their certificate."
+      "studentCourseCompletion": {
+        "title": "Course completed",
+        "description": "When a student meets the course requirements. Carries the certificate link."
       },
-      "paymentProofRequested": {
-        "title": "They're asked for proof of payment",
-        "description": "Paid courses only."
+      "studentProvePayment": {
+        "title": "Payment proof missing",
+        "description": "When a student asks to join a paid course and has to send the receipt."
       },
       "programGoalReminder": {
-        "title": "A goal deadline is coming up",
-        "description": "Following the lead time set on each program goal."
+        "title": "Program goal is due",
+        "description": "A reminder as the due date of a goal approaches."
       },
       "exerciseSubmitted": {
-        "title": "A learner submits an exercise",
-        "description": "Tells you there's something to grade."
+        "title": "A student submitted an exercise",
+        "description": "Goes to the whole course team, every time someone submits."
       },
-      "studentJoinedCourse": {
-        "title": "A learner joins the course",
-        "description": "One email per new enrolment."
+      "teacherStudentJoined": {
+        "title": "A student joined the course",
+        "description": "Goes to the whole course team."
       },
       "newsfeedComment": {
-        "title": "Someone comments on their post",
-        "description": "Only the author gets it."
+        "title": "Someone commented on a post",
+        "description": "When a wall post gets a comment."
       },
-      "addedAsTeacher": {
-        "title": "They're added as a teacher",
-        "description": "When they join a course team."
+      "teacherCourseWelcome": {
+        "title": "Added as a teacher",
+        "description": "When someone on the team is given a course to teach."
       },
-      "purchaseRequested": {
-        "title": "A learner asks to buy a course",
-        "description": "Paid courses only."
+      "teacherStudentBuyRequest": {
+        "title": "Course purchase requested",
+        "description": "When someone asks to join a paid course."
+      },
+      "inviteTeacher": {
+        "title": "Team invitation",
+        "description": "When you invite someone as a teacher or admin."
+      },
+      "studentOrgInvite": {
+        "title": "Platform invitation",
+        "description": "When you invite a student to the company."
+      },
+      "studentCourseInvite": {
+        "title": "Course invitation",
+        "description": "When you invite someone to a single course."
+      },
+      "studentCourseWelcome": {
+        "title": "Course access granted",
+        "description": "When a student who already has an account is given a course."
+      },
+      "studentProgramWelcome": {
+        "title": "Program access granted",
+        "description": "When a student who already has an account is given a program."
       }
     }
-  },
-  "email_templates": {
-    "title": "Email wording",
-    "subtitle": "Rewrite the subject and body of the automatic emails. Anything you leave blank goes back to the original.",
-    "loading": "Loading wording…",
-    "customized": "Edited",
-    "subject": "Subject",
-    "body": "Body",
-    "body_help": "You can use bold, italics, lists and links. Anything else is stripped on save, because email clients don't render it consistently.",
-    "variables": "Available variables",
-    "variables_help": "Tap one to append it to the body. They're replaced with the real value when the email is sent.",
-    "missing_warning": "You removed an important variable. The email will still send, but without this it may be useless:",
-    "save": "Save",
-    "reset": "Restore original",
-    "unsaved": "Unsaved",
-    "saved": "Wording saved",
-    "reset_done": "Original wording restored",
-    "save_failed": "We couldn't save the wording. Please try again."
   }
 }

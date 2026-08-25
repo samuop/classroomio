@@ -11,13 +11,15 @@ import { deliverEmail } from '../send';
 export async function sendTemplateEmail<TSchema extends z.ZodType>(
   config: SendTemplateConfig<TSchema>
 ): Promise<EmailResponse[]> {
-  const content = config.template.render(config.fields);
+  // `renderEmail` y no `render` + `subject`: el asunto también puede llevar
+  // variables, y mandarlo crudo deja un `{courseName}` literal en la bandeja.
+  const { subject, html } = config.template.renderEmail(config.fields);
 
   return deliverEmail([
     {
       to: config.to,
-      subject: config.template.subject,
-      content,
+      subject,
+      content: html,
       from: config.from ?? config.template.from,
       replyTo: config.replyTo ?? config.template.replyTo
     }

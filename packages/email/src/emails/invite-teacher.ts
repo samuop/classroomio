@@ -1,11 +1,9 @@
 import * as z from 'zod';
 
 import { defineEmail } from '../send';
-import { getDefaultTemplate } from '../templates';
 
 export const inviteTeacherEmail = defineEmail({
   id: 'inviteTeacher',
-  subject: 'Te invitaron a sumarte como instructor 😃',
   schema: z.object({
     email: z.string().email(),
     orgName: z.string().min(1),
@@ -14,16 +12,12 @@ export const inviteTeacherEmail = defineEmail({
     expiresAt: z.string().min(1),
     inviteLink: z.url()
   }),
-  render: (fields) => {
-    const content = `
-      <p>Hola,</p>
-      <p>Te invitaron a unirte a ${fields.orgName} como ${fields.roleName} 🎉🎉🎉.</p>
-      <p>Esta invitación vence el ${fields.expiresAt} (UTC).</p>
-      <div>
-        <a class="button" href="${fields.inviteLink}">Aceptar invitación</a>
-      </div>
-    `;
-
-    return getDefaultTemplate(content, { sender: fields.orgName });
+  blocks: {
+    subject: 'Te invitaron a sumarte como instructor 😃',
+    heading: '',
+    body: 'Hola,\n\nTe invitaron a unirte a {orgName} como {roleName} 🎉🎉🎉.\n\nEsta invitación vence el {expiresAt} (UTC).',
+    ctaLabel: 'Aceptar invitación',
+    ctaUrl: '{inviteLink}',
+    footer: ''
   }
 });

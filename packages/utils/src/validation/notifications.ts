@@ -32,6 +32,15 @@ export type TNotificationAudience = (typeof NOTIFICATION_AUDIENCE)[keyof typeof 
 export interface NotificationDefinition {
   id: TNotificationId;
   audience: TNotificationAudience;
+  /**
+   * El correo del registro de `@cio/email` que este interruptor apaga.
+   *
+   * Es lo que une las dos mitades de la pantalla: el texto que se edita y el
+   * interruptor que decide si sale. `null` es para los dos avisos que todavía
+   * se arman a mano en el código y no tienen plantilla registrada — se pueden
+   * apagar, pero no reescribir.
+   */
+  emailId: string | null;
   /** Encendido de fábrica. */
   default: boolean;
   /**
@@ -71,18 +80,23 @@ export const NOTIFICATION_IDS = [
 export type TNotificationId = (typeof NOTIFICATION_IDS)[number];
 
 export const NOTIFICATION_CATALOG: readonly NotificationDefinition[] = [
-  { id: 'newsfeedPost', audience: 'student', default: true, broadcast: true },
-  { id: 'submissionStatusChanged', audience: 'student', default: true },
-  { id: 'courseCompleted', audience: 'student', default: true },
-  { id: 'paymentProofRequested', audience: 'student', default: true },
-  { id: 'programGoalReminder', audience: 'student', default: true },
+  { id: 'newsfeedPost', audience: 'student', emailId: 'newsfeedPost', default: true, broadcast: true },
+  { id: 'submissionStatusChanged', audience: 'student', emailId: null, default: true },
+  { id: 'courseCompleted', audience: 'student', emailId: 'studentCourseCompletion', default: true },
+  { id: 'paymentProofRequested', audience: 'student', emailId: 'studentProvePayment', default: true },
+  { id: 'programGoalReminder', audience: 'student', emailId: 'programGoalReminder', default: true },
 
-  { id: 'exerciseSubmitted', audience: 'team', default: true, broadcast: true },
-  { id: 'studentJoinedCourse', audience: 'team', default: true, broadcast: true },
-  { id: 'newsfeedComment', audience: 'team', default: true },
-  { id: 'addedAsTeacher', audience: 'team', default: true },
-  { id: 'purchaseRequested', audience: 'team', default: true }
+  { id: 'exerciseSubmitted', audience: 'team', emailId: null, default: true, broadcast: true },
+  { id: 'studentJoinedCourse', audience: 'team', emailId: 'teacherStudentJoined', default: true, broadcast: true },
+  { id: 'newsfeedComment', audience: 'team', emailId: 'newsfeedComment', default: true },
+  { id: 'addedAsTeacher', audience: 'team', emailId: 'teacherCourseWelcome', default: true },
+  { id: 'purchaseRequested', audience: 'team', emailId: 'teacherStudentBuyRequest', default: true }
 ] as const;
+
+/** El interruptor de un correo, o `null` si ese correo no se puede apagar. */
+export function notificationForEmail(emailId: string): NotificationDefinition | null {
+  return NOTIFICATION_CATALOG.find((n) => n.emailId === emailId) ?? null;
+}
 
 /**
  * Todo encendido salvo que el catálogo diga otra cosa.

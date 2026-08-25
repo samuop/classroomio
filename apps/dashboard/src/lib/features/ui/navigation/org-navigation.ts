@@ -231,13 +231,8 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/at-risk'
       },
       {
-        titleKey: 'settings.tabs.notifications_tab',
-        path: '/settings/notifications',
-        requiresAdmin: true
-      },
-      {
-        titleKey: 'settings.tabs.email_templates_tab',
-        path: '/settings/email-templates',
+        titleKey: 'settings.tabs.emails_tab',
+        path: '/settings/emails',
         requiresAdmin: true
       },
       {
@@ -272,12 +267,8 @@ export const baseNavConfig: NavItemConfig[] = [
         titleKey: 'settings.tabs.at_risk_tab'
       },
       {
-        path: 'notifications',
-        titleKey: 'settings.tabs.notifications_tab'
-      },
-      {
-        path: 'email-templates',
-        titleKey: 'settings.tabs.email_templates_tab'
+        path: 'emails',
+        titleKey: 'settings.tabs.emails_tab'
       },
       {
         path: 'customize-lms',

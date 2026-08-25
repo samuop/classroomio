@@ -3822,10 +3822,23 @@ export const organizationEmailTemplate = pgTable(
     organizationId: uuid('organization_id').notNull(),
     /** El id del correo en el registro de @cio/email (`teacherStudentJoined`, …). */
     emailId: varchar('email_id', { length: 64 }).notNull(),
-    /** `null` = usar el asunto de fábrica. */
+    /**
+     * Los bloques reescritos. `null` en cualquiera = usar el de fábrica.
+     *
+     * Todo texto plano: el HTML lo arma el servidor con el mismo diseño de
+     * siempre (ver `@cio/email/core/blocks`). Guardar HTML acá fue el diseño
+     * anterior y significaba que el admin editaba un `<!doctype html>` entero.
+     */
     subject: text(),
-    /** `null` = usar el cuerpo de fábrica. HTML ya saneado al guardar. */
+    /** Título grande adentro del correo. */
+    heading: text(),
+    /** El mensaje. Línea en blanco = párrafo nuevo, `*así*` = negrita. */
     body: text(),
+    /** Texto del botón. Cadena vacía = el correo sale sin botón, a propósito. */
+    ctaLabel: text('cta_label'),
+    ctaUrl: text('cta_url'),
+    /** Nota chica al final. */
+    footer: text(),
     updatedByProfileId: uuid('updated_by_profile_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull()

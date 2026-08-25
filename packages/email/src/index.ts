@@ -36,5 +36,8 @@ export { getDefaultTemplate } from './templates/default';
 
 // Export email registry for introspection (optional)
 export { EmailRegistry } from './core/registry';
-export { applyVariables, getEditableEmails, isEditableEmail } from './core/editable';
+export { getEditableEmails, isEditableEmail } from './core/editable';
 export type { EditableEmail } from './core/editable';
+export { renderEmailBlocks, EMAIL_BLOCK_KEYS, EMAIL_BLOCK_LIMITS, EMPTY_BLOCKS } from './core/blocks';
+export type { EmailBlocks, EmailBlockKey, RenderedEmail } from './core/blocks';
+export { sampleFieldsFor } from './core/sample';

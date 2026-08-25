@@ -4280,8 +4280,7 @@
       "ai_tutor_tab": "Tutor de IA",
       "ai_images_tab": "Imágenes de IA",
       "at_risk_tab": "Estudiantes en riesgo",
-      "notifications_tab": "Avisos por correo",
-      "email_templates_tab": "Texto de los correos"
+      "emails_tab": "Correos"
     },
     "subheadings": {
       "view_site": "Ver sitio"
@@ -5299,85 +5298,142 @@
     "col_tokens": "Fichas (mes)",
     "delete_action": "Eliminar empresa"
   },
-  "notifications": {
-    "title": "Avisos por correo",
-    "subtitle": "Qué correos manda la plataforma sola, sin que nadie los pida. Los cambios se guardan al momento.",
-    "loading": "Cargando los avisos…",
-    "save_failed": "No pudimos guardar el cambio. Volvé a intentar.",
-    "broadcast": "A todo el equipo",
+  "emails": {
+    "title": "Correos automáticos",
+    "subtitle": "Qué correos manda el sistema, y qué dice cada uno. Escribís texto: el diseño lo pone la plataforma.",
+    "loading": "Cargando los correos…",
+    "load_failed": "No se pudieron cargar los correos.",
     "groups": {
-      "students": {
-        "title": "A los alumnos",
-        "description": "Correos que le llegan a quien está cursando."
+      "student": {
+        "title": "Al alumno",
+        "description": "Los que reciben las personas que hacen los cursos."
       },
       "team": {
-        "title": "A tutores y administradores",
-        "description": "Correos que le llegan a quien da clase o administra. Los marcados van a todo el equipo del curso, así que un curso con cuatro tutores manda cuatro correos."
+        "title": "Al equipo",
+        "description": "Los que reciben tutores y administradores."
+      },
+      "always": {
+        "title": "Siempre se envían",
+        "description": "Accesos e invitaciones. El texto se edita; el envío no se apaga, porque sin ellos nadie entra."
       }
     },
-    "always": {
-      "title": "Los que siempre salen",
-      "description": "Registro, verificación de correo, recuperar y cambiar contraseña, e invitaciones. Los de cuenta no se apagan porque sin ellos nadie puede entrar; las invitaciones ya tienen su propia casilla al momento de invitar."
+    "state": {
+      "on": "ACTIVO",
+      "off": "PAUSADO",
+      "always": "SIEMPRE"
     },
+    "always_hint": "Este correo es parte de un flujo y no se puede apagar. El texto sí se edita.",
+    "broadcast": "A todo el equipo",
+    "customized": "Editado",
+    "no_text": "Este aviso todavía se arma en el código: se puede apagar, pero el texto no se edita.",
+    "inherited": "Los textos los escribe {owner}. Acá los ves tal cual le van a llegar a tu gente, pero se editan desde su espacio de trabajo.",
+    "fields": {
+      "subject": "Asunto",
+      "subject_help": "Lo que se ve en la bandeja de entrada.",
+      "heading": "Título",
+      "heading_help": "Título grande adentro del correo. Dejalo vacío si no querés ninguno.",
+      "body": "Mensaje",
+      "body_help": "Texto común. Una línea en blanco empieza un párrafo nuevo, y *entre asteriscos* sale en negrita.",
+      "cta": "Botón",
+      "cta_on": "CON BOTÓN",
+      "cta_off": "SIN BOTÓN",
+      "cta_label": "Texto del botón",
+      "cta_url": "A dónde lleva",
+      "cta_url_help": "Casi siempre una variable: elegila de la lista de arriba.",
+      "footer": "Nota al pie",
+      "footer_help": "Letra chica al final. Vacío = sin nota."
+    },
+    "variables": {
+      "title": "Variables disponibles",
+      "help": "Tocá una para insertarla donde tengas el cursor. Se reemplaza por el dato real al enviar.",
+      "copied": "Insertada"
+    },
+    "missing_warning": "El texto ya no usa estas variables, y sin ellas el correo pierde sentido:",
+    "preview": {
+      "title": "Vista previa",
+      "updating": "actualizando…",
+      "subject": "Asunto",
+      "loading": "Generando la vista previa…",
+      "failed": "No se pudo generar la vista previa.",
+      "help": "Con datos de ejemplo. Es el mismo render que usa el envío real."
+    },
+    "test": {
+      "title": "Mandarte una prueba",
+      "placeholder": "tu-correo@ejemplo.com",
+      "send": "Enviar prueba",
+      "sending": "Enviando…",
+      "sent": "Correo de prueba enviado",
+      "failed": "No se pudo enviar la prueba.",
+      "invalid": "Escribí un correo válido.",
+      "help": "Usa lo que tenés escrito ahora, aunque no lo hayas guardado."
+    },
+    "save": "Guardar",
+    "saved": "Correo guardado",
+    "save_failed": "No se pudo guardar.",
+    "reset": "Volver al original",
+    "reset_done": "Texto original restaurado",
+    "unsaved": "Sin guardar",
     "items": {
       "newsfeedPost": {
-        "title": "Un docente publica un aviso",
-        "description": "Le llega a todos los miembros del curso, menos a quien publicó."
+        "title": "Aviso nuevo en el muro",
+        "description": "Cuando un docente publica algo en el muro de un curso. Le llega a todos los alumnos del curso."
       },
       "submissionStatusChanged": {
-        "title": "Cambia el estado de su entrega",
-        "description": "Cuando pasa a En progreso o queda Calificada."
+        "title": "Cambió el estado de una entrega",
+        "description": "Cuando la entrega del alumno pasa a Enviado, En progreso o Calificado."
       },
-      "courseCompleted": {
-        "title": "Termina el curso",
-        "description": "Con el enlace a su certificado."
+      "studentCourseCompletion": {
+        "title": "Completó el curso",
+        "description": "Cuando el alumno cumple los requisitos del curso. Lleva el enlace al certificado."
       },
-      "paymentProofRequested": {
-        "title": "Le piden comprobante de pago",
-        "description": "Sólo en cursos pagos."
+      "studentProvePayment": {
+        "title": "Falta el comprobante de pago",
+        "description": "Cuando un alumno pide sumarse a un curso pago y hay que enviar el comprobante."
       },
       "programGoalReminder": {
-        "title": "Se acerca la fecha de un objetivo",
-        "description": "Según la anticipación configurada en cada objetivo del programa."
+        "title": "Vence un objetivo del programa",
+        "description": "Recordatorio cuando se acerca la fecha límite de un objetivo."
       },
       "exerciseSubmitted": {
-        "title": "Un alumno entrega un ejercicio",
-        "description": "Avisa que hay algo para corregir."
+        "title": "Un alumno entregó un ejercicio",
+        "description": "Le llega a todo el equipo del curso, cada vez que alguien entrega."
       },
-      "studentJoinedCourse": {
-        "title": "Un alumno se suma al curso",
-        "description": "Avisa cada inscripción nueva."
+      "teacherStudentJoined": {
+        "title": "Un alumno se sumó al curso",
+        "description": "Le llega a todo el equipo del curso."
       },
       "newsfeedComment": {
-        "title": "Comentan un aviso suyo",
-        "description": "Le llega sólo a quien lo publicó."
+        "title": "Comentaron una publicación",
+        "description": "Cuando alguien comenta un aviso del muro."
       },
-      "addedAsTeacher": {
-        "title": "Lo agregan como docente",
-        "description": "Cuando lo suman al equipo de un curso."
+      "teacherCourseWelcome": {
+        "title": "Lo sumaron como docente",
+        "description": "Cuando a alguien del equipo le dan un curso para dictar."
       },
-      "purchaseRequested": {
-        "title": "Un alumno pide comprar un curso",
-        "description": "Sólo en cursos pagos."
+      "teacherStudentBuyRequest": {
+        "title": "Pidieron comprar un curso",
+        "description": "Cuando alguien solicita sumarse a un curso pago."
+      },
+      "inviteTeacher": {
+        "title": "Invitación al equipo",
+        "description": "Al invitar a alguien como instructor o administrador."
+      },
+      "studentOrgInvite": {
+        "title": "Invitación a la plataforma",
+        "description": "Al invitar a un alumno a la empresa."
+      },
+      "studentCourseInvite": {
+        "title": "Invitación a un curso",
+        "description": "Al invitar a alguien a un curso puntual."
+      },
+      "studentCourseWelcome": {
+        "title": "Le dieron acceso a un curso",
+        "description": "Cuando un alumno que ya tiene cuenta recibe acceso a un curso."
+      },
+      "studentProgramWelcome": {
+        "title": "Le dieron acceso a un programa",
+        "description": "Cuando un alumno que ya tiene cuenta recibe acceso a un programa."
       }
     }
-  },
-  "email_templates": {
-    "title": "Texto de los correos",
-    "subtitle": "Reescribí el asunto y el cuerpo de los correos automáticos. Lo que dejes en blanco vuelve al texto original.",
-    "loading": "Cargando los textos…",
-    "customized": "Editado",
-    "subject": "Asunto",
-    "body": "Cuerpo",
-    "body_help": "Podés usar negrita, cursiva, listas y enlaces. Lo demás se quita al guardar, porque no todos los clientes de correo lo muestran igual.",
-    "variables": "Variables disponibles",
-    "variables_help": "Tocá una para agregarla al final del cuerpo. Se reemplazan al enviar por el dato real.",
-    "missing_warning": "Sacaste una variable importante. El correo se va a enviar igual, pero sin esto puede quedar inservible:",
-    "save": "Guardar",
-    "reset": "Volver al original",
-    "unsaved": "Sin guardar",
-    "saved": "Texto guardado",
-    "reset_done": "Se restauró el texto original",
-    "save_failed": "No pudimos guardar el texto. Volvé a intentar."
   }
 }

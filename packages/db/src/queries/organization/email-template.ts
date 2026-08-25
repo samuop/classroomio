@@ -4,38 +4,41 @@ import { and, eq, inArray } from 'drizzle-orm';
 
 import { db } from '@db/drizzle';
 
+/** Lo reescrito por una empresa. `null` en un bloque = ese usa el de fábrica. */
 export interface OrgEmailTemplateRow {
   emailId: string;
   subject: string | null;
+  heading: string | null;
   body: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  footer: string | null;
   updatedAt: Date;
 }
+
+const COLUMNAS = {
+  emailId: schema.organizationEmailTemplate.emailId,
+  subject: schema.organizationEmailTemplate.subject,
+  heading: schema.organizationEmailTemplate.heading,
+  body: schema.organizationEmailTemplate.body,
+  ctaLabel: schema.organizationEmailTemplate.ctaLabel,
+  ctaUrl: schema.organizationEmailTemplate.ctaUrl,
+  footer: schema.organizationEmailTemplate.footer,
+  updatedAt: schema.organizationEmailTemplate.updatedAt
+};
 
 /** Todos los textos que esta empresa reescribió. */
 export const getOrgEmailTemplates = async (orgId: string): Promise<OrgEmailTemplateRow[]> => {
   return db
-    .select({
-      emailId: schema.organizationEmailTemplate.emailId,
-      subject: schema.organizationEmailTemplate.subject,
-      body: schema.organizationEmailTemplate.body,
-      updatedAt: schema.organizationEmailTemplate.updatedAt
-    })
+    .select(COLUMNAS)
     .from(schema.organizationEmailTemplate)
     .where(eq(schema.organizationEmailTemplate.organizationId, orgId));
 };
 
 /** Un texto puntual. Es el que se consulta en el camino de cada envío. */
-export const getOrgEmailTemplate = async (
-  orgId: string,
-  emailId: string
-): Promise<OrgEmailTemplateRow | null> => {
+export const getOrgEmailTemplate = async (orgId: string, emailId: string): Promise<OrgEmailTemplateRow | null> => {
   const [row] = await db
-    .select({
-      emailId: schema.organizationEmailTemplate.emailId,
-      subject: schema.organizationEmailTemplate.subject,
-      body: schema.organizationEmailTemplate.body,
-      updatedAt: schema.organizationEmailTemplate.updatedAt
-    })
+    .select(COLUMNAS)
     .from(schema.organizationEmailTemplate)
     .where(
       and(
@@ -48,35 +51,40 @@ export const getOrgEmailTemplate = async (
   return row ?? null;
 };
 
+export interface UpsertOrgEmailTemplateInput {
+  orgId: string;
+  emailId: string;
+  subject: string | null;
+  heading: string | null;
+  body: string | null;
+  ctaLabel: string | null;
+  ctaUrl: string | null;
+  footer: string | null;
+  updatedByProfileId?: string | null;
+}
+
 /**
  * Guarda el texto reescrito. `upsert` sobre (empresa, correo) para que dos
  * guardados seguidos no dejen dos filas — el índice único lo garantiza, esto
  * evita el error.
  */
-export const upsertOrgEmailTemplate = async (input: {
-  orgId: string;
-  emailId: string;
-  subject: string | null;
-  body: string | null;
-  updatedByProfileId?: string | null;
-}): Promise<void> => {
+export const upsertOrgEmailTemplate = async (input: UpsertOrgEmailTemplateInput): Promise<void> => {
+  const bloques = {
+    subject: input.subject,
+    heading: input.heading,
+    body: input.body,
+    ctaLabel: input.ctaLabel,
+    ctaUrl: input.ctaUrl,
+    footer: input.footer,
+    updatedByProfileId: input.updatedByProfileId ?? null
+  };
+
   await db
     .insert(schema.organizationEmailTemplate)
-    .values({
-      organizationId: input.orgId,
-      emailId: input.emailId,
-      subject: input.subject,
-      body: input.body,
-      updatedByProfileId: input.updatedByProfileId ?? null
-    })
+    .values({ organizationId: input.orgId, emailId: input.emailId, ...bloques })
     .onConflictDoUpdate({
       target: [schema.organizationEmailTemplate.organizationId, schema.organizationEmailTemplate.emailId],
-      set: {
-        subject: input.subject,
-        body: input.body,
-        updatedByProfileId: input.updatedByProfileId ?? null,
-        updatedAt: new Date()
-      }
+      set: { ...bloques, updatedAt: new Date() }
     });
 };
 
