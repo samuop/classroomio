@@ -32,6 +32,12 @@ yarn-error.log*
 # deploy secrets (credenciales de MinIO en el VPS — se crea a mano allá)
 infra/minio.env
 
+# Server blocks de nginx para clientes con dominio propio. Viven SÓLO en el VPS:
+# este repositorio es público, y un `server_name` con el dominio real de una
+# empresa publica quién es cliente de quién. La plantilla (`.conf.ejemplo`) sí
+# se versiona — es genérica.
+infra/clientes/*.conf
+
 # turbo
 .turbo
 

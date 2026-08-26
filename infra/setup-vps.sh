@@ -154,6 +154,28 @@ fi
 if [[ -f "${APP_DIR}/infra/nginx-classroomio.conf" ]]; then
   cp "${APP_DIR}/infra/nginx-classroomio.conf" /etc/nginx/sites-available/classroomio
   ln -sf /etc/nginx/sites-available/classroomio /etc/nginx/sites-enabled/classroomio
+
+  # Clientes con dominio propio: un .conf por empresa en infra/clientes/, que
+  # está gitignoreada porque el repositorio es público (un `server_name` con el
+  # dominio real publica quién es cliente de quién). Se copian tal cual.
+  #
+  # `nullglob` para que, si no hay ninguno, el for no reciba el patrón literal
+  # y trate de copiar un archivo llamado "*.conf".
+  shopt -s nullglob
+  clientes=("${APP_DIR}"/infra/clientes/*.conf)
+  shopt -u nullglob
+
+  for conf in "${clientes[@]}"; do
+    nombre="$(basename "${conf}" .conf)"
+    cp "${conf}" "/etc/nginx/sites-available/classroomio-${nombre}"
+    ln -sf "/etc/nginx/sites-available/classroomio-${nombre}" "/etc/nginx/sites-enabled/classroomio-${nombre}"
+    echo "  + cliente con dominio propio: ${nombre}"
+  done
+
+  if [[ ${#clientes[@]} -eq 0 ]]; then
+    echo "  (sin clientes con dominio propio; ver infra/clientes/cliente.conf.ejemplo)"
+  fi
+
   nginx -t && systemctl reload nginx
   echo "Nginx configurado (no se tocó saas-rrhh)."
 else

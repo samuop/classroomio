@@ -1,0 +1,65 @@
+# ── Plantilla: un cliente en SU propio dominio ───────────────────────────────
+#
+# Copiar a `infra/clientes/<dominio>.conf` — esa carpeta está gitignoreada, así
+# que el dominio real del cliente NO entra al repositorio (que es público).
+# Reemplazar los tres datos en MAYÚSCULAS: DOMINIO.DEL.CLIENTE, los dos archivos
+# del certificado, y el nombre de los logs.
+#
+# `setup-vps.sh` copia todo `.conf` que encuentre en esa carpeta.
+#
+# ── Por qué esto es tan corto ────────────────────────────────────────────────
+#
+# Un inquilino en SU dominio, no en un subdominio del dominio raíz. Todo lo que
+# lo hace distinto de un subdominio propio ya está resuelto en la app: con
+# PUBLIC_IS_SELFHOSTED=false el navegador habla con la API por /proxy del MISMO
+# host, así que la cookie de sesión es de origen propio y no cruza dominios. Acá
+# no hay nada especial que configurar por eso: sólo mandar el Host original, que
+# es de donde la app deduce el inquilino (getOrgSiteInfo → getOrgsByCustomDomain).
+#
+# `server_name` EXACTO a propósito, nunca un comodín `*.dominio-del-cliente`: el
+# apex, `www` y cualquier otro subdominio suelen ser otros sitios —a veces del
+# mismo servidor, a veces aplicaciones distintas con su propio backend—. Un
+# comodín se llevaría puesto cualquier subdominio futuro sin que nadie lo note.
+#
+# Requiere en el DNS del cliente: un A record `DOMINIO.DEL.CLIENTE → <IP del VPS>`
+# y un certificado que lo cubra.
+server {
+    listen 80;
+    server_name DOMINIO.DEL.CLIENTE;
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name DOMINIO.DEL.CLIENTE;
+
+    ssl_certificate     /etc/ssl/CERT-DEL-CLIENTE.pem;
+    ssl_certificate_key /etc/ssl/CERT-DEL-CLIENTE.key;
+
+    access_log /var/log/nginx/classroomio-CLIENTE-access.log;
+    error_log  /var/log/nginx/classroomio-CLIENTE-error.log;
+
+    add_header X-Content-Type-Options "nosniff";
+    # Ver el bloque `map` de nginx-classroomio.conf. A nivel server y no dentro
+    # del location: un add_header en un nivel anula los heredados, y el location
+    # perdería el nosniff de arriba.
+    add_header Cache-Control $cio_doc_cache always;
+    client_max_body_size 200M;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3082;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        "upgrade";
+        proxy_set_header   Host              $host;   # crítico: el inquilino se resuelve por Host
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout    120s;
+        proxy_connect_timeout  10s;
+        proxy_send_timeout    120s;
+
+        proxy_buffer_size         64k;
+        proxy_buffers           8 64k;
+        proxy_busy_buffers_size  128k;
+    }
+}

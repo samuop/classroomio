@@ -162,6 +162,12 @@ jobs:
       # Excluirlos hace que un rsync fallido no toque nada que no se pueda
       # reconstruir. (Vale lo mismo para infra/minio.env, que deploy-remote.sh
       # sabe recrear pero no tiene por qué tener que hacerlo.)
+      #
+      # Por el MISMO motivo se excluye `infra/clientes/*.conf`: los server blocks
+      # de nginx de clientes con dominio propio están gitignorados —el repo es
+      # público y un `server_name` real publica quién es cliente de quién—, así
+      # que sólo existen en el VPS. Sin la exclusión, `--delete` los borraría en
+      # cada deploy y nadie se enteraría hasta el próximo `nginx -s reload`.
       - name: Rsync to VPS
         run: |
           codigo=0
@@ -178,6 +184,7 @@ jobs:
               --exclude='.env' \
               --exclude='**/.env' \
               --exclude='infra/minio.env' \
+              --exclude='infra/clientes/*.conf' \
               ./ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/ && exit 0
             codigo=$?
