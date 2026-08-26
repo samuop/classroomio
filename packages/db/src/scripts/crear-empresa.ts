@@ -26,8 +26,8 @@ import { eq } from 'drizzle-orm';
  * Uso:
  *   tsx src/scripts/crear-empresa.ts \
  *     --org 'Globex' --slug globex \
- *     --admin-email samuelocta215@gmail.com \
- *     [--custom-domain learn.egeaconsultoria.com.ar]
+ *     --admin-email admin@empresa.ejemplo \
+ *     [--custom-domain learn.consultora-ejemplo.com.ar]
  */
 
 function arg(flag: string): string | undefined {
@@ -37,7 +37,11 @@ function arg(flag: string): string | undefined {
 
 const orgName = arg('--org');
 const adminEmail = arg('--admin-email');
-const customDomain = arg('--custom-domain')?.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+const customDomain = arg('--custom-domain')
+  ?.trim()
+  .toLowerCase()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/$/, '');
 const slug = (arg('--slug') ?? orgName ?? '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
@@ -94,11 +98,7 @@ async function main() {
 
   try {
     // 1. Buscar el usuario admin existente (por email) vía su profile.
-    const [adminProfile] = await db
-      .select()
-      .from(schema.profile)
-      .where(eq(schema.profile.email, adminEmail!))
-      .limit(1);
+    const [adminProfile] = await db.select().from(schema.profile).where(eq(schema.profile.email, adminEmail!)).limit(1);
 
     if (!adminProfile) {
       console.error(`❌ No existe un usuario con email ${adminEmail}.`);

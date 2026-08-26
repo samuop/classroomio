@@ -21,12 +21,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 
-import {
-  hasRecentAuditEvent,
-  insertAuditEvent,
-  insertAuditIncident,
-  purgeAuditBefore
-} from '@cio/db/queries/audit';
+import { hasRecentAuditEvent, insertAuditEvent, insertAuditIncident, purgeAuditBefore } from '@cio/db/queries/audit';
 import { and, auditEvent, auditIncident, db, eq, like, lt, or } from '@cio/db/drizzle';
 
 /**
@@ -77,7 +72,10 @@ describe('insertAuditEvent', () => {
   it('persiste la fila con el jsonb intacto', async () => {
     expect(await insertAuditEvent({ ...baseEvent, metadata: { scope: 'all', term: 'ana' } })).toBe(true);
 
-    const [row] = await db.select().from(auditEvent).where(eq(auditEvent.action, action('BASE')));
+    const [row] = await db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.action, action('BASE')));
 
     expect(row).toMatchObject({
       orgId: ORG,
@@ -101,7 +99,10 @@ describe('insertAuditEvent', () => {
 
     expect(await insertAuditEvent({ ...baseEvent, action: action('SIN_FK'), orgId: empresaFantasma })).toBe(true);
 
-    const [row] = await db.select().from(auditEvent).where(eq(auditEvent.action, action('SIN_FK')));
+    const [row] = await db
+      .select()
+      .from(auditEvent)
+      .where(eq(auditEvent.action, action('SIN_FK')));
     expect(row!.orgId).toBe(empresaFantasma);
   });
 
@@ -125,9 +126,7 @@ describe('insertAuditEvent', () => {
   it('acepta que no haya empresa ni usuario', async () => {
     // Pasa de verdad: las rutas de plataforma son cross-empresa y no tienen
     // `cio-org-id`.
-    expect(
-      await insertAuditEvent({ ...baseEvent, action: action('SIN_ORG'), orgId: null, userId: null })
-    ).toBe(true);
+    expect(await insertAuditEvent({ ...baseEvent, action: action('SIN_ORG'), orgId: null, userId: null })).toBe(true);
   });
 });
 
@@ -261,7 +260,7 @@ describe('insertAuditIncident', () => {
       status: 500,
       orgId: ORG,
       userLabel: MARK,
-      metadata: { screen: '/org/egea/seguimiento', origin: 'svelte.boundary' }
+      metadata: { screen: '/org/consultora/seguimiento', origin: 'svelte.boundary' }
     });
 
     expect(inserted).toBe(true);
@@ -271,7 +270,7 @@ describe('insertAuditIncident', () => {
       kind: 'FRONTEND_ERROR',
       source: 'FRONTEND',
       status: 500,
-      metadata: { screen: '/org/egea/seguimiento', origin: 'svelte.boundary' }
+      metadata: { screen: '/org/consultora/seguimiento', origin: 'svelte.boundary' }
     });
     expect(row!.stack).toContain('Seguimiento');
   });
@@ -323,9 +322,7 @@ describe('purgeAuditBefore', () => {
       .where(like(auditEvent.action, `TEST_${RUN}_%`));
 
     expect(survivors.map((row) => row.action)).toEqual([action('RECIENTE')]);
-    expect(
-      await db.select().from(auditIncident).where(eq(auditIncident.userLabel, MARK))
-    ).toHaveLength(0);
+    expect(await db.select().from(auditIncident).where(eq(auditIncident.userLabel, MARK))).toHaveLength(0);
   });
 
   it('devuelve cero cuando no hay nada que sacar', async () => {

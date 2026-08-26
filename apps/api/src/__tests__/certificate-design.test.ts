@@ -118,7 +118,7 @@ describe('resolveCertificateDesign', () => {
       design: {
         templateId: 'classique',
         titleOverride: 'Inducción SSMA 2026',
-        orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+        orgBrand: { name: 'Consultora', logoUrl: 'https://learn-files.tensor.com.ar/consultora.svg' },
         clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
         brandLogoHeight: 56,
         brandShowNames: true,
@@ -127,7 +127,10 @@ describe('resolveCertificateDesign', () => {
     });
 
     expect(design.titleOverride).toBe('Inducción SSMA 2026');
-    expect(design.orgBrand).toEqual({ name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' });
+    expect(design.orgBrand).toEqual({
+      name: 'Consultora',
+      logoUrl: 'https://learn-files.tensor.com.ar/consultora.svg'
+    });
     expect(design.clientBrand?.name).toBe('Kisoco One');
     expect(design.brandLogoHeight).toBe(56);
     expect(design.labels?.deliveredBy).toBe('Dictado por');
@@ -136,11 +139,11 @@ describe('resolveCertificateDesign', () => {
 
   it('drops an org logo url that is not http(s), same as the client one', () => {
     const design = resolveCertificateDesign({
-      design: { templateId: 'classique', orgBrand: { name: 'Egea', logoUrl: 'javascript:alert(1)' } }
+      design: { templateId: 'classique', orgBrand: { name: 'Consultora', logoUrl: 'javascript:alert(1)' } }
     });
 
     expect(design.orgBrand?.logoUrl).toBeUndefined();
-    expect(design.orgBrand?.name).toBe('Egea');
+    expect(design.orgBrand?.name).toBe('Consultora');
   });
 
   /**
@@ -170,7 +173,7 @@ describe('resolveCertificateDesign', () => {
       idFormat: 'CERT-{year}-{seq}',
       labels: { presented: 'dejamos constancia de que', deliveredBy: 'Dictado por' },
       titleOverride: 'Inducción SSMA 2026',
-      orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+      orgBrand: { name: 'Consultora', logoUrl: 'https://learn-files.tensor.com.ar/consultora.svg' },
       clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
       brandLogoHeight: 56,
       brandShowNames: true,

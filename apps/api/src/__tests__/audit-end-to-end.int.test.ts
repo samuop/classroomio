@@ -214,7 +214,7 @@ describe('el reporte del navegador, de punta a punta', () => {
         message: "Cannot read properties of undefined (reading 'byStudent')",
         stack: 'TypeError: ...\n    at Seguimiento',
         route: '/organization/tracking/overview',
-        metadata: { screen: '/org/egea/seguimiento', origin: 'svelte.boundary' }
+        metadata: { screen: '/org/consultora/seguimiento', origin: 'svelte.boundary' }
       })
     });
 
@@ -230,7 +230,7 @@ describe('el reporte del navegador, de punta a punta', () => {
       ip: '203.0.113.10',
       device: 'Windows',
       browser: 'Chrome',
-      metadata: { screen: '/org/egea/seguimiento', origin: 'svelte.boundary' }
+      metadata: { screen: '/org/consultora/seguimiento', origin: 'svelte.boundary' }
     });
   });
 

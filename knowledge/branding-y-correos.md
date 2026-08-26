@@ -112,7 +112,7 @@ transportes.
 | `EMAIL_ACCENT_COLOR` | `#7B35AB` | la barra y el botón de los correos |
 | `EMAIL_ACCENT_COLOR_2` | `#49206A` | el segundo color del degradado |
 
-El violeta por defecto es el de EGEA, el mismo de SaaS-RRHH: así los dos
+El violeta por defecto es el mismo que usa SaaS-RRHH: así los dos
 productos se ven de la misma familia sin configurar nada.
 
 ## Cómo verificarlo

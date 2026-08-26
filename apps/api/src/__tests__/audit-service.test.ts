@@ -33,7 +33,7 @@ const OTHER_UUID = 'a1b2c3d4-e5f6-4789-8abc-def012345678';
 const baseEvent = {
   orgId: UUID,
   userId: OTHER_UUID,
-  userLabel: 'ana@egea.com.ar',
+  userLabel: 'ana@consultora-ejemplo.com.ar',
   userRole: null,
   orgRole: 1,
   sessionId: null,
@@ -79,7 +79,7 @@ describe('recordEvent', () => {
     expect(rowOf(insertAuditEvent)).toMatchObject({
       orgId: UUID,
       userId: OTHER_UUID,
-      userLabel: 'ana@egea.com.ar',
+      userLabel: 'ana@consultora-ejemplo.com.ar',
       action: 'VIO_SEGUIMIENTO',
       ip: '203.0.113.10',
       device: 'Windows',

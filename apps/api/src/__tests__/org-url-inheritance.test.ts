@@ -23,38 +23,38 @@ vi.mock('@cio/db/queries/organization', () => ({
 
 const { resolveOrgUrlIdentity } = await import('@api/utils/org-url');
 
-const EGEA = {
-  id: 'egea-id',
-  siteName: 'egea',
-  customDomain: 'learn.egeaconsultoria.com.ar',
+const CONSULTORA = {
+  id: 'consultora-id',
+  siteName: 'consultora',
+  customDomain: 'learn.consultora-ejemplo.com.ar',
   isCustomDomainVerified: true,
   parentOrganizationId: null
 };
 
 const PINTURAS = {
-  siteName: 'pinturas-especiales',
+  siteName: 'ferreteria-central',
   customDomain: null,
   isCustomDomainVerified: false,
-  parentOrganizationId: 'egea-id'
+  parentOrganizationId: 'consultora-id'
 };
 
 beforeEach(() => {
   orgsById.clear();
-  orgsById.set(EGEA.id, EGEA);
+  orgsById.set(CONSULTORA.id, CONSULTORA);
 });
 
 describe('resolveOrgUrlIdentity', () => {
   it('la hija sin dominio usa el de la madre', async () => {
     const identity = await resolveOrgUrlIdentity(PINTURAS);
 
-    expect(identity.customDomain).toBe('learn.egeaconsultoria.com.ar');
+    expect(identity.customDomain).toBe('learn.consultora-ejemplo.com.ar');
     expect(identity.isCustomDomainVerified).toBe(true);
   });
 
   it('hereda el dominio pero NUNCA el siteName', async () => {
     const identity = await resolveOrgUrlIdentity(PINTURAS);
 
-    expect(identity.siteName).toBe('pinturas-especiales');
+    expect(identity.siteName).toBe('ferreteria-central');
   });
 
   it('si la hija tiene el suyo, gana el suyo', async () => {
@@ -68,7 +68,7 @@ describe('resolveOrgUrlIdentity', () => {
   });
 
   it('no hereda un dominio de la madre que no esta verificado', async () => {
-    orgsById.set(EGEA.id, { ...EGEA, isCustomDomainVerified: false });
+    orgsById.set(CONSULTORA.id, { ...CONSULTORA, isCustomDomainVerified: false });
 
     const identity = await resolveOrgUrlIdentity(PINTURAS);
 
@@ -79,12 +79,12 @@ describe('resolveOrgUrlIdentity', () => {
     const identity = await resolveOrgUrlIdentity({ ...PINTURAS, parentOrganizationId: null });
 
     expect(identity.customDomain).toBeFalsy();
-    expect(identity.siteName).toBe('pinturas-especiales');
+    expect(identity.siteName).toBe('ferreteria-central');
   });
 
   it('aguanta una madre que ya no existe', async () => {
     orgsById.clear();
 
-    await expect(resolveOrgUrlIdentity(PINTURAS)).resolves.toMatchObject({ siteName: 'pinturas-especiales' });
+    await expect(resolveOrgUrlIdentity(PINTURAS)).resolves.toMatchObject({ siteName: 'ferreteria-central' });
   });
 });

@@ -16,7 +16,7 @@ import { EMAIL_ACCENT_COLOR, EMAIL_ACCENT_COLOR_2, EMAIL_BRAND_NAME } from '../u
  *
  * Los colores salen del entorno (`EMAIL_ACCENT_COLOR`, `EMAIL_ACCENT_COLOR_2`)
  * para que cada despliegue del ecosistema pueda tener su acento sin tocar
- * código, con el violeta de EGEA como default compartido.
+ * código, con el violeta de SaaS-RRHH como default compartido.
  */
 
 /** Fuente todo terreno: Arial es la única que no se sustituye en ningún webmail. */

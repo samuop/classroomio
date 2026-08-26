@@ -38,7 +38,7 @@ export const EMAIL_BRAND_NAME = env.EMAIL_BRAND_NAME?.trim() || 'Tensor Tech';
 /**
  * Acento del layout de correo: la barra de arriba y el botón.
  *
- * El default es el violeta de EGEA, el mismo de SaaS-RRHH, para que los correos
+ * El default es el mismo violeta que usa SaaS-RRHH, para que los correos
  * de los dos productos se lean como del mismo lugar cuando le llegan a la misma
  * persona. Cada despliegue puede correrse a su color sin tocar código.
  */

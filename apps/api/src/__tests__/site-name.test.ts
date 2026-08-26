@@ -13,7 +13,7 @@
  * Lo que fijan estas pruebas es dónde está la línea entre corregir y rechazar.
  * Se corrige lo que no cambia la intención de nadie (espacios de los bordes,
  * mayúsculas). Se rechaza lo que sí la cambiaría: convertir "Pinturas
- * Especiales" en "pinturas-especiales" le daría a la empresa una dirección que
+ * Especiales" en "ferreteria-central" le daría a la empresa una dirección que
  * nadie eligió.
  */
 import { describe, expect, it } from 'vitest';
@@ -24,8 +24,8 @@ const parse = (value: string) => ZSiteName.safeParse(value);
 
 describe('ZSiteName', () => {
   it('acepta una etiqueta valida', () => {
-    expect(parse('pinturas-especiales').data).toBe('pinturas-especiales');
-    expect(parse('egea').data).toBe('egea');
+    expect(parse('ferreteria-central').data).toBe('ferreteria-central');
+    expect(parse('consultora').data).toBe('consultora');
     expect(parse('cliente2026').data).toBe('cliente2026');
   });
 
@@ -34,11 +34,11 @@ describe('ZSiteName', () => {
   });
 
   it('recorta y baja a minuscula sin quejarse', () => {
-    expect(parse('  EGEA  ').data).toBe('egea');
+    expect(parse('  CONSULTORA  ').data).toBe('consultora');
   });
 
   it('rechaza un espacio en el medio en vez de convertirlo', () => {
-    expect(parse('pinturas especiales').success).toBe(false);
+    expect(parse('ferreteria central').success).toBe(false);
   });
 
   it('rechaza acentos y simbolos', () => {
@@ -48,9 +48,9 @@ describe('ZSiteName', () => {
   });
 
   it('rechaza guiones en los bordes y guiones dobles', () => {
-    expect(parse('-egea').success).toBe(false);
-    expect(parse('egea-').success).toBe(false);
-    expect(parse('egea--sur').success).toBe(false);
+    expect(parse('-consultora').success).toBe(false);
+    expect(parse('consultora-').success).toBe(false);
+    expect(parse('consultora--sur').success).toBe(false);
   });
 
   it('rechaza los subdominios reservados de la plataforma', () => {
@@ -68,13 +68,13 @@ describe('ZSiteName', () => {
 
 describe('toSiteName', () => {
   it('propone algo usable a partir de un nombre libre', () => {
-    expect(toSiteName('Pinturas Especiales')).toBe('pinturas-especiales');
-    expect(toSiteName('  Egea Consultoría  ')).toBe('egea-consultoria');
+    expect(toSiteName('Ferretería Central')).toBe('ferreteria-central');
+    expect(toSiteName('  Consultoría Ejemplo  ')).toBe('consultoria-ejemplo');
     expect(toSiteName('Construcción & Montaje S.A.')).toBe('construccion-montaje-s-a');
   });
 
   it('lo que propone SIEMPRE pasa el validador', () => {
-    const nombres = ['Pinturas Especiales', 'Egea Consultoría', 'ACME 2026', '  espacios  ', 'Ñandú Ltda'];
+    const nombres = ['Ferretería Central', 'Consultoría Ejemplo', 'ACME 2026', '  espacios  ', 'Ñandú Ltda'];
 
     for (const nombre of nombres) {
       const propuesto = toSiteName(nombre);

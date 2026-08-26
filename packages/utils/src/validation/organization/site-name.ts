@@ -24,7 +24,7 @@ import * as z from 'zod';
  * en un host no significa nada.
  *
  * Un espacio EN EL MEDIO, un acento o un simbolo se rechazan en vez de
- * convertirse: convertir "Pinturas Especiales" en "pinturas-especiales" le daria
+ * convertirse: convertir "Ferretería Central" en "ferreteria-central" le daria
  * a la empresa una direccion que nadie eligio. Que lo elija quien crea, con el
  * formulario mostrandole el resultado mientras escribe.
  */

@@ -13,67 +13,67 @@ import { assertCourseDeliveryAllowed } from '@api/services/course/delivery-auth'
  * client's material appearing inside another's.
  */
 describe('authorizing a course delivery', () => {
-  const EGEA = 'egea';
+  const CONSULTORA = 'consultora';
   const ONE = 'one';
   const OTHER_CONSULTANCY = 'otra';
 
   it('allows an admin to deliver their own course into a client company', () => {
-    const roles = { [EGEA]: ROLE.ADMIN, [ONE]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.ADMIN, [ONE]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, ONE)).not.toThrow();
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, ONE)).not.toThrow();
   });
 
   it('allows copying a course beside itself', () => {
-    const roles = { [EGEA]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, EGEA)).not.toThrow();
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, CONSULTORA)).not.toThrow();
   });
 
   it('refuses a course from an organization the caller does not belong to', () => {
-    const roles = { [EGEA]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, OTHER_CONSULTANCY, EGEA)).toThrow(/not found/i);
+    expect(() => assertCourseDeliveryAllowed(roles, OTHER_CONSULTANCY, CONSULTORA)).toThrow(/not found/i);
   });
 
   it('says "not found" rather than "forbidden" about a course that is not theirs', () => {
     // Whether a course exists is not something a stranger to its organization
     // should be able to learn from the difference between two errors.
-    const roles = { [EGEA]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, OTHER_CONSULTANCY, EGEA)).toThrow(
+    expect(() => assertCourseDeliveryAllowed(roles, OTHER_CONSULTANCY, CONSULTORA)).toThrow(
       expect.objectContaining({ statusCode: 404 })
     );
   });
 
   it('refuses a destination the caller has nothing to do with', () => {
-    const roles = { [EGEA]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, 'empresa-ajena')).toThrow(/admin of the destination/i);
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, 'empresa-ajena')).toThrow(/admin of the destination/i);
   });
 
   it('refuses a tutor of the destination: delivering is administrative there', () => {
-    const roles = { [EGEA]: ROLE.ADMIN, [ONE]: ROLE.TUTOR };
+    const roles = { [CONSULTORA]: ROLE.ADMIN, [ONE]: ROLE.TUTOR };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, ONE)).toThrow(
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, ONE)).toThrow(
       expect.objectContaining({ statusCode: 403 })
     );
   });
 
   it('refuses a student of the destination', () => {
-    const roles = { [EGEA]: ROLE.ADMIN, [ONE]: ROLE.STUDENT };
+    const roles = { [CONSULTORA]: ROLE.ADMIN, [ONE]: ROLE.STUDENT };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, ONE)).toThrow(/admin of the destination/i);
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, ONE)).toThrow(/admin of the destination/i);
   });
 
   it('lets a tutor of the source deliver where they are admin', () => {
     // Reading the source is enough to copy from it; the restriction that
     // matters is on where the copy lands.
-    const roles = { [EGEA]: ROLE.TUTOR, [ONE]: ROLE.ADMIN };
+    const roles = { [CONSULTORA]: ROLE.TUTOR, [ONE]: ROLE.ADMIN };
 
-    expect(() => assertCourseDeliveryAllowed(roles, EGEA, ONE)).not.toThrow();
+    expect(() => assertCourseDeliveryAllowed(roles, CONSULTORA, ONE)).not.toThrow();
   });
 
   it('refuses a course whose organization cannot be resolved', () => {
-    expect(() => assertCourseDeliveryAllowed({ [EGEA]: ROLE.ADMIN }, null, EGEA)).toThrow(/not found/i);
+    expect(() => assertCourseDeliveryAllowed({ [CONSULTORA]: ROLE.ADMIN }, null, CONSULTORA)).toThrow(/not found/i);
   });
 });

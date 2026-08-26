@@ -52,7 +52,7 @@ const VALID_REPORT = {
   message: "Cannot read properties of undefined (reading 'byStudent')",
   stack: 'TypeError: ...\n    at Seguimiento',
   route: '/organization/tracking/overview',
-  metadata: { screen: '/org/egea/seguimiento' }
+  metadata: { screen: '/org/consultora/seguimiento' }
 };
 
 const post = (body: unknown, headers: Record<string, string> = {}) =>
@@ -66,7 +66,7 @@ const row = () => recordIncident.mock.calls[0]![0] as Record<string, unknown>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  currentUser = { id: USER, email: 'ana@egea.com.ar' };
+  currentUser = { id: USER, email: 'ana@consultora-ejemplo.com.ar' };
 });
 
 describe('reporte válido', () => {
@@ -81,12 +81,12 @@ describe('reporte válido', () => {
       route: '/organization/tracking/overview',
       orgId: ORG,
       userId: USER,
-      userLabel: 'ana@egea.com.ar',
+      userLabel: 'ana@consultora-ejemplo.com.ar',
       sessionId: SESSION,
       ip: '203.0.113.10',
       device: 'iPhone',
       browser: 'Safari',
-      metadata: { screen: '/org/egea/seguimiento' }
+      metadata: { screen: '/org/consultora/seguimiento' }
     });
   });
 
@@ -127,7 +127,7 @@ describe('lo que llega de afuera no se cree', () => {
   it('descarta campos que no están declarados', async () => {
     await post({ ...VALID_REPORT, userId: 'otro-usuario', userLabel: 'admin@tensor.com.ar' });
 
-    expect(row()).toMatchObject({ userId: USER, userLabel: 'ana@egea.com.ar' });
+    expect(row()).toMatchObject({ userId: USER, userLabel: 'ana@consultora-ejemplo.com.ar' });
   });
 
   it('rechaza un cuerpo inválido sin devolver error', async () => {

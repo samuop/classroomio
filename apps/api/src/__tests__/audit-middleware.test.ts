@@ -114,7 +114,7 @@ const incidentRow = () => recordIncident.mock.calls[0]![0] as Record<string, unk
 
 beforeEach(() => {
   vi.clearAllMocks();
-  currentUser = { id: USER, email: 'ana@egea.com.ar', role: null };
+  currentUser = { id: USER, email: 'ana@consultora-ejemplo.com.ar', role: null };
   app = buildApp();
 });
 
@@ -132,7 +132,7 @@ describe('lecturas', () => {
     expect(eventRow()).toMatchObject({
       action: 'VIO_SEGUIMIENTO',
       userId: USER,
-      userLabel: 'ana@egea.com.ar',
+      userLabel: 'ana@consultora-ejemplo.com.ar',
       orgId: ORG,
       orgRole: 1,
       sessionId: SESSION,
@@ -218,7 +218,7 @@ describe('fallos', () => {
       source: 'BACKEND',
       status: 403,
       route: '/organization/team',
-      userLabel: 'ana@egea.com.ar'
+      userLabel: 'ana@consultora-ejemplo.com.ar'
     });
   });
 
@@ -267,7 +267,7 @@ describe('lentitud', () => {
 
   it('el request lento no impide que además se registre lo que hizo', async () => {
     // Son dos hechos distintos: qué quiso hacer, y que el sistema tardó.
-    currentUser = { id: USER, email: 'ana@egea.com.ar', role: null };
+    currentUser = { id: USER, email: 'ana@consultora-ejemplo.com.ar', role: null };
 
     await call('/lento', { method: 'GET' });
     await flushAudit();

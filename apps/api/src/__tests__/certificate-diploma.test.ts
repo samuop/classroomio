@@ -23,7 +23,7 @@ const data: CertificateRenderData = {
   recipientName: 'Ana Ruiz',
   courseName: 'Seguridad e Higiene en Planta',
   courseDescription: '40 horas, evaluación final aprobada.',
-  orgName: 'Egea Consultora',
+  orgName: 'Consultora Ejemplo',
   orgLogoUrl: undefined,
   date: '13 de agosto de 2026',
   certificateId: 'N° 0148'
@@ -49,9 +49,7 @@ describe('diploma — the person leads', () => {
   it('prints the recipient larger than the course title', () => {
     const { styles } = renderCertificate(design(), data);
 
-    expect(clampCeiling(styles, '.t-diploma .recipient')).toBeGreaterThan(
-      clampCeiling(styles, '.t-diploma .title')
-    );
+    expect(clampCeiling(styles, '.t-diploma .recipient')).toBeGreaterThan(clampCeiling(styles, '.t-diploma .title'));
   });
 
   it('prints the recipient, the course and the connecting wording', () => {
@@ -95,7 +93,8 @@ describe('diploma — text that does not fit', () => {
       ...data,
       recipientName: 'María de los Ángeles Fernández Etchegaray de la Serna',
       courseName: 'Programa Integral de Seguridad, Higiene y Cuidado del Medio Ambiente en Plantas Industriales',
-      courseDescription: 'Un párrafo largo que describe el curso con mucho más detalle del que entra en el papel. '.repeat(4)
+      courseDescription:
+        'Un párrafo largo que describe el curso con mucho más detalle del que entra en el papel. '.repeat(4)
     });
 
     // Not truncated in the markup: the cut is a rendering decision, so the

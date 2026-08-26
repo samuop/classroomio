@@ -44,7 +44,7 @@ echo.
 echo ============================================================
 echo  Listo. Espera ~30s y abri el navegador en:
 echo     http://localhost:5173/login
-echo  Usuario: samuelocta215@gmail.com   Pass: 123456789-dev-only
+echo  Usuario: admin@empresa.ejemplo   Pass: 123456789-dev-only
 echo.
 echo  MODO DEV: los cambios en el codigo se ven al instante,
 echo  pero usa mas RAM. Si va lento, usa start-local.bat

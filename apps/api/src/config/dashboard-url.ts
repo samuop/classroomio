@@ -24,7 +24,7 @@ function normalizeOrigin(value: string): string {
  * ── Por qué el dominio propio gana ───────────────────────────────────────────
  *
  * Una consultora que le entrega la plataforma a un cliente le da un dominio
- * propio (`learn.egeaconsultoria.com.ar`). Si la invitación del equipo de ESE
+ * propio (`learn.consultora-ejemplo.com.ar`). Si la invitación del equipo de ESE
  * cliente apunta al dominio de la consultora, la persona invitada aterriza en
  * una marca que no es la suya — y encima en un host distinto, donde su sesión
  * no vale, porque las cookies son por host.

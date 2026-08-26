@@ -25,9 +25,9 @@ vi.mock('@api/config/env', () => ({
 
 const { getDashboardBaseUrl } = await import('@api/config/dashboard-url');
 
-const EGEA = {
-  siteName: 'egea',
-  customDomain: 'learn.egeaconsultoria.com.ar',
+const CONSULTORA = {
+  siteName: 'consultora',
+  customDomain: 'learn.consultora-ejemplo.com.ar',
   isCustomDomainVerified: true
 };
 
@@ -38,15 +38,15 @@ beforeEach(() => {
 
 describe('getDashboardBaseUrl', () => {
   it('manda al dominio del cliente y no al del despliegue', () => {
-    expect(getDashboardBaseUrl(EGEA)).toBe('https://learn.egeaconsultoria.com.ar');
+    expect(getDashboardBaseUrl(CONSULTORA)).toBe('https://learn.consultora-ejemplo.com.ar');
   });
 
   it('IGNORA un dominio propio sin verificar', () => {
-    expect(getDashboardBaseUrl({ ...EGEA, isCustomDomainVerified: false })).toBe('https://learn.tensor.com.ar');
+    expect(getDashboardBaseUrl({ ...CONSULTORA, isCustomDomainVerified: false })).toBe('https://learn.tensor.com.ar');
   });
 
   it('ignora la bandera de verificado si no hay dominio cargado', () => {
-    expect(getDashboardBaseUrl({ siteName: 'egea', customDomain: '   ', isCustomDomainVerified: true })).toBe(
+    expect(getDashboardBaseUrl({ siteName: 'consultora', customDomain: '   ', isCustomDomainVerified: true })).toBe(
       'https://learn.tensor.com.ar'
     );
   });
@@ -61,17 +61,19 @@ describe('getDashboardBaseUrl', () => {
   });
 
   it('le pone https a un dominio guardado pelado y saca la barra final', () => {
-    expect(getDashboardBaseUrl({ ...EGEA, customDomain: 'learn.egeaconsultoria.com.ar/' })).toBe(
-      'https://learn.egeaconsultoria.com.ar'
+    expect(getDashboardBaseUrl({ ...CONSULTORA, customDomain: 'learn.consultora-ejemplo.com.ar/' })).toBe(
+      'https://learn.consultora-ejemplo.com.ar'
     );
-    expect(getDashboardBaseUrl({ ...EGEA, customDomain: 'http://viejo.example.com' })).toBe('http://viejo.example.com');
+    expect(getDashboardBaseUrl({ ...CONSULTORA, customDomain: 'http://viejo.example.com' })).toBe(
+      'http://viejo.example.com'
+    );
   });
 
   it('en desarrollo nunca se va a un dominio de produccion', () => {
     env.NODE_ENV = 'development';
     env.DASHBOARD_ORIGIN = undefined;
 
-    expect(getDashboardBaseUrl(EGEA)).toBe('http://localhost:5173');
+    expect(getDashboardBaseUrl(CONSULTORA)).toBe('http://localhost:5173');
   });
 
   it('sin DASHBOARD_ORIGIN y sin dominio propio, usa el subdominio de la nube', () => {

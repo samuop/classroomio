@@ -112,14 +112,14 @@ describe('ZCertificateDesign — canvas document', () => {
     const parsed = ZCertificateDesign.parse({
       ...baseDesign,
       titleOverride: 'Inducción SSMA 2026',
-      orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/egea.svg' },
+      orgBrand: { name: 'Consultora', logoUrl: 'https://learn-files.tensor.com.ar/consultora.svg' },
       clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
       brandLogoHeight: 56,
       labels: { deliveredBy: 'Dictado por', deliveredFor: 'Para' }
     });
 
     expect(parsed.titleOverride).toBe('Inducción SSMA 2026');
-    expect(parsed.orgBrand?.logoUrl).toBe('https://learn-files.tensor.com.ar/egea.svg');
+    expect(parsed.orgBrand?.logoUrl).toBe('https://learn-files.tensor.com.ar/consultora.svg');
     expect(parsed.clientBrand?.logoUrl).toBe('https://learn-files.tensor.com.ar/kisoco.svg');
     expect(parsed.brandLogoHeight).toBe(56);
     expect(parsed.labels?.deliveredBy).toBe('Dictado por');
@@ -144,7 +144,16 @@ describe('ZCertificateDesign — canvas document', () => {
     // platform's behalf, so anything but http(s) is a script-injection vector.
     const result = ZCertificateDesign.safeParse(
       withDocument([
-        { kind: 'image', id: 'i', x: 0, y: 0, w: 10, h: 10, fit: 'contain', source: { kind: 'upload', url: 'javascript:alert(1)' } }
+        {
+          kind: 'image',
+          id: 'i',
+          x: 0,
+          y: 0,
+          w: 10,
+          h: 10,
+          fit: 'contain',
+          source: { kind: 'upload', url: 'javascript:alert(1)' }
+        }
       ])
     );
 

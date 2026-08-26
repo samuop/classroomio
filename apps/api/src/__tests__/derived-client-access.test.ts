@@ -17,31 +17,31 @@ import { orgIdsAdministeredBy } from '@cio/db/queries/organization';
  */
 describe('derived access to client companies', () => {
   it('names the organizations the person administers', () => {
-    const roles = { egea: ROLE.ADMIN, otra: ROLE.ADMIN };
+    const roles = { consultora: ROLE.ADMIN, otra: ROLE.ADMIN };
 
-    expect(orgIdsAdministeredBy(roles).sort()).toEqual(['egea', 'otra']);
+    expect(orgIdsAdministeredBy(roles).sort()).toEqual(['consultora', 'otra']);
   });
 
   it('refuses a tutor: teaching for a consultancy is not administering its clients', () => {
-    const roles = { egea: ROLE.TUTOR };
+    const roles = { consultora: ROLE.TUTOR };
 
     expect(orgIdsAdministeredBy(roles)).toEqual([]);
   });
 
   it('refuses a student', () => {
-    const roles = { egea: ROLE.STUDENT };
+    const roles = { consultora: ROLE.STUDENT };
 
     expect(orgIdsAdministeredBy(roles)).toEqual([]);
   });
 
   it('picks out only the administered ones from a mixed map', () => {
     const roles = {
-      egea: ROLE.ADMIN,
+      consultora: ROLE.ADMIN,
       'donde-soy-tutor': ROLE.TUTOR,
       'donde-estudio': ROLE.STUDENT
     };
 
-    expect(orgIdsAdministeredBy(roles)).toEqual(['egea']);
+    expect(orgIdsAdministeredBy(roles)).toEqual(['consultora']);
   });
 
   it('names nothing for someone who belongs nowhere', () => {
@@ -51,7 +51,7 @@ describe('derived access to client companies', () => {
   it('does not treat an unknown role number as administrative', () => {
     // Guards the shape of the check: `!== STUDENT` or a truthiness test would
     // hand a future role the keys to every client company.
-    const roles = { egea: 99 };
+    const roles = { consultora: 99 };
 
     expect(orgIdsAdministeredBy(roles)).toEqual([]);
   });

@@ -25,8 +25,8 @@ const data: CertificateRenderData = {
   recipientName: 'Ana Ruiz',
   courseName: 'Probabilidad y Estadística',
   courseDescription: 'Curso introductorio.',
-  orgName: 'Egea Consultora',
-  orgLogoUrl: 'https://learn-files.tensor.com.ar/media/egea.png',
+  orgName: 'Consultora Ejemplo',
+  orgLogoUrl: 'https://learn-files.tensor.com.ar/media/consultora.png',
   date: '15 de septiembre de 2026',
   certificateId: 'N° 0148'
 };
@@ -46,7 +46,7 @@ describe('brand row — the unchanged case', () => {
     it(`${templateId}: prints the organisation as text and draws no image`, () => {
       const { html } = renderCertificate(design({ templateId }), plainData);
 
-      expect(html).toContain('Egea Consultora');
+      expect(html).toContain('Consultora Ejemplo');
       expect(html).not.toContain('<img');
       // Nothing to separate, so no rule is drawn between one mark and nothing.
       expect(html).not.toContain('brand-divider');
@@ -59,7 +59,7 @@ describe('brand row — two marks', () => {
     it(`${templateId}: draws both logos with a rule between them`, () => {
       const { html } = renderCertificate(design({ templateId, clientBrand: CLIENT }), data);
 
-      expect(html).toContain('src="https://learn-files.tensor.com.ar/media/egea.png"');
+      expect(html).toContain('src="https://learn-files.tensor.com.ar/media/consultora.png"');
       expect(html).toContain('src="https://learn-files.tensor.com.ar/media/kisoco.svg"');
       expect(html).toContain('brand-divider');
     });
@@ -149,29 +149,26 @@ describe('overrides', () => {
 
   it('replaces the organisation name and logo', () => {
     const { html } = renderCertificate(
-      design({ orgBrand: { name: 'Egea', logoUrl: 'https://learn-files.tensor.com.ar/media/egea.svg' } }),
+      design({ orgBrand: { name: 'Consultora', logoUrl: 'https://learn-files.tensor.com.ar/media/consultora.svg' } }),
       data
     );
 
-    expect(html).toContain('src="https://learn-files.tensor.com.ar/media/egea.svg"');
-    expect(html).toContain('alt="Egea"');
+    expect(html).toContain('src="https://learn-files.tensor.com.ar/media/consultora.svg"');
+    expect(html).toContain('alt="Consultora"');
     // The workspace avatar loses to the course's own lock-up.
-    expect(html).not.toContain('egea.png');
+    expect(html).not.toContain('consultora.png');
   });
 
   it('keeps the workspace values when the override is blank', () => {
     const { html } = renderCertificate(design({ orgBrand: { name: '   ' } }), plainData);
 
-    expect(html).toContain('Egea Consultora');
+    expect(html).toContain('Consultora Ejemplo');
   });
 });
 
 describe('escaping', () => {
   it('escapes a name that would otherwise close the tag it sits in', () => {
-    const { html } = renderCertificate(
-      design({ clientBrand: { name: '"><script>alert(1)</script>' } }),
-      plainData
-    );
+    const { html } = renderCertificate(design({ clientBrand: { name: '"><script>alert(1)</script>' } }), plainData);
 
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');

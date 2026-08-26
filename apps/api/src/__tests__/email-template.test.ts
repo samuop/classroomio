@@ -82,11 +82,11 @@ describe('el layout viste al contenido', () => {
 
 describe('quién firma el correo', () => {
   it('pone a la organización de antetítulo y en el pie', () => {
-    const html = render(CONTENT, { sender: 'Pinturas Especiales' });
+    const html = render(CONTENT, { sender: 'Ferretería Central' });
 
     expect(html).toContain('text-transform:uppercase');
-    expect(html).toContain('Pinturas Especiales');
-    expect(html).toContain('Correo enviado por Pinturas Especiales');
+    expect(html).toContain('Ferretería Central');
+    expect(html).toContain('Correo enviado por Ferretería Central');
   });
 
   it('sin organización no inventa un remitente', () => {
@@ -112,7 +112,7 @@ describe('quién firma el correo', () => {
 
 describe('marca', () => {
   it('no menciona ClassroomIO en ninguna parte', () => {
-    const html = render(CONTENT, { sender: 'Pinturas Especiales' });
+    const html = render(CONTENT, { sender: 'Ferretería Central' });
 
     expect(html.toLowerCase()).not.toContain('classroomio');
   });

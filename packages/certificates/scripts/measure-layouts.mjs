@@ -81,7 +81,7 @@ const data = {
   courseName: 'Probability and Statistics Fundamentals',
   courseDescription:
     'Learn core concepts of probability theory and statistical analysis, including distributions, hypothesis testing, confidence intervals, and data interpretation for real-world decision making.',
-  orgName: 'Egea Consultora',
+  orgName: 'Consultora Ejemplo',
   orgLogoUrl: undefined,
   date: '3 de agosto de 2026',
   certificateId: 'N° 0247'
@@ -104,7 +104,7 @@ const SCENARIOS = {
   },
   'both brands, 96px logos': { design: { clientBrand: CLIENT, brandLogoHeight: 96 }, data: { orgLogoUrl: LOGO } },
   'both brands, names printed too': {
-    design: { clientBrand: CLIENT, brandShowNames: true, orgBrand: { name: 'Egea Consultora' } },
+    design: { clientBrand: CLIENT, brandShowNames: true, orgBrand: { name: 'Consultora Ejemplo' } },
     data: { orgLogoUrl: LOGO }
   },
   'short title, no brands': { design: {}, data: { courseName: 'Inducción SSMA' } },

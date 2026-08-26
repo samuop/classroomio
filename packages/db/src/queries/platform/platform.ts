@@ -59,7 +59,7 @@ export async function listPlatformOrganizations(
   const parentOrg = alias(schema.organization, 'parent_org');
 
   // Searching a consultancy's name deliberately returns its clients too: in a
-  // tree, "Egea" meaning only the one row would hide exactly what you opened
+  // tree, matching only the consultancy's own row would hide exactly what you opened
   // the panel to see.
   // Las dadas de baja no se listan tampoco aca. El panel de plataforma es el
   // lugar mas plausible para reactivar una en el futuro, pero mientras eso no
