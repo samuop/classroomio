@@ -25,7 +25,6 @@
   } from '$features/ai-assistant/utils/tool-labels';
   import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
   import { t } from '$lib/utils/functions/translations';
-  import { isPlatformAdmin } from '$lib/utils/store/user';
   import {
     getAgentToolName,
     getAgentToolInput,
@@ -100,53 +99,6 @@
   }
 
   const messageAttachment = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.attachment);
-  const tokenUsage = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.tokenUsage);
-
-  /**
-   * The headline is the CONTEXT figure — the input size of the last request —
-   * because that is the number a teacher can act on: it is what the gauge shows
-   * and what decides when to compact.
-   *
-   * It used to be `totalTokens`, which AI SDK v7 aggregates over every step of
-   * the round. A two-step turn re-reads the same 110k prefix twice and reports
-   * ~229k, so the footer read "229,418" beside a gauge reading 59% and the two
-   * looked contradictory. Both were right; only one answers "how full is it?".
-   * `totalTokens` is still the fallback for messages persisted before the field,
-   * and stays visible in the tooltip as the billing figure it is.
-   */
-  const headlineIsContext = $derived(!!tokenUsage?.contextTokens);
-  const headlineTokens = $derived(tokenUsage?.contextTokens ?? tokenUsage?.totalTokens ?? 0);
-
-  /**
-   * Share of this round's input that the provider served from cache.
-   *
-   * A build round hitting the 40-step cap legitimately bills millions of tokens.
-   * Shown bare that reads as a runaway bill, when in practice ~95% of it is the
-   * same cached prefix re-read at a tenth of the price. The percentage is what
-   * turns an alarming number into an explicable one.
-   */
-  const cachedSharePercent = $derived.by(() => {
-    const read = tokenUsage?.cacheReadTokens ?? 0;
-    const prompt = tokenUsage?.promptTokens ?? 0;
-    if (read <= 0 || prompt <= 0) return null;
-    return Math.min(100, Math.round((read / prompt) * 100));
-  });
-
-  const tokenUsageBreakdown = $derived.by(() => {
-    if (!tokenUsage) return undefined;
-    const parts = [
-      `${$t('ai_assistant.tokens_input')}: ${(tokenUsage.promptTokens ?? 0).toLocaleString()}`,
-      `${$t('ai_assistant.tokens_output')}: ${(tokenUsage.completionTokens ?? 0).toLocaleString()}`
-    ];
-    if (tokenUsage.cacheReadTokens) {
-      parts.push(`${$t('ai_assistant.tokens_cache_read')}: ${tokenUsage.cacheReadTokens.toLocaleString()}`);
-    }
-    if (tokenUsage.contextTokens) {
-      parts.push(`${$t('ai_assistant.tokens_context')}: ${tokenUsage.contextTokens.toLocaleString()}`);
-    }
-    return parts.join('\n');
-  });
-
   /** Tool parts rendered in a second pass so narrative text always appears above them (stream order often emits tools first). */
   function isDeferredPlanPart(part: Record<string, unknown>) {
     if (!isAgentToolPart(part)) {
@@ -494,25 +446,6 @@
 
       {#if showPlanProgress && planProgress}
         <TodoChecklist progress={planProgress} />
-      {/if}
-
-      <!--
-        Este pie se esconde entero, no se convierte a porcentaje: un mensaje
-        suelto no tiene cupo contra el cual medirse. Y dejarlo anularía todo lo
-        demás — no sirve esconder el total del mes si cada respuesta sigue
-        anunciando "1.240.000 fichas". Es diagnóstico de quien opera la
-        plataforma, no información que la empresa use para trabajar.
-      -->
-      {#if message.role === 'assistant' && tokenUsage && $isPlatformAdmin}
-        <div class="mt-1 flex justify-end">
-          <span class="ui:text-muted-foreground text-[10px]" title={tokenUsageBreakdown}>
-            {headlineTokens.toLocaleString()}
-            {$t(headlineIsContext ? 'ai_assistant.tokens_context_label' : 'ai_assistant.tokens_label')}
-            {#if cachedSharePercent !== null}
-              · {$t('ai_assistant.tokens_from_cache', { percent: cachedSharePercent })}
-            {/if}
-          </span>
-        </div>
       {/if}
     </div>
   {/if}

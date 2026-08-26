@@ -2,13 +2,12 @@
   import type { CourseSource, DocumentCacheStatus } from '../utils/types';
   import { Button } from '@cio/ui/base/button';
   import { t } from '$lib/utils/functions/translations';
-  import { isPlatformAdmin } from '$lib/utils/store/user';
   import * as Dialog from '@cio/ui/base/dialog';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import TrashIcon from '@lucide/svelte/icons/trash';
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
-  import ZapIcon from '@lucide/svelte/icons/zap';
+  import CheckIcon from '@lucide/svelte/icons/check';
 
   let {
     source,
@@ -46,43 +45,18 @@
   });
 
   /**
-   * States an observed fact, not a forecast.
+   * Que la fuente ya fue leída. Nada más.
    *
-   * This used to read "Cache active · ~N min remaining", derived from a TTL we
-   * invented. The provider exposes no cache-status endpoint, so that number was a
-   * guess about someone else's eviction policy — and it guessed short, showing
-   * "not cached" while production data had the provider serving reads 20 minutes
-   * apart. What we can actually prove is when it last served cached tokens and
-   * how many, so that is what the card says.
+   * Antes esto contaba el mecanismo: "Leída de caché hace 3 min · 110.464
+   * fichas". Eso es cómo funciona la plataforma por dentro — que exista una
+   * caché de contexto, cuándo se evictó, cuánto costó— y no algo sobre lo que
+   * quien arma un curso pueda hacer nada. Lo único que necesita saber es si el
+   * asistente ya tiene el material.
    *
-   * Gemini used to keep a countdown, because back then its cache was a
-   * `cachedContents` lease we created and renewed. We no longer create one (it
-   * cannot coexist with a request that carries tools — see document-cache.ts),
-   * so there is no lease to count down and both providers report the same kind
-   * of fact: a read that was billed, and when.
+   * Sin leer no se muestra nada: una fuente recién subida no tiene marca, y esa
+   * ausencia ya dice lo suyo sin agregar una línea que explicar.
    */
-  const cacheLabel = $derived.by(() => {
-    if (!cacheStatus?.cached) return t.get('course.sources.cache_never_read');
-
-    if (cacheStatus.observedSecondsAgo === null) return t.get('course.sources.cache_never_read');
-
-    const minutesAgo = Math.floor(cacheStatus.observedSecondsAgo / 60);
-
-    // Lo útil acá es SI la caché sirvió y hace cuánto, no cuántas fichas: eso
-    // es diagnóstico de quien opera la plataforma. Y no hay porcentaje posible,
-    // porque una lectura suelta no tiene cupo contra el cual medirse.
-    if (!$isPlatformAdmin) {
-      return minutesAgo < 1
-        ? t.get('course.sources.cache_read_just_now_plain')
-        : t.get('course.sources.cache_read_ago_plain', { minutes: minutesAgo });
-    }
-
-    const tokens = (cacheStatus.lastCacheReadTokens ?? 0).toLocaleString();
-
-    return minutesAgo < 1
-      ? t.get('course.sources.cache_read_just_now', { tokens })
-      : t.get('course.sources.cache_read_ago', { minutes: minutesAgo, tokens });
-  });
+  const leida = $derived(Boolean(cacheStatus?.cached && cacheStatus.observedSecondsAgo !== null));
 
   async function handleConfirmDelete() {
     confirmOpen = false;
@@ -143,12 +117,10 @@
     </div>
   </div>
 
-  {#if cacheLabel}
-    <div class="flex items-center gap-1.5 text-xs">
-      <ZapIcon size={11} class={cacheStatus?.cached ? 'ui:text-primary' : 'ui:text-muted-foreground'} />
-      <span class={cacheStatus?.cached ? 'ui:text-primary' : 'ui:text-muted-foreground'}>
-        {cacheLabel}
-      </span>
+  {#if leida}
+    <div class="ui:text-primary flex items-center gap-1.5 text-xs">
+      <CheckIcon size={11} />
+      <span>{t.get('course.sources.read_mark')}</span>
     </div>
   {/if}
 

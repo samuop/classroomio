@@ -65,7 +65,7 @@
 
 <div class="flex flex-col gap-6">
   <div class="flex items-center justify-between">
-    <div class="flex items-center gap-3 text-sm ui:text-muted-foreground">
+    <div class="ui:text-muted-foreground flex items-center gap-3 text-sm">
       <div class="flex items-center gap-2">
         <BookOpenIcon size={14} />
         <span>
@@ -74,19 +74,18 @@
             : $t('course.sources.count', { count: sourcesApi.sources.length })}
         </span>
       </div>
-      {#if sourcesApi.sources.length > 0}
+      <!--
+        Acá iba "N en caché". Se fue: cuántas fuentes tiene la plataforma
+        cacheadas es cómo funciona por dentro, no algo sobre lo que quien arma el
+        curso pueda decidir nada. Cada tarjeta ya marca si su fuente fue leída,
+        que es la única parte que le sirve.
+      -->
+      {#if sourcesApi.sources.length > 0 && sourcesApi.reconciling}
         <span class="ui:text-border">·</span>
-        <div class="flex items-center gap-1.5">
-          <span class="ui:bg-primary inline-block size-2 rounded-full" aria-hidden="true"></span>
-          <span>{$t('course.sources.cached_count', { count: sourcesApi.cachedCount })}</span>
+        <div class="ui:text-primary flex items-center gap-1.5">
+          <LoaderIcon size={11} class="animate-spin" />
+          <span>{$t('course.sources.reconciling')}</span>
         </div>
-        {#if sourcesApi.reconciling}
-          <span class="ui:text-border">·</span>
-          <div class="flex items-center gap-1.5 ui:text-primary">
-            <LoaderIcon size={11} class="animate-spin" />
-            <span>{$t('course.sources.reconciling')}</span>
-          </div>
-        {/if}
       {/if}
     </div>
     <Button onclick={() => (uploadDialogOpen = true)}>
@@ -97,12 +96,10 @@
 
   {#if sourcesApi.isLoading && sourcesApi.sources.length === 0}
     <div class="flex items-center justify-center py-12">
-      <LoaderIcon size={20} class="animate-spin ui:text-muted-foreground" />
+      <LoaderIcon size={20} class="ui:text-muted-foreground animate-spin" />
     </div>
   {:else if sourcesApi.sources.length === 0}
-    <div
-      class="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center"
-    >
+    <div class="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
       <BookOpenIcon size={32} class="ui:text-muted-foreground" />
       <h3 class="text-base font-medium">{$t('course.sources.empty_title')}</h3>
       <p class="ui:text-muted-foreground max-w-md text-sm">
@@ -137,8 +134,4 @@
   {/if}
 </div>
 
-<UploadSourceDialog
-  bind:open={uploadDialogOpen}
-  {courseId}
-  onUploaded={handleUploaded}
-/>
+<UploadSourceDialog bind:open={uploadDialogOpen} {courseId} onUploaded={handleUploaded} />
