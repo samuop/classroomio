@@ -1,4 +1,12 @@
-import { BRAND_STYLES, escapeHtml, getYear, renderBrands, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  getYear,
+  placeBrands,
+  renderBrands,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderPoster: TemplateRenderer = ({ design, data }) => {
@@ -17,7 +25,10 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
     transparent SVG was uploaded to avoid — so once there is a logo the pill
     goes and the marks stand on the paper.
   */
-  const orgSlot = brands.hasLogo ? brands.html : `<span class="pill">${brands.html}</span>`;
+  const slots = placeBrands(brands, design, 'top');
+  // La pastilla envuelve la ranura QUE SE USE, no un lugar fijo: si las marcas
+  // bajan al pie, el envoltorio baja con ellas.
+  const enPastilla = (html: string) => (!html || brands.hasLogo ? html : `<span class="pill">${html}</span>`);
 
   const body = `
     <div class="cert t-poster">
@@ -26,7 +37,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
       <div class="blob blob-3"></div>
       <div class="content">
         <div class="top">
-          ${orgSlot}
+          ${enPastilla(slots.top)}
           <span>${escapeHtml(data.certificateId)} / ${escapeHtml(data.date)}</span>
         </div>
         <div class="title">${escapeHtml(firstTitleWord || 'Award')} <em>${escapeHtml(titleEmphasis)}</em></div>
@@ -50,6 +61,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
             <div class="v">${escapeHtml(data.date)}</div>
           </div>
         </div>
+        <div class="brand-band">${enPastilla(slots.bottom)}</div>
       </div>
       <div class="corner-num">${getYear(data.date)}</div>
     </div>
@@ -57,6 +69,7 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /*
       Capped low. Nothing here is flex:1 — the bottom row is pushed down with
       \`margin-top: auto\` and everything above it is top-packed at its natural

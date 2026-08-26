@@ -3775,7 +3775,12 @@
           "field_template": "Template",
           "field_accent": "Accent",
           "field_signatories": "Signatories",
-          "customize_design": "Customize design"
+          "customize_design": "Customize design",
+          "brand_placement": "Where the logos go",
+          "brand_placement_hint": "“As the template has it” keeps each design's own spot — which is not the same in all of them.",
+          "brand_placement_default": "As the template has it",
+          "brand_placement_top": "Top",
+          "brand_placement_bottom": "Bottom, with the signatures"
         },
         "issue_modal": {
           "email_label": "Student's email address",

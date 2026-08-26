@@ -58,6 +58,13 @@ export interface CertificateEditorDraft {
   /** Print each mark's name under its logo as well as the logo itself. */
   brandShowNames: boolean;
   /**
+   * Dónde se dibujan las marcas. `''` = donde esa plantilla las pone por
+   * defecto, que NO es el mismo lugar en todas: classique arriba, diploma
+   * abajo. Por eso el vacío no se guarda — guardarlo como 'top' movría las
+   * marcas de la mitad de las plantillas sin que nadie lo haya pedido.
+   */
+  brandPlacement: '' | 'top' | 'bottom';
+  /**
    * A free canvas layout. `null` means the course renders through one of the
    * five fixed templates, which is every course while `CANVAS_EDITOR_ENABLED`
    * is off.
@@ -68,9 +75,10 @@ export interface CertificateEditorDraft {
 const LABEL_KEYS = Object.keys(DEFAULT_CERTIFICATE_LABELS) as CertificateLabelKey[];
 
 function toLabelDraft(labels: CertificateLabels | undefined): Record<CertificateLabelKey, string> {
-  return Object.fromEntries(
-    LABEL_KEYS.map((key) => [key, labels?.[key] ?? DEFAULT_CERTIFICATE_LABELS[key]])
-  ) as Record<CertificateLabelKey, string>;
+  return Object.fromEntries(LABEL_KEYS.map((key) => [key, labels?.[key] ?? DEFAULT_CERTIFICATE_LABELS[key]])) as Record<
+    CertificateLabelKey,
+    string
+  >;
 }
 
 /**
@@ -107,6 +115,7 @@ function toDraft(design: CertificateDesign): CertificateEditorDraft {
     clientBrandLogoUrl: design.clientBrand?.logoUrl ?? '',
     brandLogoHeight: design.brandLogoHeight ?? DEFAULT_BRAND_LOGO_HEIGHT,
     brandShowNames: design.brandShowNames ?? false,
+    brandPlacement: design.brandPlacement ?? '',
     document: design.document ?? null
   };
 }
@@ -147,6 +156,7 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
     // today's sizing — same rule the labels follow.
     ...(draft.brandLogoHeight !== DEFAULT_BRAND_LOGO_HEIGHT ? { brandLogoHeight: draft.brandLogoHeight } : {}),
     ...(draft.brandShowNames ? { brandShowNames: true } : {}),
+    ...(draft.brandPlacement ? { brandPlacement: draft.brandPlacement } : {}),
     ...(draft.document ? { document: draft.document } : {})
   };
 }
@@ -275,7 +285,10 @@ class CertificateEditorStore {
   /** True once this course renders from a canvas layout rather than a template. */
   readonly isCanvas = $derived(this.draft.document !== null);
 
-  async setTemplate(templateId: CertificateTemplateId, reseed?: { data: CertificateRenderData; values: BindingValues }) {
+  async setTemplate(
+    templateId: CertificateTemplateId,
+    reseed?: { data: CertificateRenderData; values: BindingValues }
+  ) {
     this.draft.templateId = templateId;
 
     // Picking a different template while on the canvas would otherwise change
@@ -343,9 +356,7 @@ class CertificateEditorStore {
   // ─── Canvas editing ────────────────────────────────────────────────────────
 
   readonly elements = $derived(this.draft.document?.elements ?? []);
-  readonly selectedElement = $derived(
-    this.elements.find((element) => element.id === this.selectedElementId) ?? null
-  );
+  readonly selectedElement = $derived(this.elements.find((element) => element.id === this.selectedElementId) ?? null);
   readonly canUndo = $derived(this.#past.length > 0);
   readonly canRedo = $derived(this.#future.length > 0);
 

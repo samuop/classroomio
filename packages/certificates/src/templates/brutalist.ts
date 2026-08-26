@@ -1,4 +1,11 @@
-import { BRAND_STYLES, escapeHtml, renderBrands, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  placeBrands,
+  renderBrands,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
@@ -9,12 +16,13 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
   const idDigits = data.certificateId.match(/\d+/)?.[0] ?? '00';
   const labels = resolveLabels(design.labels);
   const brands = renderBrands({ design, data, labels });
+  const slots = placeBrands(brands, design, 'top');
 
   const body = `
     <div class="cert t-brutalist">
       <div class="grid-bg"></div>
       <div class="header">
-        <div>${brands.html}</div>
+        <div>${slots.top}</div>
         <div class="blk">${escapeHtml(data.certificateId)}</div>
       </div>
       <div class="title-block">
@@ -50,11 +58,13 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
           <div class="name">${escapeHtml(signatoryTwo.name)}</div>
         </div>
       </div>
+      <div class="brand-band">${slots.bottom}</div>
     </div>
   `;
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /*
       Capped, because this is the one layout where a taller header costs
       something: the blocks below it sit in normal flow while the signature bar

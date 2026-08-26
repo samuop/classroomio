@@ -1,4 +1,11 @@
-import { BRAND_STYLES, escapeHtml, renderBrands, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  placeBrands,
+  renderBrands,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderMinimal: TemplateRenderer = ({ design, data }) => {
@@ -8,12 +15,13 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
   const brands = renderBrands({ design, data, labels });
+  const slots = placeBrands(brands, design, 'top');
 
   const body = `
     <div class="cert t-minimal">
       <span class="accent-bar" aria-hidden="true"></span>
       <div class="top">
-        <span>${brands.html}</span>
+        <span>${slots.top}</span>
         <span>${escapeHtml(data.certificateId)} &middot; ${escapeHtml(data.date)}</span>
       </div>
       <div class="body">
@@ -43,11 +51,13 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
           <div class="v">${escapeHtml(data.certificateId)}</div>
         </div>
       </div>
+      <div class="brand-band">${slots.bottom}</div>
     </div>
   `;
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /* The body block is flex:1, so it absorbs whatever the header takes. */
     .t-minimal .brand-logo { max-height: 64px; }
     /*

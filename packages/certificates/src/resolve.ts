@@ -66,6 +66,13 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
       ? { brandLogoHeight: design.brandLogoHeight }
       : {}),
     ...(typeof design?.brandShowNames === 'boolean' ? { brandShowNames: design.brandShowNames } : {}),
+    // Tercer lugar donde hay que nombrar el campo, despues del tipo y de zod:
+    // esta funcion reconstruye el diseno campo por campo, asi que lo que no
+    // nombra se pierde entre la base y el renderer. Un valor invalido cae al
+    // default de la plantilla en vez de dibujar nada raro.
+    ...(design?.brandPlacement === 'top' || design?.brandPlacement === 'bottom'
+      ? { brandPlacement: design.brandPlacement }
+      : {}),
     ...(design?.document ? { document: design.document } : {})
   };
 }

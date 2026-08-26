@@ -1431,7 +1431,12 @@
           "field_template": "Plantilla",
           "field_accent": "acento",
           "field_signatories": "Firmantes",
-          "customize_design": "Personalizar diseño"
+          "customize_design": "Personalizar diseño",
+          "brand_placement": "Dónde van los logos",
+          "brand_placement_hint": "\"Como viene la plantilla\" los deja donde cada diseño los pone: no es el mismo lugar en todos.",
+          "brand_placement_default": "Como viene la plantilla",
+          "brand_placement_top": "Arriba",
+          "brand_placement_bottom": "Abajo, con las firmas"
         },
         "issue_modal": {
           "email_label": "Correo del alumno",

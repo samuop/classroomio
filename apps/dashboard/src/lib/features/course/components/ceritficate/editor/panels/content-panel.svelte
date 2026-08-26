@@ -163,6 +163,31 @@
       {$t('course.navItem.certificates.editor.brand_show_names_hint')}
     </Field.Description>
 
+    <!--
+      Tres opciones y no coordenadas. El lienzo libre ya se intentó y no cerró
+      nunca: con posición libre, cada logo que alguien sube tiene un ancho
+      distinto y termina pisando el título o las firmas. Los dos huecos los
+      diseñó cada plantilla sabiendo qué tiene alrededor.
+    -->
+    <Field.Field>
+      <Field.Label for="brand-placement">
+        {$t('course.navItem.certificates.editor.brand_placement')}
+      </Field.Label>
+      <select
+        id="brand-placement"
+        {disabled}
+        bind:value={certificateEditorStore.draft.brandPlacement}
+        class="ui:border-input ui:bg-background h-9 w-full rounded-md border px-3 text-sm"
+      >
+        <option value="">{$t('course.navItem.certificates.editor.brand_placement_default')}</option>
+        <option value="top">{$t('course.navItem.certificates.editor.brand_placement_top')}</option>
+        <option value="bottom">{$t('course.navItem.certificates.editor.brand_placement_bottom')}</option>
+      </select>
+      <Field.Description>
+        {$t('course.navItem.certificates.editor.brand_placement_hint')}
+      </Field.Description>
+    </Field.Field>
+
     <Field.Field>
       <Field.Label for="brand-logo-height">
         {$t('course.navItem.certificates.editor.brand_logo_height')}

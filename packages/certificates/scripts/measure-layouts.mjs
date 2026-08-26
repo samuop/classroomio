@@ -108,6 +108,31 @@ const SCENARIOS = {
     data: { orgLogoUrl: LOGO }
   },
   'short title, no brands': { design: {}, data: { courseName: 'Inducción SSMA' } },
+  // Las dos ubicaciones, con el peor contenido: es lo unico que puede probar
+  // que el hueco nuevo de cada plantilla tiene espacio de verdad. Sin esto la
+  // medicion seguiria mirando solo el lugar donde las marcas ya estaban.
+  'marcas arriba (forzado)': {
+    design: { clientBrand: CLIENT, brandPlacement: 'top' },
+    data: { orgLogoUrl: LOGO }
+  },
+  'marcas abajo (forzado)': {
+    design: { clientBrand: CLIENT, brandPlacement: 'bottom' },
+    data: { orgLogoUrl: LOGO }
+  },
+  'marcas abajo, 96px + nombres': {
+    design: { clientBrand: CLIENT, brandPlacement: 'bottom', brandLogoHeight: 96, brandShowNames: true },
+    data: { orgLogoUrl: LOGO }
+  },
+  'marcas arriba, 96px + nombres': {
+    design: { clientBrand: CLIENT, brandPlacement: 'top', brandLogoHeight: 96, brandShowNames: true },
+    data: { orgLogoUrl: LOGO }
+  },
+  // Control: la MISMA combinacion sin elegir ubicacion. Si tambien rompe, el
+  // problema es previo y lo destapo, no lo introduje.
+  'control: 96px + nombres, sin elegir ubicacion': {
+    design: { clientBrand: CLIENT, brandLogoHeight: 96, brandShowNames: true },
+    data: { orgLogoUrl: LOGO }
+  },
   'worst case': {
     design: { clientBrand: CLIENT },
     data: {

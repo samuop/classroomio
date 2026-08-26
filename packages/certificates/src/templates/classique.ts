@@ -1,4 +1,12 @@
-import { BRAND_STYLES, escapeHtml, getYear, renderBrands, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  getYear,
+  placeBrands,
+  renderBrands,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderClassique: TemplateRenderer = ({ design, data }) => {
@@ -8,6 +16,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
   const brands = renderBrands({ design, data, labels });
+  const slots = placeBrands(brands, design, 'top');
 
   const body = `
     <div class="cert t-classique">
@@ -16,7 +25,7 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
       <div class="corner bl"></div>
       <div class="corner br"></div>
       <div class="main">
-        <div class="top-tag">${brands.html}</div>
+        <div class="top-tag">${slots.top}</div>
         <div class="ornament">&#10086;</div>
         <div class="title">${escapeHtml(data.courseName)}</div>
         <div class="subtitle">${escapeHtml(subtitle)}</div>
@@ -39,11 +48,13 @@ export const renderClassique: TemplateRenderer = ({ design, data }) => {
           <div class="label">${escapeHtml(signatoryTwo.role)}</div>
         </div>
       </div>
+      <div class="brand-band">${slots.bottom}</div>
     </div>
   `;
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /*
       Roomy: the marks sit inside the main block, which is flex:1 and centred,
       so a taller header takes space from the padding around the title rather

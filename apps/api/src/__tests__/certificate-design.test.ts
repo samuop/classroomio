@@ -177,6 +177,7 @@ describe('resolveCertificateDesign', () => {
       clientBrand: { name: 'Kisoco One', logoUrl: 'https://learn-files.tensor.com.ar/kisoco.svg' },
       brandLogoHeight: 56,
       brandShowNames: true,
+      brandPlacement: 'bottom' as const,
       document: { version: 2 as const, canvas: { color: '#ffffff' }, elements: [] }
     };
 

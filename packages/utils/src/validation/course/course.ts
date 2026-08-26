@@ -222,6 +222,14 @@ export const ZCertificateDesign = z.object({
   orgBrand: ZCertificateBrand.optional(),
   clientBrand: ZCertificateBrand.optional(),
   brandLogoHeight: z.number().min(16).max(96).optional(),
+  /**
+   * Dónde se dibujan las marcas. Conjunto cerrado, no coordenadas.
+   *
+   * Declararlo ACÁ no es opcional: este objeto es `z.object` sin `passthrough`,
+   * así que un campo que el esquema no nombra se descarta **en silencio** al
+   * guardar. El editor lo manda, la API contesta 200 y el diseño vuelve sin él.
+   */
+  brandPlacement: z.enum(['top', 'bottom']).optional(),
   /** Print each mark's name under its logo as well as the logo itself. */
   brandShowNames: z.boolean().optional(),
   document: ZCertificateDocument.optional()

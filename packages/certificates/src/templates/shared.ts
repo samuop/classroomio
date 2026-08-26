@@ -5,7 +5,7 @@ import {
   MAX_BRAND_LOGO_HEIGHT,
   MIN_BRAND_LOGO_HEIGHT
 } from '../constants';
-import type { CertificateDesign, CertificateLabels, CertificateRenderData } from '../types';
+import type { CertificateBrandPlacement, CertificateDesign, CertificateLabels, CertificateRenderData } from '../types';
 
 export function escapeHtml(input: unknown): string {
   return String(input ?? '').replace(/[&<>"']/g, (char) => {
@@ -112,8 +112,19 @@ export function renderBrands({
 
   const height = clampLogoHeight(design.brandLogoHeight);
 
+  /**
+   * Un logo con el nombre debajo mide casi el doble de alto que el logo solo.
+   *
+   * La plantilla necesita SABERLO para bajar su tope: `noir` capa el logo a
+   * 68px, que le entra justo, y con el nombre abajo el bloque empujaba el
+   * centro hasta desbordarlo — el adorno terminaba encima de la fecha. Una
+   * clase y no `:has()`: esto lo dibuja el navegador de Cloudflare y no vale la
+   * pena apostar a qué versión es.
+   */
+  const conNombres = marks.some((mark) => mark.logoUrl) && design.brandShowNames ? ' has-names' : '';
+
   const html =
-    `<span class="brands" style="--brand-logo-height:${height}px">` +
+    `<span class="brands${conNombres}" style="--brand-logo-height:${height}px">` +
     marks
       .map((mark) => {
         const caption = mark.caption?.trim()
@@ -140,6 +151,48 @@ export function renderBrands({
     hasClient
   };
 }
+
+/**
+ * Las marcas repartidas en los dos huecos que toda plantilla dibuja.
+ *
+ * Devuelve las DOS ranuras y no una posición, para que la plantilla escriba
+ * `${slots.top}` y `${slots.bottom}` en su markup y el hueco que no se usa
+ * quede vacío. Es lo que hace imposible el modo de falla del lienzo libre: no
+ * hay coordenada que elegir, hay dos lugares que cada plantilla diseñó sabiendo
+ * qué tiene alrededor.
+ *
+ * `fallback` es dónde las ponía esa plantilla antes de que esto existiera, así
+ * que un diseño guardado que no elige nada se sigue viendo exactamente igual.
+ */
+export function placeBrands(
+  brands: RenderedBrands,
+  design: CertificateDesign,
+  fallback: CertificateBrandPlacement
+): { top: string; bottom: string } {
+  const donde = design.brandPlacement ?? fallback;
+
+  return {
+    top: donde === 'top' ? brands.html : '',
+    bottom: donde === 'bottom' ? brands.html : ''
+  };
+}
+
+/**
+ * El hueco de abajo, para las plantillas cuyo pie ya está lleno de firmas.
+ *
+ * Una banda propia debajo de todo, centrada: no compite con las columnas del
+ * pie ni empuja nada, porque el `.cert` tiene alto fijo y esta fila se reserva
+ * su espacio como una más del flujo.
+ */
+export const BRAND_BAND_STYLES = `
+  .brand-band {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
+  .brand-band:empty { display: none; }
+`;
 
 function clampLogoHeight(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_BRAND_LOGO_HEIGHT;

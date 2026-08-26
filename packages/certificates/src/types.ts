@@ -78,6 +78,21 @@ export interface CertificateBrand {
   logoUrl?: string;
 }
 
+/**
+ * Dónde van las marcas (logo de la consultora y del cliente).
+ *
+ * Un conjunto CERRADO de huecos, y no coordenadas libres. El lienzo libre ya se
+ * intentó y no cerró nunca (ver `CANVAS_EDITOR_ENABLED`): con posición libre,
+ * cada logo que alguien sube es un ancho distinto y termina pisando el título o
+ * las firmas. Dos huecos que cada plantilla diseña a propósito no se pueden
+ * romper.
+ *
+ * `top` es arriba del título; `bottom`, en el pie junto a las firmas. Cada
+ * plantilla trae su propio valor por defecto — el lugar donde ya las ponía —
+ * así que un diseño que no elige nada se sigue viendo igual que siempre.
+ */
+export type CertificateBrandPlacement = 'top' | 'bottom';
+
 export interface CertificateDesign {
   templateId: CertificateTemplateId;
   accentColor: string;
@@ -107,6 +122,8 @@ export interface CertificateDesign {
   clientBrand?: CertificateBrand;
   /** Printed height of each logo in canvas pixels; templates cap it further. */
   brandLogoHeight?: number;
+  /** Dónde se dibujan las marcas. Sin valor, cada plantilla usa el suyo. */
+  brandPlacement?: CertificateBrandPlacement;
   /**
    * Print each mark's name under its logo as well.
    *

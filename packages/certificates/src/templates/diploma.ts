@@ -1,4 +1,11 @@
-import { BRAND_STYLES, escapeHtml, renderBrands, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  placeBrands,
+  renderBrands,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 /**
@@ -30,9 +37,11 @@ export const renderDiploma: TemplateRenderer = ({ design, data }) => {
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
   const brands = renderBrands({ design, data, labels });
+  const slots = placeBrands(brands, design, 'bottom');
 
   const body = `
     <div class="cert t-diploma">
+      <div class="brand-band">${slots.top}</div>
       <div class="main">
         ${subtitle ? `<div class="eyebrow">${escapeHtml(subtitle)}</div>` : ''}
         <div class="ornament"></div>
@@ -44,7 +53,7 @@ export const renderDiploma: TemplateRenderer = ({ design, data }) => {
         ${description ? `<div class="description">${escapeHtml(description)}</div>` : ''}
       </div>
       <div class="foot">
-        <div class="marks">${brands.html}</div>
+        <div class="marks">${slots.bottom}</div>
         <div class="sigs">
           <div class="sig">
             <div class="name">${escapeHtml(signatoryOne.name)}</div>
@@ -65,6 +74,7 @@ export const renderDiploma: TemplateRenderer = ({ design, data }) => {
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /*
       Lower than classique's 76px: there the marks sit in the header with the
       whole page below them to absorb a tall logo, here they share the foot with

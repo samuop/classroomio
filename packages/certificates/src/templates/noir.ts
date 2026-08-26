@@ -1,4 +1,13 @@
-import { BRAND_STYLES, escapeHtml, getYear, renderBrands, shadeColor, type TemplateRenderer } from './shared';
+import {
+  BRAND_BAND_STYLES,
+  BRAND_STYLES,
+  escapeHtml,
+  getYear,
+  placeBrands,
+  renderBrands,
+  shadeColor,
+  type TemplateRenderer
+} from './shared';
 import { resolveLabels } from '../constants';
 
 export const renderNoir: TemplateRenderer = ({ design, data }) => {
@@ -9,13 +18,14 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
   const [signatoryOne, signatoryTwo] = design.signatories;
   const labels = resolveLabels(design.labels);
   const brands = renderBrands({ design, data, labels });
+  const slots = placeBrands(brands, design, 'top');
 
   const body = `
     <div class="cert t-noir">
       <div class="top">
         <span>${escapeHtml(data.certificateId)}</span>
         <div class="line"></div>
-        <span>${brands.html}</span>
+        <span>${slots.top}</span>
         <div class="line"></div>
         <span>${escapeHtml(data.date)}</span>
       </div>
@@ -45,13 +55,24 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
           <div class="label">${escapeHtml(signatoryTwo.role)}</div>
         </div>
       </div>
+      <div class="brand-band">${slots.bottom}</div>
     </div>
   `;
 
   const styles = `
     ${BRAND_STYLES}
+    ${BRAND_BAND_STYLES}
     /* The main block is flex:1, so the header can grow without displacing it. */
     .t-noir .brand-logo { max-height: 68px; }
+    /* Con el nombre debajo, el bloque mide casi el doble y la fila de arriba
+       empujaba el centro hasta desbordarlo. Medido con measure-layouts. */
+    .t-noir .brands.has-names .brand-logo { max-height: 34px; }
+    /* El pie de noir ya esta lleno (dos firmas + medalla). La banda de abajo
+       le come alto al centro, que esta centrado y se desborda hacia ARRIBA:
+       el adorno terminaba sobre la fecha. Tope propio, medido. */
+    .t-noir .brand-band .brand-logo { max-height: 24px; }
+    .t-noir .brand-band .brands.has-names .brand-logo { max-height: 16px; }
+    .t-noir .brand-band .brand-name { font-size: 9px; }
     /*
       The top row is a thin gilt rule with the marks in the middle. Logos are
       light-on-dark here, so the gap has to be wider than elsewhere or the rules
