@@ -1,6 +1,25 @@
-import '@testing-library/jest-dom/vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
 
 import { loadTranslations } from '$lib/utils/functions/translations';
+
+/**
+ * Los matchers de jest-dom (`toBeInTheDocument`, `toHaveValue`, `toBeDisabled`).
+ *
+ * Se extiende el `expect` **global** —el mismo objeto que llaman los tests— y
+ * NO se importa `@testing-library/jest-dom/vitest`, que es el atajo obvio.
+ *
+ * Por qué: ese atajo hace `import { expect } from 'vitest'` adentro de jest-dom,
+ * y jest-dom no tiene un `vitest` propio en su carpeta. Con pnpm eso resuelve al
+ * que quedó **hoisteado** en `.pnpm/node_modules/`, y en este monorepo conviven
+ * seis copias de vitest (1.6.1, 2.1.9 y 3.2.7). Si la hoisteada no es la del
+ * dashboard, jest-dom le agrega los matchers a OTRA instancia y los tests fallan
+ * con "Invalid Chai property: toHaveValue".
+ *
+ * Y no es teórico: acá pasaba porque la hoisteada resultó ser la 3.2.7; en un
+ * runner limpio de CI fue otra, y 5 tests se cayeron (run 32965695807).
+ * `./matchers` no importa vitest en absoluto, así que no hay ambigüedad posible.
+ */
+expect.extend(matchers);
 
 /**
  * Lo que el navegador trae puesto y jsdom no.
