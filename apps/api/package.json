@@ -15,7 +15,7 @@
     "dev:tsc": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "deploy": "wrangler deploy",
     "start": "node dist/index.js",
-    "test": "vitest NODE_ENV=test",
+    "test": "vitest run",
     "test:db": "vitest run --config vitest.int.config.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . --ext .ts",

@@ -288,7 +288,7 @@
                 </div>
               {:else}
                 <div class="flex gap-2">
-                  <Input bind:value={newDomain} placeholder="egea.com.ar" />
+                  <Input bind:value={newDomain} placeholder="miempresa.com.ar" />
                   <Button
                     onclick={onConnect}
                     loading={platformApi.isLoading}

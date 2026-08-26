@@ -1,14 +1,20 @@
-// Written for vitest, which the dashboard does not run — jest is the runner
-// here, and it collected this file and failed on the `vitest` import, so the
-// whole suite was red. Same tests, jest's mocking API.
 import { ZodError, z } from 'zod';
 import enTranslations from '$lib/utils/translations/en.json';
 
 import { mapZodErrorsToTranslations } from './validation';
 
-const mockGet = jest.fn<string | null, [string, Record<string, unknown>?]>();
+/**
+ * `vi.hoisted` y no una constante suelta.
+ *
+ * `vi.mock` se sube arriba de todo el archivo antes de ejecutarlo, así que una
+ * variable declarada acá abajo todavía no existe cuando la fábrica corre. Lo
+ * que `hoisted` devuelve sube con ella.
+ */
+const { mockGet } = vi.hoisted(() => ({
+  mockGet: vi.fn<(key: string, params?: Record<string, unknown>) => string | null>()
+}));
 
-jest.mock('$lib/utils/functions/translations', () => ({
+vi.mock('$lib/utils/functions/translations', () => ({
   t: {
     get: (key: string, params?: Record<string, unknown>) => mockGet(key, params)
   }

@@ -47,7 +47,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── 4. Build api + dashboard + jobs-worker ───────────────────────────
+      # ── 4. Tests ─────────────────────────────────────────────────────────
+      # Antes de esto el deploy no corría UN SOLO test: compilaba y publicaba.
+      # Los `.int.test.ts` quedan afuera solos (piden un Postgres levantado, ver
+      # apps/api/vitest.config.ts), así que esto no necesita servicios.
+      #
+      # Va antes del build a propósito: el build del dashboard tarda varios
+      # minutos y no tiene sentido pagarlos para descubrir después que algo
+      # estaba roto.
+      - name: Test
+        run: pnpm --filter @cio/api --filter @cio/dashboard test
+
+      # ── 5. Build api + dashboard + jobs-worker ───────────────────────────
       # Heap grande para el dashboard (vite). PUBLIC_IS_SELFHOSTED en build-time
       # porque el adapter lo lee al generar el bundle.
       - name: Build
@@ -89,7 +100,7 @@ jobs:
           test -f apps/dashboard/build/index.js || (echo "ERROR: falta apps/dashboard/build/index.js" && exit 1)
           test -f apps/jobs/dist/index.js       || (echo "ERROR: falta apps/jobs/dist/index.js" && exit 1)
 
-      # ── 5. SSH setup (patrón robusto: keyscan con backoff por fail2ban) ──
+      # ── 6. SSH setup (patrón robusto: keyscan con backoff por fail2ban) ──
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -126,7 +137,7 @@ jobs:
           SSHCFG
           chmod 600 ~/.ssh/config
 
-      # ── 6. rsync del repo buildeado (sin node_modules ni .git) ───────────
+      # ── 7. rsync del repo buildeado (sin node_modules ni .git) ───────────
       # El VPS reinstala node_modules (deploy-remote.sh) para que los symlinks
       # @cio/* del workspace resuelvan localmente. Transferimos código + dist/ +
       # build/ + manifests + infra.
@@ -141,7 +152,7 @@ jobs:
       #
       # Los .env van EXCLUIDOS, y eso no es una optimización: es lo que evita
       # dejar producción sin variables de entorno. Están gitignorados, así que
-      # `--delete` los borraba en cada deploy y el paso 7 los reescribía un
+      # `--delete` los borraba en cada deploy y el paso 8 los reescribía un
       # segundo después. Mientras el rsync anduviera, nadie lo notaba. El día que
       # falló (2026-08-10), el borrado ya había ocurrido y el paso que los
       # recrea nunca corrió: el servidor quedó con los procesos vivos —
@@ -185,7 +196,7 @@ jobs:
           fi
           exit 1
 
-      # ── 7. Escribir los DOS .env en sus rutas ────────────────────────────
+      # ── 8. Escribir los DOS .env en sus rutas ────────────────────────────
       # VPS_CIO_API_ENV es el archivo entero en un solo secreto, así que agregar
       # una variable obliga a reescribirlo completo. Las claves de un solo uso van
       # como secretos propios, apendeadas acá: se rotan sin volver a pegar el
@@ -270,7 +281,7 @@ jobs:
           BODY_SIZE_LIMIT=33554432
           ENVEOF
 
-      # ── 8. Install + db:setup + MinIO + PM2 ──────────────────────────────
+      # ── 9. Install + db:setup + MinIO + PM2 ──────────────────────────────
       - name: Run remote deploy
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \

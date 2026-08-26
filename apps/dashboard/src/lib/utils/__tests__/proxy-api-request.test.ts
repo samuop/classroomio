@@ -23,7 +23,7 @@ describe('proxyRequestToApi', () => {
   beforeEach(() => {
     process.env.PRIVATE_SERVER_URL = 'http://127.0.0.1:3081';
     seen = null;
-    global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+    global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       seen = { url: String(url), headers: new Headers(init?.headers) };
       return new Response('ok', { status: 200 });
     }) as unknown as typeof fetch;
@@ -65,10 +65,10 @@ describe('proxyRequestToApi', () => {
   });
 
   it('strips the /proxy prefix and forwards the original host', async () => {
-    await proxyRequestToApi(new Request('https://learn.egeaconsultoria.com.ar/proxy/organization/first'));
+    await proxyRequestToApi(new Request('https://learn.ejemplo-cliente.com.ar/proxy/organization/first'));
 
     expect(seen!.url).toBe('http://127.0.0.1:3081/organization/first');
-    expect(seen!.headers.get('x-forwarded-host')).toBe('learn.egeaconsultoria.com.ar');
+    expect(seen!.headers.get('x-forwarded-host')).toBe('learn.ejemplo-cliente.com.ar');
   });
 
   it('leaves /api/auth paths alone — Better Auth serves them at that exact path', async () => {

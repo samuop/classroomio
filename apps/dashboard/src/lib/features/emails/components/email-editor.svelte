@@ -25,9 +25,16 @@
 
   let { template, editable = true }: Props = $props();
 
-  /** Los seis bloques, tal como están en el formulario. */
+  /**
+   * Los seis bloques, tal como están en el formulario.
+   *
+   * Capturar `template` una sola vez es lo buscado, no un descuido: ver más
+   * abajo por qué el formulario NO se sincroniza con la plantilla.
+   */
+  // svelte-ignore state_referenced_locally
   let form = $state<EmailBlocks>({ ...template.values });
   /** Un botón sin texto es un correo sin botón, y eso es una elección válida. */
+  // svelte-ignore state_referenced_locally
   let conBoton = $state(template.values.ctaLabel.trim() !== '');
   /**
    * Dónde está el cursor, para insertar una variable ahí.

@@ -9,7 +9,7 @@
  * `base-url` se mockea porque importa `$app/environment` y `$env/dynamic/public`,
  * que sólo existen dentro del build de SvelteKit.
  */
-jest.mock('$lib/utils/services/api/base-url', () => ({
+vi.mock('$lib/utils/services/api/base-url', () => ({
   getRequestBaseUrl: () => 'https://learn.tensor.com.ar/proxy'
 }));
 
@@ -33,20 +33,18 @@ let report: ReportModule;
  * un test se comería la cuota del siguiente y el orden de ejecución pasaría a
  * cambiar los resultados.
  */
-function loadFresh(): ReportModule {
-  jest.resetModules();
+async function loadFresh(): Promise<ReportModule> {
+  vi.resetModules();
 
-  // `require` y no `import`: la única forma de volver a evaluar un módulo
-  // después de `resetModules()` es una carga síncrona. Un `await import()` en
-  // CJS lo resuelve del registro y devolvería la instancia vieja, con el
-  // contador de la cuota ya gastado.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('../report-incident') as ReportModule;
+  // Con Vitest el `import` sí vuelve a evaluar el módulo: `resetModules()`
+  // vacía su registro. (Con Jest en CJS había que usar `require`, porque un
+  // `await import()` devolvía la instancia vieja con la cuota ya gastada.)
+  return (await import('../report-incident')) as ReportModule;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   seen = [];
-  global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+  global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
       url: String(url),
       init: init ?? {},
@@ -56,11 +54,11 @@ beforeEach(() => {
     return new Response(null, { status: 204 });
   }) as unknown as typeof fetch;
 
-  report = loadFresh();
+  report = await loadFresh();
 });
 
 afterEach(() => {
-  jest.restoreAllMocks();
+  vi.restoreAllMocks();
   delete (globalThis as { window?: unknown }).window;
 });
 
@@ -117,7 +115,7 @@ describe('reportIncident', () => {
   });
 
   it('no tira ni deja rechazos sueltos aunque fetch explote', async () => {
-    global.fetch = jest.fn(() => Promise.reject(new Error('sin conexión'))) as unknown as typeof fetch;
+    global.fetch = vi.fn(() => Promise.reject(new Error('sin conexión'))) as unknown as typeof fetch;
 
     expect(() => report.reportIncident({ kind: 'FRONTEND_ERROR', message: 'boom' })).not.toThrow();
 
@@ -147,7 +145,7 @@ describe('el tope y su ventana rodante', () => {
     // veinte errores dejaría de reportar para siempre y ese silencio se
     // confundiría con que no pasa nada.
     const start = Date.now();
-    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(start);
 
     for (let i = 0; i < 30; i++) {
       report.reportIncident({ kind: 'FRONTEND_ERROR', message: `error ${i}` });
@@ -164,7 +162,7 @@ describe('el tope y su ventana rodante', () => {
     // Un error que sigue pasando cinco minutos después es información: dice que
     // no fue un hecho aislado.
     const start = Date.now();
-    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(start);
 
     report.reportIncident({ kind: 'FRONTEND_ERROR', message: 'el mismo de siempre' });
     report.reportIncident({ kind: 'FRONTEND_ERROR', message: 'el mismo de siempre' });
@@ -179,16 +177,17 @@ describe('el tope y su ventana rodante', () => {
 
 describe('navegador y servidor', () => {
   /**
-   * Un `window` mínimo. El entorno de Jest es `node` y el proyecto no tiene
-   * `jest-environment-jsdom`; el módulo sólo usa `location.pathname` y
-   * `addEventListener`, así que un doble de esos dos alcanza y deja a la vista
-   * exactamente de qué depende.
+   * Un `window` mínimo. Este test corre en el proyecto `logica`, que es Node
+   * puro a propósito: el módulo también se ejecuta en el servidor y ahí no hay
+   * DOM. Además el módulo sólo usa `location.pathname` y `addEventListener`, y
+   * un doble de esos dos deja a la vista exactamente de qué depende — un jsdom
+   * entero lo escondería.
    */
   function fakeWindow() {
     const listeners: Record<string, (event: unknown) => void> = {};
 
     (globalThis as { window?: unknown }).window = {
-      location: { pathname: '/org/egea/seguimiento' },
+      location: { pathname: '/org/empresa-de-prueba/seguimiento' },
       addEventListener: (name: string, handler: (event: unknown) => void) => {
         listeners[name] = handler;
       }
@@ -197,13 +196,13 @@ describe('navegador y servidor', () => {
     return listeners;
   }
 
-  it('en el navegador agrega la pantalla y sobrevive al cierre de la pestaña', () => {
+  it('en el navegador agrega la pantalla y sobrevive al cierre de la pestaña', async () => {
     fakeWindow();
-    report = loadFresh();
+    report = await loadFresh();
 
     report.reportIncident({ kind: 'FRONTEND_ERROR', message: 'boom' });
 
-    expect(seen[0].body.metadata).toMatchObject({ screen: '/org/egea/seguimiento' });
+    expect(seen[0].body.metadata).toMatchObject({ screen: '/org/empresa-de-prueba/seguimiento' });
     // `keepalive` es lo que hace que el reporte salga aunque la persona recargue
     // o cierre justo después de que se rompiera la pantalla.
     expect(seen[0].init.keepalive).toBe(true);
@@ -253,9 +252,9 @@ describe('installBrowserErrorReporting', () => {
     expect(seen).toHaveLength(0);
   });
 
-  it('reporta un error de código suelto con dónde ocurrió', () => {
+  it('reporta un error de código suelto con dónde ocurrió', async () => {
     const listeners = fakeWindowWithListeners();
-    report = loadFresh();
+    report = await loadFresh();
     report.installBrowserErrorReporting();
 
     listeners.error?.({
@@ -270,9 +269,9 @@ describe('installBrowserErrorReporting', () => {
     expect(seen[0].body.metadata).toMatchObject({ file: 'app.js', line: 12, column: 3, origin: 'window.error' });
   });
 
-  it('reporta una promesa rechazada sin catch', () => {
+  it('reporta una promesa rechazada sin catch', async () => {
     const listeners = fakeWindowWithListeners();
-    report = loadFresh();
+    report = await loadFresh();
     report.installBrowserErrorReporting();
 
     listeners.unhandledrejection?.({ reason: new Error('fetch falló') });
@@ -281,9 +280,9 @@ describe('installBrowserErrorReporting', () => {
     expect(seen[0].body.metadata).toMatchObject({ origin: 'unhandledrejection' });
   });
 
-  it('sobrevive a un rechazo que no es un Error', () => {
+  it('sobrevive a un rechazo que no es un Error', async () => {
     const listeners = fakeWindowWithListeners();
-    report = loadFresh();
+    report = await loadFresh();
     report.installBrowserErrorReporting();
 
     listeners.unhandledrejection?.({ reason: undefined });
@@ -295,7 +294,7 @@ describe('installBrowserErrorReporting', () => {
     const listeners: Record<string, ((event: never) => void) | undefined> = {};
 
     (globalThis as { window?: unknown }).window = {
-      location: { pathname: '/org/egea/seguimiento' },
+      location: { pathname: '/org/empresa-de-prueba/seguimiento' },
       addEventListener: (name: string, handler: (event: never) => void) => {
         listeners[name] = handler;
       }
@@ -315,8 +314,7 @@ describe('isSlowRequest', () => {
 });
 
 describe('shouldReportFailedRequest', () => {
-  const should = (status: number, error: unknown = new Error('x')) =>
-    report.shouldReportFailedRequest(status, error);
+  const should = (status: number, error: unknown = new Error('x')) => report.shouldReportFailedRequest(status, error);
 
   it('reporta lo que el servidor no puede ver', () => {
     expect(should(0)).toBe(true); // nunca llegó
