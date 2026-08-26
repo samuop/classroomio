@@ -47,18 +47,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── 4. Tests ─────────────────────────────────────────────────────────
-      # Antes de esto el deploy no corría UN SOLO test: compilaba y publicaba.
-      # Los `.int.test.ts` quedan afuera solos (piden un Postgres levantado, ver
-      # apps/api/vitest.config.ts), así que esto no necesita servicios.
-      #
-      # Va antes del build a propósito: el build del dashboard tarda varios
-      # minutos y no tiene sentido pagarlos para descubrir después que algo
-      # estaba roto.
-      - name: Test
-        run: pnpm --filter @cio/api --filter @cio/dashboard test
-
-      # ── 5. Build api + dashboard + jobs-worker ───────────────────────────
+      # ── 4. Build api + dashboard + jobs-worker ───────────────────────────
       # Heap grande para el dashboard (vite). PUBLIC_IS_SELFHOSTED en build-time
       # porque el adapter lo lee al generar el bundle.
       - name: Build
@@ -99,6 +88,24 @@ jobs:
           test -f apps/api/dist/index.js        || (echo "ERROR: falta apps/api/dist/index.js" && exit 1)
           test -f apps/dashboard/build/index.js || (echo "ERROR: falta apps/dashboard/build/index.js" && exit 1)
           test -f apps/jobs/dist/index.js       || (echo "ERROR: falta apps/jobs/dist/index.js" && exit 1)
+
+      # ── 5. Tests ─────────────────────────────────────────────────────────
+      # Antes de esto el deploy no corría UN SOLO test: compilaba y publicaba.
+      # Los `.int.test.ts` quedan afuera solos (piden un Postgres levantado, ver
+      # apps/api/vitest.config.ts), así que esto no necesita servicios.
+      #
+      # DESPUÉS del build, y no antes, aunque el build tarde varios minutos:
+      # **la suite de la API necesita los paquetes construidos**. `@cio/db` está
+      # apuntado a `dist/` a propósito en vitest.shared.ts (Vite no sigue el
+      # patrón de subrutas `./queries/*` de su exports map), y `@cio/utils`
+      # resuelve por su package.json, que también apunta a `dist/`.
+      #
+      # En una máquina de desarrollo esto no se ve: `dist/` ya está ahí de un
+      # build anterior. En un runner limpio no existe, y 45 de 59 suites fallan
+      # con ERR_MODULE_NOT_FOUND sin que haya nada roto de verdad. Pasó en el
+      # run 32965334422.
+      - name: Test
+        run: pnpm --filter @cio/api --filter @cio/dashboard test
 
       # ── 6. SSH setup (patrón robusto: keyscan con backoff por fail2ban) ──
       - name: Setup SSH
