@@ -8,6 +8,7 @@ import type {
   SearchScope
 } from '../utils/types';
 import { BaseApi, classroomio } from '$lib/utils/services/api';
+import { WIDGETS_ENABLED } from '$lib/utils/constants/features';
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -147,15 +148,19 @@ function mapSearchResults(data: SearchOrgData, currentOrgPath: string): GroupedS
     })
   );
 
-  results.widget = data.widgets.map(
-    (widget): SearchResultItem => ({
-      kind: 'widget',
-      id: widget.id,
-      title: widget.name,
-      subtitle: widget.status,
-      url: `/widgets/${widget.id}`
-    })
-  );
+  // Con los widgets apagados la API igual los devuelve —no se tocó— pero
+  // ofrecerlos acá sería mandar a la persona a una ruta que redirige.
+  results.widget = WIDGETS_ENABLED
+    ? data.widgets.map(
+        (widget): SearchResultItem => ({
+          kind: 'widget',
+          id: widget.id,
+          title: widget.name,
+          subtitle: widget.status,
+          url: `/widgets/${widget.id}`
+        })
+      )
+    : [];
 
   results.tag = data.tags.map(
     (tag): SearchResultItem => ({

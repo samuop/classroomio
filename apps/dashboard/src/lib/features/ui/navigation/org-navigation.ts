@@ -18,6 +18,7 @@ import BuildingIcon from '@lucide/svelte/icons/building-2';
 import type { AccountOrg } from '$features/app/types';
 // import BotIcon from '@lucide/svelte/icons/bot'; // Automation (MCP) hidden for now.
 import type { Component } from 'svelte';
+import { WIDGETS_ENABLED } from '$lib/utils/constants/features';
 import { isActive } from '$lib/utils/functions/app';
 
 export interface NavItem {
@@ -133,13 +134,20 @@ export const baseNavConfig: NavItemConfig[] = [
     requiresAdmin: true,
     matchPattern: '^/org/[^/]+/tags(/.*)?$'
   },
-  {
-    group: 'content',
-    titleKey: 'org_navigation.widgets',
-    path: '/widgets',
-    icon: LandingPageIcon,
-    matchPattern: '^(/org/[^/]+/widgets(/.*)?|/widgets/[^/]+(/.*)?)$'
-  },
+  // Widgets: apagado por `WIDGETS_ENABLED`. Sacarlo de acá lo saca de las dos
+  // barras laterales Y del buscador, que arma sus "páginas" desde esta misma
+  // lista (ver search/utils/static-catalog.ts).
+  ...(WIDGETS_ENABLED
+    ? [
+        {
+          group: 'content',
+          titleKey: 'org_navigation.widgets',
+          path: '/widgets',
+          icon: LandingPageIcon,
+          matchPattern: '^(/org/[^/]+/widgets(/.*)?|/widgets/[^/]+(/.*)?)$'
+        } satisfies NavItemConfig
+      ]
+    : []),
   {
     group: 'people',
     titleKey: 'org_navigation.community',
