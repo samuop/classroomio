@@ -63,14 +63,82 @@ const MODEL_COST_MULTIPLIER: Record<string, number> = {
  * of presenting a guess as a fact, which is the whole difference between an
  * under-reported cap and an informed choice.
  */
+const modelosSinPrecioAvisados = new Set<string>();
+
 export function getModelCostMultiplier(model: string): { multiplier: number; isMeasured: boolean } {
   const known = MODEL_COST_MULTIPLIER[model];
 
-  return known === undefined ? { multiplier: 1, isMeasured: false } : { multiplier: known, isMeasured: true };
+  if (known === undefined) {
+    // Una vez por modelo y por proceso: el 1× de un modelo sin precio es una
+    // suposición, y hasta ahora era una suposición MUDA — nadie se enteraba de
+    // que el cupo se estaba descontando con un número inventado. El Set evita
+    // que esto inunde el log en una tanda de 40 pasos.
+    if (!modelosSinPrecioAvisados.has(model)) {
+      modelosSinPrecioAvisados.add(model);
+      console.warn(`[usage] modelo sin precio medido: "${model}" — se cobra a 1×. Agregalo a MODEL_COST_MULTIPLIER.`);
+    }
+
+    return { multiplier: 1, isMeasured: false };
+  }
+
+  return { multiplier: known, isMeasured: true };
 }
 
-function computeCostUnits(promptTokens: number, completionTokens: number, model: string): number {
-  return Math.round((promptTokens + completionTokens) * getModelCostMultiplier(model).multiplier);
+// ─── Cache Read Discounts ─────────────────────────────────────────────
+
+/**
+ * What a cached input token costs, as a fraction of a fresh one.
+ *
+ * Every provider re-reads the cached prefix on every step and bills it — but at
+ * a fraction. Anthropic charges 0.1× for a cache read; Google's context caching
+ * is a 75% discount, so 0.25×.
+ *
+ * Per provider and not a single constant because getting it wrong in the cheap
+ * direction under-charges silently, which is the failure nobody notices until
+ * the provider bill arrives.
+ */
+const CACHE_READ_FACTOR: Record<string, number> = {
+  anthropic: 0.1,
+  google: 0.25,
+  openai: 0.5, // OpenAI's cached input is half price.
+  moonshot: 0.1,
+  minimax: 1 // Unpriced: charged in full rather than guessed in our favour.
+};
+
+/**
+ * Unknown providers pay full price — never guess a discount we cannot name.
+ *
+ * El `?? 1` solo no alcanzaba: con `provider === ''` el `&&` devuelve `''`, que
+ * `??` deja pasar y que en una multiplicación vale 0 — la caché salía GRATIS.
+ * Lo agarró el typecheck (`number | ''`), no un test.
+ */
+export function getCacheReadFactor(provider: string | undefined): number {
+  const factor = provider ? CACHE_READ_FACTOR[provider] : undefined;
+
+  return factor ?? 1;
+}
+
+/**
+ * What this call costs the plan, in credit units.
+ *
+ * **`promptTokens` INCLUDES the cached re-reads** (the provider reports cache
+ * reads as a subset of input — see the `ai_token_usage` schema). Charging it
+ * whole was billing a cached re-read at the price of fresh input.
+ *
+ * Measured in production 2026-08-26: **64.5% of all input that month came from
+ * cache** (11.2M of 17.4M). The month was charged 17.7M units where the weighted
+ * figure is ~7.6-9.3M — the counter was inflating by roughly 2×, and the org
+ * hit its cap on a bill it never incurred.
+ *
+ * Deliberately NOT retroactive: historical rows keep the units they were
+ * charged. Recomputing them would rewrite numbers people already saw.
+ */
+export function computeCostUnits(usage: TokenUsage, model: string, provider?: string): number {
+  const cacheRead = Math.min(usage.cacheReadTokens ?? 0, usage.promptTokens);
+  const freshInput = usage.promptTokens - cacheRead;
+  const weightedInput = freshInput + cacheRead * getCacheReadFactor(provider);
+
+  return Math.round((weightedInput + usage.completionTokens) * getModelCostMultiplier(model).multiplier);
 }
 
 async function getPlanAllowance(orgId: string): Promise<{ planName: string; allowance: number }> {
@@ -145,9 +213,10 @@ export async function recordTokenUsage(
   userId: string,
   courseId: string,
   usage: TokenUsage,
-  model: string
+  model: string,
+  provider?: string
 ): Promise<void> {
-  const costUnits = computeCostUnits(usage.promptTokens, usage.completionTokens, model);
+  const costUnits = computeCostUnits(usage, model, provider);
   const { allowance } = await getPlanAllowance(orgId);
 
   await insertTokenUsageAndDrainCredits({

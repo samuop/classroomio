@@ -83,7 +83,7 @@ import {
   type AgentStatus,
   type TeacherPromptMode
 } from '@cio/ai-assistant';
-import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
+import { createModel, pickAnyConfiguredProvider, resolveModelName } from '@cio/ai-assistant/providers';
 import { providerConfigForOrg } from '@api/services/platform/settings';
 import { buildSystemPrompt, buildContextMessage } from '@cio/ai-assistant/prompt';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
@@ -537,7 +537,7 @@ const agentCoreRouter = new Hono()
         const { text, usage, modelName } = await generateFieldText(prompt, tone, format, context, providerConfig);
 
         if (courseId) {
-          await recordTokenUsage(orgId, user.id, courseId, usage, modelName);
+          await recordTokenUsage(orgId, user.id, courseId, usage, modelName, providerConfig.provider);
         }
 
         return c.json({ success: true as const, data: { text } });
@@ -1428,6 +1428,18 @@ const agentCoreRouter = new Hono()
               console.error('[agent.chat] failed to recompute plan progress at finish:', err);
             }
           }
+          /**
+           * El modelo que realmente se llamó, resuelto con la MISMA función que
+           * lo eligió (`createModel` hace `config.model || resolveModelName(...)`).
+           *
+           * Antes acá decía `providerConfig.model || providerConfig.provider`, y
+           * cuando no había modelo configurado guardaba el nombre del PROVEEDOR:
+           * quedaron filas cuyo "modelo" era `google` o `minimax`. Ninguno está
+           * en la tabla de multiplicadores, así que caían al 1× "no medido" en
+           * silencio — 49 de las 53 llamadas de agosto 2026.
+           */
+          const modeloReal = providerConfig.model || resolveModelName(providerConfig.provider);
+
           const inputTokens = totalUsage?.inputTokens ?? 0;
           const outputTokens = totalUsage?.outputTokens ?? 0;
           // Trust the provider's own total — do NOT recompute as input+output,
@@ -1516,7 +1528,8 @@ const agentCoreRouter = new Hono()
                 cacheReadTokens: cacheRead || undefined,
                 cacheWriteTokens: cacheWrite || undefined
               },
-              providerConfig.model || providerConfig.provider
+              modeloReal,
+              providerConfig.provider
             );
           }
 
@@ -1530,7 +1543,7 @@ const agentCoreRouter = new Hono()
             courseId,
             inputTokens,
             outputTokens,
-            model: providerConfig.model || providerConfig.provider,
+            model: modeloReal,
             durationMs
           });
         }
