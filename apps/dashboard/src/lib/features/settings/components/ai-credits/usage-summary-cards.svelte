@@ -3,6 +3,8 @@
   import * as Card from '@cio/ui/base/card';
   import { SvelteDate } from 'svelte/reactivity';
   import type { AiUsageData, PurchasedSummaryData } from '$features/settings/utils/types';
+  import { porcentajeDeCupo } from '$lib/utils/ai-usage';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
 
   interface Props {
     usage: AiUsageData | null;
@@ -11,9 +13,9 @@
 
   let { usage, purchased }: Props = $props();
 
-  const includedPercent = $derived(
-    usage && usage.allowance > 0 ? Math.min(100, Math.round((usage.used / usage.allowance) * 100)) : 0
-  );
+  const porcentaje = $derived(usage ? porcentajeDeCupo(usage.used, usage.allowance) : null);
+  /** Para la barra hace falta un número sí o sí; `null` se dibuja como vacía. */
+  const includedPercent = $derived(porcentaje ?? 0);
 
   const resetDate = $derived.by(() => {
     const nextReset = new SvelteDate();
@@ -28,9 +30,16 @@
   <Card.Root>
     <Card.Header>
       <Card.Description>{$t('settings.ai_credits.included.title')}</Card.Description>
+      <!--
+        Sólo el super-admin de la plataforma ve fichas; cualquier admin de
+        empresa ve el porcentaje. Ojo: el cupo TAMPOCO se muestra, porque con el
+        porcentaje y el cupo a la vista el número consumido se despeja solo.
+      -->
       <Card.Title class="text-2xl">
-        {#if usage}
+        {#if usage && $isPlatformAdmin}
           {usage.used.toLocaleString()} / {usage.allowance.toLocaleString()}
+        {:else if porcentaje !== null}
+          {$t('settings.ai_credits.percent_of_quota', { pct: porcentaje })}
         {:else}
           —
         {/if}

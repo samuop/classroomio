@@ -21,7 +21,8 @@
       "read_only_badge": "Sólo lectura",
       "usage_banner": "{learners} alumnos y {tokens} tokens de IA utilizados en {workspaces} espacios de trabajo este mes",
       "secondary_billing_notice": "La facturación la administra su espacio de trabajo principal ({primaryName}).",
-      "go_to_primary": "Ir al espacio de trabajo principal"
+      "go_to_primary": "Ir al espacio de trabajo principal",
+      "usage_banner_plain": "{learners} alumnos en {workspaces} espacios de trabajo este mes"
     },
     "switcher": {
       "your_account": "tu cuenta",
@@ -411,7 +412,9 @@
         "body": "Esta ejecución ha estado esperando más de 30 segundos sin que ningún trabajador haya sido recogido. Es posible que el trabajador en segundo plano esté inactivo o reiniciándose."
       }
     },
-    "plan_incomplete_notice": "Todavía faltan {pending} elemento(s) por crear y {empty} sin contenido. Hacé clic en Continuar para que el asistente termine el plan."
+    "plan_incomplete_notice": "Todavía faltan {pending} elemento(s) por crear y {empty} sin contenido. Hacé clic en Continuar para que el asistente termine el plan.",
+    "plan_estimated_cost_pct": "Costo estimado: ~{pct}% de lo que te queda",
+    "context_usage_tooltip_pct": "Ocupación de la ventana: {pct}%"
   },
   "analytics": {
     "title": "Analítica",
@@ -2884,7 +2887,9 @@
       "snackbar_cache_refreshed": "Caché refrescada",
       "snackbar_cache_refresh_failed": "No se pudo refrescar la caché",
       "refresh_cache_aria": "Refrescar caché de esta fuente",
-      "reconciling": "Sincronizando caché…"
+      "reconciling": "Sincronizando caché…",
+      "cache_read_just_now_plain": "Leída de caché recién",
+      "cache_read_ago_plain": "Leída de caché hace {minutes} min"
     },
     "load_error": {
       "title": "No pudimos abrir este curso",
@@ -4433,7 +4438,9 @@
         "tokens": "Créditos",
         "total_tokens": "Créditos totales",
         "total_requests": "Total de solicitudes",
-        "empty": "Aún no se ha registrado ningún uso este mes."
+        "empty": "Aún no se ha registrado ningún uso este mes.",
+        "tokens_percent": "% del cupo",
+        "total_percent": "Consumido del cupo"
       },
       "leaderboard": {
         "title": "Uso del equipo",
@@ -4441,7 +4448,8 @@
         "user": "Usuario",
         "favorite_model": "Modelo favorito",
         "tokens": "Créditos",
-        "empty": "Nadie de su equipo ha usado el asistente de IA este mes."
+        "empty": "Nadie de su equipo ha usado el asistente de IA este mes.",
+        "share": "Participación"
       },
       "buy_tokens": {
         "title": "Comprar más credits",
@@ -4449,7 +4457,11 @@
         "quantity_hint": "paquetes",
         "preview": "{quantity} pack(s) · {tokens} créditos · ${dollars}",
         "buy_button": "Comprar por ${dollars}"
-      }
+      },
+      "percent_of_quota": "{pct}% de tu cupo mensual",
+      "percent_of_quota_short": "{pct}% del cupo",
+      "percent_used_label": "usado",
+      "quota_unknown": "Todavía no hay un cupo definido para esta empresa."
     },
     "account": {
       "language": "Idioma",

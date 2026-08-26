@@ -3,6 +3,7 @@
   import * as Table from '@cio/ui/base/table';
   import * as Avatar from '@cio/ui/base/avatar';
   import type { LeaderboardData } from '$features/settings/utils/types';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
 
   interface Props {
     leaderboard: LeaderboardData | null;
@@ -35,7 +36,17 @@
           <Table.Head class="w-10">#</Table.Head>
           <Table.Head>{$t('settings.ai_credits.leaderboard.user')}</Table.Head>
           <Table.Head>{$t('settings.ai_credits.leaderboard.favorite_model')}</Table.Head>
-          <Table.Head class="text-right">{$t('settings.ai_credits.leaderboard.tokens')}</Table.Head>
+          <!--
+            La columna cambia de unidad, no sólo de formato: para el super-admin
+            son fichas; para todos los demás es la PARTICIPACIÓN de cada persona
+            en el consumo del equipo, que es otro denominador (el equipo, no el
+            cupo). Por eso cambia también el encabezado.
+          -->
+          <Table.Head class="text-right">
+            {$isPlatformAdmin
+              ? $t('settings.ai_credits.leaderboard.tokens')
+              : $t('settings.ai_credits.leaderboard.share')}
+          </Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -61,7 +72,11 @@
             </Table.Cell>
             <Table.Cell class="text-right">
               <div class="inline-flex flex-col items-end gap-1">
-                <span class="text-sm font-medium">{entry.tokens.toLocaleString()}</span>
+                <span class="text-sm font-medium">
+                  {$isPlatformAdmin
+                    ? entry.tokens.toLocaleString()
+                    : `${Math.min(100, Math.round(entry.percentage * 100))}%`}
+                </span>
                 <div class="ui:bg-muted h-1 w-24 rounded-full">
                   <div
                     class="ui:bg-primary h-1 rounded-full"

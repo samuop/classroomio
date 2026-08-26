@@ -8,6 +8,7 @@
 
   import { accountApi } from '$features/account/api/account.svelte';
   import { currentOrg, isPrimaryWorkspace } from '$lib/utils/store/org';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
   import { t } from '$lib/utils/functions/translations';
 
   let isCreateOpen = $state(false);
@@ -65,12 +66,26 @@
     {#if usage}
       <Field.Set>
         <div class="rounded border p-4">
+          <!--
+            Sin las fichas para quien no opera la plataforma. Acá tampoco hay
+            porcentaje que dar: es un total cruzado de varios espacios de
+            trabajo, cada uno con su propio cupo, así que no existe un
+            denominador único. Los alumnos y los espacios sí quedan — esos son
+            datos del negocio de la empresa, no del costo de la plataforma.
+          -->
           <p class="text-sm">
-            {$t('account.workspaces.usage_banner', {
-              learners: usage.learnerCount,
-              tokens: usage.tokensUsedThisMonth,
-              workspaces: usage.workspaceCount
-            })}
+            {#if $isPlatformAdmin}
+              {$t('account.workspaces.usage_banner', {
+                learners: usage.learnerCount,
+                tokens: usage.tokensUsedThisMonth,
+                workspaces: usage.workspaceCount
+              })}
+            {:else}
+              {$t('account.workspaces.usage_banner_plain', {
+                learners: usage.learnerCount,
+                workspaces: usage.workspaceCount
+              })}
+            {/if}
           </p>
         </div>
       </Field.Set>

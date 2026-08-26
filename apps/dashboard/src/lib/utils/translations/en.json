@@ -222,7 +222,8 @@
       "read_only_badge": "Read-only",
       "usage_banner": "{learners} learners and {tokens} AI tokens used across {workspaces} workspaces this month",
       "secondary_billing_notice": "Billing is managed by your primary workspace ({primaryName}).",
-      "go_to_primary": "Go to primary workspace"
+      "go_to_primary": "Go to primary workspace",
+      "usage_banner_plain": "{learners} learners across {workspaces} workspaces this month"
     }
   },
   "verify_email_modal": {
@@ -1139,7 +1140,9 @@
         "tokens": "Credits",
         "total_tokens": "Total credits",
         "total_requests": "Total requests",
-        "empty": "No usage recorded this month yet."
+        "empty": "No usage recorded this month yet.",
+        "tokens_percent": "% of quota",
+        "total_percent": "Quota used"
       },
       "leaderboard": {
         "title": "Team usage",
@@ -1147,7 +1150,8 @@
         "user": "User",
         "favorite_model": "Favorite model",
         "tokens": "Credits",
-        "empty": "Nobody on your team has used the AI assistant this month."
+        "empty": "Nobody on your team has used the AI assistant this month.",
+        "share": "Share"
       },
       "buy_tokens": {
         "title": "Buy more credits",
@@ -1155,7 +1159,11 @@
         "quantity_hint": "packs",
         "preview": "{quantity} pack(s) · {tokens} credits · ${dollars}",
         "buy_button": "Buy for ${dollars}"
-      }
+      },
+      "percent_of_quota": "{pct}% of your monthly quota",
+      "percent_of_quota_short": "{pct}% of quota",
+      "percent_used_label": "used",
+      "quota_unknown": "No quota has been set for this organisation yet."
     },
     "account": {
       "language": "Language",
@@ -4077,7 +4085,9 @@
       "snackbar_cache_refreshed": "Cache refreshed",
       "snackbar_cache_refresh_failed": "Could not refresh the cache",
       "refresh_cache_aria": "Refresh cache for this source",
-      "reconciling": "Syncing cache…"
+      "reconciling": "Syncing cache…",
+      "cache_read_just_now_plain": "Read from cache just now",
+      "cache_read_ago_plain": "Read from cache {minutes} min ago"
     },
     "load_error": {
       "title": "We couldn't open this course",
@@ -5167,7 +5177,9 @@
     "context_full_new_chat": "Start new chat with summary",
     "context_full_summarizing": "Creating summary...",
     "context_compacted_badge": "Conversation compacted ({count} earlier messages)",
-    "plan_incomplete_notice": "{pending} item(s) still missing and {empty} empty. Click Continue to have the assistant finish the plan."
+    "plan_incomplete_notice": "{pending} item(s) still missing and {empty} empty. Click Continue to have the assistant finish the plan.",
+    "plan_estimated_cost_pct": "Estimated cost: ~{pct}% of what's left",
+    "context_usage_tooltip_pct": "Context window in use: {pct}%"
   },
   "side_panel": {
     "close_aria": "Close panel",

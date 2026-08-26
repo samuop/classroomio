@@ -14,6 +14,7 @@
   import ChatHistoryPopover from '$features/ai-assistant/chat-history-popover.svelte';
   import { closeAiAssistant } from '$features/ai-assistant/utils/store';
   import { t } from '$lib/utils/functions/translations';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
   import { IconButton } from '@cio/ui/custom/icon-button';
   import { Button } from '@cio/ui/base/button';
 
@@ -282,11 +283,20 @@
     {@const totalBudget = tokenUsage.used + tokenUsage.remaining}
     {@const usagePercent = Math.min(100, Math.round((tokenUsage.used / totalBudget) * 100))}
     <div class="mt-2">
+      <!--
+        El porcentaje ya estaba a la derecha; lo que se va es el conteo de la
+        izquierda. Se va también el total, no sólo lo usado: con el porcentaje y
+        el cupo a la vista, lo consumido se despeja con una división.
+      -->
       <div class="ui:text-muted-foreground flex justify-between text-[10px]">
-        <span
-          >{tokenUsage.used.toLocaleString()} / {totalBudget.toLocaleString()}
-          {$t('ai_assistant.tokens_label')}</span
-        >
+        {#if $isPlatformAdmin}
+          <span
+            >{tokenUsage.used.toLocaleString()} / {totalBudget.toLocaleString()}
+            {$t('ai_assistant.tokens_label')}</span
+          >
+        {:else}
+          <span>{$t('settings.ai_credits.chart.total_percent')}</span>
+        {/if}
         <span>{usagePercent}%</span>
       </div>
       <div class="ui:bg-muted mt-0.5 h-1 w-full rounded-full">

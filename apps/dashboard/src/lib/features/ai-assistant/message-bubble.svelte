@@ -25,6 +25,7 @@
   } from '$features/ai-assistant/utils/tool-labels';
   import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
   import { t } from '$lib/utils/functions/translations';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
   import {
     getAgentToolName,
     getAgentToolInput,
@@ -154,9 +155,7 @@
 
     const name = getAgentToolName(part);
 
-    return (
-      name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions'
-    );
+    return name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions';
   }
 
   function truncateErrorText(errorText: string): string {
@@ -255,7 +254,11 @@
   const thinkingBlocks = $derived(
     message.role === 'assistant' ? partsSplit.thinking.filter((block) => block?.trim()) : []
   );
-  const inlineParts = $derived(message.role === 'assistant' ? partsSplit.reply : (message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text'));
+  const inlineParts = $derived(
+    message.role === 'assistant'
+      ? partsSplit.reply
+      : (message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text')
+  );
   const deferredPlanParts = $derived(
     (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
   );
@@ -263,9 +266,7 @@
   // once the round's writes landed), carried on the finish metadata. Previously the
   // checklist was drawn from the model's own update_course_todo_list output, which
   // drifted badly — it read 1/32 with ten lessons already written.
-  const planProgress = $derived(
-    message.role === 'assistant' ? message.metadata?.planProgress : undefined
-  );
+  const planProgress = $derived(message.role === 'assistant' ? message.metadata?.planProgress : undefined);
   const showPlanProgress = $derived(!!planProgress && planProgress.total > 0);
   const hasBubbleContent = $derived(
     inlineParts.length > 0 ||
@@ -355,8 +356,7 @@
   {:else}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
-      class="rounded-lg px-3 py-2 text-sm {isWideBubble ? 'w-full max-w-full' : 'max-w-[85%]'} {message.role ===
-      'user'
+      class="rounded-lg px-3 py-2 text-sm {isWideBubble ? 'w-full max-w-full' : 'max-w-[85%]'} {message.role === 'user'
         ? 'ui:bg-primary ui:text-primary-foreground'
         : 'ui:bg-muted'}"
       onclick={handleBubbleClick}
@@ -496,7 +496,14 @@
         <TodoChecklist progress={planProgress} />
       {/if}
 
-      {#if message.role === 'assistant' && tokenUsage}
+      <!--
+        Este pie se esconde entero, no se convierte a porcentaje: un mensaje
+        suelto no tiene cupo contra el cual medirse. Y dejarlo anularía todo lo
+        demás — no sirve esconder el total del mes si cada respuesta sigue
+        anunciando "1.240.000 fichas". Es diagnóstico de quien opera la
+        plataforma, no información que la empresa use para trabajar.
+      -->
+      {#if message.role === 'assistant' && tokenUsage && $isPlatformAdmin}
         <div class="mt-1 flex justify-end">
           <span class="ui:text-muted-foreground text-[10px]" title={tokenUsageBreakdown}>
             {headlineTokens.toLocaleString()}

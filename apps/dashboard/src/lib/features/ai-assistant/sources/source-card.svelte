@@ -2,6 +2,7 @@
   import type { CourseSource, DocumentCacheStatus } from '../utils/types';
   import { Button } from '@cio/ui/base/button';
   import { t } from '$lib/utils/functions/translations';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
   import * as Dialog from '@cio/ui/base/dialog';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import TrashIcon from '@lucide/svelte/icons/trash';
@@ -29,15 +30,9 @@
 
   const mimeLabel = $derived.by(() => {
     if (source.mimeType === 'application/pdf') return t.get('course.sources.meta_pdf');
-    if (
-      source.mimeType ===
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    )
+    if (source.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
       return t.get('course.sources.meta_docx');
-    if (
-      source.mimeType ===
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    )
+    if (source.mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
       return t.get('course.sources.meta_pptx');
     return source.mimeType;
   });
@@ -72,6 +67,16 @@
     if (cacheStatus.observedSecondsAgo === null) return t.get('course.sources.cache_never_read');
 
     const minutesAgo = Math.floor(cacheStatus.observedSecondsAgo / 60);
+
+    // Lo útil acá es SI la caché sirvió y hace cuánto, no cuántas fichas: eso
+    // es diagnóstico de quien opera la plataforma. Y no hay porcentaje posible,
+    // porque una lectura suelta no tiene cupo contra el cual medirse.
+    if (!$isPlatformAdmin) {
+      return minutesAgo < 1
+        ? t.get('course.sources.cache_read_just_now_plain')
+        : t.get('course.sources.cache_read_ago_plain', { minutes: minutesAgo });
+    }
+
     const tokens = (cacheStatus.lastCacheReadTokens ?? 0).toLocaleString();
 
     return minutesAgo < 1
@@ -85,9 +90,7 @@
   }
 </script>
 
-<div
-  class="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:ui:bg-muted/30"
->
+<div class="hover:ui:bg-muted/30 flex flex-col gap-3 rounded-lg border p-4 transition-colors">
   <div class="flex items-start justify-between gap-2">
     <div class="flex min-w-0 items-start gap-2">
       <FileTextIcon size={18} class="ui:text-primary mt-0.5 shrink-0" />
@@ -142,10 +145,7 @@
 
   {#if cacheLabel}
     <div class="flex items-center gap-1.5 text-xs">
-      <ZapIcon
-        size={11}
-        class={cacheStatus?.cached ? 'ui:text-primary' : 'ui:text-muted-foreground'}
-      />
+      <ZapIcon size={11} class={cacheStatus?.cached ? 'ui:text-primary' : 'ui:text-muted-foreground'} />
       <span class={cacheStatus?.cached ? 'ui:text-primary' : 'ui:text-muted-foreground'}>
         {cacheLabel}
       </span>

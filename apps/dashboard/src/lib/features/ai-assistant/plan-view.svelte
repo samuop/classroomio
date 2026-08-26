@@ -8,6 +8,7 @@
   import { Button } from '@cio/ui/base/button';
   import { SvelteSet } from 'svelte/reactivity';
   import { t } from '$lib/utils/functions/translations';
+  import { isPlatformAdmin } from '$lib/utils/store/user';
   import type { CoursePlan } from './utils/course-plan';
 
   /** Token cost estimation heuristics (tokens per item) */
@@ -235,9 +236,16 @@
 
   <!-- Cost estimate + actions -->
   <div class="space-y-3 border-t px-4 py-3">
-    {#if estimatedTokens > 0}
+    <!--
+      Sin cupo conocido no hay porcentaje, y ahí no se muestra NADA en vez de
+      caer al número de fichas: ese fallback es justamente el que filtraría el
+      dato el día que el cupo no viene.
+    -->
+    {#if estimatedTokens > 0 && ($isPlatformAdmin || costPercentage !== null)}
       <p class="text-xs {isHighCost ? 'text-amber-600 dark:text-amber-400' : 'ui:text-muted-foreground'}">
-        {#if costPercentage !== null}
+        {#if !$isPlatformAdmin}
+          {$t('ai_assistant.plan_estimated_cost_pct', { pct: costPercentage })}
+        {:else if costPercentage !== null}
           {$t('ai_assistant.plan_estimated_cost_with_pct', { count: estimatedTokens, pct: costPercentage })}
         {:else}
           {$t('ai_assistant.plan_estimated_cost', { count: estimatedTokens })}
