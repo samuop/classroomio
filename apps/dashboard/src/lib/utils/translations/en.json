@@ -4143,6 +4143,7 @@
       "snackbar_cache_refreshed": "Source updated",
       "snackbar_cache_refresh_failed": "Could not update the source",
       "refresh_cache_aria": "Read this source again",
+      "download_aria": "Download the original file",
       "reconciling": "Updating…",
       "read_mark": "Read"
     },

@@ -3382,7 +3382,20 @@ export const aiChatDocument = pgTable(
     conversationId: uuid('conversation_id').notNull(),
     courseId: uuid('course_id').notNull(),
     userId: uuid('user_id').notNull(),
+    /**
+     * Dónde vive el ORIGINAL, y son excluyentes.
+     *
+     * `assetId` = lo subió alguien y el archivo está en nuestro almacenamiento
+     * (PDF, DOCX, PPTX). `sourceUrl` = salió de la web y el original vive en
+     * internet, así que no guardamos copia: guardamos la dirección.
+     *
+     * Sin `sourceUrl` la dirección se perdía. La página se guardaba como fuente
+     * con el título y el dominio metidos en `file_name` —"Colorimetría
+     * (wikipedia.org)"— y de ahí no se puede volver: quien queria releer la
+     * página tenía que buscarla de nuevo a mano.
+     */
     assetId: uuid('asset_id'),
+    sourceUrl: text('source_url'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type').notNull(),
     text: text().notNull(),

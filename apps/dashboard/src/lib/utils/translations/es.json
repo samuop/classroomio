@@ -2938,6 +2938,7 @@
       "snackbar_cache_refreshed": "Fuente actualizada",
       "snackbar_cache_refresh_failed": "No se pudo actualizar la fuente",
       "refresh_cache_aria": "Volver a leer esta fuente",
+      "download_aria": "Descargar el archivo original",
       "reconciling": "Actualizando…",
       "read_mark": "Leída"
     },

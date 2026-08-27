@@ -32,6 +32,14 @@ export interface ChatDocumentRecord {
   courseId: string;
   userId: string;
   assetId: string | null;
+  /** La direccion de la pagina, cuando la fuente salio de la web.
+   *
+   * Es excluyente con `assetId`: si el original lo subio alguien, la copia es
+   * nuestra y vive en el almacenamiento; si salio de internet, no guardamos
+   * copia y lo unico que queda es la direccion. Null en las filas viejas, que
+   * se crearon antes de que la guardaramos.
+   */
+  sourceUrl: string | null;
   fileName: string;
   mimeType: string;
   text: string;
@@ -50,6 +58,7 @@ export async function createChatDocument(record: {
   courseId: string;
   userId: string;
   assetId: string | null;
+  sourceUrl?: string | null;
   fileName: string;
   mimeType: string;
   text: string;

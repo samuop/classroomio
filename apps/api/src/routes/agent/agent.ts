@@ -51,6 +51,7 @@ import {
   parseAndStoreDocument,
   parseDocument,
   storeDraftDocument,
+  storeOriginalFileBestEffort,
   promoteDraftDocuments,
   getDocumentText,
   SOURCES_CONVERSATION_TITLE
@@ -276,7 +277,18 @@ const agentCoreRouter = new Hono()
       }
 
       const parsed = await parseDocument(file);
-      const { documentId } = await storeDraftDocument(parsed, user.id, redis);
+      // El original tambien se guarda, no solo el texto extraido: quien sube un
+      // PDF o un PPT despues quiere poder bajarlo de la lista de fuentes. Va en
+      // su version tolerante porque el curso todavia no existe y perder la
+      // copia descargable no justifica bloquear la creacion.
+      const assetId = await storeOriginalFileBestEffort({
+        file,
+        buffer: Buffer.from(await file.arrayBuffer()),
+        mimeType: parsed.mimeType,
+        orgId,
+        userId: user.id
+      });
+      const { documentId } = await storeDraftDocument({ ...parsed, assetId }, user.id, redis);
 
       return c.json({
         success: true,

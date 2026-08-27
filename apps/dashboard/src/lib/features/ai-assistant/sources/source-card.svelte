@@ -8,6 +8,9 @@
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import CheckIcon from '@lucide/svelte/icons/check';
+  import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+  import DownloadIcon from '@lucide/svelte/icons/download';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   let {
     source,
@@ -36,9 +39,25 @@
     return source.mimeType;
   });
 
-  const createdAtLabel = $derived.by(() => {
+  // En espanol y hora argentina, como todo el resto. `toLocaleDateString()` sin
+  // argumentos usa el idioma y la zona del navegador, asi que la misma fuente se
+  // fechaba distinto segun quien la mirara.
+  const createdAtLabel = $derived(formatDisplayDate(source.createdAt));
+
+  /**
+   * De donde se saca el original, y son excluyentes.
+   *
+   * Una pagina web no se descarga: se abre donde vive. Un archivo subido no
+   * tiene donde abrirse: se baja. Nunca hay que ofrecer las dos cosas, porque
+   * una fuente no puede ser las dos.
+   */
+  const enlaceWeb = $derived(source.sourceUrl ?? null);
+  const descarga = $derived(enlaceWeb ? null : (source.downloadUrl ?? null));
+
+  const dominio = $derived.by(() => {
+    if (!enlaceWeb) return '';
     try {
-      return new Date(source.createdAt).toLocaleDateString();
+      return new URL(enlaceWeb).hostname.replace(/^www\./, '');
     } catch {
       return '';
     }
@@ -69,12 +88,27 @@
     <div class="flex min-w-0 items-start gap-2">
       <FileTextIcon size={18} class="ui:text-primary mt-0.5 shrink-0" />
       <div class="flex min-w-0 flex-col">
-        <span class="truncate text-sm font-medium" title={source.fileName}>
-          {source.fileName}
-        </span>
+        {#if enlaceWeb}
+          <a
+            href={enlaceWeb}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="ui:hover:text-primary flex min-w-0 items-center gap-1 text-sm font-medium hover:underline"
+            title={enlaceWeb}
+          >
+            <span class="truncate">{source.fileName}</span>
+            <ExternalLinkIcon size={12} class="ui:text-muted-foreground shrink-0" />
+          </a>
+        {:else}
+          <span class="truncate text-sm font-medium" title={source.fileName}>
+            {source.fileName}
+          </span>
+        {/if}
         <!-- One line, truncated: it used to wrap to one word per line in a narrow card. -->
         <span class="ui:text-muted-foreground truncate text-xs">
-          {mimeLabel}
+          <!-- En una pagina el mime seria "text/markdown", que no le dice nada
+               a nadie; el dominio si dice de donde salio el material. -->
+          {dominio || mimeLabel}
           {#if source.pageCount}
             · {t.get('course.sources.meta_pages', { count: source.pageCount })}
           {/if}
@@ -86,6 +120,21 @@
     </div>
 
     <div class="flex shrink-0 items-center gap-1">
+      {#if descarga}
+        <!-- Un <a> y no un <Button>: bajar un archivo es navegar a el. Va sin
+             `download` a proposito — el enlace firmado es de otro origen y el
+             navegador ignora ese atributo ahi, asi que prometerlo seria mentir. -->
+        <a
+          href={descarga}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={t.get('course.sources.download_aria')}
+          title={t.get('course.sources.download_aria')}
+          class="ui:text-muted-foreground hover:ui:text-foreground inline-flex h-8 items-center rounded-md px-2 transition-colors"
+        >
+          <DownloadIcon size={14} />
+        </a>
+      {/if}
       <Button
         variant="ghost"
         size="sm"

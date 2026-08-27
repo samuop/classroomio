@@ -37,6 +37,18 @@ export interface ParsedDocument {
   wordCount: number;
   textPreview: string;
   truncated: boolean;
+  /** El archivo original ya guardado, cuando lo subio alguien. Viaja por el
+   *  borrador para que se pueda descargar desde la lista de fuentes. */
+  assetId?: string | null;
+  /**
+   * De donde salio, cuando salio de la web.
+   *
+   * Ausente en un archivo subido: ahi el original lo tenemos nosotros. Viaja
+   * hasta `promoteDraftDocuments` para que una pagina que el asistente de
+   * creacion investigo ANTES de que el curso existiera llegue a la lista de
+   * fuentes con su enlace, igual que una que se agrego con el curso ya hecho.
+   */
+  sourceUrl?: string;
 }
 
 /**
@@ -94,6 +106,84 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
  * teacher can attach material before the course exists. The stored `userId`
  * lets getDocumentText's ownership check pass on the first chat turn.
  */
+/**
+ * Guarda el archivo ORIGINAL y lo registra como asset de la organizacion.
+ *
+ * Del archivo subido nos quedabamos solo con el texto extraido, que es lo que
+ * el modelo necesita. Pero quien lo subio tambien quiere poder BAJARLO despues
+ * desde la lista de fuentes, y para eso hay que conservar el archivo, no su
+ * transcripcion.
+ *
+ * Es el mismo camino que usan las lecciones (S3 + tabla de assets), asi que el
+ * archivo tambien aparece en el gestor de medios de la organizacion.
+ */
+export async function storeOriginalFile(params: {
+  file: File;
+  buffer: Buffer;
+  mimeType: string;
+  orgId: string;
+  userId: string;
+  conversationId?: string;
+}): Promise<{ id: string }> {
+  const { file, buffer, mimeType, orgId, userId, conversationId } = params;
+  const storageKey = generateFileKey(file.name);
+  const storageConfig = getStorageConfig();
+  const uploadResult = await uploadToS3({
+    Bucket: storageConfig.bucketDocuments,
+    Key: storageKey,
+    Body: buffer,
+    ContentType: mimeType
+  });
+
+  if (!uploadResult.success) {
+    throw new AppError(
+      `Failed to upload document to storage: ${uploadResult.error ?? 'unknown error'}`,
+      'DOCUMENT_STORAGE_FAILED',
+      500
+    );
+  }
+
+  return createAssetFromUploadService(orgId, userId, {
+    kind: 'document',
+    provider: 'upload',
+    storageProvider: 's3',
+    storageKey,
+    byteSize: file.size,
+    mimeType,
+    title: file.name,
+    isExternal: false,
+    metadata: { source: 'ai_chat', conversationId }
+  });
+}
+
+/**
+ * Lo mismo, pero sin derecho a tumbar la subida.
+ *
+ * En el asistente de creacion el curso todavia no existe y lo que la persona
+ * vino a hacer es armarlo con ese material. Si el almacenamiento falla, perder
+ * la copia descargable es molesto; abortar la subida y dejarla sin poder
+ * avanzar es peor. Por eso aca se traga el error y se sigue con el texto, que
+ * es lo que hace falta para construir.
+ *
+ * Contrapartida asumida: un borrador que nunca se promueve —la persona
+ * abandona el asistente— deja el archivo en el almacenamiento sin ninguna fila
+ * que lo referencie. Son 5 MB como maximo y solo cuando alguien abandona a
+ * mitad de camino.
+ */
+export async function storeOriginalFileBestEffort(
+  params: Parameters<typeof storeOriginalFile>[0]
+): Promise<string | null> {
+  try {
+    const asset = await storeOriginalFile(params);
+
+    return asset.id;
+  } catch (error) {
+    console.warn('[agent.documents] no se pudo guardar el archivo original del borrador:', error);
+
+    return null;
+  }
+}
+
 export async function storeDraftDocument(
   parsed: ParsedDocument,
   userId: string,
@@ -112,7 +202,9 @@ export async function storeDraftDocument(
       // Carried so `promoteDraftDocuments` can persist a faithful record instead
       // of recomputing an approximation from the text.
       wordCount: parsed.wordCount,
-      pageCount: parsed.pageCount
+      pageCount: parsed.pageCount,
+      sourceUrl: parsed.sourceUrl ?? null,
+      assetId: parsed.assetId ?? null
     }),
     { EX: DOCUMENT_REDIS_TTL }
   );
@@ -159,6 +251,8 @@ export async function promoteDraftDocuments(
         userId?: string;
         wordCount?: number;
         pageCount?: number;
+        sourceUrl?: string | null;
+        assetId?: string | null;
       };
 
       // Someone else's draft id: leave it alone rather than copying their
@@ -174,7 +268,8 @@ export async function promoteDraftDocuments(
         conversationId: params.conversationId,
         courseId: params.courseId,
         userId: params.userId,
-        assetId: null,
+        assetId: draft.assetId ?? null,
+        sourceUrl: draft.sourceUrl ?? null,
         fileName: draft.fileName ?? 'document',
         mimeType: draft.mimeType ?? 'application/octet-stream',
         text: draft.text,
@@ -245,36 +340,7 @@ export async function parseAndStoreDocument(
 
   const documentId = nanoid();
 
-  // Persist the original file to S3 and register it as an asset so it shows
-  // up in the org's asset manager — same pipeline lessons use.
-  const storageKey = generateFileKey(file.name);
-  const storageConfig = getStorageConfig();
-  const uploadResult = await uploadToS3({
-    Bucket: storageConfig.bucketDocuments,
-    Key: storageKey,
-    Body: buffer,
-    ContentType: mimeType
-  });
-
-  if (!uploadResult.success) {
-    throw new AppError(
-      `Failed to upload document to storage: ${uploadResult.error ?? 'unknown error'}`,
-      'DOCUMENT_STORAGE_FAILED',
-      500
-    );
-  }
-
-  const asset = await createAssetFromUploadService(orgId, userId, {
-    kind: 'document',
-    provider: 'upload',
-    storageProvider: 's3',
-    storageKey,
-    byteSize: file.size,
-    mimeType,
-    title: file.name,
-    isExternal: false,
-    metadata: { source: 'ai_chat', conversationId }
-  });
+  const asset = await storeOriginalFile({ file, buffer, mimeType, orgId, userId, conversationId });
 
   await redis.set(
     agentDocumentKey(documentId),
@@ -396,6 +462,10 @@ export async function storeUrlDocument(params: {
     courseId,
     userId,
     assetId: null,
+    // Lo que antes se tiraba. El nombre del archivo lleva el titulo y el
+    // dominio, pero de "Colorimetria (wikipedia.org)" no se puede volver a la
+    // pagina: hay que guardar la direccion entera o se pierde.
+    sourceUrl: url,
     fileName,
     mimeType: URL_SOURCE_MIME_TYPE,
     text,

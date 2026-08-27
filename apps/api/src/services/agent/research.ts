@@ -239,7 +239,13 @@ function toParsedDocument(page: { url: string; pageTitle: string; content: strin
     pageCount: null,
     wordCount: text.split(/\s+/).filter(Boolean).length,
     textPreview: text.slice(0, 500),
-    truncated: page.content.length > MAX_DOCUMENT_TEXT_LENGTH
+    truncated: page.content.length > MAX_DOCUMENT_TEXT_LENGTH,
+    // El asistente de creacion investiga ANTES de que el curso exista, asi que
+    // estas paginas van a un borrador en Redis y recien se vuelven fuentes en
+    // el primer turno de chat. Sin esto, la direccion moria en ese salto y la
+    // fuente terminaba sin enlace, a diferencia de la misma pagina agregada con
+    // el curso ya creado.
+    sourceUrl: page.url
   };
 }
 

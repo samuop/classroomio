@@ -26,6 +26,8 @@ import {
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
 import { getDocumentText, storeUrlDocument, SOURCES_CONVERSATION_TITLE } from '@api/services/agent/document';
+import { getAssetsByIds } from '@cio/db/queries/assets/assets';
+import { generateDocumentDownloadPresignedUrls } from '@api/utils/s3';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 
 /**
@@ -76,21 +78,53 @@ export const agentDocumentsRouter = new Hono()
           ? await listChatDocumentsByConversation(conversationId, user.id)
           : await listChatDocumentsByCourse(courseId, user.id);
 
+        /**
+         * De donde se saca el original de cada fuente.
+         *
+         * Son dos casos y no se pisan: la pagina web guarda su direccion y se
+         * abre tal cual; el archivo subido esta en nuestro almacenamiento y hay
+         * que FIRMAR un enlace temporal para bajarlo — el bucket no es publico,
+         * asi que sin firma no hay descarga posible desde el navegador.
+         *
+         * Se firma en la lista y no en un endpoint aparte para seguir lo que ya
+         * hacen las lecciones, y porque firmar no sale a la red: es una cuenta
+         * local, ademas cacheada en Redis. Una fuente cuyo asset ya no exista
+         * simplemente se queda sin descarga, en vez de tumbar la lista entera.
+         */
+        const assetIds = documents
+          .map((d: ChatDocumentRecord) => d.assetId)
+          .filter((id: string | null): id is string => Boolean(id));
+
+        const assets = assetIds.length ? await getAssetsByIds(Array.from(new Set(assetIds))) : [];
+        const storageKeyByAssetId = new Map(
+          assets.filter((asset) => asset.storageKey).map((asset) => [asset.id, asset.storageKey as string])
+        );
+
+        const urlByStorageKey = storageKeyByAssetId.size
+          ? await generateDocumentDownloadPresignedUrls(Array.from(new Set(storageKeyByAssetId.values())))
+          : {};
+
         // Strip the full text body from the response — it's potentially 500KB
         // per doc and the dashboard only needs metadata for the list view.
         // The chat loader reads it directly from DB via getDocumentText when
         // it actually injects context.
-        const data = documents.map((d: ChatDocumentRecord) => ({
-          id: d.id,
-          conversationId: d.conversationId,
-          courseId: d.courseId,
-          assetId: d.assetId,
-          fileName: d.fileName,
-          mimeType: d.mimeType,
-          wordCount: d.wordCount,
-          pageCount: d.pageCount,
-          createdAt: d.createdAt
-        }));
+        const data = documents.map((d: ChatDocumentRecord) => {
+          const storageKey = d.assetId ? storageKeyByAssetId.get(d.assetId) : undefined;
+
+          return {
+            id: d.id,
+            conversationId: d.conversationId,
+            courseId: d.courseId,
+            assetId: d.assetId,
+            sourceUrl: d.sourceUrl,
+            downloadUrl: storageKey ? (urlByStorageKey[storageKey] ?? null) : null,
+            fileName: d.fileName,
+            mimeType: d.mimeType,
+            wordCount: d.wordCount,
+            pageCount: d.pageCount,
+            createdAt: d.createdAt
+          };
+        });
 
         return c.json({ success: true as const, data });
       } catch (error) {

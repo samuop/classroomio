@@ -48,6 +48,18 @@ export interface CourseSource {
   conversationId: string;
   courseId: string;
   assetId: string | null;
+  /**
+   * La direccion de la pagina, cuando la fuente salio de la web. Con esto la
+   * lista de fuentes se puede volver a la pagina original de un clic.
+   */
+  sourceUrl: string | null;
+  /**
+   * Enlace FIRMADO y temporal para bajar el archivo original, cuando lo subio
+   * alguien. Lo firma el servidor al listar: el almacenamiento no es publico,
+   * asi que no hay una direccion fija que se pueda guardar. Si el enlace se
+   * vence, alcanza con volver a abrir el panel.
+   */
+  downloadUrl: string | null;
   fileName: string;
   mimeType: string;
   wordCount: number;
