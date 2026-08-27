@@ -1,4 +1,5 @@
 import { BRAND_ROOT_DOMAIN, TENANT_ROOT_DOMAIN } from '@cio/utils/constants';
+import { TRUSTED_ORIGINS } from '../../constants';
 import { getVerifiedCustomDomainHostnames } from '../../queries/organization/organization';
 
 const FIRST_PARTY_ROOTS: readonly string[] = [BRAND_ROOT_DOMAIN, TENANT_ROOT_DOMAIN];
@@ -92,4 +93,47 @@ export function resolveTrustedBrowserOrigin(
   }
 
   return undefined;
+}
+
+/**
+ * Todos los origenes que Better Auth acepta como destino de un `callbackURL`.
+ *
+ * Hay que armar la lista entera y no alcanza con resolver la cabecera `Origin`,
+ * porque **el enlace de un correo no trae esa cabecera**: hacer clic desde la
+ * bandeja de entrada es una navegacion de primer nivel, sin `Origin`. Ahi
+ * `resolveTrustedBrowserOrigin` no tenia nada que resolver, y el dominio propio
+ * del cliente —verificado, y ya aceptado para CORS— quedaba afuera.
+ *
+ * El sintoma era desconcertante porque la mitad del camino funcionaba: pedir el
+ * correo desde `learn.<cliente>.com` andaba (el navegador manda `Origin`) y el
+ * correo llegaba, pero el enlace de ese correo moria en 403
+ * `INVALID_CALLBACK_URL`. La persona veia "te mandamos el enlace" y despues un
+ * enlace roto, sin nada que relacionara las dos cosas.
+ *
+ * Los hosts de primera parte se agregan como comodin por el mismo motivo: sin
+ * `Origin`, `isClassroomioHost` tampoco se consultaba, asi que un tenant en
+ * `<empresa>.<raiz>` chocaba contra la misma pared. Que un camino los acepte y
+ * el otro no era la asimetria de fondo.
+ */
+export function buildTrustedOrigins(originHeader?: string | null): string[] {
+  const origins = new Set<string>(TRUSTED_ORIGINS);
+
+  for (const root of new Set(FIRST_PARTY_ROOTS)) {
+    origins.add(`https://${root}`);
+    origins.add(`https://*.${root}`);
+  }
+
+  // Un dominio propio se agrega EXACTO, nunca como comodin: verificar
+  // `learn.cliente.com` no dice nada sobre `cualquiera.cliente.com`.
+  for (const hostname of verifiedCustomDomainHostnames) {
+    origins.add(`https://${hostname}`);
+  }
+
+  const resolved = resolveTrustedBrowserOrigin(originHeader, TRUSTED_ORIGINS);
+
+  if (resolved) {
+    origins.add(resolved);
+  }
+
+  return [...origins];
 }
