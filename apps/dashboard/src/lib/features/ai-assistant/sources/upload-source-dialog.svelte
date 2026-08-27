@@ -189,7 +189,7 @@
         await onUploaded(outcome.sources[0].documentId);
       } else {
         localError = 'research_failed';
-        // The server knows why — an unconfigured JINA_API_KEY, or a topic that
+        // The server knows why — an unconfigured GOOGLE_API_KEY, or a topic that
         // returned nothing usable. Both are actionable, neither is guessable.
         researchDetail = outcome ? $t('course.creator.guide.research.empty') : aiAssistantApi.error;
       }

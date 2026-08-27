@@ -324,9 +324,9 @@ const agentCoreRouter = new Hono()
    * panel and the same cached source pack.
    *
    * No paid-plan gate, matching `fetch_documentation_url`: on a self-hosted
-   * install the operator supplies and pays for the Jina and model keys directly,
-   * so metering here would only block a teacher from material they already
-   * bought.
+   * install the operator supplies and pays for the Google and Jina keys
+   * directly, so metering here would only block a teacher from material they
+   * already bought.
    */
   .post('/research', authMiddleware, orgMemberMiddleware, zValidator('json', ZAgentResearchBody), async (c) => {
     try {
@@ -334,14 +334,11 @@ const agentCoreRouter = new Hono()
       const orgId = c.req.header('cio-org-id')!;
       const { topic, depth, courseId, audience, level } = c.req.valid('json');
 
+      // One check, not two: research runs on Gemini's Grounding with Google
+      // Search regardless of which provider chat is on, so `GOOGLE_API_KEY` is
+      // both the search key and the model key here.
       if (!isWebSearchConfigured()) {
         throw new AppError(WEB_SEARCH_UNCONFIGURED, 'WEB_SEARCH_UNCONFIGURED', 503);
-      }
-
-      const providerConfig = pickAnyConfiguredProvider();
-
-      if (!providerConfig) {
-        throw new AppError('AI provider is not configured', 'AI_PROVIDER_UNCONFIGURED', 503);
       }
 
       // Researching into an existing course: the pages become course sources
@@ -369,7 +366,6 @@ const agentCoreRouter = new Hono()
         conversationId,
         userId: user.id,
         redis,
-        providerConfig,
         brief: { audience, level }
       });
 

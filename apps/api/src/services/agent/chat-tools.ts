@@ -1269,7 +1269,8 @@ export function buildAgentTools(
     /**
      * Finding material, as opposed to reading material you were handed.
      *
-     * Returns links only — titles, URLs and snippets. Reading one is a separate
+     * Runs on Gemini's Grounding with Google Search, but returns links only —
+     * titles, URLs and snippets. Reading one is a separate
      * `fetch_documentation_url` call, which is what keeps a single code path
      * between a URL and course material: the 7-day cache, the SSRF guard and the
      * untrusted-content wrapper all live there.

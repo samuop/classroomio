@@ -120,6 +120,89 @@ Models offering `createCachedContent` and a 1,048,576-token window:
 `gemini-flash-lite-latest` currently behaves identically to
 `gemini-3.5-flash-lite`, including its automatic-cache threshold.
 
+## Web research runs on Grounding with Google Search
+
+Finding pages (`search_web` and the course wizard's research switch) used to run
+on `s.jina.ai`, chosen when chat was on MiniMax through the Anthropic-compatible
+shim, which has no server-side search. Since production moved to Gemini that
+detour has no reason to exist, so discovery is now Gemini's own
+`google_search` tool.
+
+**Reading a page did NOT move.** `fetch_documentation_url` still goes through
+`r.jina.ai`, so `JINA_API_KEY` is still worth setting (higher rate limits) —
+it just no longer gates search. Gemini's `url_context` tool was considered and
+rejected: it puts the page in the model's context instead of returning it, and
+then there is nothing to store as a source, cache for 7 days, or wrap in
+`<external_untrusted_document>`.
+
+### Configuration
+
+| Variable | Role |
+|---|---|
+| `GOOGLE_API_KEY` | **Gates research.** Same key as RAG and images; there is not one per service |
+| `GOOGLE_SEARCH_MODEL` | Optional. The model that searches. Unset, follows `GOOGLE_MODEL` |
+| `JINA_API_KEY` | Reading pages only |
+
+Independent of `CHAT_PROVIDER`, like embeddings and images — verified running a
+real search with `CHAT_PROVIDER=minimax` in the local `.env`.
+
+### Cost
+
+Grounding is billed per **request**, not per search inside it: 5,000 free search
+requests a month across Gemini 3.x, then $14 per 1,000. A research run is 2
+requests (quick), 3 (normal) or 4 (deep), so the free tier covers roughly 1,250
+deep runs a month. Google's Custom Search JSON API would have been a closer
+match to a plain search API, but it is **closed to new customers and stops
+serving on 2027-01-01** — do not build on it.
+
+### The redirect, which is the whole trick
+
+Grounding never returns the page's own URL. Every citation arrives as
+`https://vertexaisearch.cloud.google.com/grounding-api-redirect/<opaque>`, and
+`web.title` is usually the bare domain (measured: `"datacolor.com"`). That URL
+**expires**, so storing it as a source means a link that dies later.
+
+`resolveGroundingRedirect` fetches it with `redirect: 'manual'` and reads the
+`Location` header — no page download. Two consequences that are easy to get
+backwards:
+
+- **The SSRF guard runs AFTER the hop, never before.** Before it, every URL is
+  `vertexaisearch.cloud.google.com`, so the guard would only ever be inspecting
+  Google. Same for the login-wall/video host filter.
+- **A citation that will not resolve is dropped**, not stored. An address that
+  expires looks like a source right up until someone clicks it.
+
+### Measured 2026-08-27 (`gemini-flash-latest`, "colorimetría de pinturas de paredes")
+
+| | |
+|---|---|
+| one grounded call | 13.1s, 684 input / 2,323 output tokens |
+| searches it ran itself | 7 (`webSearchQueries`) |
+| pages cited | 22 chunks, 21 distinct domains |
+| redirects resolved | 22/22 |
+
+That is one call. A run makes one per angle (2/3/4 by depth), in parallel.
+
+**The clock is the thing to watch.** A grounded call costs ~13s where Jina cost
+~1s, so `RESEARCH_DEADLINE_MS` (48s, under Nginx's 60s default) covers searching
+AND reading from a single start time in `runResearch`. Restoring it to a
+reading-only budget adds ~15s on top and pushes deep runs into a 504 that reads
+like a research bug rather than a clock. Guarded by the test *"spends one clock
+on searching and reading, not one clock each"*.
+
+### Why the queries are no longer ours
+
+`deriveSearchQueries` — a separate model call that turned a topic into 2-4
+search strings — is gone. Grounding writes and runs its own queries inside the
+same request, and reports them in `webSearchQueries`, which is what the wizard
+shows the teacher. What we still control is the **angle**: `RESEARCH_ANGLES`
+asks for foundations, practice, references and worked examples separately,
+because one search on a course topic returns catalogues.
+
+The instruction asks for a *cited survey*, not a list of links, and that is
+load-bearing: grounding only cites what it needed for the answer it wrote, so a
+request for prose with a source per point is what returns 22 pages instead of 2.
+
 ## Common pitfalls
 
 | Symptom | Cause | Fix |
@@ -129,11 +212,20 @@ Models offering `createCachedContent` and a 1,048,576-token window:
 | `cache hit=0%` on every turn | Prefix under ~15k tokens, or the prefix changed | Expected for short chats. If a build round misses, check whether something now varies ahead of the source pack |
 | Sources badge dark while the log shows cached reads | The observed-hit recorder is gated on the provider again | `recordObservedCacheHit` must run for both; only the `cache_control` tagging is Anthropic-only |
 | API key rejected with `API_KEY_INVALID` | `.env` values are quoted and something read the file by hand | dotenv strips quotes; hand-rolled parsers must too |
+| Research says "GOOGLE_API_KEY must be set" on an install where chat works | Chat is on MiniMax and only `MINIMAX_API_KEY` is set | Search is Google-only whatever `CHAT_PROVIDER` says — set `GOOGLE_API_KEY` |
+| Sources show `vertexaisearch.cloud.google.com/...` links | The redirect stopped being resolved | `resolveGroundingRedirect` must run before anything stores or guards the URL |
+| Research returns 2-3 pages instead of ~20 | The angle instruction stopped asking for a cited survey | Grounding cites only what its answer needed; a request for a link list returns a link list |
+| Deep research 504s at the gateway | The search clock and the read clock were split again | One `deadline` from `runResearch`, passed into `readPages` |
 
 ## Code locations
 
 - `packages/ai-assistant/src/providers/index.ts` — `CHAT_PROVIDER` handling,
-  `DEFAULT_MODELS`, `resolveModelName`
+  `DEFAULT_MODELS`, `resolveModelName`, and `getWebSearchModel` (the model +
+  `google_search` tool, deliberately independent of `CHAT_PROVIDER`)
+- `apps/api/src/services/agent/web-search.ts` — the grounded call, the redirect
+  resolution and the order the guards run in
+- `apps/api/src/services/agent/research.ts` — `RESEARCH_ANGLES`, the shared
+  deadline, and the harvest loop
 - `apps/api/src/services/agent/document-cache.ts` — the whole caching policy,
   including the module header explaining why Gemini gets no explicit cache
 - `apps/api/src/routes/agent/agent.ts` — `hasInlineDocumentContext` /

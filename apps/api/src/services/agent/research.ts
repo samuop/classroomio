@@ -1,7 +1,10 @@
-import { generateText } from 'ai';
-import { AIProvider, type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 import { MAX_DOCUMENT_TEXT_LENGTH } from '@cio/ai-assistant';
-import { searchWeb, mergeSearchResults, type WebSearchResult } from '@api/services/agent/web-search';
+import {
+  groundedSearch,
+  mergeSearchResults,
+  type GroundedSearchOutcome,
+  type WebSearchResult
+} from '@api/services/agent/web-search';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 import {
   storeDraftDocument,
@@ -28,7 +31,29 @@ const PAGES_PER_DEPTH: Record<ResearchDepth, number> = {
   deep: 20
 };
 
-const QUERIES_PER_DEPTH: Record<ResearchDepth, number> = {
+/**
+ * The angles a run covers, one grounded search each.
+ *
+ * A single search does not make a course: "colorimetría de pinturas de paredes"
+ * asked once returns paint-shop catalogues. Splitting the subject into the
+ * theory, the practice and the standards is what separates a course built from
+ * adverts from one built from material.
+ *
+ * They are angles rather than queries because the queries are Gemini's to write
+ * now — each angle is one grounded call, and the searches it actually ran come
+ * back in `webSearchQueries`. Several calls rather than one because grounding
+ * cites what it needed for the answer it wrote: asking for four different
+ * answers is what produces four different sets of pages, and a deep run needs
+ * forty candidates to end up with twenty readable ones.
+ */
+const RESEARCH_ANGLES = [
+  'the foundations: definitions, core concepts and the vocabulary of the subject',
+  'the practice: applied, hands-on and how-to material a working professional would use',
+  'the references: standards, norms, official documentation and reference tables',
+  'the experience: worked examples, case studies, common mistakes and how to avoid them'
+] as const;
+
+const ANGLES_PER_DEPTH: Record<ResearchDepth, number> = {
   quick: 2,
   normal: 3,
   deep: 4
@@ -52,8 +77,16 @@ const FETCH_CONCURRENCY = 8;
  * gateway: eight pages in hand beat a 504 and nothing. Deep runs are the case
  * that hits this, which is why the depth control says "~20 pages" rather than
  * promising exactly twenty.
+ *
+ * It covers the WHOLE run, searching included, and that is what changed when
+ * discovery moved to grounding. Jina answered a search in about a second, so a
+ * reading-only budget was close enough to the truth; a grounded call is the model
+ * running seven searches and writing a survey, measured at 13s, plus a second or
+ * two resolving the redirects. Kept as a reading-only budget it would have added
+ * ~15s on top of 45 and put deep runs past Nginx's 60s — a 504 that would have
+ * looked like a research bug rather than a clock.
  */
-const RESEARCH_DEADLINE_MS = 45_000;
+const RESEARCH_DEADLINE_MS = 48_000;
 
 /** A page that adds nothing but noise to a course. */
 const MIN_USEFUL_CHARS = 400;
@@ -100,6 +133,7 @@ export interface ResearchSource {
 }
 
 export interface ResearchOutcome {
+  /** The searches Gemini ran, reported back so the teacher can see them. */
   queries: string[];
   sources: ResearchSource[];
   /** Pages that were found but could not be read. Reported, never fatal. */
@@ -145,110 +179,43 @@ export function buildBriefPrompt(topic: string, brief: ResearchBrief): string {
 }
 
 /**
- * Pulls the queries out of whatever shape the model answered in.
+ * Searches one angle of the subject and returns the pages it cited.
  *
- * One per line, tolerating the decorations models add unasked: bullets, numbering,
- * surrounding quotes, a "1." prefix, a stray heading. Anything that survives and
- * looks like a search phrase is a query.
+ * The instruction asks for a written survey, not a list of links, and that is
+ * load-bearing: grounding only cites the pages it needed to write its answer, so
+ * "cover each point from a different source" is what turns one call into a dozen
+ * candidates instead of two. The answer itself is discarded — a course is built
+ * from pages the teacher can open, not from a model's summary of them.
+ *
+ * The searches are written in the brief's language because Spanish material for
+ * a Spanish course is the whole point, and an English-only search quietly changes
+ * what the course can be built from.
  */
-export function parseQueryLines(text: string, wanted: number): string[] {
-  const out: string[] = [];
-
-  for (const raw of text.split('\n')) {
-    const line = raw
-      .trim()
-      .replace(/^[-*•\d.)\s]+/, '')
-      .replace(/^["'«]|["'»]$/g, '')
-      .trim();
-
-    // Headings and commentary rather than a query.
-    if (line.length < 8 || line.length > 200 || line.endsWith(':') || line.startsWith('#')) {
-      continue;
-    }
-
-    if (!out.includes(line)) {
-      out.push(line);
-    }
-
-    if (out.length >= wanted) {
-      break;
-    }
-  }
-
-  return out;
-}
-
-/**
- * Turns a course topic into the handful of searches a researcher would actually
- * run.
- *
- * One query is not enough: "colorimetría de pinturas de paredes" as a single
- * search returns paint-shop catalogues. Splitting it into the theory, the
- * practice and the standards is what makes the difference between a course built
- * from adverts and one built from material.
- *
- * The model is asked for queries in the same language as the topic — Spanish
- * material for a Spanish course is the whole point, and an English-only search
- * quietly changes what the course can be built from.
- */
-export async function deriveSearchQueries(
+export async function searchAngle(
   topic: string,
-  depth: ResearchDepth,
-  providerConfig: AIProviderConfig,
-  brief: ResearchBrief = {}
-): Promise<string[]> {
-  const wanted = QUERIES_PER_DEPTH[depth];
-  const model = createModel({
-    ...providerConfig,
-    model:
-      providerConfig.provider === AIProvider.GOOGLE
-        ? resolveModelName(AIProvider.GOOGLE)
-        : undefined
+  angle: string,
+  brief: ResearchBrief,
+  limit: number
+): Promise<GroundedSearchOutcome> {
+  return groundedSearch({
+    instruction: [
+      'You gather the reading list for a training course.',
+      `Search the web and write a short factual survey of ${angle}.`,
+      'Use a separate source for each point and cite every one of them — the citations are the',
+      'output that matters, so breadth of sources beats depth on any single one.',
+      'Search in the SAME LANGUAGE as the brief.',
+      // Measured failure: for a colorimetry course the planner wrote
+      // "aplicación práctica de colorimetría…", the search engine read
+      // "aplicación" as "app", and three of ten pages were listicles of phone
+      // apps for repainting a room. Naming the trap is cheaper than filtering
+      // its results, which sit on perfectly ordinary domains.
+      'Aim at teaching and reference material: explanations, guides, standards, tables.',
+      'Avoid wording a shop or an app store would match — no "app", "aplicación", "mejores",',
+      '"top 10", "comprar", "precio", "opiniones", "descargar".'
+    ].join(' '),
+    prompt: buildBriefPrompt(topic, brief),
+    limit
   });
-
-  try {
-    // Plain text, one query per line — NOT generateObject.
-    //
-    // Structured output failed intermittently against MiniMax-M3 with
-    // `NoObjectGeneratedError: the model did not return a response`: it is a
-    // reasoning model behind an Anthropic-compatible shim, and the tool-call
-    // round trip that generateObject needs comes back empty often enough to
-    // matter. The cost was invisible and expensive — the run silently degraded
-    // to searching the raw topic, which returned three pages where a plan
-    // returned nine. Three short lines of text need no schema negotiation.
-    const { text } = await generateText({
-      model,
-      maxRetries: 1,
-      maxOutputTokens: 1024,
-      system: [
-        'You plan the web research for a training course.',
-        `Write exactly ${wanted} web search queries that together cover the subject:`,
-        'foundations and definitions, practical or applied material, and standards or',
-        'reference tables where the subject has them.',
-        'Write them in the SAME LANGUAGE as the brief.',
-        // Measured failure: for a colorimetry course the planner wrote
-        // "aplicación práctica de colorimetría…", the search engine read
-        // "aplicación" as "app", and three of ten pages were listicles of phone
-        // apps for repainting a room. Naming the trap is cheaper than filtering
-        // its results, which sit on perfectly ordinary domains.
-        'Aim at teaching and reference material: explanations, guides, standards, tables.',
-        'Avoid wording a shop or an app store would match — no "app", "aplicación", "mejores",',
-        '"top 10", "comprar", "precio", "opiniones", "descargar".',
-        'Output ONE query per line, nothing else — no numbering, no quotes, no commentary.'
-      ].join(' '),
-      prompt: buildBriefPrompt(topic, brief)
-    });
-
-    const queries = parseQueryLines(text ?? '', wanted);
-
-    return queries.length > 0 ? queries : [topic];
-  } catch (error) {
-    // A failed query plan must not cancel the research — searching the raw topic
-    // is worse than a planned set, and far better than nothing.
-    console.warn('[research] query planning failed, falling back to the raw topic:', error);
-
-    return [topic];
-  }
 }
 
 function toParsedDocument(page: { url: string; pageTitle: string; content: string }): ParsedDocument {
@@ -323,10 +290,10 @@ async function persistPage(
 async function readPages(
   results: WebSearchResult[],
   budget: number,
+  deadline: number,
   params: { orgId: string; courseId?: string; conversationId?: string; userId: string; redis: RedisClient }
 ): Promise<{ sources: ResearchSource[]; failedCount: number; timedOut: boolean }> {
   const sources: ResearchSource[] = [];
-  const deadline = Date.now() + RESEARCH_DEADLINE_MS;
   let failedCount = 0;
   let timedOut = false;
   let next = 0;
@@ -431,38 +398,49 @@ export async function runResearch(params: {
   conversationId?: string;
   userId: string;
   redis: RedisClient;
-  providerConfig: AIProviderConfig;
   /** Who the course is for — shapes what counts as useful material. */
   brief?: ResearchBrief;
 }): Promise<ResearchOutcome> {
-  const { topic, depth, providerConfig, brief } = params;
+  const { topic, depth, brief } = params;
   const pageBudget = PAGES_PER_DEPTH[depth];
+  const angles = RESEARCH_ANGLES.slice(0, ANGLES_PER_DEPTH[depth]);
 
-  const queries = await deriveSearchQueries(topic, depth, providerConfig, brief ?? {});
+  // One clock for searching AND reading. Started here, before the first search,
+  // so the seconds grounding spends come out of the same budget the reader draws
+  // on instead of being added to it.
+  const deadline = Date.now() + RESEARCH_DEADLINE_MS;
 
   // Over-fetch the candidate list: some pages will be unreadable, and it is
   // cheaper to have spares than to come up short of the depth the teacher chose.
-  const perQuery = await Promise.all(
-    queries.map(async (query) => {
+  const perAngle = await Promise.all(
+    angles.map(async (angle) => {
       try {
-        return await searchWeb({ query, limit: pageBudget });
+        return await searchAngle(topic, angle, brief ?? {}, pageBudget);
       } catch (error) {
-        console.warn(`[research] search failed for "${query}":`, error);
+        console.warn(`[research] search failed for "${angle}":`, error);
 
-        return [] as WebSearchResult[];
+        return { queries: [], results: [] as WebSearchResult[] };
       }
     })
   );
 
+  // What Gemini actually typed into Search, deduplicated across angles. The
+  // teacher sees these, so they have to be the real searches and not our guess
+  // at what it would search for.
+  const queries = [...new Set(perAngle.flatMap((outcome) => outcome.queries))];
+
   // Spares, not a bigger harvest: login walls and video pages are only detected
   // after reading them, so a run with no slack comes back short of its depth.
-  const candidates = mergeSearchResults(perQuery, pageBudget * 2);
+  const candidates = mergeSearchResults(
+    perAngle.map((outcome) => outcome.results),
+    pageBudget * 2
+  );
 
   if (candidates.length === 0) {
     return { queries, sources: [], failedCount: 0 };
   }
 
-  const { sources, failedCount, timedOut } = await readPages(candidates, pageBudget, params);
+  const { sources, failedCount, timedOut } = await readPages(candidates, pageBudget, deadline, params);
 
   console.info('[research] done', {
     topic: topic.slice(0, 80),

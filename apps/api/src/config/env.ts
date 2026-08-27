@@ -72,7 +72,12 @@ const envSchema = z.object({
    * <token>` (or `?token=<token>`) bypass the email allowlist.
    */
   QUEUE_DASHBOARD_TOKEN: z.string().optional(),
-  /** Optional Bearer token for Jina Reader (higher rate limits). */
+  /**
+   * Optional Bearer token for Jina Reader (`r.jina.ai`, higher rate limits).
+   *
+   * Reading only. Finding pages runs on Gemini's Grounding with Google Search
+   * and needs `GOOGLE_API_KEY`, not this.
+   */
   JINA_API_KEY: z.string().optional(),
   /** Max completed fetch_documentation_url calls per agent conversation (default 15). */
   AGENT_MAX_FETCHES_PER_CONVERSATION: z

@@ -41,6 +41,7 @@ export {
   resolveModelName,
   getEmbeddingModel,
   getImageModel,
+  getWebSearchModel,
   EMBEDDING_MODEL_NAME,
   EMBEDDING_PROVIDER_OPTIONS,
   IMAGE_MODEL_NAME,

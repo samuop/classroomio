@@ -194,8 +194,8 @@ class AiAssistantApi extends BaseApiWithErrors {
    * so the wizard can hand researched pages and uploaded PDFs to the first chat
    * turn through one code path.
    *
-   * The failure message is the server's own: this call needs JINA_API_KEY on the
-   * API, and "research failed" would send the one person who can fix that to
+   * The failure message is the server's own: this call needs GOOGLE_API_KEY on
+   * the API, and "research failed" would send the one person who can fix that to
    * read logs instead.
    */
   async research(

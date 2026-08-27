@@ -10,20 +10,18 @@
  * second parallel notion of "material" that the Sources panel never shows.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AIProvider } from '@cio/ai-assistant';
 
-const searchWeb = vi.fn();
+const groundedSearch = vi.fn();
 const fetchDocumentationUrl = vi.fn();
 const storeDraftDocument = vi.fn();
 const storeUrlDocument = vi.fn();
-const generateText = vi.fn();
 
 vi.mock('@api/services/agent/web-search', async () => {
   const actual = await vi.importActual<typeof import('@api/services/agent/web-search')>(
     '@api/services/agent/web-search'
   );
 
-  return { ...actual, searchWeb: (...args: unknown[]) => searchWeb(...args) };
+  return { ...actual, groundedSearch: (...args: unknown[]) => groundedSearch(...args) };
 });
 
 vi.mock('@api/services/agent/fetch-url', () => ({
@@ -36,10 +34,6 @@ vi.mock('@api/services/agent/document', () => ({
   storeUrlDocument: (...args: unknown[]) => storeUrlDocument(...args)
 }));
 
-vi.mock('ai', () => ({
-  generateText: (...args: unknown[]) => generateText(...args)
-}));
-
 vi.mock('@api/config/env', () => ({ env: { JINA_API_KEY: 'key' } }));
 
 vi.mock('@api/utils/redis/redis', () => ({
@@ -47,26 +41,32 @@ vi.mock('@api/utils/redis/redis', () => ({
   logRedisUnavailableOnce: vi.fn()
 }));
 
-const { runResearch, deriveSearchQueries, isUnreadablePage, readableProseLength, parseQueryLines, buildBriefPrompt } =
-  await import('@api/services/agent/research');
+const { runResearch, searchAngle, isUnreadablePage, readableProseLength, buildBriefPrompt } = await import(
+  '@api/services/agent/research'
+);
 
-const PROVIDER = { provider: AIProvider.MINIMAX, apiKey: 'k' };
 const REDIS = {} as never;
 
 const BASE = {
   orgId: 'org-1',
   userId: 'teacher-1',
-  redis: REDIS,
-  providerConfig: PROVIDER
+  redis: REDIS
 };
 
 function page(url: string, content = 'x'.repeat(1000)) {
   return { url, pageTitle: `Título de ${url}`, content, links: [], contentTokens: 10, fetchedAt: '', cacheHit: false };
 }
 
+function found(results: { url: string; title?: string }[], queries: string[] = ['una búsqueda']) {
+  return {
+    queries,
+    results: results.map((result) => ({ url: result.url, title: result.title ?? result.url, snippet: '' }))
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  generateText.mockResolvedValue({ text: 'primera consulta larga\nsegunda consulta larga' });
+  groundedSearch.mockResolvedValue(found([]));
   storeDraftDocument.mockImplementation(async () => ({ documentId: `doc-${storeDraftDocument.mock.calls.length}` }));
   storeUrlDocument.mockImplementation(async () => ({ documentId: `src-${storeUrlDocument.mock.calls.length}` }));
 });
@@ -112,9 +112,9 @@ describe('isUnreadablePage', () => {
 });
 
 describe('buildBriefPrompt', () => {
-  it('tells the planner who the course is for, which is most of what decides a good page', () => {
+  it('tells the searcher who the course is for, which is most of what decides a good page', () => {
     // Same words, different learners, different material: colour charts and how
-    // to advise a customer, versus spectrophotometry and standards. The planner
+    // to advise a customer, versus spectrophotometry and standards. The search
     // used to get the topic alone and could not tell those apart.
     const prompt = buildBriefPrompt('colorimetría de pinturas de paredes', {
       audience: 'vendedores de pinturería sin formación previa',
@@ -130,53 +130,24 @@ describe('buildBriefPrompt', () => {
   });
 });
 
-describe('parseQueryLines', () => {
-  it('takes the queries out of the decorations the model adds unasked', () => {
-    const answer = [
-      'Consultas:',
-      '1. colorimetría fundamentos espacio de color',
-      '- "cartas RAL NCS para pintura de paredes"',
-      '• cómo elegir color de pintura interior',
-      'ok'
-    ].join('\n');
+describe('searchAngle', () => {
+  it('asks for a cited survey, because the citations are the only output kept', async () => {
+    // Grounding cites what it needed to write its answer. Asking for a list of
+    // links returns two; asking for a survey with a source per point returns a
+    // dozen — the instruction is what decides how much material comes back.
+    await searchAngle('colorimetría', 'the references: standards and tables', {}, 10);
 
-    expect(parseQueryLines(answer, 4)).toEqual([
-      'colorimetría fundamentos espacio de color',
-      'cartas RAL NCS para pintura de paredes',
-      'cómo elegir color de pintura interior'
-    ]);
-  });
+    const [call] = groundedSearch.mock.calls as unknown as [{ instruction: string; prompt: string; limit: number }][];
 
-  it('stops at the number asked for', () => {
-    expect(parseQueryLines('consulta número uno\nconsulta número dos\nconsulta número tres', 2)).toHaveLength(2);
-  });
-});
-
-describe('deriveSearchQueries', () => {
-  it('falls back to the raw topic instead of cancelling the research', async () => {
-    generateText.mockRejectedValueOnce(new Error('model unavailable'));
-
-    const queries = await deriveSearchQueries('colorimetría de pinturas', 'normal', PROVIDER);
-
-    expect(queries).toEqual(['colorimetría de pinturas']);
-  });
-
-  it('falls back when the model answers with nothing usable', async () => {
-    // Exactly what MiniMax-M3 did through the Anthropic shim: an empty answer.
-    generateText.mockResolvedValueOnce({ text: '' });
-
-    const queries = await deriveSearchQueries('colorimetría de pinturas', 'normal', PROVIDER);
-
-    expect(queries).toEqual(['colorimetría de pinturas']);
+    expect(call[0].instruction).toMatch(/cite every one of them/i);
+    expect(call[0].instruction).toContain('the references: standards and tables');
+    expect(call[0].prompt).toContain('colorimetría');
   });
 });
 
 describe('runResearch', () => {
   it('saves every readable page as a draft source', async () => {
-    searchWeb.mockResolvedValue([
-      { url: 'https://a.com/1', title: 'A', snippet: '' },
-      { url: 'https://b.com/1', title: 'B', snippet: '' }
-    ]);
+    groundedSearch.mockResolvedValue(found([{ url: 'https://a.com/1' }, { url: 'https://b.com/1' }]));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
 
     const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
@@ -186,11 +157,64 @@ describe('runResearch', () => {
     expect(storeDraftDocument).toHaveBeenCalledTimes(2);
   });
 
+  it('covers one angle of the subject per search, and more of them the deeper the run', async () => {
+    // A single search returns paint-shop catalogues; the theory, the practice and
+    // the standards are three different sets of pages. Depth buys angles, and a
+    // deep run needs the extra ones to reach twenty readable pages.
+    await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
+    expect(groundedSearch).toHaveBeenCalledTimes(2);
+
+    groundedSearch.mockClear();
+    await runResearch({ ...BASE, topic: 'colorimetría', depth: 'deep' });
+    expect(groundedSearch).toHaveBeenCalledTimes(4);
+
+    const angles = (groundedSearch.mock.calls as unknown as [{ instruction: string }][]).map(
+      (call) => call[0].instruction
+    );
+
+    expect(new Set(angles).size).toBe(4);
+  });
+
+  it('reports the searches Gemini ran, not our guess at what it would search for', async () => {
+    // Writing the queries ourselves was a separate model call, and this change
+    // removed it: they can only come back from the provider now. Deduplicated,
+    // because two angles routinely land on the same phrasing.
+    groundedSearch
+      .mockResolvedValueOnce(found([{ url: 'https://a.com/1' }], ['colorimetría NCS', 'espacio CIELAB']))
+      .mockResolvedValueOnce(found([{ url: 'https://b.com/1' }], ['colorimetría NCS', 'norma RAL pinturas']));
+    fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+    const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
+
+    expect(outcome.queries).toEqual(['colorimetría NCS', 'espacio CIELAB', 'norma RAL pinturas']);
+  });
+
+  it('spends one clock on searching and reading, not one clock each', async () => {
+    // Jina answered a search in about a second, so a reading-only deadline was
+    // close enough. A grounded call is the model running several searches and
+    // writing a survey — 13s measured — and stacked on top of a 45s read budget
+    // that put a deep run past Nginx's 60s. A 504 nobody would have read as a
+    // clock problem.
+    let clock = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock);
+
+    groundedSearch.mockImplementation(async () => {
+      clock += 50_000;
+
+      return found([{ url: 'https://a.com/1' }]);
+    });
+    fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+    const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
+
+    expect(fetchDocumentationUrl).not.toHaveBeenCalled();
+    expect(outcome.sources).toEqual([]);
+
+    now.mockRestore();
+  });
+
   it('loses one page, not the research, when a fetch fails', async () => {
-    searchWeb.mockResolvedValue([
-      { url: 'https://good.com/1', title: 'good', snippet: '' },
-      { url: 'https://dead.com/1', title: 'dead', snippet: '' }
-    ]);
+    groundedSearch.mockResolvedValue(found([{ url: 'https://good.com/1' }, { url: 'https://dead.com/1' }]));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => {
       if (url.includes('dead')) throw new Error('502');
 
@@ -204,9 +228,9 @@ describe('runResearch', () => {
   });
 
   it('keeps going when one of the searches fails', async () => {
-    searchWeb
+    groundedSearch
       .mockRejectedValueOnce(new Error('rate limited'))
-      .mockResolvedValueOnce([{ url: 'https://b.com/1', title: 'B', snippet: '' }]);
+      .mockResolvedValueOnce(found([{ url: 'https://b.com/1' }]));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
 
     const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
@@ -215,7 +239,7 @@ describe('runResearch', () => {
   });
 
   it('discards a page with nothing on it rather than storing an empty source', async () => {
-    searchWeb.mockResolvedValue([{ url: 'https://thin.com/1', title: 'thin', snippet: '' }]);
+    groundedSearch.mockResolvedValue(found([{ url: 'https://thin.com/1' }]));
     fetchDocumentationUrl.mockResolvedValue(page('https://thin.com/1', 'demasiado corto'));
 
     const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
@@ -226,9 +250,7 @@ describe('runResearch', () => {
   });
 
   it('never reads more pages than the chosen depth allows', async () => {
-    searchWeb.mockResolvedValue(
-      Array.from({ length: 20 }, (_, i) => ({ url: `https://a.com/${i}`, title: `${i}`, snippet: '' }))
-    );
+    groundedSearch.mockResolvedValue(found(Array.from({ length: 20 }, (_, i) => ({ url: `https://a.com/${i}` }))));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
 
     const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
@@ -240,7 +262,7 @@ describe('runResearch', () => {
   it('writes straight into the Sources tab when the course already exists', async () => {
     // A draft would leave the tab empty until the teacher happens to send a chat
     // message, and expire an hour later if they do not.
-    searchWeb.mockResolvedValue([{ url: 'https://a.com/1', title: 'A', snippet: '' }]);
+    groundedSearch.mockResolvedValue(found([{ url: 'https://a.com/1' }]));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
 
     const outcome = await runResearch({
@@ -257,7 +279,7 @@ describe('runResearch', () => {
   });
 
   it('falls back to drafts when the wizard researches before the course exists', async () => {
-    searchWeb.mockResolvedValue([{ url: 'https://a.com/1', title: 'A', snippet: '' }]);
+    groundedSearch.mockResolvedValue(found([{ url: 'https://a.com/1' }]));
     fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
 
     await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
@@ -267,7 +289,7 @@ describe('runResearch', () => {
   });
 
   it('returns nothing to build on when the searches come back empty', async () => {
-    searchWeb.mockResolvedValue([]);
+    groundedSearch.mockResolvedValue(found([]));
 
     const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'normal' });
 

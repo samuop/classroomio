@@ -89,12 +89,13 @@
   /**
    * There is no separate "topic to research" field, on purpose.
    *
-   * The search is never run literally: `deriveSearchQueries` asks a model to
-   * turn this into two to four actual queries. So a second field asking the
-   * teacher to restate the subject in search-engine words bought nothing and
-   * cost a field most people would leave empty or fill with a copy of the line
-   * above. What the planner was genuinely missing is who the course is for —
-   * that goes with it now, from step 2.
+   * The search is never run literally: the server hands this to Gemini's
+   * Grounding with Google Search, which writes the actual queries itself, two to
+   * four of them depending on depth. So a second field asking the teacher to
+   * restate the subject in search-engine words bought nothing and cost a field
+   * most people would leave empty or fill with a copy of the line above. What the
+   * search was genuinely missing is who the course is for — that goes with it
+   * now, from step 2.
    *
    * Researching something NARROWER than the whole course still has a home: the
    * Sources panel's Research tab takes a free topic. The wizard researches the

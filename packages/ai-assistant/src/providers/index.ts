@@ -2,7 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createMoonshotAI } from '@ai-sdk/moonshotai';
-import type { EmbeddingModel, ImageModel, LanguageModel } from 'ai';
+import type { EmbeddingModel, ImageModel, LanguageModel, Tool } from 'ai';
 import { AIProvider, type AIProviderConfig } from '../types';
 
 /**
@@ -49,6 +49,38 @@ export function getImageModel(): ImageModel | null {
   const google = createGoogleGenerativeAI({ apiKey });
 
   return google.image(process.env.GOOGLE_IMAGE_MODEL || IMAGE_MODEL_NAME);
+}
+
+/**
+ * The model and the tool that do web research, for the course wizard and the
+ * agent's `search_web`.
+ *
+ * Google-only and independent of `CHAT_PROVIDER`, for the same reason as
+ * embeddings and images: Grounding with Google Search is a Gemini server-side
+ * tool, so it is available whenever `GOOGLE_API_KEY` is set — even on an install
+ * whose chat runs on MiniMax. There is not one key per service; this is the same
+ * key the RAG already uses.
+ *
+ * `GOOGLE_SEARCH_MODEL` exists as its own knob because grounding is a per-model
+ * capability: pointing `GOOGLE_MODEL` at something that does not support the
+ * tool would take research down with the chat, and the two decisions are not the
+ * same decision. Unset, it follows `GOOGLE_MODEL` — which in production is
+ * `gemini-3.5-flash-lite`, a model that does support it.
+ *
+ * The tool must be named `google_search` in the tool set; the provider matches
+ * it by name.
+ */
+export function getWebSearchModel(): { model: LanguageModel; searchTool: Tool } | null {
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+
+  const google = createGoogleGenerativeAI({ apiKey });
+  const modelName = process.env.GOOGLE_SEARCH_MODEL?.trim() || resolveModelName(AIProvider.GOOGLE);
+
+  return {
+    model: google(modelName),
+    searchTool: google.tools.googleSearch({}) as Tool
+  };
 }
 
 /**
