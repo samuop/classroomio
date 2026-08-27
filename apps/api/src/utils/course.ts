@@ -1,5 +1,5 @@
 import type { TCourseDownloadContent } from '@cio/utils/validation/course';
-import { getCloudflarePdfBuffer } from '@api/utils/cloudflare';
+import { renderPdf } from '@api/utils/render';
 import { marked } from 'marked';
 
 function getHtmlTemplate(body: string): string {
@@ -151,7 +151,7 @@ function getCourseBody({ courseTitle, orgName, orgTheme, lessons }: TCourseDownl
 }
 
 async function generateSinglePdfFromHtml(htmlContent: string, courseTitle: string, orgTheme: string): Promise<Buffer> {
-  return await getCloudflarePdfBuffer(htmlContent);
+  return await renderPdf(htmlContent);
 }
 
 export async function generateCoursePdf(params: TCourseDownloadContent): Promise<Buffer> {

@@ -1,4 +1,5 @@
 import { getYoutubeVideoId } from '@cio/ui/custom/media-player';
+import { formatDisplayDate } from '$lib/utils/functions/date';
 
 export type LessonVideo = NonNullable<import('$features/course/utils/types').Lesson['videos']>[number];
 
@@ -106,5 +107,5 @@ export function formatVideoCreatedAt(isoString: string | null | undefined): stri
   if (!isoString || typeof isoString !== 'string') return null;
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return null;
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(d);
+  return formatDisplayDate(d);
 }

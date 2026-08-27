@@ -415,10 +415,18 @@ export async function listSubmissionsForGrading(courseId: string) {
         ? new Date(submission.createdAt!).getTime() <= new Date(submission.exercise.dueBy).getTime()
         : true;
 
-      const submittedAt = new Intl.DateTimeFormat('en-US', {
-        dateStyle: 'full',
-        timeStyle: 'medium'
-      }).format(new Date(submission.createdAt!));
+      /**
+       * La marca de tiempo cruda, en ISO. El servidor NO formatea fechas.
+       *
+       * Acá salía un `Intl.DateTimeFormat('en-US', { dateStyle: 'full' })`, o
+       * sea "Monday, August 10, 2026 at 9:33:04 PM" — en inglés y en la zona
+       * horaria del servidor, dos cosas que el docente no eligió. Y una vez
+       * armada esa cadena no hay vuelta atrás: el dashboard recibe texto, no
+       * una fecha, así que no puede mostrarla en español ni en hora argentina
+       * aunque quiera. Formatea quien sabe para quién está escribiendo, que es
+       * el navegador (`formatDisplayDateTime`).
+       */
+      const submittedAt = new Date(submission.createdAt!).toISOString();
 
       const questionKeyById: { [id: number]: string } = {};
       const questionTypeById: { [id: number]: number } = {};

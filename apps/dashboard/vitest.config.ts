@@ -39,7 +39,17 @@ const alias = {
   $lib: r('src/lib'),
   $features: r('src/lib/features'),
   $mail: r('src/mail'),
+  // Los componentes de @cio/ui se importan entre ellos por `$src/...`, un alias
+  // que sólo existe en svelte.config.js. Sin espejarlo acá, montar cualquier
+  // componente del paquete falla al resolver su propio botón.
+  '$src/tools': r('node_modules/@cio/ui/src/tools/index.ts'),
+  '$src/base': r('node_modules/@cio/ui/src/base'),
   '@cio/ui': r('node_modules/@cio/ui/src'),
+  // TipTap es dependencia de @cio/ui, no del dashboard, así que un test que
+  // monte la barra del editor tiene que buscarlo donde vive.
+  '@tiptap/core': r('../../packages/ui/node_modules/@tiptap/core'),
+  '@tiptap/pm': r('../../packages/ui/node_modules/@tiptap/pm'),
+  '@tiptap/starter-kit': r('../../packages/ui/node_modules/@tiptap/starter-kit'),
   '@cio/utils': r('../../packages/utils/src'),
   '@cio/question-types': r('../../packages/question-types/src'),
   '@cio/db/types': r('node_modules/@cio/db/src/types.ts'),
@@ -96,7 +106,14 @@ export default defineConfig({
            */
           server: {
             deps: {
-              inline: [/@lucide\/svelte/, /bits-ui/, /svelte-toolbelt/]
+              // Una lista nombrada acá era una trampa: el barrel de `@cio/ui`
+              // arrastra media docena de bibliotecas de componentes, así que
+              // cada componente nuevo que se quiera testear descubría otra
+              // —layerchart, vaul-svelte— y fallaba con "Unknown file
+              // extension .svelte" ANTES de correr un solo test. Inlinear todo
+              // cuesta unos segundos de arranque y elimina la clase entera de
+              // fallas.
+              inline: true
             }
           }
         }

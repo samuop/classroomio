@@ -22,7 +22,14 @@ export const BINDING_KEYS = [
   'clientName',
   'date',
   'year',
-  'certificateId'
+  'certificateId',
+  // Quien firma. Son bindings y no texto literal porque el nombre lo escribe
+  // una persona: puesto crudo dentro del contenido de un elemento, un nombre
+  // que contuviera `{{recipientName}}` se sustituiria por el del alumno.
+  'signatoryOneName',
+  'signatoryOneRole',
+  'signatoryTwoName',
+  'signatoryTwoRole'
 ] as const;
 
 export type BindingKey = (typeof BINDING_KEYS)[number];
@@ -98,10 +105,7 @@ export interface TextElement extends ElementBase {
  * certificate instead of freezing whatever URL was current the day the design
  * was saved.
  */
-export type ImageSource =
-  | { kind: 'orgLogo' }
-  | { kind: 'clientLogo' }
-  | { kind: 'upload'; url: string };
+export type ImageSource = { kind: 'orgLogo' } | { kind: 'clientLogo' } | { kind: 'upload'; url: string };
 
 export interface ImageElement extends ElementBase {
   kind: 'image';
@@ -111,6 +115,14 @@ export interface ImageElement extends ElementBase {
   radius?: number;
   /** Rendered when the source resolves to nothing (no client logo set, say). */
   hideWhenEmpty?: boolean;
+  /**
+   * Dar vuelta los píxeles: un lock-up monocromo cuya tinta coincide con el
+   * fondo. Las mismas dos reglas que usan las plantillas fijas, para que un
+   * logo suba una vez y sirva en los dos caminos.
+   */
+  invert?: boolean;
+  /** El archivo trae fondo blanco (una foto, un escaneo) y hay que borrarlo. */
+  knockoutBackground?: boolean;
 }
 
 export type ShapeKind = 'rect' | 'line' | 'ellipse';

@@ -119,12 +119,23 @@ html .dark {
   color: var(--foreground);
 }
 
+/*
+ * Los mismos tamaños y pesos que el editor (`.tiptap` en
+ * packages/ui/src/custom/editor/editor.css).
+ *
+ * Son dos hojas distintas para el MISMO HTML, y se habían separado: acá los
+ * títulos eran `font-normal` y en el editor pesan 800/700/600. O sea que
+ * aplicar un título mientras se edita se veía, y al salir del modo edición
+ * dejaba de verse — el texto quedaba apenas más grande y nada más. Si alguien
+ * cambia la escala de un lado, tiene que cambiarla del otro.
+ */
 .prose h1 {
-  @apply my-2 text-4xl font-normal;
+  @apply my-2 text-4xl font-extrabold;
+  letter-spacing: -0.015em;
 }
 
 .prose h2 {
-  @apply my-2 text-3xl font-normal transition-colors;
+  @apply my-2 text-2xl font-bold transition-colors;
 }
 
 .prose h2:first-child {
@@ -132,11 +143,11 @@ html .dark {
 }
 
 .prose h3 {
-  @apply my-2 text-2xl font-normal;
+  @apply my-2 text-xl font-semibold;
 }
 
 .prose h4 {
-  @apply my-2 text-xl font-normal;
+  @apply my-2 text-base font-semibold;
 }
 
 .prose p,
@@ -172,6 +183,38 @@ html .dark {
   @apply list-decimal;
 }
 
+/*
+ * Listas de tareas, que el editor estiliza y la vista de lectura no estilizaba.
+ *
+ * Sin estas reglas una lista de tareas hereda `list-disc` de `.prose ul`, así
+ * que sale con viñeta Y con casilla, y la casilla cae arriba del texto en vez
+ * de al lado. Mismo bloque que `.tiptap ul[data-type='taskList']`.
+ */
+.prose ul[data-type='taskList'] {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+}
+
+.prose ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin-right: 0.5rem;
+  user-select: none;
+}
+
+.prose ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+
+.prose ul[data-type='taskList'] ul[data-type='taskList'] {
+  margin: 0;
+}
+
 .prose li {
   @apply mt-2;
 }
@@ -182,10 +225,21 @@ html .dark {
  * is that a narrow table no longer stretches to the full column width — it sizes
  * to its content — which is the better default for a table of two columns anyway.
  */
+/*
+ * Ancha scrollea, angosta ocupa la columna.
+ *
+ * `width: max-content` sola resuelve la tabla ANCHA —se sale de la columna y se
+ * arrastra—, pero desploma la angosta: una tabla recién insertada, con las
+ * celdas vacías, quedaba de unos pocos píxeles mientras en el editor ocupaba
+ * todo el ancho. `min-width: 100%` le pone piso sin sacarle el scroll, porque
+ * cuando el contenido pasa el ancho de la columna manda `max-width` y
+ * `overflow-x` hace el resto.
+ */
 .prose table {
   @apply my-6 border-collapse;
   display: block;
   width: max-content;
+  min-width: 100%;
   max-width: 100%;
   overflow-x: auto;
 }
@@ -200,10 +254,13 @@ html .dark {
   background: var(--muted);
 }
 
+/* `min-width` igual que en el editor: sin él una celda vacía no ocupa nada y
+   la tabla se ve como una grilla de rayas. */
 .prose th,
 .prose td {
   @apply border px-4 py-2 text-start;
   border-color: var(--border);
+  min-width: 100px;
 }
 
 .prose th {

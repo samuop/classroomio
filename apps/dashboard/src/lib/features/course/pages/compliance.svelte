@@ -17,6 +17,7 @@
   import type { CourseComplianceLearner, LearnerComplianceRecord } from '$features/course/utils/types';
   import { snackbar } from '$features/ui/snackbar/store';
   import { SvelteSet } from 'svelte/reactivity';
+  import { formatDisplayDateTime } from '$lib/utils/functions/date';
 
   type ComplianceStatus = CourseComplianceLearner['status'] | LearnerComplianceRecord['status'] | 'no_record';
   type StaffAction = 'reset' | 'extend' | 'waive' | null;
@@ -125,10 +126,7 @@
       return t.get('course.navItem.compliance.not_available');
     }
 
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date);
+    return formatDisplayDateTime(date);
   }
 
   function formatPercent(value: number | null | undefined) {

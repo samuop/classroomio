@@ -7,6 +7,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { buttonVariants } from '$src/base/button';
   import { cn } from '$src/tools';
+  import { createEditorVersion } from '../../editor-version.svelte';
 
   interface Props {
     editor: Editor;
@@ -15,20 +16,24 @@
 
   const alignments = commands['alignment'];
 
-  const isActive = $derived.by(() => {
-    return alignments.find((alignment) => alignment.isActive?.(editor)) !== undefined;
+  // Ver `createEditorVersion`: sin esta dependencia el ícono queda clavado en la
+  // alineación que hubiera al montar.
+  const version = createEditorVersion(() => editor);
+
+  const activeAlignment = $derived.by(() => {
+    void version.current;
+
+    return alignments.find((alignment) => alignment.isActive?.(editor));
   });
 
-  const AlignMentIcon = $derived.by(() => {
-    const a = alignments.find((alignment) => alignment.isActive?.(editor));
-    if (a) return a.icon;
-    else return AlignLeft;
-  });
+  const isActive = $derived(activeAlignment !== undefined);
+
+  const AlignMentIcon = $derived(activeAlignment ? activeAlignment.icon : AlignLeft);
 </script>
 
 <DropdownMenu.Root>
   <DropdownMenu.Trigger>
-    <EdraToolTip tooltip="Alignment">
+    <EdraToolTip tooltip="Alineación">
       <div
         class={buttonVariants({
           variant: 'ghost',

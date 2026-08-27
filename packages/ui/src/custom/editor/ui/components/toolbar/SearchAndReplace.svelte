@@ -83,7 +83,7 @@
   }}
 >
   <Popover.Trigger>
-    <EdraToolTip tooltip="Search and Replace">
+    <EdraToolTip tooltip="Buscar y reemplazar">
       <Button variant="ghost" size="icon" class="ui:gap-0.5">
         <Search />
         <ChevronDown class="ui:text-muted-foreground !size-2" />
@@ -107,7 +107,7 @@
       <div class="ui:flex ui:w-full ui:items-center ui:gap-1">
         <Input placeholder="Search..." bind:value={searchText} oninput={() => updateSearchTerm()} class="ui:w-40" />
         <span class="ui:text-muted-foreground ui:text-sm">{searchCount > 0 ? searchIndex + 1 : 0}/{searchCount} </span>
-        <EdraToolTip tooltip="Case Sensitive">
+        <EdraToolTip tooltip="Distinguir mayúsculas">
           <Button
             variant="ghost"
             size="icon"
@@ -120,12 +120,12 @@
             <CaseSensitive />
           </Button>
         </EdraToolTip>
-        <EdraToolTip tooltip="Go to previous">
+        <EdraToolTip tooltip="Anterior">
           <Button variant="ghost" size="icon" onclick={previous} title="Previous">
             <ArrowLeft />
           </Button>
         </EdraToolTip>
-        <EdraToolTip tooltip="Go to next">
+        <EdraToolTip tooltip="Siguiente">
           <Button variant="ghost" size="icon" onclick={next} title="Next">
             <ArrowRight />
           </Button>
@@ -134,12 +134,12 @@
       {#if showMore}
         <div transition:slide class="ui:flex ui:w-full ui:items-center ui:gap-1">
           <Input placeholder="Replace..." bind:value={replaceText} oninput={() => updateSearchTerm()} class="ui:w-40" />
-          <EdraToolTip tooltip="Replace">
+          <EdraToolTip tooltip="Reemplazar">
             <Button variant="ghost" size="icon" onclick={replace}>
               <Replace />
             </Button>
           </EdraToolTip>
-          <EdraToolTip tooltip="Replace All">
+          <EdraToolTip tooltip="Reemplazar todo">
             <Button variant="ghost" size="icon" onclick={replaceAll}>
               <ReplaceAll />
             </Button>

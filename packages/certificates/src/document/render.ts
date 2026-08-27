@@ -36,6 +36,8 @@ export interface DocumentRenderInput {
   data: CertificateRenderData;
   /** The client company's branding — the second mark on the certificate. */
   clientBrand?: { name?: string; logoUrl?: string };
+  /** Quien firma, para los bindings `signatoryOneName` y compañía. */
+  signatories?: readonly { name?: string; role?: string }[];
   /** Swap real data for worst-case values; used by the editor's stress preview. */
   bindingOverrides?: BindingValues;
 }
@@ -192,6 +194,12 @@ export function imageElementRules(element: ImageElement): string[] {
 
   if (element.radius) rules.push(`border-radius: ${element.radius}px`);
 
+  // Las MISMAS dos reglas que `.signature` en las plantillas fijas, y por el
+  // mismo motivo: invertida, el fondo blanco quedó negro, y sobre oscuro lo que
+  // lo borra es `screen`, no `multiply`.
+  if (element.invert) rules.push('filter: invert(1)');
+  if (element.knockoutBackground) rules.push(`mix-blend-mode: ${element.invert ? 'screen' : 'multiply'}`);
+
   return rules;
 }
 
@@ -231,7 +239,9 @@ function renderImageElement(
   // A course with no client logo should not print a broken-image icon on every
   // certificate it issues.
   if (!url) {
-    return element.hideWhenEmpty === false ? { body: `<div class="${className}"></div>`, styles: `.${className} { ${positionRules(element).join('; ')}; }` } : null;
+    return element.hideWhenEmpty === false
+      ? { body: `<div class="${className}"></div>`, styles: `.${className} { ${positionRules(element).join('; ')}; }` }
+      : null;
   }
 
   const outer = positionRules(element);
@@ -261,7 +271,11 @@ function canvasStyles(document: CertificateDocument): string {
   ];
 
   if (canvas.imageUrl) {
-    rules.push(`background-image: url('${canvas.imageUrl.replace(/'/g, '')}')`, 'background-size: cover', 'background-position: center');
+    rules.push(
+      `background-image: url('${canvas.imageUrl.replace(/'/g, '')}')`,
+      'background-size: cover',
+      'background-position: center'
+    );
   }
 
   const borderRule =
@@ -277,7 +291,8 @@ function canvasStyles(document: CertificateDocument): string {
  * already speaks, plus the ids of elements whose content did not fit.
  */
 export function renderDocument(input: DocumentRenderInput): DocumentRenderOutput {
-  const values = input.bindingOverrides ?? buildBindingValues(input.data, input.clientBrand?.name ?? '');
+  const values =
+    input.bindingOverrides ?? buildBindingValues(input.data, input.clientBrand?.name ?? '', input.signatories ?? []);
 
   const bodies: string[] = [];
   const styles: string[] = [canvasStyles(input.document)];

@@ -72,6 +72,21 @@
       : []
   );
 
+  /**
+   * El mismo `props_invalid_value`, un nivel más arriba.
+   *
+   * La página abre este modal con `submissionIdData[submissionId] || {}`, así
+   * que un envío que no esté en el mapa cargado llega como objeto vacío y
+   * `bind:grades={data.questionAnswerByPoint}` ataría `undefined` contra una
+   * prop que tiene fallback. Arreglar sólo el caso por pregunta dejaría este
+   * abierto, y falla igual de feo.
+   */
+  $effect(() => {
+    if (data && !data.questionAnswerByPoint) {
+      data.questionAnswerByPoint = {};
+    }
+  });
+
   let answersToDisplay = $state<Record<string, AnswerData>>({});
 
   $effect(() => {

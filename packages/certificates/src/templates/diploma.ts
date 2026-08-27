@@ -1,6 +1,7 @@
 import {
   BRAND_BAND_STYLES,
   BRAND_STYLES,
+  renderSignatureImage,
   escapeHtml,
   placeBrands,
   renderBrands,
@@ -56,10 +57,12 @@ export const renderDiploma: TemplateRenderer = ({ design, data }) => {
         <div class="marks">${slots.bottom}</div>
         <div class="sigs">
           <div class="sig">
+            ${renderSignatureImage(signatoryOne, 'light')}
             <div class="name">${escapeHtml(signatoryOne.name)}</div>
             <div class="role">${escapeHtml(signatoryOne.role)}</div>
           </div>
           <div class="sig">
+            ${renderSignatureImage(signatoryTwo, 'light')}
             <div class="name">${escapeHtml(signatoryTwo.name)}</div>
             <div class="role">${escapeHtml(signatoryTwo.role)}</div>
           </div>

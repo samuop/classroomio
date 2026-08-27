@@ -30,6 +30,7 @@
   import CourseTagsOverflow from './course-tags-overflow.svelte';
   import type { OrgCourses, UserEnrolledCourses } from '$features/course/types';
   import type { OrgPublicCourses } from '$features/org/utils/types';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   export interface Props {
     course: OrgCourses[number] | UserEnrolledCourses[number] | OrgPublicCourses[number];
@@ -204,9 +205,7 @@
       return '';
     }
 
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium'
-    }).format(date);
+    return formatDisplayDate(date);
   }
 </script>
 

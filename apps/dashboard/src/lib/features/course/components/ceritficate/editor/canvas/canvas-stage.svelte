@@ -36,6 +36,7 @@
   import { cn } from '@cio/ui/tools';
   import { t } from '$lib/utils/functions/translations';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
+  import { currentOrg } from '$lib/utils/store/org';
 
   interface Props {
     values: BindingValues;
@@ -86,7 +87,7 @@
     id: string;
   } | null = null;
 
-  const canvas = $derived(store.draft.document?.canvas);
+  const canvas = $derived(store.stageCanvas);
   const elements = $derived(store.elements);
 
   /**
@@ -319,6 +320,9 @@
 
     if (element.source.kind === 'upload') return element.source.url;
     if (element.source.kind === 'clientLogo') return store.draft.clientBrandLogoUrl || undefined;
+    // El de la organizacion faltaba: su hueco salia siempre vacio, y ubicar un
+    // logo que no se ve es adivinar.
+    if (element.source.kind === 'orgLogo') return store.draft.orgBrandLogoUrl || $currentOrg.avatarUrl || undefined;
 
     return undefined;
   }
@@ -380,8 +384,16 @@
     const offset = -size / 2;
     const centred = `calc(50% - ${size / 2}px)`;
 
-    const vertical = handle.includes('n') ? `top:${offset}px` : handle.includes('s') ? `bottom:${offset}px` : `top:${centred}`;
-    const horizontal = handle.includes('w') ? `left:${offset}px` : handle.includes('e') ? `right:${offset}px` : `left:${centred}`;
+    const vertical = handle.includes('n')
+      ? `top:${offset}px`
+      : handle.includes('s')
+        ? `bottom:${offset}px`
+        : `top:${centred}`;
+    const horizontal = handle.includes('w')
+      ? `left:${offset}px`
+      : handle.includes('e')
+        ? `right:${offset}px`
+        : `left:${centred}`;
 
     return `${vertical};${horizontal};width:${size}px;height:${size}px;cursor:${HANDLE_CURSOR[handle]}`;
   }
@@ -414,14 +426,13 @@
     scaled from its top-left corner — origin `0 0` rather than `center`, so the
     arithmetic is "multiply by scale" with no offset to get wrong.
   -->
-  <div
-    class="relative shadow-lg"
-    style="width:{CANVAS_WIDTH * scale}px;height:{CANVAS_HEIGHT * scale}px"
-  >
+  <div class="relative shadow-lg" style="width:{CANVAS_WIDTH * scale}px;height:{CANVAS_HEIGHT * scale}px">
     <div
       class="ui:bg-background absolute top-0 left-0 overflow-hidden {pan ? 'cursor-grabbing' : 'cursor-grab'}"
       style="width:{CANVAS_WIDTH}px;height:{CANVAS_HEIGHT}px;transform:scale({scale});transform-origin:0 0;background-color:{canvas?.color ??
-        '#ffffff'}"
+        '#ffffff'}{canvas?.imageUrl
+        ? `;background-image:url('${canvas.imageUrl}');background-size:cover;background-position:center`
+        : ''}"
       onpointerdown={startPan}
       onpointermove={(event) => {
         handleMove(event);
@@ -437,82 +448,82 @@
       }}
       role="presentation"
     >
-    {#if canvas?.borderWidth && canvas?.borderColor}
-      <div
-        class="pointer-events-none absolute"
-        style="inset:{canvas.borderInset ?? 0}px;border:{canvas.borderWidth}px solid {canvas.borderColor}"
-      ></div>
-    {/if}
+      {#if canvas?.borderWidth && canvas?.borderColor}
+        <div
+          class="pointer-events-none absolute"
+          style="inset:{canvas.borderInset ?? 0}px;border:{canvas.borderWidth}px solid {canvas.borderColor}"
+        ></div>
+      {/if}
 
-    {#each elements as element (element.id)}
-      {@const isSelected = element.id === store.selectedElementId}
-      {@const overflows = overflowingIds.includes(element.id)}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class={cn(
-          'absolute',
-          !element.locked && !disabled && 'cursor-move',
-          isSelected && 'ui:outline-primary',
-          !isSelected && overflows && 'outline-amber-500'
-        )}
-        style="left:{element.x}px;top:{element.y}px;width:{element.w}px;height:{element.h}px;opacity:{element.opacity ??
-          1};{element.rotation
-          ? `transform:rotate(${element.rotation}deg);`
-          : ''}{isSelected || overflows ? `outline-width:${(isSelected ? 2 : 1) / scale}px;outline-style:solid;` : ''}"
-        onpointerdown={(event) => startMove(event, element)}
-      >
-        {#if element.kind === 'text'}
-          {@const fit = textFit(element)}
-          <div
-            class="pointer-events-none flex h-full w-full"
-            style="align-items:{element.style.verticalAlign === 'top'
-              ? 'flex-start'
-              : element.style.verticalAlign === 'bottom'
-                ? 'flex-end'
-                : 'center'}"
-          >
-            <div style={textStyle(element, fit)}>
-              {textPreview(element)}
-            </div>
-          </div>
-        {:else if element.kind === 'image'}
-          {@const url = imageUrl(element)}
-          {#if url}
-            <img src={url} alt="" class="pointer-events-none" style={imageStyle(element)} />
-          {:else}
-            <!-- The slot still has to be visible and grabbable while empty, or a
-                 teacher cannot position the logo before uploading it. -->
+      {#each elements as element (element.id)}
+        {@const isSelected = element.id === store.selectedElementId}
+        {@const overflows = overflowingIds.includes(element.id)}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class={cn(
+            'absolute',
+            !element.locked && !disabled && 'cursor-move',
+            isSelected && 'ui:outline-primary',
+            !isSelected && overflows && 'outline-amber-500'
+          )}
+          style="left:{element.x}px;top:{element.y}px;width:{element.w}px;height:{element.h}px;opacity:{element.opacity ??
+            1};{element.rotation ? `transform:rotate(${element.rotation}deg);` : ''}{isSelected || overflows
+            ? `outline-width:${(isSelected ? 2 : 1) / scale}px;outline-style:solid;`
+            : ''}"
+          onpointerdown={(event) => startMove(event, element)}
+        >
+          {#if element.kind === 'text'}
+            {@const fit = textFit(element)}
             <div
-              class="ui:border-muted-foreground/40 ui:text-muted-foreground flex h-full w-full items-center justify-center border border-dashed text-[10px]"
+              class="pointer-events-none flex h-full w-full"
+              style="align-items:{element.style.verticalAlign === 'top'
+                ? 'flex-start'
+                : element.style.verticalAlign === 'bottom'
+                  ? 'flex-end'
+                  : 'center'}"
             >
-              {element.source.kind === 'clientLogo' ? 'Logo cliente' : 'Logo'}
+              <div style={textStyle(element, fit)}>
+                {textPreview(element)}
+              </div>
             </div>
+          {:else if element.kind === 'image'}
+            {@const url = imageUrl(element)}
+            {#if url}
+              <img src={url} alt="" class="pointer-events-none" style={imageStyle(element)} />
+            {:else}
+              <!-- The slot still has to be visible and grabbable while empty, or a
+                 teacher cannot position the logo before uploading it. -->
+              <div
+                class="ui:border-muted-foreground/40 ui:text-muted-foreground flex h-full w-full items-center justify-center border border-dashed text-[10px]"
+              >
+                {element.source.kind === 'clientLogo' ? 'Logo cliente' : 'Logo'}
+              </div>
+            {/if}
+          {:else}
+            <div class="h-full w-full" style={shapeStyle(element)}></div>
           {/if}
-        {:else}
-          <div class="h-full w-full" style={shapeStyle(element)}></div>
-        {/if}
 
-        {#if isSelected && !disabled && !element.locked}
-          {#each HANDLES as handle (handle)}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class="ui:bg-primary ui:border-background absolute"
-              style="{handleStyle(handle)};border-width:{1 / scale}px"
-              onpointerdown={(event) => startResize(event, element, handle)}
-            ></div>
-          {/each}
-        {/if}
-      </div>
-    {/each}
+          {#if isSelected && !disabled && !element.locked}
+            {#each HANDLES as handle (handle)}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <div
+                class="ui:bg-primary ui:border-background absolute"
+                style="{handleStyle(handle)};border-width:{1 / scale}px"
+                onpointerdown={(event) => startResize(event, element, handle)}
+              ></div>
+            {/each}
+          {/if}
+        </div>
+      {/each}
 
-    {#each guides as guide, index (index)}
-      <div
-        class="pointer-events-none absolute bg-fuchsia-500"
-        style={guide.axis === 'x'
-          ? `left:${guide.position}px;top:0;width:1px;height:${CANVAS_HEIGHT}px`
-          : `top:${guide.position}px;left:0;height:1px;width:${CANVAS_WIDTH}px`}
-      ></div>
-    {/each}
+      {#each guides as guide, index (index)}
+        <div
+          class="pointer-events-none absolute bg-fuchsia-500"
+          style={guide.axis === 'x'
+            ? `left:${guide.position}px;top:0;width:1px;height:${CANVAS_HEIGHT}px`
+            : `top:${guide.position}px;left:0;height:1px;width:${CANVAS_WIDTH}px`}
+        ></div>
+      {/each}
     </div>
   </div>
 

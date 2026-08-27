@@ -1,6 +1,7 @@
 import {
   BRAND_BAND_STYLES,
   BRAND_STYLES,
+  renderSignatureImage,
   escapeHtml,
   getYear,
   placeBrands,
@@ -49,10 +50,12 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
         <div class="description">${escapeHtml(description)}</div>
         <div class="bottom">
           <div>
+            ${renderSignatureImage(signatoryOne, 'light')}
             <div class="k">${escapeHtml(signatoryOne.role)}</div>
             <div class="v">${escapeHtml(signatoryOne.name)}</div>
           </div>
           <div>
+            ${renderSignatureImage(signatoryTwo, 'light')}
             <div class="k">${escapeHtml(signatoryTwo.role)}</div>
             <div class="v">${escapeHtml(signatoryTwo.name)}</div>
           </div>
@@ -68,6 +71,13 @@ export const renderPoster: TemplateRenderer = ({ design, data }) => {
   `;
 
   const styles = `
+    /*
+      MEDIDO: con la descripcion en su peor caso, una firma de 42px levantada
+      sobre el renglon se le montaba encima 13px. Poster empuja su pie al fondo
+      con margin-top:auto y deja que el contenido crezca hasta tocarlo, asi que
+      no hay holgura que reservar: lo que se achica es la firma.
+    */
+    .t-poster .signature { --signature-cap: 22px; --signature-gap: 0px; }
     ${BRAND_STYLES}
     ${BRAND_BAND_STYLES}
     /*

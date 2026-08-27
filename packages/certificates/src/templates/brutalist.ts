@@ -1,6 +1,7 @@
 import {
   BRAND_BAND_STYLES,
   BRAND_STYLES,
+  renderSignatureImage,
   escapeHtml,
   placeBrands,
   renderBrands,
@@ -50,10 +51,12 @@ export const renderBrutalist: TemplateRenderer = ({ design, data }) => {
       ${labels.seal ? `<div class="stamp">${escapeHtml(labels.seal)}</div>` : ''}
       <div class="footer">
         <div>
+          ${renderSignatureImage(signatoryOne, 'light')}
           <div class="lbl">${escapeHtml(signatoryOne.role)}</div>
           <div class="name">${escapeHtml(signatoryOne.name)}</div>
         </div>
         <div>
+          ${renderSignatureImage(signatoryTwo, 'light')}
           <div class="lbl">${escapeHtml(signatoryTwo.role)}</div>
           <div class="name">${escapeHtml(signatoryTwo.name)}</div>
         </div>

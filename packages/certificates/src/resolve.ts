@@ -19,7 +19,15 @@
  */
 import { DEFAULT_CERTIFICATE_DESIGN, DEFAULT_CERTIFICATE_LABELS } from './constants';
 import { resolveTemplateId } from './render';
-import type { CertificateBrand, CertificateDesign, CertificateLabelKey, CertificateLabels } from './types';
+import { CERTIFICATE_FIELD_IDS } from './layout/types';
+import type { CertificateFieldId, CertificateFieldPlacement, CertificateLayout } from './layout/types';
+import type {
+  CertificateBrand,
+  CertificateDesign,
+  CertificateLabelKey,
+  CertificateLabels,
+  CertificateSignatory
+} from './types';
 
 /** These are short lines of chrome; an unbounded one just breaks its layout. */
 const MAX_LABEL_LENGTH = 120;
@@ -45,16 +53,7 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
     accentColor,
     subtitle: design?.subtitle ?? DEFAULT_CERTIFICATE_DESIGN.subtitle,
     descriptionOverride: design?.descriptionOverride,
-    signatories: [
-      {
-        name: storedSignatories?.[0]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].name,
-        role: storedSignatories?.[0]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[0].role
-      },
-      {
-        name: storedSignatories?.[1]?.name ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].name,
-        role: storedSignatories?.[1]?.role ?? DEFAULT_CERTIFICATE_DESIGN.signatories[1].role
-      }
-    ],
+    signatories: [sanitizeSignatory(storedSignatories?.[0], 0), sanitizeSignatory(storedSignatories?.[1], 1)],
     idFormat: design?.idFormat ?? DEFAULT_CERTIFICATE_DESIGN.idFormat,
     labels: sanitizeLabels(design?.labels),
     ...(typeof design?.titleOverride === 'string'
@@ -73,7 +72,97 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
     ...(design?.brandPlacement === 'top' || design?.brandPlacement === 'bottom'
       ? { brandPlacement: design.brandPlacement }
       : {}),
+    // Cuarta capa que puede perder el campo, después del tipo, de zod y de la
+    // columna: esta función reconstruye el diseño campo por campo.
+    ...(design?.layout ? { layout: sanitizeLayout(design.layout) } : {}),
     ...(design?.document ? { document: design.document } : {})
+  };
+}
+
+/**
+ * La plantilla propia, en su camino a un `<img src>` y a coordenadas.
+ *
+ * `backgroundUrl` sale por la MISMA puerta que los logos: sólo `http(s)`. Y los
+ * campos se filtran contra la lista cerrada, así que una clave que no
+ * conocemos —de una fila vieja o de un cliente equivocado— no llega al
+ * compilador en vez de convertirse en un elemento que nadie diseñó.
+ */
+function sanitizeLayout(stored: unknown): CertificateLayout | undefined {
+  if (!stored || typeof stored !== 'object') return undefined;
+
+  const raw = stored as {
+    backgroundUrl?: unknown;
+    backgroundColor?: unknown;
+    backgroundTone?: unknown;
+    fields?: unknown;
+  };
+  const backgroundUrl =
+    typeof raw.backgroundUrl === 'string' && /^https?:\/\//i.test(raw.backgroundUrl)
+      ? raw.backgroundUrl.slice(0, MAX_URL_LENGTH)
+      : undefined;
+  const fieldsRaw = raw.fields && typeof raw.fields === 'object' ? (raw.fields as Record<string, unknown>) : {};
+  const fields: Partial<Record<CertificateFieldId, CertificateFieldPlacement>> = {};
+
+  for (const id of CERTIFICATE_FIELD_IDS) {
+    const caja = fieldsRaw[id];
+    if (!caja || typeof caja !== 'object') continue;
+
+    const { x, y, w, h } = caja as Record<string, unknown>;
+    // Sin caja completa no hay ubicación que respetar: cae a su default en vez
+    // de dibujarse en el 0,0.
+    if (![x, y, w, h].every((n) => typeof n === 'number' && Number.isFinite(n))) continue;
+
+    fields[id] = caja as CertificateFieldPlacement;
+  }
+
+  return {
+    ...(backgroundUrl ? { backgroundUrl } : {}),
+    ...(typeof raw.backgroundColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.backgroundColor)
+      ? { backgroundColor: raw.backgroundColor }
+      : {}),
+    ...(raw.backgroundTone === 'light' || raw.backgroundTone === 'dark' ? { backgroundTone: raw.backgroundTone } : {}),
+    ...(Object.keys(fields).length > 0 ? { fields } : {})
+  };
+}
+
+/**
+ * Quien firma, con su firma escaneada si la hay.
+ *
+ * `imageUrl` termina dentro de un `<img src>` igual que el logo de una marca,
+ * así que pasa por la MISMA puerta: sólo `http(s)`. Un `javascript:` guardado
+ * acá sería un script corriendo dentro de un documento que la plataforma emite
+ * en nombre de quien enseña.
+ */
+function sanitizeSignatory(stored: unknown, indice: 0 | 1): CertificateSignatory {
+  const raw = (stored && typeof stored === 'object' ? stored : {}) as {
+    name?: unknown;
+    role?: unknown;
+    imageUrl?: unknown;
+    imageHasBackground?: unknown;
+    imageHeight?: unknown;
+    imageOffset?: unknown;
+  };
+  const porDefecto = DEFAULT_CERTIFICATE_DESIGN.signatories[indice];
+  const imageUrl =
+    typeof raw.imageUrl === 'string' && /^https?:\/\//i.test(raw.imageUrl)
+      ? raw.imageUrl.slice(0, MAX_URL_LENGTH)
+      : undefined;
+
+  return {
+    name: typeof raw.name === 'string' ? raw.name : porDefecto.name,
+    role: typeof raw.role === 'string' ? raw.role : porDefecto.role,
+    ...(imageUrl ? { imageUrl } : {}),
+    // Sin firma no hay fondo que describir: la bandera sola quedaría esperando
+    // al próximo archivo que suba cualquier otro.
+    ...(imageUrl && raw.imageHasBackground === true ? { imageHasBackground: true } : {}),
+    // Las medidas tampoco: describen un archivo que no existe. El renderer las
+    // acota igual, así que acá sólo importa que un valor raro no llegue.
+    ...(imageUrl && typeof raw.imageHeight === 'number' && Number.isFinite(raw.imageHeight)
+      ? { imageHeight: raw.imageHeight }
+      : {}),
+    ...(imageUrl && typeof raw.imageOffset === 'number' && Number.isFinite(raw.imageOffset)
+      ? { imageOffset: raw.imageOffset }
+      : {})
   };
 }
 
@@ -88,16 +177,19 @@ export function resolveCertificateDesign(stored: unknown): CertificateDesign {
 export function sanitizeBrand(stored: unknown): CertificateBrand | undefined {
   if (!stored || typeof stored !== 'object') return undefined;
 
-  const raw = stored as { name?: unknown; logoUrl?: unknown };
+  const raw = stored as { name?: unknown; logoUrl?: unknown; logoTone?: unknown };
   const name = typeof raw.name === 'string' ? raw.name.slice(0, MAX_NAME_LENGTH) : undefined;
   const logoUrl =
     typeof raw.logoUrl === 'string' && /^https?:\/\//i.test(raw.logoUrl)
       ? raw.logoUrl.slice(0, MAX_URL_LENGTH)
       : undefined;
+  // Cualquier otra cosa cae a "no declarada", que es no tocar el logo.
+  const logoTone = raw.logoTone === 'light' || raw.logoTone === 'dark' ? raw.logoTone : undefined;
 
+  // La tinta sola no es una marca: describe un logo que no existe.
   if (!name && !logoUrl) return undefined;
 
-  return { ...(name ? { name } : {}), ...(logoUrl ? { logoUrl } : {}) };
+  return { ...(name ? { name } : {}), ...(logoUrl ? { logoUrl } : {}), ...(logoTone ? { logoTone } : {}) };
 }
 
 /**

@@ -1,4 +1,5 @@
 import type { CertificateDocument } from './document/types';
+import type { CertificateLayout } from './layout/types';
 
 export const CERTIFICATE_TEMPLATE_IDS = ['classique', 'diploma', 'brutalist', 'noir', 'poster', 'minimal'] as const;
 export type CertificateTemplateId = (typeof CERTIFICATE_TEMPLATE_IDS)[number];
@@ -6,6 +7,32 @@ export type CertificateTemplateId = (typeof CERTIFICATE_TEMPLATE_IDS)[number];
 export interface CertificateSignatory {
   name: string;
   role: string;
+  /**
+   * La firma escaneada, impresa sobre la línea. Ausente = sólo nombre y cargo,
+   * que es como se veian todos los certificados hasta ahora.
+   */
+  imageUrl?: string;
+  /**
+   * `true` cuando el archivo trae fondo BLANCO en vez de transparente — una
+   * foto o un escaneo, que es lo que tiene la mayoría.
+   *
+   * Se declara el archivo por la misma razón que `CertificateLogoTone`: la
+   * plantilla sabe sobre qué papel imprime y quien firma no. Un rectángulo
+   * blanco sobre el crema de classique se ve como un parche, y sobre `noir` es
+   * un bloque que tapa medio pie de página.
+   */
+  imageHasBackground?: boolean;
+  /** Alto impreso de la firma, en px de lienzo. Cada plantilla lo limita. */
+  imageHeight?: number;
+  /**
+   * Cuánto se levanta sobre el renglón, en px.
+   *
+   * Existe porque una firma escaneada trae su propio aire: un recorte ajustado
+   * queda flotando y una foto con margen queda hundida, y eso depende del
+   * archivo, no de la plantilla. Negativo la baja hasta cruzar la línea, que es
+   * lo que hace una firma de verdad.
+   */
+  imageOffset?: number;
 }
 
 /**
@@ -55,6 +82,23 @@ export interface CertificateLabels {
 export type CertificateLabelKey = keyof CertificateLabels;
 
 /**
+ * De que color esta hecho el archivo del logo, no de que color queremos verlo.
+ *
+ * Un lock-up monocromo se sube una sola vez y tiene que servir para las seis
+ * plantillas, pero cinco imprimen sobre papel claro y `noir` sobre casi negro:
+ * el mismo PNG de letras blancas es invisible en una y perfecto en la otra.
+ *
+ * Por eso lo que se declara es el ARCHIVO (`light` = tinta clara, `dark` =
+ * tinta oscura) y la plantilla decide si hay que invertirlo. Un interruptor de
+ * "poner el logo en negro" habria obligado a acordarse de apagarlo justo al
+ * probar Noir, que es exactamente el momento en que nadie se acuerda.
+ *
+ * Sin declarar no se toca nada: es lo correcto para un logo a color — invertir
+ * uno arruina la marca — y deja idénticos los certificados ya emitidos.
+ */
+export type CertificateLogoTone = 'light' | 'dark';
+
+/**
  * One of the marks a certificate is issued under.
  *
  * A consultancy issues the same certificate under two of them — its own and the
@@ -67,6 +111,8 @@ export type CertificateLabelKey = keyof CertificateLabels;
  */
 export interface CertificateBrand {
   name?: string;
+  /** La tinta del archivo. Ver `CertificateLogoTone`. */
+  logoTone?: CertificateLogoTone;
   /**
    * Must be a PUBLIC, stable URL: the page is fetched by Cloudflare's browser,
    * not ours, and a presigned URL would expire and silently strip the logo off
@@ -135,6 +181,18 @@ export interface CertificateDesign {
    */
   brandShowNames?: boolean;
   /**
+   * La plantilla propia: la imagen que trajo quien diseñó el certificado, más
+   * dónde se imprime cada campo encima.
+   *
+   * Cuando está, REEMPLAZA a la plantilla — `templateId` se queda en el diseño
+   * como el preset del que salió, pero no lo lee nadie para dibujar. Ausente es
+   * lo que tienen todos los cursos de hoy.
+   *
+   * No confundir con `document`, el lienzo libre aparcado: acá el conjunto de
+   * campos es cerrado y sólo se ubican, no se crean.
+   */
+  layout?: CertificateLayout;
+  /**
    * A free canvas layout. When present it REPLACES the template: `templateId`
    * stays on the design as the preset it started from, but nothing reads it for
    * rendering. Absent means this course still uses one of the five fixed
@@ -169,4 +227,10 @@ export interface CertificateTemplateMeta {
    * a teacher is never asked to fill in wording that will not appear.
    */
   labels: CertificateLabelKey[];
+  /**
+   * Sobre que fondo imprime. Lo unico que decide si un logo monocromo hay que
+   * invertirlo, y vive aca para que no haya que preguntar `id === 'noir'` en
+   * cada lugar que dibuje o previsualice una marca.
+   */
+  surface: 'light' | 'dark';
 }

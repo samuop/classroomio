@@ -1,5 +1,6 @@
 import { t } from '$lib/utils/functions/translations';
 import type { OrganizationAsset } from './types';
+import { formatDisplayDate } from '$lib/utils/functions/date';
 
 type LessonVideoType = 'upload' | 'youtube' | 'generic' | 'google_drive';
 
@@ -118,9 +119,5 @@ export function formatUsageDate(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) {
     return t.get('media_manager.common.not_available');
   }
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }).format(date);
+  return formatDisplayDate(date);
 }

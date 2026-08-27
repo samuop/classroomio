@@ -30,6 +30,7 @@
  * code you had before the change you are checking.
  */
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -53,8 +54,20 @@ async function loadChromium() {
   const dir = fs.existsSync(store) ? fs.readdirSync(store).find((d) => d.startsWith('playwright@')) : undefined;
 
   if (dir) {
-    const entry = path.join(store, dir, 'node_modules/playwright/index.mjs');
-    if (fs.existsSync(entry)) return (await import(pathToFileURL(entry).href)).chromium;
+    const pkg = path.join(store, dir, 'node_modules/playwright');
+
+    // `index.mjs` primero, pero playwright se publica como CommonJS y lo normal
+    // es encontrar `index.js`: buscar solo el .mjs hacia decir "no esta
+    // instalado" con el paquete ahi al lado, y no habia forma de notar la
+    // diferencia desde el mensaje.
+    const esm = path.join(pkg, 'index.mjs');
+    if (fs.existsSync(esm)) return (await import(pathToFileURL(esm).href)).chromium;
+
+    if (fs.existsSync(path.join(pkg, 'index.js'))) {
+      // `createRequire` y no `import`: desde el store, un `import` del .js
+      // resuelve `playwright-core` contra ESTE archivo y no contra el paquete.
+      return createRequire(import.meta.url)(pkg).chromium;
+    }
   }
 
   console.error('playwright is not available here. Install it (`pnpm add -Dw playwright`) and rerun.');
@@ -88,6 +101,24 @@ const data = {
 };
 
 const CLIENT = { name: 'Kisoco One', logoUrl: LOGO };
+
+/**
+ * Una firma escaneada, del ancho y alto que tiene una de verdad.
+ *
+ * Importa que se mida: la firma agrega ~44px ARRIBA del nombre, dentro de un
+ * pie de pagina que ya estaba ajustado — es justo la clase de empujon que
+ * termina cortando una linea o metiendo el adorno encima de la fecha.
+ */
+const FIRMA =
+  'data:image/svg+xml;base64,' +
+  Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 96"><rect width="270" height="96" fill="#ddd"/></svg>'
+  ).toString('base64');
+
+const FIRMANTES = [
+  { name: 'Ana García', role: 'Facilitadora', imageUrl: FIRMA },
+  { name: 'Luis Pérez', role: 'Director', imageUrl: FIRMA }
+];
 
 /**
  * `plain` is the before-picture: with no logo and no client, the brand row is
@@ -131,6 +162,22 @@ const SCENARIOS = {
   // problema es previo y lo destapo, no lo introduje.
   'control: 96px + nombres, sin elegir ubicacion': {
     design: { clientBrand: CLIENT, brandLogoHeight: 96, brandShowNames: true },
+    data: { orgLogoUrl: LOGO }
+  },
+  'firmas escaneadas': {
+    design: { signatories: FIRMANTES },
+    data: { orgLogoUrl: LOGO }
+  },
+  // Todo a la vez: es la combinacion que un curso real termina teniendo, y la
+  // unica que prueba que el pie aguanta la firma CON las marcas al lado.
+  'firmas + marcas abajo, 96px + nombres': {
+    design: {
+      signatories: FIRMANTES,
+      clientBrand: CLIENT,
+      brandPlacement: 'bottom',
+      brandLogoHeight: 96,
+      brandShowNames: true
+    },
     data: { orgLogoUrl: LOGO }
   },
   'worst case': {

@@ -66,11 +66,7 @@ function yAnchors(rect: Rect): number[] {
  * canvas centre lines come first in the candidate list because centring is the
  * alignment a certificate needs most.
  */
-export function snapRect(
-  rect: Rect,
-  others: Rect[],
-  threshold: number = DEFAULT_SNAP_THRESHOLD
-): SnapResult {
+export function snapRect(rect: Rect, others: Rect[], threshold: number = DEFAULT_SNAP_THRESHOLD): SnapResult {
   const xTargets = [0, CANVAS_WIDTH / 2, CANVAS_WIDTH, ...others.flatMap(xAnchors)];
   const yTargets = [0, CANVAS_HEIGHT / 2, CANVAS_HEIGHT, ...others.flatMap(yAnchors)];
 
@@ -128,7 +124,13 @@ export interface ResizeOptions {
  * rectangle — flipping mid-drag loses the teacher's grip on which handle they
  * are holding.
  */
-export function resizeRect(rect: Rect, handle: ResizeHandle, dx: number, dy: number, options: ResizeOptions = {}): Rect {
+export function resizeRect(
+  rect: Rect,
+  handle: ResizeHandle,
+  dx: number,
+  dy: number,
+  options: ResizeOptions = {}
+): Rect {
   const min = options.minSize ?? MIN_ELEMENT_SIZE;
 
   const right = rect.x + rect.w;

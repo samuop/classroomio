@@ -18,6 +18,7 @@
   import CoursePublicBadge from './course-public-badge.svelte';
   import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
   import CopyIcon from '@lucide/svelte/icons/copy';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   interface Tag {
     id: string;
@@ -87,7 +88,7 @@
     if (!updatedAt) return null;
     const d = new Date(updatedAt);
     if (isNaN(d.getTime())) return null;
-    return `Updated ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    return `${t.get('course.list.updated')} ${formatDisplayDate(d)}`;
   });
 
   function handleRowClick() {

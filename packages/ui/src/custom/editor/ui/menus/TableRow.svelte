@@ -32,18 +32,18 @@
   }}
   class="ui:bg-background ui:flex ui:h-fit ui:w-fit ui:items-center ui:gap-1 ui:rounded ui:border ui:shadow-lg"
 >
-  <EdraToolTip tooltip="Add Row After">
+  <EdraToolTip tooltip="Agregar fila abajo">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().addRowAfter().run()}>
       <ArrowDownFromLine />
     </Button>
   </EdraToolTip>
-  <EdraToolTip tooltip="Add Row Before">
+  <EdraToolTip tooltip="Agregar fila arriba">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().addRowBefore().run()}>
       <ArrowUpFromLine />
     </Button>
   </EdraToolTip>
 
-  <EdraToolTip tooltip="Delete This Row">
+  <EdraToolTip tooltip="Eliminar esta fila">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().deleteRow().run()}>
       <Trash />
     </Button>

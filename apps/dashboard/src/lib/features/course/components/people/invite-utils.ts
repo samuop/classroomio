@@ -1,4 +1,5 @@
 import type { InvitePreset, InviteStatus } from './types';
+import { formatDisplayDateTime } from '$lib/utils/functions/date';
 
 const INVITE_PRESET_LABEL_KEYS: Record<InvitePreset, string> = {
   ONE_TIME_24H: 'course.navItem.people.invite_modal.presets.one_time_24h',
@@ -9,7 +10,7 @@ const INVITE_PRESET_LABEL_KEYS: Record<InvitePreset, string> = {
 
 export function formatDate(date: string | null | undefined): string {
   if (!date) return 'n/a';
-  return new Date(date).toLocaleString();
+  return formatDisplayDateTime(date);
 }
 
 export function shortId(id: string): string {

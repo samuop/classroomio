@@ -32,6 +32,16 @@
   const store = certificateEditorStore;
   const hasSelection = $derived(store.selectedElement !== null);
 
+  /**
+   * Agregar, duplicar, borrar y reordenar son del LIENZO LIBRE.
+   *
+   * En plantilla propia el conjunto de campos es cerrado, que es justamente lo
+   * que hace que no se pueda romper: ofrecer acá "Texto" y "Forma" la convierte
+   * de vuelta en un editor de diseño. Y encima no harían nada — escriben sobre
+   * `draft.document`, que en esta vía es `null`: botones que no responden.
+   */
+  const esLienzoLibre = $derived(store.isCanvas);
+
   function uniqueId(prefix: string): string {
     return `${prefix}-${Date.now().toString(36)}`;
   }
@@ -75,39 +85,69 @@
   }
 </script>
 
-<div class="ui:bg-background/90 ui:border-border flex flex-wrap items-center gap-1 rounded-md border px-2 py-1.5 shadow-sm backdrop-blur">
+<!--
+  `flex-wrap` no: envuelto, el segundo renglon crecia hacia ABAJO sobre el
+  certificado, que es lo unico que hay que poder mirar mientras se acomoda.
+-->
+<div
+  class="ui:bg-background/90 ui:border-border flex max-w-[calc(100vw-2rem)] items-center gap-1 overflow-x-auto rounded-md border px-2 py-1.5 shadow-sm backdrop-blur"
+>
   <Button variant="ghost" size="sm" disabled={disabled || !store.canUndo} onclick={() => store.undo()} title="Ctrl+Z">
     <UndoIcon size={14} />
   </Button>
-  <Button variant="ghost" size="sm" disabled={disabled || !store.canRedo} onclick={() => store.redo()} title="Ctrl+Shift+Z">
+  <Button
+    variant="ghost"
+    size="sm"
+    disabled={disabled || !store.canRedo}
+    onclick={() => store.redo()}
+    title="Ctrl+Shift+Z"
+  >
     <RedoIcon size={14} />
   </Button>
 
-  <div class="ui:bg-border mx-1 h-5 w-px"></div>
+  {#if esLienzoLibre}
+    <div class="ui:bg-border mx-1 h-5 w-px"></div>
 
-  <Button variant="ghost" size="sm" {disabled} onclick={addText}>
-    <TypeIcon size={14} class="mr-1" />
-    {$t('course.navItem.certificates.editor.add_text')}
-  </Button>
-  <Button variant="ghost" size="sm" {disabled} onclick={addShape}>
-    <SquareIcon size={14} class="mr-1" />
-    {$t('course.navItem.certificates.editor.add_shape')}
-  </Button>
+    <Button variant="ghost" size="sm" {disabled} onclick={addText}>
+      <TypeIcon size={14} class="mr-1" />
+      {$t('course.navItem.certificates.editor.add_text')}
+    </Button>
+    <Button variant="ghost" size="sm" {disabled} onclick={addShape}>
+      <SquareIcon size={14} class="mr-1" />
+      {$t('course.navItem.certificates.editor.add_shape')}
+    </Button>
 
-  <div class="ui:bg-border mx-1 h-5 w-px"></div>
+    <div class="ui:bg-border mx-1 h-5 w-px"></div>
 
-  <Button variant="ghost" size="sm" disabled={disabled || !hasSelection} onclick={() => store.reorderSelected('front')}>
-    <BringToFrontIcon size={14} />
-  </Button>
-  <Button variant="ghost" size="sm" disabled={disabled || !hasSelection} onclick={() => store.reorderSelected('back')}>
-    <SendToBackIcon size={14} />
-  </Button>
-  <Button variant="ghost" size="sm" disabled={disabled || !hasSelection} onclick={() => store.duplicateSelected()} title="Ctrl+D">
-    <CopyIcon size={14} />
-  </Button>
-  <Button variant="ghost" size="sm" disabled={disabled || !hasSelection} onclick={() => store.removeSelected()}>
-    <Trash2Icon size={14} />
-  </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled || !hasSelection}
+      onclick={() => store.reorderSelected('front')}
+    >
+      <BringToFrontIcon size={14} />
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled || !hasSelection}
+      onclick={() => store.reorderSelected('back')}
+    >
+      <SendToBackIcon size={14} />
+    </Button>
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled || !hasSelection}
+      onclick={() => store.duplicateSelected()}
+      title="Ctrl+D"
+    >
+      <CopyIcon size={14} />
+    </Button>
+    <Button variant="ghost" size="sm" disabled={disabled || !hasSelection} onclick={() => store.removeSelected()}>
+      <Trash2Icon size={14} />
+    </Button>
+  {/if}
 
   <div class="ui:bg-border mx-1 h-5 w-px"></div>
 

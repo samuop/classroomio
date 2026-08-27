@@ -47,7 +47,7 @@ import { enrollInCourse } from '@api/services/course/invite';
 import { exerciseRouter } from '@api/routes/course/exercise';
 import { extractClientIp } from '@api/utils/redis/key-generators';
 import { generateCertificatePdf, generateCertificatePng } from '@api/utils/certificate';
-import { CERTIFICATE_RENDER_UNCONFIGURED, isCertificateRenderConfigured } from '@api/utils/cloudflare';
+import { RENDER_UNCONFIGURED_MESSAGE, isRenderConfigured } from '@api/utils/render';
 import { assembleCertificateRender, assembleOwnerPreviewRender } from '@api/services/course/certificate';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { generateCoursePdf } from '@api/utils/course';
@@ -520,7 +520,7 @@ export const courseRouter = new Hono()
         return handleError(
           c,
           error,
-          isCertificateRenderConfigured() ? 'Failed to download certificate' : CERTIFICATE_RENDER_UNCONFIGURED
+          isRenderConfigured() ? 'Failed to download certificate' : RENDER_UNCONFIGURED_MESSAGE
         );
       }
     }
@@ -558,7 +558,7 @@ export const courseRouter = new Hono()
         return handleError(
           c,
           error,
-          isCertificateRenderConfigured() ? 'Failed to download certificate image' : CERTIFICATE_RENDER_UNCONFIGURED
+          isRenderConfigured() ? 'Failed to download certificate image' : RENDER_UNCONFIGURED_MESSAGE
         );
       }
     }
@@ -603,15 +603,7 @@ export const courseRouter = new Hono()
 
         assertCourseDeliveryAllowed(orgRoles, await getCourseOrganizationId(courseId), organizationId);
 
-        const newCourse = await cloneCourse(
-          courseId,
-          title,
-          user.id,
-          description,
-          slug,
-          organizationId,
-          linkToMaster
-        );
+        const newCourse = await cloneCourse(courseId, title, user.id, description, slug, organizationId, linkToMaster);
 
         return c.json(
           {

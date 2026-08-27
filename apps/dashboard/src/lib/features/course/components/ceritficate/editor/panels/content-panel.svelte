@@ -7,7 +7,13 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
   import BrandLogoField from './brand-logo-field.svelte';
-  import { MAX_BRAND_LOGO_HEIGHT, MIN_BRAND_LOGO_HEIGHT, getTemplateLabelKeys } from '@cio/certificates';
+  import SignatureField from './signature-field.svelte';
+  import {
+    MAX_BRAND_LOGO_HEIGHT,
+    MIN_BRAND_LOGO_HEIGHT,
+    getTemplateLabelKeys,
+    getTemplateSurface
+  } from '@cio/certificates';
 
   interface Props {
     disabled?: boolean;
@@ -34,8 +40,15 @@
    */
   const hasClientBrand = $derived(Boolean(draft.clientBrandName.trim() || draft.clientBrandLogoUrl.trim()));
 
-  /** Noir prints its marks on near-black; a white wordmark needs the same behind it. */
-  const logoPreview = $derived(draft.templateId === 'noir' ? ('dark' as const) : ('light' as const));
+  /**
+   * El fondo sobre el que imprime la plantilla elegida.
+   *
+   * Lo decide la plantilla y no este panel: era un `=== 'noir'` escrito acá a
+   * mano, y con eso una segunda plantilla oscura habría dejado el logo blanco
+   * invisible otra vez sin que nada avisara. Manda dos cosas: qué hay detrás
+   * del logo en la vista previa, y si su tinta choca con el papel.
+   */
+  const logoPreview = $derived(getTemplateSurface(draft.templateId));
 </script>
 
 <Field.Group>
@@ -101,8 +114,10 @@
         label={$t('course.navItem.certificates.editor.org_brand_logo')}
         value={draft.orgBrandLogoUrl}
         preview={logoPreview}
+        tone={draft.orgBrandLogoTone}
         {disabled}
         onChange={(url) => (certificateEditorStore.draft.orgBrandLogoUrl = url)}
+        onToneChange={(tone) => (certificateEditorStore.draft.orgBrandLogoTone = tone)}
       />
     </Field.Group>
 
@@ -122,8 +137,10 @@
         label={$t('course.navItem.certificates.editor.client_brand_logo')}
         value={draft.clientBrandLogoUrl}
         preview={logoPreview}
+        tone={draft.clientBrandLogoTone}
         {disabled}
         onChange={(url) => (certificateEditorStore.draft.clientBrandLogoUrl = url)}
+        onToneChange={(tone) => (certificateEditorStore.draft.clientBrandLogoTone = tone)}
       />
     </Field.Group>
 
@@ -250,6 +267,20 @@
           isDisabled={disabled}
         />
       </Field.Field>
+
+      <SignatureField
+        label={$t('course.navItem.certificates.editor.signature_one')}
+        value={draft.signatories[0].imageUrl}
+        hasBackground={draft.signatories[0].imageHasBackground}
+        height={draft.signatories[0].imageHeight}
+        offset={draft.signatories[0].imageOffset}
+        surface={logoPreview}
+        {disabled}
+        onChange={(url) => (certificateEditorStore.draft.signatories[0].imageUrl = url)}
+        onBackgroundChange={(has) => (certificateEditorStore.draft.signatories[0].imageHasBackground = has)}
+        onHeightChange={(h) => (certificateEditorStore.draft.signatories[0].imageHeight = h)}
+        onOffsetChange={(o) => (certificateEditorStore.draft.signatories[0].imageOffset = o)}
+      />
       <Field.Field>
         <InputField
           label={$t('course.navItem.certificates.editor.signatory_two_name')}
@@ -264,6 +295,20 @@
           isDisabled={disabled}
         />
       </Field.Field>
+
+      <SignatureField
+        label={$t('course.navItem.certificates.editor.signature_two')}
+        value={draft.signatories[1].imageUrl}
+        hasBackground={draft.signatories[1].imageHasBackground}
+        height={draft.signatories[1].imageHeight}
+        offset={draft.signatories[1].imageOffset}
+        surface={logoPreview}
+        {disabled}
+        onChange={(url) => (certificateEditorStore.draft.signatories[1].imageUrl = url)}
+        onBackgroundChange={(has) => (certificateEditorStore.draft.signatories[1].imageHasBackground = has)}
+        onHeightChange={(h) => (certificateEditorStore.draft.signatories[1].imageHeight = h)}
+        onOffsetChange={(o) => (certificateEditorStore.draft.signatories[1].imageOffset = o)}
+      />
     </Field.Group>
   </Field.Set>
 

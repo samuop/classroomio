@@ -9,6 +9,7 @@ import { renderNoir } from './templates/noir';
 import { renderPoster } from './templates/poster';
 import { BASE_STYLES, FONTS_LINK_HREF, type TemplateRenderer } from './templates/shared';
 import { renderDocument } from './document/render';
+import { buildLayoutDocument } from './layout/build';
 
 const RENDERERS: Record<CertificateTemplateId, TemplateRenderer> = {
   classique: renderClassique,
@@ -73,11 +74,26 @@ export function renderCertificate(
 ): CertificateRenderResult {
   const data = applyOverrides(design, renderData);
 
+  // La plantilla propia va PRIMERO, y no detrás de `CANVAS_EDITOR_ENABLED`: es
+  // lo que reemplazó al lienzo libre, no una variante suya. Un curso que subió
+  // su certificado tiene que imprimirlo aunque el lienzo siga aparcado.
+  if (design.layout) {
+    const rendered = renderDocument({
+      document: buildLayoutDocument({ layout: design.layout, design }),
+      data,
+      clientBrand: design.clientBrand,
+      signatories: design.signatories
+    });
+
+    return wrapDocument(rendered.body, rendered.styles);
+  }
+
   if (CANVAS_EDITOR_ENABLED && design.document) {
     const rendered = renderDocument({
       document: design.document,
       data,
-      clientBrand: design.clientBrand
+      clientBrand: design.clientBrand,
+      signatories: design.signatories
     });
 
     return wrapDocument(rendered.body, rendered.styles);

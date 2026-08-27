@@ -32,6 +32,7 @@ import { getDashboardBaseUrl, type TOrgUrlIdentity } from '@api/config/dashboard
 import { resolveOrgUrlIdentity } from '@api/utils/org-url';
 import { getProfilesByEmails } from '@cio/db/queries/auth';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '../course/compliance';
+import { formatDisplayDateTime } from '@api/utils/display-date';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -73,11 +74,7 @@ function buildInviteLink(token: string, org: TOrgUrlIdentity): string {
 }
 
 function getExpiryLabel(expiresAtIso: string): string {
-  return new Date(expiresAtIso).toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC'
-  });
+  return formatDisplayDateTime(expiresAtIso);
 }
 
 function parseRecipientCsv(recipientCsv: string): string[] {

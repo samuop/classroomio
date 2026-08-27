@@ -39,6 +39,7 @@ import { generateSlug } from '@cio/utils/functions';
 import { ensureComplianceEnrollmentRecordsForProfiles } from './compliance';
 import { db } from '@cio/db/drizzle';
 import { trackServerEvent, SERVER_EVENTS } from '@cio/analytics';
+import { formatDisplayDateTime } from '@api/utils/display-date';
 
 type InviteStatus = 'ACTIVE' | 'EXPIRED' | 'USED_UP' | 'REVOKED';
 type InvitePreset = 'ONE_TIME_24H' | 'MULTI_USE_7D' | 'MULTI_USE_30D' | 'CUSTOM';
@@ -208,11 +209,7 @@ function getEmailDomain(email: string): string {
 }
 
 function getExpiryLabel(expiresAtIso: string): string {
-  return new Date(expiresAtIso).toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC'
-  });
+  return formatDisplayDateTime(expiresAtIso);
 }
 
 function resolveInvitePolicy(data: TCreateCourseInvite): { expiresAt: string; maxUses: number } {

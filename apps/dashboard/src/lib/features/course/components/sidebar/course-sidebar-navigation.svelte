@@ -39,6 +39,7 @@
   import { IconButton } from '@cio/ui/custom/icon-button';
   import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
   import { profile } from '$lib/utils/store/user';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   interface Props {
     path: string;
@@ -312,9 +313,7 @@
       return '';
     }
 
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium'
-    }).format(date);
+    return formatDisplayDate(date);
   }
 </script>
 

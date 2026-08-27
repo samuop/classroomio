@@ -22,7 +22,13 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import type { AnswerData } from '@cio/question-types';
-import type { TCertificateBrand, TCertificateDocument } from '@cio/utils/validation/course';
+import type {
+  TCertificateBrand,
+  TCertificateDocument,
+  TCertificateFieldPlacement,
+  TCertificateLayout,
+  TCertificateSignatory
+} from '@cio/utils/validation/course';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -770,7 +776,9 @@ export const course = pgTable(
         accentColor: string;
         subtitle?: string;
         descriptionOverride?: string;
-        signatories: [{ name: string; role: string }, { name: string; role: string }];
+        /** Tipado desde el esquema de zod que guarda la escritura, no repetido acá:
+         *  con la firma escaneada ya son cuatro campos y dos copias se separan. */
+        signatories: [TCertificateSignatory, TCertificateSignatory];
         idFormat?: string;
         /** Fixed wording each template prints; see `CertificateLabels` in @cio/certificates. */
         labels?: {
@@ -795,6 +803,28 @@ export const course = pgTable(
         brandLogoHeight?: number;
         /** Print each mark's name under its logo as well. */
         brandShowNames?: boolean;
+        /**
+         * La plantilla propia: fondo subido + dónde va cada campo.
+         *
+         * El mapa de campos lleva la clave abierta A PROPÓSITO, y no el
+         * `Partial<Record<CertificateFieldId, …>>` que sí exige zod al
+         * escribir. Drizzle expande este `$type<>` con tipos mapeados, y un
+         * tipo mapeado borra el nombre del alias: las 15 claves se escriben
+         * enteras —doce propiedades y dos enums cada una— y otra vez en CADA
+         * ruta de la cadena de Hono. Con las 15 claves, `app.d.ts` deja de
+         * poder serializarse (TS7056) y el build de la API muere; o sea que el
+         * deploy se cae compilando, no en producción, que es el único motivo
+         * por el que esto no se descubrió antes.
+         *
+         * Lo que se afloja es sólo la precisión de LECTURA. Quien escribe pasa
+         * igual por `ZCertificateLayout`, que sigue exigiendo que la clave sea
+         * uno de los 15 ids; quien lee entra por `resolveFieldPlacement(id, …)`
+         * con el id ya tipado. El `Omit` mantiene el vínculo con el esquema:
+         * una propiedad nueva del layout aparece acá sola.
+         */
+        layout?: Omit<TCertificateLayout, 'fields'> & {
+          fields?: { [field: string]: TCertificateFieldPlacement | undefined };
+        };
         /**
          * Free canvas layout. Typed from the zod schema that guards the write
          * rather than restated here: the element union is ~80 lines and a second

@@ -178,6 +178,11 @@ describe('resolveCertificateDesign', () => {
       brandLogoHeight: 56,
       brandShowNames: true,
       brandPlacement: 'bottom' as const,
+      layout: {
+        backgroundUrl: 'https://learn-files.tensor.com.ar/mi-certificado.png',
+        backgroundTone: 'light' as const,
+        fields: { recipientName: { x: 110, y: 296, w: 880, h: 88 } }
+      },
       document: { version: 2 as const, canvas: { color: '#ffffff' }, elements: [] }
     };
 

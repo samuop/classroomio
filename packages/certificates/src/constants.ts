@@ -59,6 +59,19 @@ export const MIN_BRAND_LOGO_HEIGHT = 16;
 export const MAX_BRAND_LOGO_HEIGHT = 96;
 
 /**
+ * La firma escaneada: alto impreso y cuanto se levanta sobre el renglon.
+ *
+ * El desplazamiento llega a negativo a proposito — abajo de cero la firma cruza
+ * la linea, que es lo que hace una firma de verdad sobre un papel.
+ */
+export const DEFAULT_SIGNATURE_HEIGHT = 42;
+export const MIN_SIGNATURE_HEIGHT = 14;
+export const MAX_SIGNATURE_HEIGHT = 90;
+export const DEFAULT_SIGNATURE_OFFSET = 4;
+export const MIN_SIGNATURE_OFFSET = -24;
+export const MAX_SIGNATURE_OFFSET = 40;
+
+/**
  * The free-canvas editor, parked.
  *
  * It reached the point of drawing and dragging real elements, but never got
@@ -98,39 +111,56 @@ export const CERTIFICATE_TEMPLATES: CertificateTemplateMeta[] = [
     id: 'classique',
     label: 'Classique',
     description: 'Vintage engraved with double-rule border and seal.',
-    labels: ['presented']
+    labels: ['presented'],
+    surface: 'light'
   },
   {
     id: 'diploma',
     label: 'Diploma',
     description: 'Engraved diploma led by the recipient, with both marks at the foot.',
-    labels: ['presented', 'completed', 'issued', 'reference']
+    labels: ['presented', 'completed', 'issued', 'reference'],
+    surface: 'light'
   },
   {
     id: 'brutalist',
     label: 'Brutalist',
     description: 'Raw editorial grid with oversized typography and stamp.',
-    labels: ['awardedTo', 'issued', 'award', 'distinction', 'seal']
+    labels: ['awardedTo', 'issued', 'award', 'distinction', 'seal'],
+    surface: 'light'
   },
   {
     id: 'noir',
     label: 'Noir',
     description: 'Dark editorial layout with gilt accents and medal.',
-    labels: ['presented', 'seal']
+    labels: ['presented', 'seal'],
+    surface: 'dark'
   },
   {
     id: 'poster',
     label: 'Poster',
     description: 'Maximalist editorial with colour blobs and rotated tag.',
-    labels: ['awardedTo', 'issued']
+    labels: ['awardedTo', 'issued'],
+    surface: 'light'
   },
   {
     id: 'minimal',
     label: 'Minimal',
     description: 'Refined Swiss layout with thin rules and pure typography.',
-    labels: ['issued', 'reference']
+    labels: ['issued', 'reference'],
+    surface: 'light'
   }
 ];
+
+/**
+ * Sobre que fondo imprime una plantilla.
+ *
+ * Lo consultan el renderer y el editor. Antes esto era un `id === 'noir'`
+ * escrito a mano en el panel de contenido: una plantilla oscura mas y el logo
+ * blanco vuelve a desaparecer sin que nada avise.
+ */
+export function getTemplateSurface(templateId: CertificateTemplateId): 'light' | 'dark' {
+  return CERTIFICATE_TEMPLATES.find((template) => template.id === templateId)?.surface ?? 'light';
+}
 
 export function getTemplateLabelKeys(templateId: CertificateTemplateId): CertificateTemplateMeta['labels'] {
   return CERTIFICATE_TEMPLATES.find((template) => template.id === templateId)?.labels ?? [];

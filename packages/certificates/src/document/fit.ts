@@ -179,7 +179,10 @@ const SHRINK_STEP = 1;
  * "{{recipientName}}" token would size the box for the placeholder rather than
  * for the name that replaces it.
  */
-export function fitText(element: Pick<TextElement, 'style' | 'fit' | 'minFontSize' | 'maxLines' | 'w' | 'h'>, resolvedText: string): FitResult {
+export function fitText(
+  element: Pick<TextElement, 'style' | 'fit' | 'minFontSize' | 'maxLines' | 'w' | 'h'>,
+  resolvedText: string
+): FitResult {
   const { style } = element;
   const text = style.uppercase ? resolvedText.toUpperCase() : resolvedText;
 

@@ -30,6 +30,7 @@ import { parseCourseIdsFromInviteMetadata, parseProgramIdsFromInviteMetadata } f
 import { markUserAndProfileEmailVerified } from '@cio/db/queries/auth/profile';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '../course/compliance';
+import { formatDisplayDateTime } from '@api/utils/display-date';
 
 type OrganizationInviteStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ACCEPTED';
 
@@ -94,11 +95,7 @@ function getInviteStatus(invite: {
 }
 
 function getExpiryLabel(expiresAtIso: string): string {
-  return new Date(expiresAtIso).toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC'
-  });
+  return formatDisplayDateTime(expiresAtIso);
 }
 
 async function syncOrgMemberForOrgInvite(

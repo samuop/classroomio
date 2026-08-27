@@ -1,6 +1,7 @@
 import {
   BRAND_BAND_STYLES,
   BRAND_STYLES,
+  renderSignatureImage,
   escapeHtml,
   placeBrands,
   renderBrands,
@@ -35,10 +36,12 @@ export const renderMinimal: TemplateRenderer = ({ design, data }) => {
       </div>
       <div class="footer">
         <div>
+          ${renderSignatureImage(signatoryOne, 'light')}
           <div class="k">${escapeHtml(signatoryOne.role)}</div>
           <div class="v">${escapeHtml(signatoryOne.name)}</div>
         </div>
         <div>
+          ${renderSignatureImage(signatoryTwo, 'light')}
           <div class="k">${escapeHtml(signatoryTwo.role)}</div>
           <div class="v">${escapeHtml(signatoryTwo.name)}</div>
         </div>

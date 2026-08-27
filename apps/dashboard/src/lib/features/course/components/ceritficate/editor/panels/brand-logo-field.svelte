@@ -19,18 +19,35 @@
   import { uploadImage } from '$lib/utils/services/upload';
   import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
+  import type { CertificateLogoTone } from '@cio/certificates';
 
   interface Props {
     label: string;
     /** The stored public URL; empty means this mark prints its name as text. */
     value: string;
     onChange: (url: string) => void;
-    /** Shown behind the logo, so a white wordmark is not invisible on white. */
+    /**
+     * El fondo de LA PLANTILLA, no una preferencia de la vista previa. Decide
+     * las dos cosas a la vez: qué se dibuja detrás del logo acá, y si su tinta
+     * choca con el papel y hay que invertirlo.
+     */
     preview?: 'light' | 'dark';
+    /** La tinta declarada del archivo. `''` = sin declarar, no se toca. */
+    tone?: '' | CertificateLogoTone;
+    onToneChange?: (tone: '' | CertificateLogoTone) => void;
     disabled?: boolean;
   }
 
-  let { label, value, onChange, preview = 'light', disabled = false }: Props = $props();
+  let { label, value, onChange, preview = 'light', tone = '', onToneChange, disabled = false }: Props = $props();
+
+  /**
+   * La misma comparación que hace el renderer, para que el cuadrito no mienta.
+   *
+   * Sin esto la vista previa era la única pantalla donde el logo se veía bien:
+   * mostraba letras blancas sobre negro mientras el certificado las imprimía
+   * sobre papel crema, o sea justo el caso que hay que poder ver acá.
+   */
+  const invertido = $derived(Boolean(tone) && tone === preview);
 
   const ACCEPT = 'image/svg+xml,image/png,image/webp,image/jpeg';
   /** Matches MAX_IMAGE_SIZE on the API; checked here so the trip is not wasted. */
@@ -81,7 +98,7 @@
         : 'bg-white'}"
     >
       {#if value}
-        <img src={value} alt="" class="max-h-12 max-w-20 object-contain" />
+        <img src={value} alt="" class="max-h-12 max-w-20 object-contain {invertido ? 'invert' : ''}" />
       {:else}
         <ImageUpIcon class="size-4 text-zinc-400" />
       {/if}
@@ -117,13 +134,26 @@
     </div>
   </div>
 
-  <input
-    bind:this={input}
-    type="file"
-    accept={ACCEPT}
-    class="hidden"
-    {disabled}
-    onchange={onPick}
-    aria-label={label}
-  />
+  {#if value && onToneChange}
+    <!--
+      Aparece recién con un archivo cargado: antes de eso no hay ninguna tinta
+      que describir, y es una pregunta rara de contestar en abstracto.
+    -->
+    <select
+      {disabled}
+      value={tone}
+      onchange={(event) => onToneChange?.(event.currentTarget.value as '' | CertificateLogoTone)}
+      class="ui:border-input ui:bg-background h-9 w-full rounded-md border px-3 text-sm"
+      aria-label={$t('course.navItem.certificates.editor.brand_logo_tone')}
+    >
+      <option value="">{$t('course.navItem.certificates.editor.brand_logo_tone_auto')}</option>
+      <option value="light">{$t('course.navItem.certificates.editor.brand_logo_tone_light')}</option>
+      <option value="dark">{$t('course.navItem.certificates.editor.brand_logo_tone_dark')}</option>
+    </select>
+    <Field.Description>
+      {$t('course.navItem.certificates.editor.brand_logo_tone_hint')}
+    </Field.Description>
+  {/if}
+
+  <input bind:this={input} type="file" accept={ACCEPT} class="hidden" {disabled} onchange={onPick} aria-label={label} />
 </Field.Field>

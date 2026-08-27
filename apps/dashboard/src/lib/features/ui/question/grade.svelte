@@ -9,7 +9,22 @@
     grade?: number | undefined;
   }
 
-  let { gradeMax = 0, disableGrading = false, grade = $bindable(0) }: Props = $props();
+  /**
+   * `grade` va SIN valor por defecto, y es a propósito.
+   *
+   * Con `$bindable(0)` esto se ataba a una prop con fallback, y Svelte 5
+   * prohíbe `bind:` contra `undefined` en ese caso: tira `props_invalid_value`,
+   * que no es un aviso sino un error de render. Quien corrige un envío hace
+   * `bind:grade={notas[pregunta.id]}`, y alcanza UNA pregunta sin puntaje
+   * registrado —una agregada después de que el alumno entregó— para que el
+   * modal entero se caiga y en su lugar aparezca la pantalla de error.
+   *
+   * Sin fallback, además, la casilla sale vacía en vez de con un cero: "todavía
+   * no la corregí" y "le puse cero" son cosas distintas y ahora se distinguen.
+   * `InputField` ya declara su `value` sin fallback, así que el `undefined`
+   * viaja hasta abajo sin romper nada.
+   */
+  let { gradeMax = 0, disableGrading = false, grade = $bindable() }: Props = $props();
 
   $effect(() => {
     if (grade && grade > gradeMax) {

@@ -26,10 +26,20 @@ export interface BindingValues extends Record<BindingKey, string> {}
  * The values a document can interpolate, drawn from the render data.
  *
  * `clientName` has no home in `CertificateRenderData` yet — it arrives with the
- * dual-brand work — so it is threaded separately and defaults to empty.
+ * dual-brand work — so it is threaded separately and defaults to empty. Lo
+ * mismo con quien firma, que vive en el diseño y no en los datos del alumno:
+ * quien no los pasa obtiene cadenas vacías, no un error.
  */
-export function buildBindingValues(data: CertificateRenderData, clientName = ''): BindingValues {
+export function buildBindingValues(
+  data: CertificateRenderData,
+  clientName = '',
+  signatories: readonly { name?: string; role?: string }[] = []
+): BindingValues {
   return {
+    signatoryOneName: signatories[0]?.name ?? '',
+    signatoryOneRole: signatories[0]?.role ?? '',
+    signatoryTwoName: signatories[1]?.name ?? '',
+    signatoryTwoRole: signatories[1]?.role ?? '',
     recipientName: data.recipientName ?? '',
     courseName: data.courseName ?? '',
     courseDescription: data.courseDescription ?? '',
@@ -51,9 +61,7 @@ export function isBindingKey(value: string): value is BindingKey {
 
 /** Replace every `{{token}}` with its value, leaving unknown tokens in place. */
 export function substituteBindings(template: string, values: BindingValues): string {
-  return template.replace(TOKEN_PATTERN, (match, key: string) =>
-    isBindingKey(key) ? values[key] : match
-  );
+  return template.replace(TOKEN_PATTERN, (match, key: string) => (isBindingKey(key) ? values[key] : match));
 }
 
 /** Which bindings a template string actually uses — the editor lists these. */
@@ -78,6 +86,10 @@ export function listBindings(template: string): BindingKey[] {
  * preview shows is a document that could actually be issued.
  */
 export const STRESS_BINDING_VALUES: BindingValues = {
+  signatoryOneName: 'María de los Ángeles Fernández Etchegaray',
+  signatoryOneRole: 'Coordinadora General de Formación Técnica',
+  signatoryTwoName: 'Juan Ignacio Rodríguez del Valle',
+  signatoryTwoRole: 'Director de Operaciones',
   recipientName: 'María de los Ángeles Fernández Etchegaray',
   courseName: 'Fundamentos de Probabilidad y Estadística Aplicada a la Gestión de Procesos Industriales',
   courseDescription:

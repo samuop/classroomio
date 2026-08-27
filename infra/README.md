@@ -1,10 +1,14 @@
 # Deploy de ClassroomIO en VPS (nativo) — Runbook
 
-Despliegue de ClassroomIO en un VPS Hostinger (KVM1, 4GB), **conviviendo con saas-rrhh sin
-tocarlo**. Build en GitHub Actions, runtime nativo (Node + Postgres + Redis), MinIO en Docker.
+Despliegue de ClassroomIO en un VPS Hostinger (KVM2: 8GB / 2 núcleos / 100GB), **conviviendo con
+saas-rrhh sin tocarlo**. Build en GitHub Actions, runtime nativo (Node + Postgres + Redis), MinIO
+en Docker.
 
-> Esto es una **prueba de recursos**: ver si el KVM1 aguanta la app completa antes de decidir si
-> hace falta un KVM2 (8GB). Ver el plan en `~/.claude/plans/` para el análisis.
+> **Medido el 2026-08-27:** 8GB totales, ~6GB disponibles en reposo, 87GB de disco libre y **sin
+> swap**. Ese último dato manda más de lo que parece: sin swap no hay red de contención, así que
+> todo lo que pueda hacer un pico de memoria —el Chromium que imprime los certificados, por
+> ejemplo— corre serializado y con tope de tiempo. El runbook decía "KVM1, 4GB", que era la cifra
+> con la que se decidía qué entraba y qué no.
 
 ## Arquitectura
 

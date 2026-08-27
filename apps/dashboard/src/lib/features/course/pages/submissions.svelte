@@ -8,6 +8,7 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import type { SubmissionIdData, SubmissionItem, SubmissionSection } from '$features/course/utils/types';
   import { t } from '$lib/utils/functions/translations';
+  import { formatDisplayDateTime } from '$lib/utils/functions/date';
 
   import { UserAvatar } from '@cio/ui/custom/user-avatar';
   import MarkExerciseModal from '$features/course/components/exercise/mark-exercise-modal.svelte';
@@ -323,9 +324,10 @@
                 </p>
               {/if}
 
-              <!-- timestamp -->
+              <!-- timestamp: el servidor manda ISO, acá se muestra en español
+                   y hora argentina -->
               <p class="mt-2 text-[11px] text-gray-400 dark:text-neutral-500">
-                {item.submittedAt}
+                {formatDisplayDateTime(item.submittedAt)}
               </p>
             </div>
           {/each}

@@ -34,18 +34,18 @@
   }}
   class="ui:bg-background ui:flex ui:h-fit ui:w-fit ui:items-center ui:gap-1 ui:rounded ui:border ui:shadow-lg"
 >
-  <EdraToolTip tooltip="Add Column After">
+  <EdraToolTip tooltip="Agregar columna a la derecha">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().addColumnAfter().run()}>
       <ArrowRightFromLine />
     </Button>
   </EdraToolTip>
-  <EdraToolTip tooltip="Add Column Before">
+  <EdraToolTip tooltip="Agregar columna a la izquierda">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().addColumnBefore().run()}>
       <ArrowLeftFromLine />
     </Button>
   </EdraToolTip>
 
-  <EdraToolTip tooltip="Delete This Column">
+  <EdraToolTip tooltip="Eliminar esta columna">
     <Button variant="ghost" size="icon" onclick={() => editor.chain().focus().deleteColumn().run()}>
       <Trash />
     </Button>

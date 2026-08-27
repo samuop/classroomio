@@ -7,12 +7,7 @@ import {
   type CertificateRenderData
 } from '@cio/certificates';
 
-import {
-  getCloudflarePdfBuffer,
-  getCloudflarePngBuffer,
-  type CloudflarePdfOptions,
-  type CloudflareViewport
-} from '@api/utils/cloudflare';
+import { renderPdf, renderPng, type RenderPdfOptions, type RenderViewport } from '@api/utils/render';
 
 /**
  * Re-exported, not reimplemented. This used to be ~90 lines here rebuilding the
@@ -35,7 +30,8 @@ export interface CertificateRenderInput {
  * el certificado, que es apaisado, quedaba encogido contra el borde de arriba
  * con media pagina en blanco abajo.
  *
- * La medida NO se declara aca: Cloudflare descarta `width`/`height` en silencio.
+ * La medida NO se declara aca: Cloudflare descartaba `width`/`height` en silencio
+ * y con Chromium propio el `@page` es igualmente lo correcto.
  * Vive en el `@page` de BASE_STYLES (packages/certificates) y esta bandera es la
  * que le dice a Chrome que le haga caso. Medido: 824.9x585.1pt, el diseno exacto.
  *
@@ -46,7 +42,7 @@ export interface CertificateRenderInput {
  * contenido y el de la hoja coinciden al pixel, cualquier redondeo empuja una
  * franja invisible a una segunda pagina.
  */
-const CERTIFICATE_PDF_OPTIONS: CloudflarePdfOptions = {
+const CERTIFICATE_PDF_OPTIONS: RenderPdfOptions = {
   preferCSSPageSize: true,
   printBackground: true,
   margin: { top: '0', right: '0', bottom: '0', left: '0' },
@@ -54,7 +50,7 @@ const CERTIFICATE_PDF_OPTIONS: CloudflarePdfOptions = {
 };
 
 /** El PNG se saca del mismo lienzo; x2 para que no se vea pixelado impreso. */
-const CERTIFICATE_VIEWPORT: CloudflareViewport = {
+const CERTIFICATE_VIEWPORT: RenderViewport = {
   width: CERTIFICATE_PAGE_WIDTH,
   height: CERTIFICATE_PAGE_HEIGHT,
   deviceScaleFactor: 2
@@ -63,11 +59,11 @@ const CERTIFICATE_VIEWPORT: CloudflareViewport = {
 export async function generateCertificatePdf(input: CertificateRenderInput) {
   const { html, styles } = renderCertificate(input.design, input.data);
 
-  return getCloudflarePdfBuffer(html, styles, CERTIFICATE_PDF_OPTIONS);
+  return renderPdf(html, styles, CERTIFICATE_PDF_OPTIONS);
 }
 
 export async function generateCertificatePng(input: CertificateRenderInput) {
   const { html, styles } = renderCertificate(input.design, input.data);
 
-  return getCloudflarePngBuffer(html, styles, CERTIFICATE_VIEWPORT);
+  return renderPng(html, styles, CERTIFICATE_VIEWPORT);
 }

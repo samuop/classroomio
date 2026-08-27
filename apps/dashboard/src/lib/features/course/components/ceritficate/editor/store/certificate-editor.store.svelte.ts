@@ -1,5 +1,9 @@
 import {
   CANVAS_EDITOR_ENABLED,
+  CERTIFICATE_FIELD_IDS,
+  DEFAULT_FIELD_PLACEMENTS,
+  buildLayoutDocument,
+  resolveFieldPlacement,
   DEFAULT_BRAND_LOGO_HEIGHT,
   DEFAULT_CERTIFICATE_DESIGN,
   DEFAULT_CERTIFICATE_LABELS,
@@ -10,7 +14,11 @@ import {
   type CertificateDocument,
   type CertificateElement,
   type CertificateLabelKey,
+  type CertificateFieldId,
+  type CertificateFieldPlacement,
   type CertificateLabels,
+  type CertificateLayout,
+  type CertificateLogoTone,
   type CertificateRenderData,
   type CertificateTemplateId
 } from '@cio/certificates';
@@ -22,13 +30,24 @@ import { courseApi } from '$features/course/api';
 import { snackbar } from '$features/ui/snackbar/store';
 import { t } from '$lib/utils/functions/translations';
 
-export type CertificateEditorPanel = 'templates' | 'content' | 'element' | 'colors' | 'export';
+export type CertificateEditorPanel = 'templates' | 'content' | 'element' | 'layout' | 'colors' | 'export';
 
 /**
  * The store keeps optional fields as concrete strings so two-way bindings to
  * inputs are simple — we collapse empty strings to `undefined` only when
  * shipping a payload back to the API.
  */
+export interface CertificateEditorSignatory {
+  name: string;
+  role: string;
+  imageUrl: string;
+  imageHasBackground: boolean;
+  /** Alto impreso. `null` = como lo pone la plantilla. */
+  imageHeight: number | null;
+  /** Cuánto se levanta sobre el renglón. `null` = el de la plantilla. */
+  imageOffset: number | null;
+}
+
 export interface CertificateEditorDraft {
   templateId: CertificateTemplateId;
   accentColor: string;
@@ -37,7 +56,12 @@ export interface CertificateEditorDraft {
   idFormat: string;
   /** What the certificate calls the achievement, in place of the course title. */
   titleOverride: string;
-  signatories: [{ name: string; role: string }, { name: string; role: string }];
+  /**
+   * Quien firma. `imageUrl` es la firma escaneada; `imageHasBackground` marca
+   * que el archivo trae fondo blanco (foto o escaneo) en vez de recorte, que es
+   * lo que tiene la mayoría.
+   */
+  signatories: [CertificateEditorSignatory, CertificateEditorSignatory];
   /**
    * The fixed wording each template prints ("se certifica que", "Otorgado a"…).
    * Held for EVERY key, not just the ones the current template uses, so switching
@@ -50,9 +74,15 @@ export interface CertificateEditorDraft {
    */
   orgBrandName: string;
   orgBrandLogoUrl: string;
+  /**
+   * La tinta del archivo del logo. `''` = sin declarar, y sin declarar no se
+   * toca — que es lo correcto para un logo a color. Ver `CertificateLogoTone`.
+   */
+  orgBrandLogoTone: '' | CertificateLogoTone;
   /** The client company this training was delivered for; the second mark. */
   clientBrandName: string;
   clientBrandLogoUrl: string;
+  clientBrandLogoTone: '' | CertificateLogoTone;
   /** Printed height of each logo, in canvas pixels. */
   brandLogoHeight: number;
   /** Print each mark's name under its logo as well as the logo itself. */
@@ -65,6 +95,12 @@ export interface CertificateEditorDraft {
    */
   brandPlacement: '' | 'top' | 'bottom';
   /**
+   * La plantilla propia: la imagen que subió quien diseñó el certificado y
+   * dónde va cada campo encima. `null` = este curso usa una de las seis
+   * plantillas fijas, que es lo que hacen todos hoy.
+   */
+  layout: CertificateLayout | null;
+  /**
    * A free canvas layout. `null` means the course renders through one of the
    * five fixed templates, which is every course while `CANVAS_EDITOR_ENABLED`
    * is off.
@@ -73,6 +109,23 @@ export interface CertificateEditorDraft {
 }
 
 const LABEL_KEYS = Object.keys(DEFAULT_CERTIFICATE_LABELS) as CertificateLabelKey[];
+
+/**
+ * `recipientName` <-> `field:recipientName`.
+ *
+ * El prefijo lo pone el compilador para que un id de campo no pueda chocar con
+ * el de un elemento del lienzo libre. Las dos direcciones viven acá juntas: por
+ * separado, una se cambia y la otra no.
+ */
+function elementIdFromFieldId(id: CertificateFieldId): string {
+  return `field:${id}`;
+}
+
+function fieldIdFromElementId(elementId: string): CertificateFieldId | null {
+  const id = elementId.startsWith('field:') ? elementId.slice('field:'.length) : '';
+
+  return (CERTIFICATE_FIELD_IDS as readonly string[]).includes(id) ? (id as CertificateFieldId) : null;
+}
 
 function toLabelDraft(labels: CertificateLabels | undefined): Record<CertificateLabelKey, string> {
   return Object.fromEntries(LABEL_KEYS.map((key) => [key, labels?.[key] ?? DEFAULT_CERTIFICATE_LABELS[key]])) as Record<
@@ -96,6 +149,33 @@ function fromLabelDraft(draft: Record<CertificateLabelKey, string>): Certificate
   return Object.keys(labels).length > 0 ? labels : undefined;
 }
 
+function toSignatoryDraft(stored: CertificateDesign['signatories'][number] | undefined): CertificateEditorSignatory {
+  return {
+    name: stored?.name ?? '',
+    role: stored?.role ?? '',
+    imageUrl: stored?.imageUrl ?? '',
+    imageHasBackground: stored?.imageHasBackground ?? false,
+    // `null` y no el default: guardar el default congelaría el valor de hoy, y
+    // el tope que cada plantilla se puso dejaría de aplicarse.
+    imageHeight: stored?.imageHeight ?? null,
+    imageOffset: stored?.imageOffset ?? null
+  };
+}
+
+/** Sin firma no se guarda el fondo: describiría un archivo que no existe. */
+function fromSignatoryDraft(draft: CertificateEditorSignatory): CertificateDesign['signatories'][number] {
+  const imageUrl = draft.imageUrl.trim();
+
+  return {
+    name: draft.name,
+    role: draft.role,
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(imageUrl && draft.imageHasBackground ? { imageHasBackground: true } : {}),
+    ...(imageUrl && draft.imageHeight !== null ? { imageHeight: draft.imageHeight } : {}),
+    ...(imageUrl && draft.imageOffset !== null ? { imageOffset: draft.imageOffset } : {})
+  };
+}
+
 function toDraft(design: CertificateDesign): CertificateEditorDraft {
   return {
     templateId: design.templateId,
@@ -104,24 +184,24 @@ function toDraft(design: CertificateDesign): CertificateEditorDraft {
     descriptionOverride: design.descriptionOverride ?? '',
     idFormat: design.idFormat ?? '',
     titleOverride: design.titleOverride ?? '',
-    signatories: [
-      { name: design.signatories[0]?.name ?? '', role: design.signatories[0]?.role ?? '' },
-      { name: design.signatories[1]?.name ?? '', role: design.signatories[1]?.role ?? '' }
-    ],
+    signatories: [toSignatoryDraft(design.signatories[0]), toSignatoryDraft(design.signatories[1])],
     labels: toLabelDraft(design.labels),
     orgBrandName: design.orgBrand?.name ?? '',
     orgBrandLogoUrl: design.orgBrand?.logoUrl ?? '',
+    orgBrandLogoTone: design.orgBrand?.logoTone ?? '',
     clientBrandName: design.clientBrand?.name ?? '',
     clientBrandLogoUrl: design.clientBrand?.logoUrl ?? '',
+    clientBrandLogoTone: design.clientBrand?.logoTone ?? '',
     brandLogoHeight: design.brandLogoHeight ?? DEFAULT_BRAND_LOGO_HEIGHT,
     brandShowNames: design.brandShowNames ?? false,
     brandPlacement: design.brandPlacement ?? '',
+    layout: design.layout ?? null,
     document: design.document ?? null
   };
 }
 
 /** `{ name, logoUrl }` with blanks dropped, or nothing at all when both are blank. */
-function toBrand(name: string, logoUrl: string): CertificateDesign['clientBrand'] {
+function toBrand(name: string, logoUrl: string, logoTone: '' | CertificateLogoTone): CertificateDesign['clientBrand'] {
   const trimmedName = name.trim();
   const trimmedLogo = logoUrl.trim();
 
@@ -129,7 +209,10 @@ function toBrand(name: string, logoUrl: string): CertificateDesign['clientBrand'
 
   return {
     ...(trimmedName ? { name: trimmedName } : {}),
-    ...(trimmedLogo ? { logoUrl: trimmedLogo } : {})
+    ...(trimmedLogo ? { logoUrl: trimmedLogo } : {}),
+    // Sólo si hay logo: la tinta de un archivo que no existe no describe nada,
+    // y quedaría guardada esperando al próximo que suba uno.
+    ...(trimmedLogo && logoTone ? { logoTone } : {})
   };
 }
 
@@ -141,22 +224,20 @@ function fromDraft(draft: CertificateEditorDraft): CertificateDesign {
     descriptionOverride: draft.descriptionOverride.trim() || undefined,
     idFormat: draft.idFormat.trim() || undefined,
     titleOverride: draft.titleOverride.trim() || undefined,
-    signatories: [
-      { name: draft.signatories[0].name, role: draft.signatories[0].role },
-      { name: draft.signatories[1].name, role: draft.signatories[1].role }
-    ],
+    signatories: [fromSignatoryDraft(draft.signatories[0]), fromSignatoryDraft(draft.signatories[1])],
     labels: fromLabelDraft(draft.labels),
-    ...(toBrand(draft.orgBrandName, draft.orgBrandLogoUrl)
-      ? { orgBrand: toBrand(draft.orgBrandName, draft.orgBrandLogoUrl) }
+    ...(toBrand(draft.orgBrandName, draft.orgBrandLogoUrl, draft.orgBrandLogoTone)
+      ? { orgBrand: toBrand(draft.orgBrandName, draft.orgBrandLogoUrl, draft.orgBrandLogoTone) }
       : {}),
-    ...(toBrand(draft.clientBrandName, draft.clientBrandLogoUrl)
-      ? { clientBrand: toBrand(draft.clientBrandName, draft.clientBrandLogoUrl) }
+    ...(toBrand(draft.clientBrandName, draft.clientBrandLogoUrl, draft.clientBrandLogoTone)
+      ? { clientBrand: toBrand(draft.clientBrandName, draft.clientBrandLogoUrl, draft.clientBrandLogoTone) }
       : {}),
     // Only when it differs from the default, so a course does not freeze
     // today's sizing — same rule the labels follow.
     ...(draft.brandLogoHeight !== DEFAULT_BRAND_LOGO_HEIGHT ? { brandLogoHeight: draft.brandLogoHeight } : {}),
     ...(draft.brandShowNames ? { brandShowNames: true } : {}),
     ...(draft.brandPlacement ? { brandPlacement: draft.brandPlacement } : {}),
+    ...(draft.layout ? { layout: draft.layout } : {}),
     ...(draft.document ? { document: draft.document } : {})
   };
 }
@@ -249,14 +330,20 @@ function snapshotDocument(document: CertificateDocument): CertificateDocument {
  */
 const MAX_HISTORY = 50;
 
+/** Un paso del historial. Cubre las dos vías: el lienzo y la plantilla propia. */
+interface EditorSnapshot {
+  document: CertificateDocument | null;
+  layout: CertificateLayout | null;
+}
+
 class CertificateEditorStore {
   activePanel = $state<CertificateEditorPanel>('templates');
   draft = $state<CertificateEditorDraft>(toDraft(DEFAULT_CERTIFICATE_DESIGN));
   initial = $state<CertificateEditorDraft>(toDraft(DEFAULT_CERTIFICATE_DESIGN));
   isSaving = $state(false);
   selectedElementId = $state<string | null>(null);
-  #past = $state<CertificateDocument[]>([]);
-  #future = $state<CertificateDocument[]>([]);
+  #past = $state<EditorSnapshot[]>([]);
+  #future = $state<EditorSnapshot[]>([]);
   #initializedCourseId: string | null = null;
 
   readonly isDirty = $derived(JSON.stringify(this.draft) !== JSON.stringify(this.initial));
@@ -284,6 +371,10 @@ class CertificateEditorStore {
 
   /** True once this course renders from a canvas layout rather than a template. */
   readonly isCanvas = $derived(this.draft.document !== null);
+  /** Este curso trae su propia imagen de certificado en vez de una plantilla. */
+  readonly isLayout = $derived(this.draft.layout !== null);
+  /** El lienzo se puede arrastrar en los dos modos. */
+  readonly isEditableStage = $derived(this.isCanvas || this.isLayout);
 
   async setTemplate(
     templateId: CertificateTemplateId,
@@ -355,7 +446,31 @@ class CertificateEditorStore {
 
   // ─── Canvas editing ────────────────────────────────────────────────────────
 
-  readonly elements = $derived(this.draft.document?.elements ?? []);
+  /**
+   * Lo que el lienzo dibuja y arrastra.
+   *
+   * En modo plantilla propia son los campos COMPILADOS a elementos, y no una
+   * segunda lista: así el lienzo, la vista previa y el PDF salen exactamente
+   * del mismo compilador. La alternativa —que el editor tenga su idea de dónde
+   * va cada campo— es de dónde salen los editores que muestran una cosa y
+   * imprimen otra.
+   */
+  readonly elements = $derived.by(() => {
+    if (this.draft.layout) {
+      return buildLayoutDocument({ layout: this.draft.layout, design: fromDraft(this.draft) }).elements;
+    }
+
+    return this.draft.document?.elements ?? [];
+  });
+
+  /** El fondo que el lienzo pinta detrás de todo. */
+  readonly stageCanvas = $derived.by(() => {
+    if (this.draft.layout) {
+      return buildLayoutDocument({ layout: this.draft.layout, design: fromDraft(this.draft) }).canvas;
+    }
+
+    return this.draft.document?.canvas;
+  });
   readonly selectedElement = $derived(this.elements.find((element) => element.id === this.selectedElementId) ?? null);
   readonly canUndo = $derived(this.#past.length > 0);
   readonly canRedo = $derived(this.#future.length > 0);
@@ -366,34 +481,52 @@ class CertificateEditorStore {
    * each one would mean fifty presses of undo to reverse a single motion.
    */
   checkpoint() {
-    if (!this.draft.document) return;
+    if (!this.draft.document && !this.draft.layout) return;
 
-    this.#past = [...this.#past, snapshotDocument(this.draft.document)].slice(-MAX_HISTORY);
+    this.#past = [...this.#past, this.#snapshot()].slice(-MAX_HISTORY);
     // A new action invalidates anything that was undone: the timeline branched.
     this.#future = [];
   }
 
   undo() {
     const previous = this.#past.at(-1);
-    if (!previous || !this.draft.document) return;
+    if (!previous) return;
 
-    this.#future = [snapshotDocument(this.draft.document), ...this.#future];
+    this.#future = [this.#snapshot(), ...this.#future];
     this.#past = this.#past.slice(0, -1);
-    this.draft.document = previous;
-
-    // The element being edited may not exist in the restored state.
-    if (!previous.elements.some((element) => element.id === this.selectedElementId)) {
-      this.selectedElementId = null;
-    }
+    this.#restore(previous);
   }
 
   redo() {
     const next = this.#future[0];
-    if (!next || !this.draft.document) return;
+    if (!next) return;
 
-    this.#past = [...this.#past, snapshotDocument(this.draft.document)].slice(-MAX_HISTORY);
+    this.#past = [...this.#past, this.#snapshot()].slice(-MAX_HISTORY);
     this.#future = this.#future.slice(1);
-    this.draft.document = next;
+    this.#restore(next);
+  }
+
+  /**
+   * Las DOS vías en el mismo paso del historial.
+   *
+   * Guardar sólo el documento dejaba a la plantilla propia sin deshacer, y
+   * —peor— pasar de una vía a la otra no era un paso reversible: se perdía el
+   * trabajo sin que nada lo dijera.
+   */
+  #snapshot(): EditorSnapshot {
+    return {
+      document: this.draft.document ? snapshotDocument(this.draft.document) : null,
+      layout: this.draft.layout ? structuredClone($state.snapshot(this.draft.layout)) : null
+    };
+  }
+
+  #restore(snapshot: EditorSnapshot) {
+    this.draft.document = snapshot.document;
+    this.draft.layout = snapshot.layout;
+
+    // Lo que se estaba editando puede no existir en el estado restaurado.
+    const sigueExistiendo = this.elements.some((element) => element.id === this.selectedElementId);
+    if (!sigueExistiendo) this.selectedElementId = null;
   }
 
   select(elementId: string | null) {
@@ -401,11 +534,29 @@ class CertificateEditorStore {
 
     // Clicking a thing and having its properties appear is what every design
     // tool does; without it the panel is a place you have to remember to visit.
-    if (elementId) this.activePanel = 'element';
+    if (elementId) this.activePanel = this.draft.layout ? 'layout' : 'element';
   }
 
   /** Patch an element in place. The caller checkpoints before a gesture starts. */
   updateElement(elementId: string, patch: Partial<CertificateElement>) {
+    // En plantilla propia los elementos son una compilación: escribirlos sería
+    // escribir sobre algo que se regenera en el siguiente $derived. Lo que se
+    // guarda es la CAJA del campo.
+    if (this.draft.layout) {
+      const id = fieldIdFromElementId(elementId);
+      if (!id) return;
+
+      const { x, y, w, h } = patch as Partial<CertificateFieldPlacement>;
+      this.updateField(id, {
+        ...(typeof x === 'number' ? { x } : {}),
+        ...(typeof y === 'number' ? { y } : {}),
+        ...(typeof w === 'number' ? { w } : {}),
+        ...(typeof h === 'number' ? { h } : {})
+      });
+
+      return;
+    }
+
     const document = this.draft.document;
     if (!document) return;
 
@@ -413,6 +564,98 @@ class CertificateEditorStore {
     if (index < 0) return;
 
     document.elements[index] = { ...document.elements[index], ...patch } as CertificateElement;
+  }
+
+  // ─── Plantilla propia ──────────────────────────────────────────────────────
+
+  /**
+   * Pasar este curso a plantilla propia.
+   *
+   * Arranca VACÍO de campos, no con una copia de la plantilla actual: los
+   * campos caen solos en su ubicación por defecto, y guardar una copia
+   * congelaría hoy las quince cajas — mejorar un default no llegaría nunca a
+   * los certificados ya creados.
+   */
+  useOwnTemplate() {
+    if (this.draft.layout) return;
+
+    this.checkpoint();
+    this.draft.layout = { backgroundTone: 'light' };
+    this.selectedElementId = null;
+    this.activePanel = 'layout';
+  }
+
+  /**
+   * Volver a las plantillas fijas.
+   *
+   * Conserva lo ubicado en `layout` hasta que se guarde: quien prueba las dos
+   * y vuelve no pierde el trabajo. Al guardar sí se descarta, porque `fromDraft`
+   * sólo escribe `layout` cuando existe.
+   */
+  useFixedTemplate() {
+    if (!this.draft.layout) return;
+
+    this.checkpoint();
+    this.draft.layout = null;
+    this.selectedElementId = null;
+    this.activePanel = 'templates';
+  }
+
+  setBackground(url: string) {
+    if (!this.draft.layout) return;
+
+    this.checkpoint();
+    this.draft.layout = { ...this.draft.layout, ...(url ? { backgroundUrl: url } : { backgroundUrl: undefined }) };
+  }
+
+  setBackgroundTone(tone: 'light' | 'dark') {
+    if (!this.draft.layout) return;
+
+    this.checkpoint();
+    this.draft.layout = { ...this.draft.layout, backgroundTone: tone };
+  }
+
+  /** Lo guardado de un campo por encima de su ubicación por defecto. */
+  fieldPlacement(id: CertificateFieldId): CertificateFieldPlacement {
+    return resolveFieldPlacement(id, this.draft.layout?.fields?.[id]);
+  }
+
+  /**
+   * Mover o restilar un campo.
+   *
+   * Se escribe la caja COMPLETA y no sólo lo que cambió: un campo a medio
+   * guardar —con `x` pero sin `w`— lo descarta el resolver del servidor, así
+   * que el editor mostraría la posición nueva y el PDF la vieja.
+   */
+  updateField(id: CertificateFieldId, patch: Partial<CertificateFieldPlacement>) {
+    if (!this.draft.layout) return;
+
+    const fields = { ...(this.draft.layout.fields ?? {}) };
+    fields[id] = { ...this.fieldPlacement(id), ...patch };
+    this.draft.layout = { ...this.draft.layout, fields };
+  }
+
+  toggleField(id: CertificateFieldId, hidden: boolean) {
+    this.checkpoint();
+    this.updateField(id, { hidden });
+    if (hidden && this.selectedElementId === elementIdFromFieldId(id)) this.selectedElementId = null;
+  }
+
+  /** Devolver un campo a donde estaba antes de que nadie lo tocara. */
+  resetField(id: CertificateFieldId) {
+    if (!this.draft.layout) return;
+
+    this.checkpoint();
+    const fields = { ...(this.draft.layout.fields ?? {}) };
+    delete fields[id];
+    this.draft.layout = { ...this.draft.layout, fields };
+  }
+
+  readonly selectedFieldId = $derived(this.draft.layout ? fieldIdFromElementId(this.selectedElementId ?? '') : null);
+
+  selectField(id: CertificateFieldId | null) {
+    this.selectedElementId = id ? elementIdFromFieldId(id) : null;
+    if (id) this.activePanel = 'layout';
   }
 
   addElement(element: CertificateElement) {

@@ -1,6 +1,7 @@
 import {
   BRAND_BAND_STYLES,
   BRAND_STYLES,
+  renderSignatureImage,
   escapeHtml,
   getYear,
   placeBrands,
@@ -43,6 +44,7 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
       </div>
       <div class="footer">
         <div class="sig">
+          ${renderSignatureImage(signatoryOne, 'dark')}
           <div class="name">${escapeHtml(signatoryOne.name)}</div>
           <div class="label">${escapeHtml(signatoryOne.role)}</div>
         </div>
@@ -51,6 +53,7 @@ export const renderNoir: TemplateRenderer = ({ design, data }) => {
           <div class="lbl">&#9733; ${escapeHtml(labels.seal)} &#9733;</div>
         </div>
         <div class="sig">
+          ${renderSignatureImage(signatoryTwo, 'dark')}
           <div class="name">${escapeHtml(signatoryTwo.name)}</div>
           <div class="label">${escapeHtml(signatoryTwo.role)}</div>
         </div>

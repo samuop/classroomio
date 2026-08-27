@@ -13,6 +13,7 @@
     getStudentCourseComplianceStatusVariant,
     getStudentCourseProgressPercent
   } from '$features/course/utils/compliance-utils';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   const gotoCourse = (id: string | undefined) => {
     if (!id) return;
@@ -44,9 +45,7 @@
       return '';
     }
 
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium'
-    }).format(date);
+    return formatDisplayDate(date);
   }
 </script>
 

@@ -57,12 +57,35 @@ export const ZCourseDownloadParam = z.object({
 export type TCourseDownloadParam = z.infer<typeof ZCourseDownloadParam>;
 
 /**
+ * Only http(s). These URLs are written straight into the certificate's HTML and
+ * fetched by a real browser, so allowing arbitrary schemes would put
+ * `javascript:` and `data:` payloads into a document the platform issues on the
+ * teacher's behalf.
+ */
+const ZAssetUrl = z
+  .string()
+  .max(2048)
+  .refine((value) => /^https?:\/\//i.test(value), { message: 'URL must be http(s)' });
+
+/**
  * Per-course certificate design. Stored on `course.certificate.design`.
  * The 5 supported template ids match `@cio/certificates`.
  */
 export const ZCertificateSignatory = z.object({
   name: z.string().max(80).default(''),
-  role: z.string().max(80).default('')
+  role: z.string().max(80).default(''),
+  /**
+   * La firma escaneada. `ZAssetUrl` y no una cadena suelta por lo mismo que el
+   * logo de una marca: esto entra en un `<img src>` que abre el navegador de
+   * Cloudflare, no el nuestro.
+   */
+  imageUrl: ZAssetUrl.optional(),
+  /** `true` si el archivo trae fondo blanco (foto o escaneo) en vez de recorte. */
+  imageHasBackground: z.boolean().optional(),
+  /** Alto impreso de la firma, en px de lienzo. Cada plantilla lo limita además. */
+  imageHeight: z.number().min(14).max(90).optional(),
+  /** Cuánto se levanta sobre el renglón. Negativo la baja hasta cruzar la línea. */
+  imageOffset: z.number().min(-24).max(40).optional()
 });
 export type TCertificateSignatory = z.infer<typeof ZCertificateSignatory>;
 
@@ -97,17 +120,6 @@ export type TCertificateLabels = z.infer<typeof ZCertificateLabels>;
 const ZHexColor = z.string().regex(/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, {
   message: 'Colour must be a hex value'
 });
-
-/**
- * Only http(s). These URLs are written straight into the certificate's HTML and
- * fetched by a real browser, so allowing arbitrary schemes would put
- * `javascript:` and `data:` payloads into a document the platform issues on the
- * teacher's behalf.
- */
-const ZAssetUrl = z
-  .string()
-  .max(2048)
-  .refine((value) => /^https?:\/\//i.test(value), { message: 'URL must be http(s)' });
 
 /** Canvas units. Negative values are legal — an element may bleed off the edge. */
 const ZCanvasCoordinate = z.number().min(-4000).max(8000);
@@ -197,9 +209,92 @@ export type TCertificateDocument = z.infer<typeof ZCertificateDocument>;
  */
 export const ZCertificateBrand = z.object({
   name: z.string().max(120).optional(),
-  logoUrl: ZAssetUrl.optional()
+  logoUrl: ZAssetUrl.optional(),
+  /**
+   * La tinta del ARCHIVO, no el color que se quiere ver: la plantilla lo
+   * invierte sola cuando choca con su fondo. Conjunto cerrado — cualquier otra
+   * cosa cae a "no declarada", que es no tocar el logo.
+   */
+  logoTone: z.enum(['light', 'dark']).optional()
 });
 export type TCertificateBrand = z.infer<typeof ZCertificateBrand>;
+
+/**
+ * La plantilla propia: fondo subido + dónde va cada campo.
+ *
+ * El conjunto de campos es CERRADO acá también, y no sólo en el tipo. Es lo que
+ * impide que un cliente equivocado —o una fila vieja— meta un elemento que
+ * nadie diseñó dentro de un documento que la plataforma emite en nombre de
+ * quien enseña: un id que no esté en esta lista se descarta.
+ */
+export const CERTIFICATE_FIELD_IDS = [
+  'recipientName',
+  'courseName',
+  'courseDescription',
+  'orgName',
+  'clientName',
+  'date',
+  'certificateId',
+  'signatoryOneImage',
+  'signatoryOneName',
+  'signatoryOneRole',
+  'signatoryTwoImage',
+  'signatoryTwoName',
+  'signatoryTwoRole',
+  'orgLogo',
+  'clientLogo'
+] as const;
+
+/** Las tipografías que el PDF ya carga. Una que no esté acá no se dibujaría. */
+const CERTIFICATE_FONT_FAMILIES = [
+  'Cormorant Garamond',
+  'Bodoni Moda',
+  'Playfair Display',
+  'Cinzel',
+  'Archivo Black',
+  'Space Grotesk',
+  'DM Mono',
+  'JetBrains Mono'
+] as const;
+
+export const ZCertificateFieldPlacement = z.object({
+  // Los límites son los del lienzo con holgura: negativo es legal —un campo
+  // puede sangrar por el borde— pero no arbitrario.
+  x: z.number().min(-2000).max(4000),
+  y: z.number().min(-2000).max(4000),
+  w: z.number().min(0).max(4000),
+  h: z.number().min(0).max(4000),
+  hidden: z.boolean().optional(),
+  fontSize: z.number().min(4).max(200).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, { message: 'Color must be a 6-digit hex' })
+    .optional(),
+  align: z.enum(['left', 'center', 'right']).optional(),
+  bold: z.boolean().optional(),
+  italic: z.boolean().optional(),
+  uppercase: z.boolean().optional(),
+  fontFamily: z.enum(CERTIFICATE_FONT_FAMILIES).optional()
+});
+export type TCertificateFieldPlacement = z.infer<typeof ZCertificateFieldPlacement>;
+
+export const ZCertificateLayout = z.object({
+  backgroundUrl: ZAssetUrl.optional(),
+  backgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, { message: 'Color must be a 6-digit hex' })
+    .optional(),
+  backgroundTone: z.enum(['light', 'dark']).optional(),
+  fields: z
+    .object(
+      Object.fromEntries(CERTIFICATE_FIELD_IDS.map((id) => [id, ZCertificateFieldPlacement.optional()])) as Record<
+        (typeof CERTIFICATE_FIELD_IDS)[number],
+        z.ZodOptional<typeof ZCertificateFieldPlacement>
+      >
+    )
+    .optional()
+});
+export type TCertificateLayout = z.infer<typeof ZCertificateLayout>;
 
 /**
  * NOTE FOR ANY NEW DESIGN FIELD: it must be declared here as well as on the
@@ -232,6 +327,8 @@ export const ZCertificateDesign = z.object({
   brandPlacement: z.enum(['top', 'bottom']).optional(),
   /** Print each mark's name under its logo as well as the logo itself. */
   brandShowNames: z.boolean().optional(),
+  /** La plantilla propia. Cuando está, reemplaza a la plantilla fija. */
+  layout: ZCertificateLayout.optional(),
   document: ZCertificateDocument.optional()
 });
 export type TCertificateDesign = z.infer<typeof ZCertificateDesign>;

@@ -13,6 +13,7 @@
   import PaletteIcon from '@lucide/svelte/icons/palette';
   import MousePointerIcon from '@lucide/svelte/icons/mouse-pointer-2';
   import DownloadIcon from '@lucide/svelte/icons/download';
+  import FileImageIcon from '@lucide/svelte/icons/file-image';
   import { t } from '$lib/utils/functions/translations';
 
   import { courseApi } from '$features/course/api';
@@ -23,6 +24,7 @@
   import TemplatesPanel from './panels/templates-panel.svelte';
   import ContentPanel from './panels/content-panel.svelte';
   import ElementPanel from './panels/element-panel.svelte';
+  import LayoutPanel from './panels/layout-panel.svelte';
   import ColorsPanel from './panels/colors-panel.svelte';
   import ExportPanel from './panels/export-panel.svelte';
   import CanvasStage from './canvas/canvas-stage.svelte';
@@ -56,7 +58,10 @@
   const previewValues = $derived(
     stressPreview
       ? STRESS_BINDING_VALUES
-      : buildBindingValues(sampleRenderData, store.draft.clientBrandName)
+      : // Quien firma también: sin pasarlo, `{{signatoryOneName}}` resuelve a
+        // cadena vacía y los dos campos de firma salen INVISIBLES en el lienzo.
+        // Ubicar un campo que no se ve es adivinar.
+        buildBindingValues(sampleRenderData, store.draft.clientBrandName, store.draft.signatories)
   );
 
   /**
@@ -66,10 +71,17 @@
    * prints.
    */
   const overflowingIds = $derived.by(() => {
-    if (!store.draft.document) return [];
+    // El MISMO renderer que imprime, en las dos vías: en plantilla propia los
+    // campos ya vienen compilados por el store, así que no hay una segunda idea
+    // de "esto entra" que pueda discrepar con la que manda.
+    const document = store.draft.layout
+      ? { version: 2 as const, canvas: store.stageCanvas ?? { color: '#ffffff' }, elements: store.elements }
+      : store.draft.document;
+
+    if (!document) return [];
 
     return renderDocument({
-      document: store.draft.document,
+      document,
       data: sampleRenderData,
       clientBrand: previewDesign.clientBrand,
       bindingOverrides: previewValues
@@ -157,6 +169,17 @@
         {/if}
         <IconButton
           type="button"
+          variant={navVariant('layout')}
+          tooltip={$t('course.navItem.certificates.editor.panel_layout')}
+          tooltipSide="right"
+          aria-label={$t('course.navItem.certificates.editor.panel_layout')}
+          aria-current={store.activePanel === 'layout' ? 'page' : undefined}
+          onclick={() => setActive('layout')}
+        >
+          <FileImageIcon class="size-4" />
+        </IconButton>
+        <IconButton
+          type="button"
           variant={navVariant('colors')}
           tooltip={$t('course.navItem.certificates.editor.panel_colors')}
           tooltipSide="right"
@@ -196,6 +219,11 @@
             <p class="ui:text-muted-foreground mt-1 text-xs">
               {$t('course.navItem.certificates.editor.panel_element_subtitle')}
             </p>
+          {:else if store.activePanel === 'layout'}
+            <h2 class="text-sm font-semibold">{$t('course.navItem.certificates.editor.panel_layout')}</h2>
+            <p class="ui:text-muted-foreground mt-1 text-xs">
+              {$t('course.navItem.certificates.editor.panel_layout_subtitle')}
+            </p>
           {:else if store.activePanel === 'colors'}
             <h2 class="text-sm font-semibold">{$t('course.navItem.certificates.editor.panel_colors')}</h2>
             <p class="ui:text-muted-foreground mt-1 text-xs">
@@ -222,6 +250,8 @@
             <ContentPanel disabled={$isFreePlan} />
           {:else if store.activePanel === 'element'}
             <ElementPanel disabled={$isFreePlan} />
+          {:else if store.activePanel === 'layout'}
+            <LayoutPanel disabled={$isFreePlan} />
           {:else if store.activePanel === 'colors'}
             <ColorsPanel
               value={store.draft.accentColor}
@@ -238,7 +268,7 @@
         class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto bg-zinc-100 bg-[radial-gradient(circle,#d4d4d8_1px,transparent_1px)] [background-size:18px_18px] dark:bg-zinc-950 dark:bg-[radial-gradient(circle,rgba(113,113,122,0.4)_1px,transparent_1px)]"
         aria-label={$t('course.navItem.certificates.editor.preview')}
       >
-        {#if store.isCanvas}
+        {#if store.isEditableStage}
           <div class="absolute top-3 left-1/2 z-10 -translate-x-1/2">
             <CanvasToolbar
               {stressPreview}
@@ -250,7 +280,7 @@
         {/if}
 
         <div class="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-14">
-          {#if store.isCanvas}
+          {#if store.isEditableStage}
             <!-- Editable surface instead of the read-only iframe. Both draw the
                  same document; this one can be grabbed. -->
             <CanvasStage values={previewValues} {overflowingIds} disabled={$isFreePlan} />

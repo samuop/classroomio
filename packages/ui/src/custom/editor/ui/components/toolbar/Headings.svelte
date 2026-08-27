@@ -8,6 +8,7 @@
   import EdraToolTip from '../EdraToolTip.svelte';
   import Paragraph from '@lucide/svelte/icons/pilcrow';
   import { buttonVariants } from '$src/base/button';
+  import { createEditorVersion } from '../../editor-version.svelte';
 
   interface Props {
     editor: Editor;
@@ -17,19 +18,24 @@
 
   const headings = commands['headings'];
 
-  const isActive = $derived.by(() => {
-    return headings.find((h) => h.isActive?.(editor)) !== undefined;
+  // Sin esto el ícono se queda con el encabezado que hubiera al montar: TipTap
+  // muta su estado sin avisarle a Svelte. Ver `createEditorVersion`.
+  const version = createEditorVersion(() => editor);
+
+  const activeHeading = $derived.by(() => {
+    void version.current;
+
+    return headings.find((h) => h.isActive?.(editor));
   });
 
-  const HeadingIcon = $derived.by(() => {
-    const h = headings.find((h) => h.isActive?.(editor));
-    return h ? h.icon : Heading;
-  });
+  const isActive = $derived(activeHeading !== undefined);
+
+  const HeadingIcon = $derived(activeHeading ? activeHeading.icon : Heading);
 </script>
 
 <DropdownMenu.Root>
   <DropdownMenu.Trigger>
-    <EdraToolTip tooltip="Headings">
+    <EdraToolTip tooltip="Títulos">
       <div
         class={buttonVariants({
           variant: 'ghost',

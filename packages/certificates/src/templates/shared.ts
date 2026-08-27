@@ -2,10 +2,24 @@ import {
   CERTIFICATE_PAGE_HEIGHT,
   CERTIFICATE_PAGE_WIDTH,
   DEFAULT_BRAND_LOGO_HEIGHT,
+  DEFAULT_SIGNATURE_HEIGHT,
+  DEFAULT_SIGNATURE_OFFSET,
+  MAX_SIGNATURE_HEIGHT,
+  MAX_SIGNATURE_OFFSET,
+  MIN_SIGNATURE_HEIGHT,
+  MIN_SIGNATURE_OFFSET,
   MAX_BRAND_LOGO_HEIGHT,
   MIN_BRAND_LOGO_HEIGHT
 } from '../constants';
-import type { CertificateBrandPlacement, CertificateDesign, CertificateLabels, CertificateRenderData } from '../types';
+import { getTemplateSurface } from '../constants';
+import type {
+  CertificateBrandPlacement,
+  CertificateDesign,
+  CertificateLabels,
+  CertificateLogoTone,
+  CertificateRenderData,
+  CertificateSignatory
+} from '../types';
 
 export function escapeHtml(input: unknown): string {
   return String(input ?? '').replace(/[&<>"']/g, (char) => {
@@ -83,6 +97,8 @@ interface BrandInput {
   name: string;
   logoUrl?: string;
   caption?: string;
+  /** La tinta del archivo, si quien lo subio la declaro. */
+  tone?: CertificateLogoTone;
 }
 
 export function renderBrands({
@@ -101,14 +117,33 @@ export function renderBrands({
       // centrally in `renderCertificate` so it reaches the body text too.
       name: data.orgName,
       logoUrl: data.orgLogoUrl?.trim() || undefined,
+      // La tinta se declara sobre la marca aunque el archivo termine siendo el
+      // avatar del espacio de trabajo: quien la declara esta describiendo el
+      // logo que ESA marca imprime, venga de donde venga.
+      tone: design.orgBrand?.logoTone,
       // Captions only mean something when there are two marks to tell apart.
       caption: hasClient ? labels.deliveredBy : ''
     }
   ];
 
   if (hasClient) {
-    marks.push({ name: clientName, logoUrl: clientLogo || undefined, caption: labels.deliveredFor });
+    marks.push({
+      name: clientName,
+      logoUrl: clientLogo || undefined,
+      tone: client.logoTone,
+      caption: labels.deliveredFor
+    });
   }
+
+  /**
+   * Un logo monocromo se invierte cuando su tinta coincide con el papel:
+   * letras blancas sobre Classique, letras negras sobre Noir. Es la MISMA
+   * comparacion en los dos sentidos, y por eso el archivo se declara una vez y
+   * sirve para las seis plantillas.
+   *
+   * Sin tinta declarada no se toca: invertir un logo a color arruina la marca.
+   */
+  const surface = getTemplateSurface(design.templateId);
 
   const height = clampLogoHeight(design.brandLogoHeight);
 
@@ -132,8 +167,9 @@ export function renderBrands({
           : '';
         // `alt` carries the name so a certificate whose logo fails to load
         // still says who issued it, which is the one thing it must say.
+        const invertido = mark.tone && mark.tone === surface ? ' inverted' : '';
         const logo = mark.logoUrl
-          ? `<img class="brand-logo" src="${escapeHtml(mark.logoUrl)}" alt="${escapeHtml(mark.name)}">`
+          ? `<img class="brand-logo${invertido}" src="${escapeHtml(mark.logoUrl)}" alt="${escapeHtml(mark.name)}">`
           : '';
         const name =
           (!mark.logoUrl || design.brandShowNames) && mark.name
@@ -194,6 +230,10 @@ export const BRAND_BAND_STYLES = `
   .brand-band:empty { display: none; }
 `;
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
 function clampLogoHeight(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_BRAND_LOGO_HEIGHT;
 
@@ -239,6 +279,15 @@ export const BRAND_STYLES = `
     max-width: 230px;
     object-fit: contain;
   }
+  /*
+    Invierte los pixeles opacos y respeta la transparencia, que es lo que hace
+    que funcione sobre un PNG recortado. Nada de mix-blend-mode: esto lo
+    dibuja el navegador de Cloudflare y despues se aplana a PDF, donde el
+    blending se resuelve distinto segun el fondo que tenga detras.
+  */
+  .brand-logo.inverted {
+    filter: invert(1);
+  }
   .brand-divider {
     width: 1px;
     align-self: stretch;
@@ -247,6 +296,54 @@ export const BRAND_STYLES = `
     opacity: 0.3;
   }
 `;
+
+/**
+ * La firma escaneada, lista para meter arriba del nombre.
+ *
+ * Se resuelven DOS cosas que quien firma no puede saber, y por eso las decide
+ * la plantilla y no un ajuste:
+ *
+ *  1. La tinta. Una firma siempre es oscura — nadie firma en blanco — asi que
+ *     sobre `noir` hay que invertirla o no se ve.
+ *  2. El fondo. Casi nadie tiene un PNG recortado: tiene la foto del papel,
+ *     con su rectangulo blanco. `multiply` deja pasar el papel del certificado
+ *     y borra el blanco sin tocar el trazo; sobre fondo oscuro el equivalente
+ *     es invertir y usar `screen`.
+ *
+ * Los cuatro casos estan verificados en Chromium — el mismo motor que renderiza
+ * el PDF en Cloudflare — porque son mezclas: leer el CSS no alcanza para saber
+ * como se aplanan.
+ */
+export function renderSignatureImage(signatory: CertificateSignatory, surface: 'light' | 'dark'): string {
+  const url = signatory.imageUrl?.trim();
+  if (!url) return '';
+
+  const clases = ['signature'];
+  if (surface === 'dark') clases.push('on-dark');
+  if (signatory.imageHasBackground) clases.push('has-bg');
+
+  /*
+   * Las medidas van como variables CSS en linea, igual que `--brand-logo-height`
+   * en las marcas: son numeros acotados y no texto, asi que no hay superficie de
+   * inyeccion.
+   *
+   * Y SOLO cuando alguien las eligio. Una variable en linea le gana a la regla
+   * de la plantilla, asi que emitirlas siempre pisaria los topes que cada
+   * plantilla se puso — poster volveria a chocar con su descripcion sin que
+   * nadie haya tocado nada.
+   */
+  const vars: string[] = [];
+  if (typeof signatory.imageHeight === 'number' && Number.isFinite(signatory.imageHeight)) {
+    vars.push(`--signature-height:${clamp(signatory.imageHeight, MIN_SIGNATURE_HEIGHT, MAX_SIGNATURE_HEIGHT)}px`);
+  }
+  if (typeof signatory.imageOffset === 'number' && Number.isFinite(signatory.imageOffset)) {
+    vars.push(`--signature-gap:${clamp(signatory.imageOffset, MIN_SIGNATURE_OFFSET, MAX_SIGNATURE_OFFSET)}px`);
+  }
+
+  const style = vars.length > 0 ? ` style="${vars.join(';')}"` : '';
+
+  return `<img class="${clases.join(' ')}"${style} src="${escapeHtml(url)}" alt="">`;
+}
 
 export interface TemplateRenderOutput {
   body: string;
@@ -275,4 +372,49 @@ export const BASE_STYLES = `
   html, body { width: ${CERTIFICATE_PAGE_WIDTH}px; height: ${CERTIFICATE_PAGE_HEIGHT}px; background: transparent; }
   body { -webkit-font-smoothing: antialiased; }
   .cert { width: ${CERTIFICATE_PAGE_WIDTH}px; height: ${CERTIFICATE_PAGE_HEIGHT}px; position: relative; overflow: hidden; }
+
+  /*
+    La firma escaneada. Vive aca y no en cada plantilla porque render.ts pega
+    BASE_STYLES en las seis: una regla sola, en vez de seis copias que se van
+    separando.
+
+    El alto es lo unico que se limita. El ancho queda libre a proposito — una
+    firma es mas ancha que alta y recortarla por el ancho la parte al medio.
+  */
+  .signature {
+    --signature-height: ${DEFAULT_SIGNATURE_HEIGHT}px;
+    /*
+      El tope que cada plantilla se pone. Vive aparte del alto porque el alto lo
+      puede fijar quien edita, y una variable en linea le gana a la hoja de
+      estilos: sin este segundo valor, subir la firma a 90px en poster volveria
+      a montarla sobre la descripcion.
+    */
+    --signature-cap: 999px;
+    display: block;
+    height: min(var(--signature-height), var(--signature-cap));
+    width: auto;
+    max-width: 230px;
+    object-fit: contain;
+    /*
+      Levantada POR ENCIMA del renglon.
+
+      Las seis plantillas dibujan la linea de la firma como el border-top del
+      bloque, asi que la firma —primer hijo— caia DEBAJO, encima del nombre.
+      Una firma va sobre la linea; abajo se lee como una mancha.
+
+      Con margen negativo y no con posicionamiento absoluto porque el bloque
+      contenedor tiene una clase distinta en cada plantilla. Efecto secundario
+      bueno: la firma deja de ocupar alto, asi que nada de lo que esta debajo se
+      mueve por ponerla.
+    */
+    margin: calc(-1 * (min(var(--signature-height), var(--signature-cap)) + var(--signature-gap, ${DEFAULT_SIGNATURE_OFFSET}px)))
+      auto 0;
+    position: relative;
+  }
+  /* Foto o escaneo: el blanco del papel se va, el trazo queda. */
+  .signature.has-bg { mix-blend-mode: multiply; }
+  /* Tinta oscura sobre papel oscuro: hay que darla vuelta o no existe. */
+  .signature.on-dark { filter: invert(1); }
+  /* Invertida, su fondo blanco quedo negro — y sobre oscuro eso lo borra. */
+  .signature.on-dark.has-bg { mix-blend-mode: screen; }
 `;

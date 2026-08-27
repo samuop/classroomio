@@ -117,6 +117,20 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
 fi
 ffmpeg -version | head -n1 || true
 
+# ── Librerías de sistema para el Chromium que imprime los certificados ───────
+# Los PDF y PNG los dibuja NUESTRO navegador (Playwright), no Cloudflare. El
+# binario lo baja deploy-remote.sh como el usuario `deploy`; las librerías de
+# sistema necesitan root y por eso viven acá.
+#
+# Se delega en el propio Playwright en vez de listar paquetes a mano: en Ubuntu
+# 24.04 varios cambiaron de nombre (libasound2 -> libasound2t64, etc.) y una
+# lista escrita a mano envejece en silencio hasta que un deploy arranca un
+# navegador que no levanta.
+if ! dpkg -s libnss3 >/dev/null 2>&1; then
+  echo "==> Instalando librerías de sistema para Chromium"
+  npx --yes playwright@1.60.0 install-deps chromium
+fi
+
 # ── 6. Docker (solo para MinIO) ──────────────────────────────────────────────
 log "[6/10] Docker + compose (solo para MinIO)..."
 if ! command -v docker >/dev/null 2>&1; then

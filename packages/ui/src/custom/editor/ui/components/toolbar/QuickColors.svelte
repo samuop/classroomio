@@ -5,6 +5,7 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import { cn } from '$src/tools';
   import EdraToolTip from '../EdraToolTip.svelte';
+  import { createEditorVersion } from '../../editor-version.svelte';
 
   interface Props {
     class?: string;
@@ -13,25 +14,38 @@
   const { class: className = '', editor }: Props = $props();
 
   const colors = [
-    { label: 'Default', value: '' },
-    { label: 'Blue', value: '#0000FF' },
-    { label: 'Brown', value: '#A52A2A' },
-    { label: 'Green', value: '#008000' },
-    { label: 'Grey', value: '#808080' },
-    { label: 'Orange', value: '#FFA500' },
-    { label: 'Pink', value: '#FFC0CB' },
-    { label: 'Purple', value: '#800080' },
-    { label: 'Red', value: '#FF0000' },
-    { label: 'Yellow', value: '#FFFF00' }
+    { label: 'Predeterminado', value: '' },
+    { label: 'Azul', value: '#0000FF' },
+    { label: 'Marrón', value: '#A52A2A' },
+    { label: 'Verde', value: '#008000' },
+    { label: 'Gris', value: '#808080' },
+    { label: 'Naranja', value: '#FFA500' },
+    { label: 'Rosa', value: '#FFC0CB' },
+    { label: 'Violeta', value: '#800080' },
+    { label: 'Rojo', value: '#FF0000' },
+    { label: 'Amarillo', value: '#FFFF00' }
   ];
 
-  const currentColor = $derived.by(() => editor.getAttributes('textStyle').color);
-  const currentHighlight = $derived.by(() => editor.getAttributes('highlight').color);
+  // Ver `createEditorVersion`: sin esto los dos puntitos de color muestran para
+  // siempre lo que hubiera bajo el cursor al montar el editor.
+  const version = createEditorVersion(() => editor);
+
+  const currentColor = $derived.by(() => {
+    void version.current;
+
+    return editor.getAttributes('textStyle').color;
+  });
+
+  const currentHighlight = $derived.by(() => {
+    void version.current;
+
+    return editor.getAttributes('highlight').color;
+  });
 </script>
 
 <Popover.Root>
   <Popover.Trigger>
-    <EdraToolTip tooltip="Quick Colors">
+    <EdraToolTip tooltip="Colores">
       <div
         class={buttonVariants({
           variant: 'ghost',
@@ -59,7 +73,7 @@
           style={`color: ${color.value}; background-color: ${color.value}50; border-color: ${color.value};`}
           title={color.label}
           onclick={() => {
-            if (color.value === '' || color.label === 'Default') editor.chain().focus().unsetColor().run();
+            if (color.value === '') editor.chain().focus().unsetColor().run();
             else
               editor
                 .chain()
@@ -85,7 +99,7 @@
           style={`background-color: ${color.value}50; border-color: ${color.value};`}
           title={color.label}
           onclick={() => {
-            if (color.value === '' || color.label === 'Default') editor.chain().focus().unsetHighlight().run();
+            if (color.value === '') editor.chain().focus().unsetHighlight().run();
             else editor.chain().focus().toggleHighlight({ color: color.value }).run();
           }}>A</Button
         >
