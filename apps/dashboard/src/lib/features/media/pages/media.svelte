@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as Dialog from '@cio/ui/base/dialog';
   import * as Item from '@cio/ui/base/item';
   import * as Page from '@cio/ui/base/page';
   import { Button } from '@cio/ui/base/button';
@@ -16,7 +17,13 @@
     StorageCards
   } from '$features/media/components';
   import { mediaApi } from '$features/media/api';
-  import type { AssetKindFilter, AssetStatusFilter, AssetUsageGraph, OrganizationAsset } from '$features/media/utils';
+  import {
+    getAssetDisplayName,
+    type AssetKindFilter,
+    type AssetStatusFilter,
+    type AssetUsageGraph,
+    type OrganizationAsset
+  } from '$features/media/utils';
   import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
 
@@ -41,6 +48,9 @@
   let downloadingAssetId = $state<string | null>(null);
   let selectedAsset = $state<OrganizationAsset | null>(null);
   let usageData = $state<AssetUsageGraph | null>(null);
+  let deleteOpen = $state(false);
+  let isDeletingAsset = $state(false);
+  let assetToDelete = $state<OrganizationAsset | null>(null);
 
   const assets = $derived(mediaApi.assets);
   const storageSummary = $derived(mediaApi.storageSummary);
@@ -128,6 +138,30 @@
     }
   }
 
+  function askDeleteAsset(asset: OrganizationAsset) {
+    assetToDelete = asset;
+    deleteOpen = true;
+  }
+
+  async function confirmDeleteAsset() {
+    if (!assetToDelete) return;
+
+    isDeletingAsset = true;
+    try {
+      const borrado = await mediaApi.deleteAsset(assetToDelete.id);
+      if (!borrado) return;
+
+      deleteOpen = false;
+      assetToDelete = null;
+      snackbar.success('snackbar.media_manager.delete_success');
+      // El resumen de almacenamiento cambia con cada borrado; sin esto la
+      // pantalla sigue diciendo que ocupa lo mismo que antes.
+      await Promise.all([refreshAssets(pagination?.page ?? 1), refreshStorageSummary()]);
+    } finally {
+      isDeletingAsset = false;
+    }
+  }
+
   function handleUsageOpenChange(isOpen: boolean) {
     if (!isOpen) {
       resetUsageModalState();
@@ -168,6 +202,7 @@
         onUsage={openUsage}
         onDownload={downloadAsset}
         onManageThumbnails={openManageThumbnails}
+        onDelete={askDeleteAsset}
       />
     {/each}
   </Item.Group>
@@ -210,3 +245,30 @@
   isLoading={isUsageLoading}
   onOpenChange={handleUsageOpenChange}
 />
+
+<!--
+  Borrar es definitivo y la tarjeta esta a un clic del menu, asi que va con
+  confirmacion y con el nombre del archivo adentro: "¿seguro?" a secas no dice
+  cual, y en una grilla de medios parecidos eso es justo lo que hace falta saber.
+-->
+<Dialog.Root bind:open={deleteOpen}>
+  <Dialog.Content size="sm">
+    <Dialog.Header>
+      <Dialog.Title>{$t('media_manager.delete_confirm.title')}</Dialog.Title>
+      <Dialog.Description>
+        {$t('media_manager.delete_confirm.body', { name: assetToDelete ? getAssetDisplayName(assetToDelete) : '' })}
+      </Dialog.Description>
+    </Dialog.Header>
+
+    <p class="ui:text-muted-foreground text-sm">{$t('media_manager.delete_confirm.in_use_note')}</p>
+
+    <Dialog.Footer>
+      <Button variant="outline" disabled={isDeletingAsset} onclick={() => (deleteOpen = false)}>
+        {$t('media_manager.delete_confirm.cancel')}
+      </Button>
+      <Button variant="destructive" disabled={isDeletingAsset} onclick={confirmDeleteAsset}>
+        {$t('media_manager.delete_confirm.confirm')}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>

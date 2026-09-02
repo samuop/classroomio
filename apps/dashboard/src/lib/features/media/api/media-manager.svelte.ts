@@ -6,6 +6,7 @@ import type {
   AssetUsage,
   AssetUsageGraph,
   CreateAssetRequest,
+  DeleteAssetRequest,
   GetAssetTranscriptRequest,
   GetAssetUsageRequest,
   GetYouTubeMetadataRequest,
@@ -183,6 +184,38 @@ export class MediaApi extends BaseApiWithErrors {
     });
 
     return updated;
+  }
+
+  /**
+   * Borra un medio de verdad. Distinto de archivarlo: archivar lo saca de la
+   * vista y sigue ocupando lugar; esto lo elimina.
+   *
+   * La API rechaza con 409 el medio que todavia se use en alguna leccion, asi
+   * que ese caso se avisa aparte — decir "no se pudo" a secas manda a buscar un
+   * fallo que no existe, cuando lo que falta es despegarlo de donde esta puesto.
+   */
+  async deleteAsset(assetId: string): Promise<boolean> {
+    let borrado = false;
+
+    await this.execute<DeleteAssetRequest>({
+      requestFn: () =>
+        classroomio.organization.assets[':assetId'].$delete({
+          param: { assetId }
+        }),
+      logContext: 'deleting media asset',
+      onSuccess: () => {
+        borrado = true;
+        this.assets = this.assets.filter((asset) => asset.id !== assetId);
+      },
+      onError: (result) => {
+        const enUso =
+          typeof result === 'object' && result !== null && 'code' in result && result.code === 'ASSET_IN_USE';
+
+        snackbar.error(enUso ? 'snackbar.media_manager.delete_in_use' : 'snackbar.media_manager.delete_failed');
+      }
+    });
+
+    return borrado;
   }
 
   async getAssetUsage(assetId: string): Promise<AssetUsageGraph | null> {

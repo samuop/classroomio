@@ -1256,7 +1256,15 @@
       "edit": "Edit",
       "where_used": "Where used",
       "download": "Download",
-      "manage_thumbnails": "Manage thumbnails"
+      "manage_thumbnails": "Manage thumbnails",
+      "delete": "Delete"
+    },
+    "delete_confirm": {
+      "title": "Delete this media file?",
+      "body": "This permanently deletes “{name}”. It cannot be undone. To just hide it, archive it instead.",
+      "in_use_note": "If the file is still used in a lesson, detach it there first.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
     },
     "pagination": {
       "previous": "Previous",
@@ -4630,6 +4638,9 @@
       "resolve_video_failed": "Failed to resolve media playback URL",
       "update_failed": "Failed to update media asset",
       "update_success": "Media asset updated",
+    "delete_success": "Media file deleted",
+    "delete_failed": "Could not delete the media file",
+    "delete_in_use": "Cannot delete: the file is still used in a lesson",
       "usage_failed": "Failed to load asset usage",
       "download_failed": "Failed to get asset download URL",
       "thumbnail_uploaded": "Thumbnail uploaded",
@@ -5023,6 +5034,7 @@
     "empty_state": "Ask me to help with your course content — draft lessons, generate questions, or plan a course from a document.",
     "student_empty_state": "Ask me anything about this course — get explanations, quiz yourself, or summarize what you're reading.",
     "messages_used_label": "messages this month",
+    "messages_percent_label": "Used of your quota",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
       "draft_lesson": "Draft a lesson",

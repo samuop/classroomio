@@ -317,6 +317,7 @@
     },
     "student_empty_state": "Pregúntame cualquier cosa sobre este curso: obtén explicaciones, hazte pruebas o resume lo que estás leyendo.",
     "messages_used_label": "mensajes de este mes",
+    "messages_percent_label": "Consumido de tu cupo",
     "plan_thinking": "Pensando en su solicitud...",
     "plan_implement": "Implementar plan",
     "plan_implemented": "Plan implementado",
@@ -3337,7 +3338,15 @@
       "edit": "Editar",
       "where_used": "donde se usa",
       "download": "Descargar",
-      "manage_thumbnails": "Administrar miniaturas"
+      "manage_thumbnails": "Administrar miniaturas",
+      "delete": "Eliminar"
+    },
+    "delete_confirm": {
+      "title": "¿Eliminar este medio?",
+      "body": "Se borra «{name}» de forma definitiva. Esto no se puede deshacer. Si sólo querés sacarlo de la vista, archivalo.",
+      "in_use_note": "Si el medio todavía está puesto en alguna lección, primero hay que sacarlo de ahí.",
+      "cancel": "Cancelar",
+      "confirm": "Eliminar"
     },
     "table": {
       "title": "Título",
@@ -4760,6 +4769,9 @@
       "resolve_video_failed": "No se pudo resolver la URL de reproducción multimedia",
       "update_failed": "No se pudo actualizar el recurso multimedia",
       "update_success": "Activo multimedia actualizado",
+    "delete_success": "Medio eliminado",
+    "delete_failed": "No se pudo eliminar el medio",
+    "delete_in_use": "No se puede eliminar: el medio todavía se usa en una lección",
       "usage_failed": "No se pudo cargar el uso de activos",
       "download_failed": "No se pudo obtener la URL de descarga del recurso",
       "thumbnail_uploaded": "Miniatura cargada",
