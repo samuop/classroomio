@@ -250,14 +250,32 @@
       </IconButton>
     </div>
   </div>
+  <!--
+    HOY NO SE DIBUJA: no hay tope por alumno, asi que la API manda `cap: null` y
+    `studentMessageUsage` queda en null. Lo que gasta el alumno sale del cupo de
+    su empresa, que no es un dato suyo y no se le muestra.
+
+    Se deja armado —y no a medias— porque el tope vuelve mas adelante, y con el
+    la regla de visibilidad: el alumno ve el PORCENTAJE y nada mas. Escrito asi,
+    el dia que se prenda no puede colarse un numero por olvido.
+  -->
   {#if isStudent && studentMessageUsage}
     {@const usagePercent = Math.min(100, Math.round((studentMessageUsage.used / studentMessageUsage.cap) * 100))}
     <div class="mt-2">
+      <!--
+        Mismo criterio que el contador del docente de abajo: se va el consumido
+        Y el tope — con el tope a la vista, lo consumido se despeja con una
+        division, asi que esconder solo una de las dos mitades no esconde nada.
+      -->
       <div class="ui:text-muted-foreground flex justify-between text-[10px]">
-        <span
-          >{studentMessageUsage.used.toLocaleString()} / {studentMessageUsage.cap.toLocaleString()}
-          {$t('ai_assistant.messages_used_label')}</span
-        >
+        {#if $isPlatformAdmin}
+          <span
+            >{studentMessageUsage.used.toLocaleString()} / {studentMessageUsage.cap.toLocaleString()}
+            {$t('ai_assistant.messages_used_label')}</span
+          >
+        {:else}
+          <span>{$t('ai_assistant.messages_percent_label')}</span>
+        {/if}
         <span>{usagePercent}%</span>
       </div>
       <div class="ui:bg-muted mt-0.5 h-1 w-full rounded-full">

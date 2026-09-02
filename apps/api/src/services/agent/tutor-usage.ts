@@ -62,17 +62,22 @@ export function resolveTutorPeriod(period: 'current' | 'previous' | 'last90'): {
 export interface TutorPolicyResult {
   settings: AiTutorSettings;
   messageCount: number;
-  capRemaining: number;
+  /** `null` mientras no exista un tope por alumno. NO es cero. */
+  capRemaining: number | null;
 }
 
 /**
- * Order of checks (matches PRD §"Enforcement"):
- *   1. Workspace AI tutor toggle  (settings.enabled)
- *   2. Org pooled quota           (enforceTokenBalance)
- *   3. Per-learner monthly cap    (STUDENT_TUTOR_MONTHLY_CAP)
+ * Los dos unicos cortes, en este orden:
+ *   1. El tutor esta apagado en la empresa  (`settings.enabled`)
+ *   2. Se acabo el cupo de la empresa       (`enforceTokenBalance`)
  *
- * Each failure logs a cap event so admins can see why a learner was blocked.
- * Cap enforcement is gated behind `AI_TUTOR_CAP_ENFORCED` for Phase 1 rollout.
+ * **No hay un tercer corte por alumno.** El PRD original (`prd/ai-tutor-fair-use`)
+ * pedia un tope propio de 100 mensajes; se saco a proposito. Un tope fijo se
+ * sobrevende apenas la empresa crece —10 alumnos ya suman el cupo entero— y ni
+ * siquiera es donde se va la plata: un mensaje de alumno cuesta unas 25 veces
+ * menos que un paso del creador de cursos.
+ *
+ * Cada corte deja su registro para que el admin sepa por que se freno alguien.
  */
 export async function enforceStudentTutorPolicy(
   orgId: string,
@@ -98,17 +103,15 @@ export async function enforceStudentTutorPolicy(
 
   const monthly = await getMonthlyTutorCount(orgId, userId, startOfCurrentMonthUtc());
 
-  if (isCapEnforced() && monthly.messageCount >= STUDENT_TUTOR_CAP) {
-    if (!monthly.capHitAt) {
-      await recordCapEvent({ orgId, userId, courseId, eventType: 'cap_reached' });
-    }
-    throw new AppError('AI tutor is taking a break', 'LEARNER_CAP_REACHED', 429);
-  }
-
+  // Los mensajes se siguen CONTANDO (el ranking de la pantalla de consumo vive
+  // de eso), pero ya no hay tope propio del alumno: lo que gasta sale del cupo
+  // que tiene asignado su empresa, y el unico corte es que ese cupo se acabe
+  // —lo de arriba—. El tope por alumno se define mas adelante, con consumo real
+  // a la vista, y por eso `capRemaining` va en null y no en cero.
   return {
     settings,
     messageCount: monthly.messageCount,
-    capRemaining: Math.max(0, STUDENT_TUTOR_CAP - monthly.messageCount)
+    capRemaining: null
   };
 }
 
@@ -135,14 +138,16 @@ export async function getStudentTutorStatus(
   orgId: string,
   courseId: string,
   userId: string
-): Promise<{ enabled: boolean; cap: number; capRemaining: number; enforced: boolean }> {
+): Promise<{ enabled: boolean; cap: number | null; capRemaining: number | null; enforced: boolean }> {
   const settings = await getEffectiveAiTutorSettings(orgId, courseId);
-  const monthly = await getMonthlyTutorCount(orgId, userId, startOfCurrentMonthUtc());
 
+  // Sin tope por alumno no hay medidor personal que mostrar: el consumo sale
+  // del cupo de la empresa, que no es un dato del alumno. `null` apaga la barra
+  // en la cabecera del chat; un cero la dibujaria vacia, que es otra cosa.
   return {
     enabled: settings.enabled,
-    cap: STUDENT_TUTOR_CAP,
-    capRemaining: Math.max(0, STUDENT_TUTOR_CAP - monthly.messageCount),
+    cap: null,
+    capRemaining: null,
     enforced: isCapEnforced()
   };
 }

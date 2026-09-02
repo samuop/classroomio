@@ -72,6 +72,13 @@ export const defaultAiTutorSettings: AiTutorSettings = {
  * Per-learner fair-use cap: monthly tutor messages, flat across all tiers.
  * See `prd/ai-tutor-fair-use/README.md` — Phase 1 lands the counter; Phase 3
  * flips enforcement on via `AI_TUTOR_CAP_ENFORCED`.
+ *
+ * **Hoy NO es un tope**: no hay limite por alumno, lo que gasta sale del cupo
+ * asignado a su empresa. Este numero sobrevive porque el contador de mensajes
+ * se sigue llevando y lo usa el ranking de la pantalla de consumo. Cuando se
+ * defina el tope de verdad, tiene que salir del reparto (cupo de la empresa
+ * dividido su cantidad de alumnos), no de una constante: un numero fijo se
+ * sobrevende apenas la empresa crece.
  */
 export const STUDENT_TUTOR_MONTHLY_CAP = 100;
 
