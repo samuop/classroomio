@@ -1,3 +1,5 @@
+import { getContext, setContext } from 'svelte';
+
 /**
  * La escalera de capas de la aplicacion.
  *
@@ -42,3 +44,31 @@ export const Z_LAYER = {
 } as const;
 
 export type ZLayer = (typeof Z_LAYER)[keyof typeof Z_LAYER];
+
+/**
+ * Marcar el subarbol como "esto vive dentro de un modal".
+ *
+ * Existe porque `OVERLAY_IN_MODAL` no se puede resolver mirando el DOM: un
+ * select se PORTALEA al `body`, asi que en el arbol renderizado no es
+ * descendiente del dialogo — es su hermano. Preguntarle al DOM "estoy adentro
+ * de un modal?" siempre contesta que no.
+ *
+ * El arbol de COMPONENTES si lo sabe, y es el unico que lo sabe. Por eso el
+ * contexto: el dialogo lo declara, y cada overlay anclado lo lee al montarse.
+ */
+const CLAVE_CAPA_MODAL = Symbol('cio.dentro-de-modal');
+
+/** Lo llaman los contenidos de dialog/sheet/drawer. */
+export function marcarDentroDeModal(): void {
+  setContext(CLAVE_CAPA_MODAL, true);
+}
+
+/**
+ * La capa que le toca a un overlay anclado (select, popover, menu, tooltip).
+ *
+ * Se resuelve una sola vez, al montarse: un overlay no cambia de modal a mitad
+ * de camino, y leer contexto fuera de la inicializacion no esta permitido.
+ */
+export function claseDeCapaDeOverlay(): 'ui:z-150' | 'ui:z-250' {
+  return getContext(CLAVE_CAPA_MODAL) === true ? 'ui:z-250' : 'ui:z-150';
+}

@@ -22,6 +22,7 @@
 </script>
 
 <script lang="ts">
+  import { marcarDentroDeModal } from '../z-layers';
   import { Dialog as SheetPrimitive } from 'bits-ui';
   import { CloseIcon, HoverableItem } from '../../custom/moving-icons';
   import type { Snippet } from 'svelte';
@@ -40,6 +41,10 @@
     side?: Side;
     children: Snippet;
   } = $props();
+
+  // Todo overlay anclado que se abra aca adentro tiene que subir a
+  // OVERLAY_IN_MODAL, o queda pintado por debajo de este panel. Ver ../z-layers.
+  marcarDentroDeModal();
 </script>
 
 <SheetPrimitive.Portal {...portalProps}>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { marcarDentroDeModal } from '../z-layers';
   import { Dialog as DialogPrimitive } from 'bits-ui';
   import type { Snippet } from 'svelte';
   import * as Dialog from './index';
@@ -35,6 +36,10 @@
     showCloseButton?: boolean;
     size?: keyof typeof SIZE_CLASS;
   } = $props();
+
+  // Todo overlay anclado que se abra aca adentro tiene que subir a
+  // OVERLAY_IN_MODAL, o queda pintado por debajo de este panel. Ver ../z-layers.
+  marcarDentroDeModal();
 </script>
 
 <Dialog.Portal {...portalProps}>

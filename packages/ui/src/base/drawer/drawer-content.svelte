@@ -1,5 +1,6 @@
 <!-- Capa MODAL (ui:z-200): se apodera de la pantalla, tapa el marco fijo. Ver ../z-layers.ts. -->
 <script lang="ts">
+  import { marcarDentroDeModal } from '../z-layers';
   import { Drawer as DrawerPrimitive } from 'vaul-svelte';
   import DrawerOverlay from './drawer-overlay.svelte';
   import { cn } from '../../tools';
@@ -13,6 +14,10 @@
   }: DrawerPrimitive.ContentProps & {
     portalProps?: DrawerPrimitive.PortalProps;
   } = $props();
+
+  // Todo overlay anclado que se abra aca adentro tiene que subir a
+  // OVERLAY_IN_MODAL, o queda pintado por debajo de este panel. Ver ../z-layers.
+  marcarDentroDeModal();
 </script>
 
 <DrawerPrimitive.Portal {...portalProps}>
