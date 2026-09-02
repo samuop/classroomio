@@ -178,6 +178,37 @@ export async function getCourseTeachers(options: {
 }
 
 /**
+ * Alguien que ya figura en el curso. Es una clase propia y no un string porque
+ * el servicio de arriba tiene que poder distinguirla sin leer el mensaje.
+ */
+export class CourseMemberAlreadyExistsError extends Error {
+  constructor() {
+    super('Course member already exists');
+    this.name = 'CourseMemberAlreadyExistsError';
+  }
+}
+
+/**
+ * Las tres restricciones de unicidad de `groupmember` (por perfil, por correo y
+ * la combinada) significan todas lo mismo para quien invita: esa persona ya esta.
+ *
+ * Hay que recorrer la cadena de `cause`: drizzle envuelve el fallo en un
+ * `DrizzleQueryError` y el `23505` de Postgres queda un nivel mas abajo. Mirar
+ * solo el error de arriba no encuentra nada — y ese fue justamente el 500.
+ */
+function esMiembroDuplicado(error: unknown): boolean {
+  for (let actual = error, saltos = 0; actual != null && saltos < 5; saltos++) {
+    if (typeof actual === 'object' && 'code' in actual && (actual as { code: unknown }).code === '23505') {
+      return true;
+    }
+
+    actual = typeof actual === 'object' && 'cause' in actual ? (actual as { cause: unknown }).cause : null;
+  }
+
+  return false;
+}
+
+/**
  * Adds a course member (person) to a course
  * @param courseId Course ID
  * @param memberData Member data (profileId, roleId, email)
@@ -210,6 +241,14 @@ export async function addCourseMember(
     return newMember;
   } catch (error) {
     console.error('addCourseMember error:', error);
+
+    // "Ya estaba en el curso" no es una falla del servidor. Envolverlo en un
+    // Error pelado convertia el choque contra `unique_group_profile` en un 500
+    // sin texto, y quien invitaba no tenia forma de saber que el alta ya existia.
+    if (esMiembroDuplicado(error)) {
+      throw new CourseMemberAlreadyExistsError();
+    }
+
     throw new Error(`Failed to add course member: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

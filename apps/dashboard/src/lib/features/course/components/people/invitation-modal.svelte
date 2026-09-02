@@ -33,10 +33,18 @@
   const availableStudents = $derived.by(() => getAvailableStudents(orgApi.audience, courseApi.group.people));
 
   function getTutors(team: OrgTeamMember[]) {
-    const existingTutors = courseApi?.group?.tutors || [];
+    // `group.tutors` son FILAS DE MIEMBRO, no perfiles: su `id` es el id del
+    // groupmember. Comparar ese `id` contra un `profileId` no coincide nunca, y
+    // entonces el modal ofrecia a los tutores que el curso YA tenia. Elegir uno
+    // reventaba con 500 (choca `unique_group_profile`), asi que la lista pedia
+    // justo lo unico que no se podia hacer.
+    const existingTutorProfileIds = new Set(
+      (courseApi?.group?.tutors ?? []).map((tutor) => tutor.profileId).filter(Boolean)
+    );
+
     return team
       .filter((teamMember) => teamMember.verified)
-      .filter((teamMember) => !existingTutors.some((t) => t.id === teamMember.profileId))
+      .filter((teamMember) => !existingTutorProfileIds.has(teamMember.profileId))
       .map((teamMember) => ({
         id: teamMember.id,
         text: teamMember.fullname,

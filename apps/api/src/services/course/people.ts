@@ -1,5 +1,6 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import {
+  CourseMemberAlreadyExistsError,
   addCourseMember,
   deleteCourseMember,
   getCourseMember,
@@ -47,6 +48,25 @@ export async function listCourseMembers(courseId: string) {
  * @param data Member data (profileId, roleId, email, name)
  * @returns Created member
  */
+/**
+ * "Ya esta en el curso" es un 409, no un 500.
+ *
+ * Los dos caminos de alta —uno solo y en lote— chocan contra la misma
+ * restriccion, y los dos terminaban en `INTERNAL_ERROR`: la pantalla decia
+ * "error interno" cuando lo unico que pasaba es que la persona ya figuraba.
+ */
+function comoErrorDeApi(error: unknown, mensajePorOmision: string): AppError {
+  if (error instanceof AppError) {
+    return error;
+  }
+
+  if (error instanceof CourseMemberAlreadyExistsError) {
+    return new AppError('Esa persona ya forma parte del curso', ErrorCodes.MEMBER_ALREADY_IN_COURSE, 409);
+  }
+
+  return new AppError(error instanceof Error ? error.message : mensajePorOmision, ErrorCodes.INTERNAL_ERROR, 500);
+}
+
 export async function addMember(
   courseId: string,
   data: { profileId?: string; roleId: number; email?: string; name?: string }
@@ -140,14 +160,7 @@ export async function addMember(
 
     return addedMember;
   } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError(
-      error instanceof Error ? error.message : 'Failed to add course member',
-      ErrorCodes.INTERNAL_ERROR,
-      500
-    );
+    throw comoErrorDeApi(error, 'Failed to add course member');
   }
 }
 
@@ -242,14 +255,7 @@ export async function addMembers(courseId: string, members: TAddCourseMembers) {
 
     return addedMembers;
   } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError(
-      error instanceof Error ? error.message : 'Failed to add course members',
-      ErrorCodes.INTERNAL_ERROR,
-      500
-    );
+    throw comoErrorDeApi(error, 'Failed to add course members');
   }
 }
 
