@@ -57,12 +57,13 @@ import { organizationEmailTemplatesRouter } from '@api/routes/organization/email
 import { organizationClientsRouter } from '@api/routes/organization/clients';
 import { organizationTrackingRouter } from '@api/routes/organization/tracking';
 import { authMiddleware } from '@api/middlewares/auth';
+import { apiKeyMiddleware } from '@api/middlewares/api-key';
 import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
 import { automationRouter } from '@api/routes/organization/automation';
 import { courseImportRouter } from '@api/routes/organization/course-import';
 import { getLMSExercisesService } from '@api/services/exercise';
-import { handleError } from '@api/utils/errors';
+import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { inviteTeamMembers } from '@api/services/organization/invite';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
@@ -77,13 +78,31 @@ import { zValidator } from '@hono/zod-validator';
 export const organizationRouter = new Hono()
   /**
    * GET /organization
-   * Gets organizations with optional filters
-   * Query params: siteName (string, optional), customDomain (string, optional), isCustomDomainVerified (boolean, optional)
+   * Resuelve UNA empresa por su sitio o su dominio propio.
+   * Query params: siteName (string) o customDomain (string) + isCustomDomainVerified (boolean, opcional)
    * Accepts: User session OR API key (for server-side routes)
+   *
+   * El filtro es OBLIGATORIO. Sin él, `getOrganizations` devolvía la tabla
+   * entera —nombre, dominio propio, ajustes de registro y la configuración del
+   * tutor de IA de TODAS las empresas del despliegue— a cualquiera con sesión,
+   * incluida una alumna. Verificado: devolvía las cinco.
+   *
+   * Esto resuelve el inquilino del sitio que se está abriendo, y para eso
+   * alcanza con preguntar por uno. Un listado no es lo que nadie necesitaba
+   * acá: era el valor por omisión de no filtrar nada.
    */
   .get('/', authOrApiKeyMiddleware, zValidator('query', ZGetOrganizations), async (c) => {
     try {
       const filters = c.req.valid('query');
+
+      if (!filters.siteName && !filters.customDomain) {
+        throw new AppError(
+          'A siteName or customDomain is required',
+          ErrorCodes.VALIDATION_ERROR,
+          400
+        );
+      }
+
       const organizations = await getOrganizationsWithFilters(filters);
 
       return c.json(
@@ -489,9 +508,21 @@ export const organizationRouter = new Hono()
   /**
    * POST /organization/plan
    * Creates a new organization plan
-   * Requires authentication (user session or API key)
+   * Sólo servidor a servidor (clave de API).
+   *
+   * Los tres endpoints de plan nombran la empresa en el CUERPO —`orgId` para
+   * crear, `subscriptionId` para actualizar y cancelar— y no había nada que
+   * atara ese id a quien llamaba. Con una sesión cualquiera, incluida la de una
+   * alumna, se le podía escribir el plan a cualquier empresa. Y no es sólo el
+   * nombre del plan: `aiTokenAllowance`, el cupo de IA, vive dentro de
+   * `payload`, que es un campo libre. Verificado: 201 creando un plan con cupo
+   * de 999.000.000 para una empresa ajena.
+   *
+   * El único que llama de verdad es el webhook de Polar, que es servidor a
+   * servidor y ya manda la clave de API. Una sesión de navegador no tiene nada
+   * que hacer acá, así que la puerta se cierra en vez de agregarle un permiso.
    */
-  .post('/plan', authOrApiKeyMiddleware, zValidator('json', ZCreateOrgPlan), async (c) => {
+  .post('/plan', apiKeyMiddleware, zValidator('json', ZCreateOrgPlan), async (c) => {
     try {
       const data = c.req.valid('json');
       const plan = await createOrgPlan(data);
@@ -510,9 +541,9 @@ export const organizationRouter = new Hono()
   /**
    * PUT /organization/plan
    * Updates an organization plan by subscription ID
-   * Requires authentication (user session or API key)
+   * Sólo servidor a servidor (ver POST /organization/plan).
    */
-  .put('/plan', authOrApiKeyMiddleware, zValidator('json', ZUpdateOrgPlan), async (c) => {
+  .put('/plan', apiKeyMiddleware, zValidator('json', ZUpdateOrgPlan), async (c) => {
     try {
       const { subscriptionId, payload } = c.req.valid('json');
       const plan = await updateOrgPlan(subscriptionId, payload);
@@ -531,9 +562,9 @@ export const organizationRouter = new Hono()
   /**
    * POST /organization/plan/cancel
    * Cancels an organization plan by subscription ID
-   * Requires authentication (user session or API key)
+   * Sólo servidor a servidor (ver POST /organization/plan).
    */
-  .post('/plan/cancel', authOrApiKeyMiddleware, zValidator('json', ZCancelOrgPlan), async (c) => {
+  .post('/plan/cancel', apiKeyMiddleware, zValidator('json', ZCancelOrgPlan), async (c) => {
     try {
       const { subscriptionId, payload } = c.req.valid('json');
       const plan = await cancelOrgPlan(subscriptionId, payload);

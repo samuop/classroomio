@@ -54,6 +54,7 @@ import {
 } from '@api/services/program/goal';
 
 import { Hono } from '@api/utils/hono';
+import { assertOrgAccess } from '@api/utils/org-scope';
 import { authMiddleware } from '@api/middlewares/auth';
 import { orgTeamMemberMiddleware } from '@api/middlewares/org-team-member';
 import { programMemberMiddleware } from '@api/middlewares/program-member';
@@ -100,10 +101,18 @@ export const programRouter = new Hono()
   /**
    * GET /program?organizationId=...
    * List all programs for an org
+   *
+   * La empresa llega por la query y hasta acá nadie la contrastaba contra la
+   * sesión: con estar autenticado se listaban los programas de CUALQUIER
+   * empresa del despliegue. Verificado contra un servidor real desde el admin
+   * de una empresa hija: cinco programas de la empresa madre y uno de una
+   * empresa sin ninguna relación.
    */
   .get('/', authMiddleware, zValidator('query', ZOrgQuery), async (c) => {
     try {
       const { organizationId } = c.req.valid('query');
+      assertOrgAccess(c, organizationId);
+
       const programs = await listOrgPrograms(organizationId);
       return c.json({ success: true, data: programs }, 200);
     } catch (error) {
@@ -114,6 +123,10 @@ export const programRouter = new Hono()
   /**
    * POST /program
    * Create a new program
+   *
+   * Mismo agujero que el listado, pero escribiendo: se creaba un programa
+   * DENTRO de la empresa que uno nombrara en el cuerpo. Acá se exige además ser
+   * administrador, que es lo que ya hace falta para crear un curso.
    */
   .post(
     '/',
@@ -123,6 +136,8 @@ export const programRouter = new Hono()
       try {
         const user = c.get('user')!;
         const { organizationId, ...data } = c.req.valid('json');
+        assertOrgAccess(c, organizationId, { requireAdmin: true });
+
         const program = await createProgram(organizationId, user.id, data);
         return c.json({ success: true, data: program }, 201);
       } catch (error) {

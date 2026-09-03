@@ -27,13 +27,14 @@ export async function listQuizzes(orgId: string): Promise<TQuiz[]> {
 }
 
 /**
- * Gets a single quiz by ID
+ * Gets a single quiz by ID, scoped to its organization
  * @param quizId - The quiz ID
+ * @param orgId - The organization the quiz must belong to
  * @returns Quiz or null if not found
  */
-export async function getQuiz(quizId: string): Promise<TQuiz | null> {
+export async function getQuiz(quizId: string, orgId: string): Promise<TQuiz | null> {
   try {
-    const quiz = await getQuizById(quizId);
+    const quiz = await getQuizById(quizId, orgId);
     return quiz;
   } catch (error) {
     throw new AppError(
@@ -69,17 +70,18 @@ export async function createQuizService(orgId: string, data: Omit<TNewQuiz, 'org
 /**
  * Updates a quiz
  * @param quizId - The quiz ID
+ * @param orgId - The organization the quiz must belong to
  * @param data - Quiz update data
  * @returns Updated quiz
  */
-export async function updateQuizService(quizId: string, data: Partial<TNewQuiz>): Promise<TQuiz> {
+export async function updateQuizService(quizId: string, orgId: string, data: Partial<TNewQuiz>): Promise<TQuiz> {
   try {
-    const quiz = await getQuizById(quizId);
+    const quiz = await getQuizById(quizId, orgId);
     if (!quiz) {
       throw new AppError('Quiz not found', ErrorCodes.QUIZ_NOT_FOUND, 404);
     }
 
-    const updatedQuiz = await updateQuiz(quizId, data);
+    const updatedQuiz = await updateQuiz(quizId, orgId, data);
     return updatedQuiz;
   } catch (error) {
     if (error instanceof AppError) {
@@ -96,15 +98,16 @@ export async function updateQuizService(quizId: string, data: Partial<TNewQuiz>)
 /**
  * Deletes a quiz
  * @param quizId - The quiz ID
+ * @param orgId - The organization the quiz must belong to
  */
-export async function deleteQuizService(quizId: string): Promise<void> {
+export async function deleteQuizService(quizId: string, orgId: string): Promise<void> {
   try {
-    const quiz = await getQuizById(quizId);
+    const quiz = await getQuizById(quizId, orgId);
     if (!quiz) {
       throw new AppError('Quiz not found', ErrorCodes.QUIZ_NOT_FOUND, 404);
     }
 
-    await deleteQuiz(quizId);
+    await deleteQuiz(quizId, orgId);
   } catch (error) {
     if (error instanceof AppError) {
       throw error;

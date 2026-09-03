@@ -2,11 +2,26 @@ import { ZQuizCreate, ZQuizGetParam, ZQuizListParam, ZQuizUpdate } from '@cio/ut
 import { createQuizService, deleteQuizService, getQuiz, listQuizzes, updateQuizService } from '@api/services/quiz';
 
 import { Hono } from '@api/utils/hono';
+import { assertOrgAccess } from '@api/utils/org-scope';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { zValidator } from '@hono/zod-validator';
 
+/**
+ * Cuestionarios de una empresa.
+ *
+ * Este router se monta como `/organization/:orgId/quiz`, o sea que la empresa
+ * viene en la URL — pero `orgMemberMiddleware` sólo mira la cabecera
+ * `cio-org-id`. Nada ataba las dos: alcanzaba con poner la empresa propia en la
+ * cabecera y la ajena en la URL. Verificado contra un servidor real: el admin
+ * de una empresa hija creó, listó, editó y borró cuestionarios de la empresa
+ * madre.
+ *
+ * Por eso cada ruta llama a `assertOrgAccess` con el id de la URL, y las que
+ * trabajan sobre un cuestionario suelto lo buscan acotado a esa empresa: sin
+ * eso, el id del cuestionario seguiría siendo una puerta lateral.
+ */
 export const quizRouter = new Hono()
   /**
    * GET /organization/:orgId/quiz
@@ -16,6 +31,8 @@ export const quizRouter = new Hono()
   .get('/', authMiddleware, orgMemberMiddleware, zValidator('param', ZQuizListParam), async (c) => {
     try {
       const { orgId } = c.req.valid('param');
+      assertOrgAccess(c, orgId);
+
       const quizzes = await listQuizzes(orgId);
 
       return c.json(
@@ -36,8 +53,10 @@ export const quizRouter = new Hono()
    */
   .get('/:quizId', authMiddleware, orgMemberMiddleware, zValidator('param', ZQuizGetParam), async (c) => {
     try {
-      const { quizId } = c.req.valid('param');
-      const quiz = await getQuiz(quizId);
+      const { orgId, quizId } = c.req.valid('param');
+      assertOrgAccess(c, orgId);
+
+      const quiz = await getQuiz(quizId, orgId);
 
       if (!quiz) {
         return c.json(
@@ -74,6 +93,8 @@ export const quizRouter = new Hono()
     async (c) => {
       try {
         const { orgId } = c.req.valid('param');
+        assertOrgAccess(c, orgId);
+
         const data = c.req.valid('json');
 
         const quiz = await createQuizService(orgId, data);
@@ -103,10 +124,12 @@ export const quizRouter = new Hono()
     zValidator('json', ZQuizUpdate),
     async (c) => {
       try {
-        const { quizId } = c.req.valid('param');
+        const { orgId, quizId } = c.req.valid('param');
+        assertOrgAccess(c, orgId);
+
         const data = c.req.valid('json');
 
-        const quiz = await updateQuizService(quizId, data);
+        const quiz = await updateQuizService(quizId, orgId, data);
 
         return c.json(
           {
@@ -127,9 +150,10 @@ export const quizRouter = new Hono()
    */
   .delete('/:quizId', authMiddleware, orgMemberMiddleware, zValidator('param', ZQuizGetParam), async (c) => {
     try {
-      const { quizId } = c.req.valid('param');
+      const { orgId, quizId } = c.req.valid('param');
+      assertOrgAccess(c, orgId);
 
-      await deleteQuizService(quizId);
+      await deleteQuizService(quizId, orgId);
 
       return c.json(
         {
