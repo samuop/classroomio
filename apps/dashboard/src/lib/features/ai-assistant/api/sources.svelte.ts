@@ -90,6 +90,33 @@ class SourcesApi extends BaseApiWithErrors {
   }
 
   /**
+   * Igual que `addUrlSource`, pero devuelve el id del documento y NO re-lista.
+   *
+   * Lo usa el asistente de creacion, que necesita el id para adjuntar la pagina
+   * al primer turno del agente — y que todavia no tiene la pantalla de fuentes
+   * abierta, asi que re-listar seria trabajo tirado.
+   *
+   * Devuelve `null` si la pagina no se pudo bajar. Quien llama decide: bajar 3
+   * paginas y perder 1 no puede tumbar la creacion del curso entero.
+   */
+  async guardarPaginaComoFuente(courseId: string, url: string): Promise<{ documentId: string; fileName: string } | null> {
+    let guardada: { documentId: string; fileName: string } | null = null;
+
+    await this.execute<AddUrlSourceRequest>({
+      requestFn: () =>
+        classroomio.agent.documents.url.$post({
+          json: { courseId, url }
+        }),
+      logContext: 'saving web page as course source',
+      onSuccess: (response) => {
+        guardada = { documentId: response.data.documentId, fileName: response.data.fileName };
+      }
+    });
+
+    return guardada;
+  }
+
+  /**
    * Delete a source. Drops the DB row, releases any cache handle so the next
    * chat turn doesn't try to read from a cached block that no longer maps to
    * a real document.

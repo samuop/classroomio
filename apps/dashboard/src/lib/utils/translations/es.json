@@ -2708,6 +2708,9 @@
           "url_label": "Páginas web para investigar (opcional)",
           "url_hint": "Pegá enlaces y el asistente los va a leer para fundamentar tu curso.",
           "url_placeholder": "https://docs.ejemplo.com/…",
+      "url_saving_heading": "Guardando las páginas…",
+      "url_saving_subtext": "Estamos leyendo {count} página(s) y guardándolas como fuente del curso, para que el asistente construya con ellas.",
+      "url_failed": "No se pudieron leer {count} página(s). Podés agregarlas desde Fuentes.",
           "add_url": "Agregar otro enlace"
         },
         "step_of": "Paso {current} de {total}",

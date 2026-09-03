@@ -17,6 +17,8 @@
   import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
   import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
+  import { sourcesApi } from '$features/ai-assistant/api/sources.svelte';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { courseApi } from '$features/course/api';
   import { setInitialChatPrompt, setInitialChatDocumentIds } from '$features/ai-assistant/utils/store';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
@@ -76,6 +78,8 @@
   let researchEnabled = $state(false);
   let researchDepth = $state<ResearchDepth>('normal');
   let researching = $state(false);
+  /** Cuantas paginas se estan bajando. 0 = ninguna. */
+  let savingPages = $state(0);
   let researchError = $state('');
   let researchedDocs = $state<UploadedDoc[]>([]);
 
@@ -256,6 +260,43 @@
     return true;
   }
 
+  /**
+   * Baja las paginas que el docente escribio y las guarda como fuentes del curso.
+   *
+   * Antes estas direcciones SOLO se pegaban como texto en el mensaje de arranque,
+   * asi que no se guardaba nada: un curso creado con tres enlaces quedaba con
+   * cero fuentes. El comentario de `runResearch` de aca arriba ya lo explicaba —
+   * un prompt pidiendole al modelo que investigue es un pedido que puede
+   * saltear; una fuente ya puesta en el paquete es una que no puede— y este
+   * campo caia justo del lado equivocado.
+   *
+   * Va DESPUES de crear el curso porque el endpoint necesita el `courseId`: una
+   * fuente existe adentro de un curso, no antes.
+   *
+   * Las que fallan no tumban la creacion. El curso ya existe y perder una pagina
+   * no justifica dejar al docente sin nada; se avisa cuantas fallaron para que
+   * pueda sumarlas a mano desde Fuentes.
+   */
+  async function guardarPaginasComoFuentes(courseId: string, urls: string[]): Promise<string[]> {
+    if (urls.length === 0) return [];
+
+    savingPages = urls.length;
+
+    try {
+      const resultados = await Promise.all(urls.map((url) => sourcesApi.guardarPaginaComoFuente(courseId, url)));
+      const guardadas = resultados.filter((r): r is { documentId: string; fileName: string } => r !== null);
+      const fallidas = resultados.length - guardadas.length;
+
+      if (fallidas > 0) {
+        snackbar.error(t.get('course.creator.guide.source.url_failed', { count: fallidas }));
+      }
+
+      return guardadas.map((r) => r.documentId);
+    } finally {
+      savingPages = 0;
+    }
+  }
+
   async function handleBuild() {
     if (!canBuild) return;
 
@@ -272,12 +313,18 @@
     setInitialChatPrompt(buildHandoffPrompt());
 
     const attachedIds = [...uploadedDocs, ...researchedDocs].map((d) => d.id);
+    const urlsAGuardar = docUrls.map((u) => u.trim()).filter(Boolean);
 
-    if (attachedIds.length > 0) {
-      setInitialChatDocumentIds(attachedIds);
-    }
+    await courseApi.create({ title, description: courseDescription, type: modality }, async (courseId) => {
+      // Antes de navegar: el primer turno del agente se arma con los ids que
+      // haya en este momento, asi que una pagina que llegue despues no viaja.
+      const idsDePaginas = await guardarPaginasComoFuentes(courseId, urlsAGuardar);
+      const todos = [...attachedIds, ...idsDePaginas];
 
-    await courseApi.create({ title, description: courseDescription, type: modality }, (courseId) => {
+      if (todos.length > 0) {
+        setInitialChatDocumentIds(todos);
+      }
+
       goto(resolve(`/courses/${courseId}/lessons`, {}));
     });
   }
@@ -301,6 +348,19 @@
     <h1 class="text-xl font-semibold">{$t('course.creator.guide.research.working_heading')}</h1>
     <p class="ui:text-muted-foreground max-w-md text-sm">
       {$t('course.creator.guide.research.working_subtext')}
+    </p>
+  </div>
+{:else if savingPages > 0}
+  <!--
+    Va antes que `creating` a proposito: el curso ya se creo, y decir "creando
+    tu curso" mientras se bajan las paginas es contar otra cosa de la que esta
+    pasando. Se dice cuantas son, que es lo que explica la espera.
+  -->
+  <div class="flex min-h-[80vh] flex-col items-center justify-center gap-3 px-4 text-center">
+    <LoaderCircleIcon class="ui:text-primary h-8 w-8 animate-spin" />
+    <h1 class="text-xl font-semibold">{$t('course.creator.guide.source.url_saving_heading')}</h1>
+    <p class="ui:text-muted-foreground max-w-md text-sm">
+      {$t('course.creator.guide.source.url_saving_subtext', { count: savingPages })}
     </p>
   </div>
 {:else if creating}

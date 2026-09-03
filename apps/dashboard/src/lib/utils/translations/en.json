@@ -2260,6 +2260,9 @@
           "url_label": "Web pages to research (optional)",
           "url_hint": "Paste links and the assistant will read them to ground your course.",
           "url_placeholder": "https://docs.example.com/…",
+      "url_saving_heading": "Saving the pages…",
+      "url_saving_subtext": "Reading {count} page(s) and saving them as course sources, so the assistant builds from them.",
+      "url_failed": "Could not read {count} page(s). You can add them from Sources.",
           "add_url": "Add another link"
         },
         "step_of": "Step {current} of {total}",
