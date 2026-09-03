@@ -35,7 +35,6 @@
         <Table.Row>
           <Table.Head class="w-10">#</Table.Head>
           <Table.Head>{$t('settings.ai_credits.leaderboard.user')}</Table.Head>
-          <Table.Head>{$t('settings.ai_credits.leaderboard.favorite_model')}</Table.Head>
           <!--
             La columna cambia de unidad, no sólo de formato: para el super-admin
             son fichas; para todos los demás es la PARTICIPACIÓN de cada persona
@@ -66,9 +65,6 @@
                   <span class="ui:text-muted-foreground truncate text-xs">{entry.email ?? ''}</span>
                 </div>
               </div>
-            </Table.Cell>
-            <Table.Cell class="ui:text-muted-foreground max-w-[12rem] truncate text-sm">
-              {entry.favoriteModel ?? '—'}
             </Table.Cell>
             <Table.Cell class="text-right">
               <div class="inline-flex flex-col items-end gap-1">

@@ -9,12 +9,20 @@ export interface UsageLeaderboardRow {
   email: string | null;
   avatarUrl: string | null;
   tokens: number;
-  favoriteModel: string | null;
   requests: number;
 }
 
 /**
  * Aggregate ai_token_usage by user for an org since a given date.
+ *
+ * A proposito NO devuelve que modelo usa cada persona. Se calculaba —el modo de
+ * `ai_token_usage.model`— y la pantalla de consumo lo mostraba en una columna
+ * "Modelo favorito", o sea que cualquier admin de empresa leia el nombre del
+ * modelo del despliegue. Que proveedor hay detras es informacion del operador
+ * de la plataforma, no del cliente, y ademas cambia sin avisarle a nadie.
+ *
+ * Se saca de la CONSULTA y no solo de la pantalla: un dato que nunca sale del
+ * servidor no se puede filtrar por una rama que alguien se olvide de tapar.
  * Joins to profile for display fields. Returns rows sorted by tokens DESC.
  */
 export async function aggregateTokenUsageByUser(orgId: string, since: Date): Promise<UsageLeaderboardRow[]> {
@@ -26,7 +34,6 @@ export async function aggregateTokenUsageByUser(orgId: string, since: Date): Pro
         email: schema.profile.email,
         avatarUrl: schema.profile.avatarUrl,
         tokens: sql<number>`COALESCE(SUM(COALESCE(${schema.aiTokenUsage.costUnits}, ${schema.aiTokenUsage.promptTokens} + ${schema.aiTokenUsage.completionTokens})), 0)`,
-        favoriteModel: sql<string | null>`MODE() WITHIN GROUP (ORDER BY ${schema.aiTokenUsage.model})`,
         requests: sql<number>`COUNT(*)`
       })
       .from(schema.aiTokenUsage)

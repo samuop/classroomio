@@ -1148,7 +1148,6 @@
         "title": "Team usage",
         "this_month": "Current month",
         "user": "User",
-        "favorite_model": "Favorite model",
         "tokens": "Credits",
         "empty": "Nobody on your team has used the AI assistant this month.",
         "share": "Share"
@@ -1262,7 +1261,12 @@
     "delete_confirm": {
       "title": "Delete this media file?",
       "body": "This permanently deletes “{name}”. It cannot be undone. To just hide it, archive it instead.",
-      "in_use_note": "If the file is still used in a lesson, detach it there first.",
+      "checking": "Checking where it is used…",
+      "in_use_title": "This file is still used in:",
+      "more_courses": "and {count} more course(s)",
+      "in_use_unknown": "It is used in {count} place(s).",
+      "in_use_warning": "If you delete it, it will be broken in those lessons.",
+      "confirm_anyway": "Delete anyway",
       "cancel": "Cancel",
       "confirm": "Delete"
     },

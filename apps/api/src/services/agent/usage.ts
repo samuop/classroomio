@@ -292,7 +292,6 @@ export interface LeaderboardEntry {
   avatarUrl: string | null;
   tokens: number;
   requests: number;
-  favoriteModel: string | null;
   percentage: number;
 }
 
@@ -307,7 +306,6 @@ export async function getTeamLeaderboard(orgId: string): Promise<{ entries: Lead
     avatarUrl: row.avatarUrl,
     tokens: row.tokens,
     requests: row.requests,
-    favoriteModel: row.favoriteModel,
     percentage: totalTokens > 0 ? row.tokens / totalTokens : 0
   }));
 

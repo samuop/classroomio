@@ -3344,7 +3344,12 @@
     "delete_confirm": {
       "title": "¿Eliminar este medio?",
       "body": "Se borra «{name}» de forma definitiva. Esto no se puede deshacer. Si sólo querés sacarlo de la vista, archivalo.",
-      "in_use_note": "Si el medio todavía está puesto en alguna lección, primero hay que sacarlo de ahí.",
+      "checking": "Buscando dónde está puesto…",
+      "in_use_title": "Este medio todavía está puesto en:",
+      "more_courses": "y {count} curso(s) más",
+      "in_use_unknown": "Está puesto en {count} lugar(es) del sistema.",
+      "in_use_warning": "Si lo eliminás, en esas lecciones va a quedar roto.",
+      "confirm_anyway": "Eliminar igual",
       "cancel": "Cancelar",
       "confirm": "Eliminar"
     },
@@ -4506,7 +4511,6 @@
         "title": "Uso del equipo",
         "this_month": "Mes actual",
         "user": "Usuario",
-        "favorite_model": "Modelo favorito",
         "tokens": "Créditos",
         "empty": "Nadie de su equipo ha usado el asistente de IA este mes.",
         "share": "Participación"
