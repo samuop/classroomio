@@ -18,7 +18,7 @@ import BuildingIcon from '@lucide/svelte/icons/building-2';
 import type { AccountOrg } from '$features/app/types';
 // import BotIcon from '@lucide/svelte/icons/bot'; // Automation (MCP) hidden for now.
 import type { Component } from 'svelte';
-import { WIDGETS_ENABLED } from '$lib/utils/constants/features';
+import { AUTH_SETTINGS_ENABLED, WIDGETS_ENABLED } from '$lib/utils/constants/features';
 import { isActive } from '$lib/utils/functions/app';
 
 export interface NavItem {
@@ -243,12 +243,19 @@ export const baseNavConfig: NavItemConfig[] = [
         path: '/settings/emails',
         requiresAdmin: true
       },
-      {
-        titleKey: 'settings.tabs.auth_tab',
-        matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
-        path: '/settings/auth',
-        isPaid: true
-      },
+      // Autenticación: apagada por `AUTH_SETTINGS_ENABLED`. Sacarla de acá la
+      // saca del menú Y del buscador, que arma sus páginas desde esta misma
+      // lista (ver search/utils/static-catalog.ts).
+      ...(AUTH_SETTINGS_ENABLED
+        ? [
+            {
+              titleKey: 'settings.tabs.auth_tab',
+              matchPattern: '^/org/[^/]+/settings/auth(/.*)?$',
+              path: '/settings/auth',
+              isPaid: true
+            } satisfies NavItemConfig
+          ]
+        : []),
       {
         titleKey: 'settings.tabs.workspaces_tab',
         path: '/settings/workspaces',
@@ -286,10 +293,15 @@ export const baseNavConfig: NavItemConfig[] = [
         path: 'teams',
         titleKey: 'settings.tabs.teams_tab'
       },
-      {
-        path: 'auth',
-        titleKey: 'settings.tabs.auth_tab'
-      },
+      // Sin esto la ruta apagada seguiría teniendo miga de pan propia.
+      ...(AUTH_SETTINGS_ENABLED
+        ? [
+            {
+              path: 'auth',
+              titleKey: 'settings.tabs.auth_tab'
+            } satisfies NestedRouteConfig
+          ]
+        : []),
       {
         path: 'workspaces',
         titleKey: 'settings.tabs.workspaces_tab'

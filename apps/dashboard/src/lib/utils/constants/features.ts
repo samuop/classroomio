@@ -20,3 +20,22 @@
  * API: los widgets ya publicados en sitios externos seguirían funcionando.
  */
 export const WIDGETS_ENABLED = false;
+
+/**
+ * La pantalla de Configuración → Autenticación.
+ *
+ * Apagada: ofrece interruptores que en este despliegue no se pueden sostener.
+ *
+ * «Deshabilitar el inicio de sesión con correo/contraseña» rige en el dominio
+ * propio de la empresa, y ahí la única alternativa que la pantalla ofrece es
+ * SSO — cuyas dos solapas se ven pero cuyas rutas rebotan de vuelta
+ * (`settings/auth/sso` y `token-auth` redirigen). Encendido ese interruptor, el
+ * login del dominio del cliente no muestra ni formulario ni alternativa: sólo
+ * un cartel. Una pantalla que puede dejar afuera a la empresa entera no debería
+ * estar a un clic, y menos prometiendo una salida que no existe.
+ *
+ * Apaga la entrada del menú, el buscador (que arma sus páginas desde la misma
+ * lista) y las tres rutas. **No** apaga la API ni cambia ningún valor ya
+ * guardado: lo que cada empresa tenga configurado hoy sigue rigiendo igual.
+ */
+export const AUTH_SETTINGS_ENABLED = false;
