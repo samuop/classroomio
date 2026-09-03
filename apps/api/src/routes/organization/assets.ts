@@ -1,6 +1,7 @@
 import {
   ZAssetAttach,
   ZAssetCreateUpload,
+  ZAssetDeleteQuery,
   ZAssetDetach,
   ZAssetExportQuery,
   ZAssetGetParam,
@@ -224,25 +225,33 @@ export const assetsRouter = new Hono()
   )
   /**
    * DELETE /organization/assets/:assetId
-   * Delete an unused asset
+   * Borra un medio. Con `?force=true` lo borra aunque siga en uso.
    */
-  .delete('/:assetId', authMiddleware, orgAdminMiddleware, zValidator('param', ZAssetGetParam), async (c) => {
-    try {
-      const orgId = c.req.header('cio-org-id')!;
-      const { assetId } = c.req.valid('param');
-      const deleted = await deleteAssetService(orgId, assetId);
+  .delete(
+    '/:assetId',
+    authMiddleware,
+    orgAdminMiddleware,
+    zValidator('param', ZAssetGetParam),
+    zValidator('query', ZAssetDeleteQuery),
+    async (c) => {
+      try {
+        const orgId = c.req.header('cio-org-id')!;
+        const { assetId } = c.req.valid('param');
+        const { force } = c.req.valid('query');
+        const deleted = await deleteAssetService(orgId, assetId, { force });
 
-      return c.json(
-        {
-          success: true,
-          data: deleted
-        },
-        200
-      );
-    } catch (error) {
-      return handleError(c, error, 'Failed to delete asset');
+        return c.json(
+          {
+            success: true,
+            data: deleted
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to delete asset');
+      }
     }
-  })
+  )
   /**
    * GET /organization/assets/:assetId/usage
    * Get usage graph for an asset

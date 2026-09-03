@@ -347,11 +347,49 @@ export async function deleteAssetUsage(
   }
 }
 
-export async function listAssetUsagesByAsset(assetId: string, orgId: string): Promise<TAssetUsage[]> {
+/** Una fila de uso con los nombres de la leccion y del curso, cuando existen. */
+export type TAssetUsageConNombres = TAssetUsage & {
+  lessonTitle: string | null;
+  courseId: string | null;
+  courseTitle: string | null;
+};
+
+export async function listAssetUsagesByAsset(assetId: string, orgId: string): Promise<TAssetUsageConNombres[]> {
   try {
+    /**
+     * Se traen los NOMBRES, no solo los identificadores.
+     *
+     * La fila de uso guarda `target_id` a secas, y con eso la pantalla mostraba
+     * un UUID: informacion que el sistema tiene y que la persona no puede leer.
+     * Justo por eso un borrado bloqueado se sentia equivocado — no habia forma
+     * de saber en que curso seguia puesto el video.
+     *
+     * El join va por `lesson.id::text = target_id` y NO al reves: `target_id` es
+     * texto libre y castearlo a uuid revienta la consulta entera en cuanto
+     * aparezca un destino que no sea una leccion.
+     */
     return await db
-      .select()
+      .select({
+        id: schema.assetUsage.id,
+        organizationId: schema.assetUsage.organizationId,
+        assetId: schema.assetUsage.assetId,
+        targetType: schema.assetUsage.targetType,
+        targetId: schema.assetUsage.targetId,
+        slotType: schema.assetUsage.slotType,
+        slotKey: schema.assetUsage.slotKey,
+        position: schema.assetUsage.position,
+        createdByProfileId: schema.assetUsage.createdByProfileId,
+        createdAt: schema.assetUsage.createdAt,
+        lessonTitle: schema.lesson.title,
+        courseId: schema.course.id,
+        courseTitle: schema.course.title
+      })
       .from(schema.assetUsage)
+      .leftJoin(
+        schema.lesson,
+        and(eq(schema.assetUsage.targetType, 'lesson'), sql`${schema.lesson.id}::text = ${schema.assetUsage.targetId}`)
+      )
+      .leftJoin(schema.course, eq(schema.course.id, schema.lesson.courseId))
       .where(and(eq(schema.assetUsage.assetId, assetId), eq(schema.assetUsage.organizationId, orgId)))
       .orderBy(asc(schema.assetUsage.targetType), asc(schema.assetUsage.slotType), asc(schema.assetUsage.createdAt));
   } catch (error) {

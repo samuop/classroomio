@@ -190,17 +190,18 @@ export class MediaApi extends BaseApiWithErrors {
    * Borra un medio de verdad. Distinto de archivarlo: archivar lo saca de la
    * vista y sigue ocupando lugar; esto lo elimina.
    *
-   * La API rechaza con 409 el medio que todavia se use en alguna leccion, asi
-   * que ese caso se avisa aparte — decir "no se pudo" a secas manda a buscar un
-   * fallo que no existe, cuando lo que falta es despegarlo de donde esta puesto.
+   * `force` lo borra aunque siga puesto en alguna leccion. La pantalla ya le
+   * mostro a la persona en que cursos esta antes de ofrecerselo: sin ese dato
+   * un "no se pudo" manda a buscar un fallo que no existe.
    */
-  async deleteAsset(assetId: string): Promise<boolean> {
+  async deleteAsset(assetId: string, options: { force?: boolean } = {}): Promise<boolean> {
     let borrado = false;
 
     await this.execute<DeleteAssetRequest>({
       requestFn: () =>
         classroomio.organization.assets[':assetId'].$delete({
-          param: { assetId }
+          param: { assetId },
+          query: options.force ? { force: 'true' } : {}
         }),
       logContext: 'deleting media asset',
       onSuccess: () => {

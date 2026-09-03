@@ -51,6 +51,8 @@
   let deleteOpen = $state(false);
   let isDeletingAsset = $state(false);
   let assetToDelete = $state<OrganizationAsset | null>(null);
+  let deleteUsage = $state<AssetUsageGraph | null>(null);
+  let isDeleteUsageLoading = $state(false);
 
   const assets = $derived(mediaApi.assets);
   const storageSummary = $derived(mediaApi.storageSummary);
@@ -138,9 +140,37 @@
     }
   }
 
-  function askDeleteAsset(asset: OrganizationAsset) {
+  /**
+   * Los primeros cursos donde el medio esta puesto, sin repetir.
+   *
+   * Se muestran 3: alcanzan para reconocer de que se trata, y una lista larga
+   * dentro de un cartel de confirmacion se deja de leer.
+   */
+  const CURSOS_A_MOSTRAR = 3;
+
+  const cursosQueLoUsan = $derived.by(() => {
+    const titulos = (deleteUsage?.usages ?? [])
+      .map((uso) => uso.courseTitle)
+      .filter((titulo): titulo is string => Boolean(titulo));
+
+    return [...new Set(titulos)];
+  });
+
+  const estaEnUso = $derived((deleteUsage?.usageCount ?? 0) > 0);
+
+  async function askDeleteAsset(asset: OrganizationAsset) {
     assetToDelete = asset;
+    deleteUsage = null;
     deleteOpen = true;
+
+    // Se consulta ANTES de que confirme, no despues de que falle: el aviso solo
+    // sirve si llega a tiempo para cambiar la decision.
+    isDeleteUsageLoading = true;
+    try {
+      deleteUsage = await mediaApi.getAssetUsage(asset.id);
+    } finally {
+      isDeleteUsageLoading = false;
+    }
   }
 
   async function confirmDeleteAsset() {
@@ -148,11 +178,14 @@
 
     isDeletingAsset = true;
     try {
-      const borrado = await mediaApi.deleteAsset(assetToDelete.id);
+      // Si esta en uso, la persona ya vio donde: forzar es su decision, tomada
+      // con el dato a la vista.
+      const borrado = await mediaApi.deleteAsset(assetToDelete.id, { force: estaEnUso });
       if (!borrado) return;
 
       deleteOpen = false;
       assetToDelete = null;
+      deleteUsage = null;
       snackbar.success('snackbar.media_manager.delete_success');
       // El resumen de almacenamiento cambia con cada borrado; sin esto la
       // pantalla sigue diciendo que ocupa lo mismo que antes.
@@ -260,14 +293,48 @@
       </Dialog.Description>
     </Dialog.Header>
 
-    <p class="ui:text-muted-foreground text-sm">{$t('media_manager.delete_confirm.in_use_note')}</p>
+    {#if isDeleteUsageLoading}
+      <p class="ui:text-muted-foreground text-sm">{$t('media_manager.delete_confirm.checking')}</p>
+    {:else if estaEnUso}
+      <!--
+        El aviso nombra los cursos. El bloqueo anterior decia "todavia se usa" y
+        nada mas, asi que quien estaba seguro de haberlo sacado no tenia como
+        comprobar quien de los dos se equivocaba.
+      -->
+      <div class="ui:border-destructive/40 ui:bg-destructive/5 rounded-md border p-3">
+        <p class="text-sm font-medium">{$t('media_manager.delete_confirm.in_use_title')}</p>
+        <ul class="ui:text-muted-foreground mt-2 list-disc space-y-1 pl-5 text-sm">
+          {#each cursosQueLoUsan.slice(0, CURSOS_A_MOSTRAR) as curso (curso)}
+            <li>{curso}</li>
+          {/each}
+        </ul>
+        {#if cursosQueLoUsan.length > CURSOS_A_MOSTRAR}
+          <p class="ui:text-muted-foreground mt-2 text-xs">
+            {$t('media_manager.delete_confirm.more_courses', { count: cursosQueLoUsan.length - CURSOS_A_MOSTRAR })}
+          </p>
+        {:else if cursosQueLoUsan.length === 0}
+          <!-- Puesto en algo que no es una leccion de un curso: se dice el cuanto,
+               que es lo unico cierto, en vez de inventar un nombre. -->
+          <p class="ui:text-muted-foreground mt-2 text-sm">
+            {$t('media_manager.delete_confirm.in_use_unknown', { count: deleteUsage?.usageCount ?? 0 })}
+          </p>
+        {/if}
+        <p class="mt-3 text-sm">{$t('media_manager.delete_confirm.in_use_warning')}</p>
+      </div>
+    {/if}
 
     <Dialog.Footer>
       <Button variant="outline" disabled={isDeletingAsset} onclick={() => (deleteOpen = false)}>
         {$t('media_manager.delete_confirm.cancel')}
       </Button>
-      <Button variant="destructive" disabled={isDeletingAsset} onclick={confirmDeleteAsset}>
-        {$t('media_manager.delete_confirm.confirm')}
+      <Button
+        variant="destructive"
+        disabled={isDeletingAsset || isDeleteUsageLoading}
+        onclick={confirmDeleteAsset}
+      >
+        {estaEnUso
+          ? $t('media_manager.delete_confirm.confirm_anyway')
+          : $t('media_manager.delete_confirm.confirm')}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

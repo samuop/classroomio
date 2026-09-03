@@ -58,6 +58,22 @@ export const ZAssetGetParam = z.object({
 });
 export type TAssetGetParam = z.infer<typeof ZAssetGetParam>;
 
+export const ZAssetDeleteQuery = z.object({
+  /**
+   * Borrar aunque el medio siga puesto en alguna leccion.
+   *
+   * A proposito NO es `z.coerce.boolean()`, que es lo que usa el resto del
+   * archivo: `coerce` convierte cualquier texto no vacio en `true`, incluido
+   * el literal "false". Para un borrado forzado ese es justo el error que no se
+   * puede cometer, asi que solo el texto exacto "true" cuenta.
+   */
+  force: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((valor) => valor === 'true')
+});
+export type TAssetDeleteQuery = z.infer<typeof ZAssetDeleteQuery>;
+
 export const ZAssetUpdate = z.object({
   title: z.string().optional(),
   description: z.string().optional(),

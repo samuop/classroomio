@@ -350,12 +350,23 @@ export async function selectAssetThumbnailService(orgId: string, assetId: string
   }
 }
 
-export async function deleteAssetService(orgId: string, assetId: string) {
+/**
+ * Borra un medio. `force` lo borra aunque siga puesto en alguna leccion.
+ *
+ * El bloqueo duro no servia: decia "todavia se usa" sin decir DONDE, asi que
+ * quien estaba seguro de haberlo sacado no tenia como comprobar quien de los
+ * dos se equivocaba —y en el caso real que lo destapo, el sistema tenia razon—.
+ *
+ * Ahora el 409 sigue siendo la respuesta por omision, pero la pantalla le
+ * muestra antes en que cursos esta puesto y ofrece borrarlo igual. La decision
+ * es de la persona, informada; el sistema deja de adivinar por ella.
+ */
+export async function deleteAssetService(orgId: string, assetId: string, options: { force?: boolean } = {}) {
   try {
     await getAssetService(orgId, assetId);
 
     const usageCount = await countAssetUsagesByAsset(assetId, orgId);
-    if (usageCount > 0) {
+    if (usageCount > 0 && !options.force) {
       throw new AppError('Asset is still in use', ErrorCodes.ASSET_IN_USE, 409);
     }
 
