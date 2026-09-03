@@ -3348,7 +3348,7 @@
       "in_use_title": "Este medio todavía está puesto en:",
       "more_courses": "y {count} curso(s) más",
       "in_use_unknown": "Está puesto en {count} lugar(es) del sistema.",
-      "in_use_warning": "Si lo eliminás, en esas lecciones va a quedar roto.",
+      "in_use_warning": "Si lo eliminás, se va a quitar de esas lecciones. Quedan como si nunca lo hubieras subido.",
       "confirm_anyway": "Eliminar igual",
       "cancel": "Cancelar",
       "confirm": "Eliminar"

@@ -15,6 +15,7 @@ import {
   createAssetUsage,
   createOrGetAssetByStorageKey,
   deleteAsset,
+  desvincularAssetDeLecciones,
   deleteAssetUsage,
   getAssetById,
   getAssetStorageSummaryByOrg,
@@ -368,6 +369,13 @@ export async function deleteAssetService(orgId: string, assetId: string, options
     const usageCount = await countAssetUsagesByAsset(assetId, orgId);
     if (usageCount > 0 && !options.force) {
       throw new AppError('Asset is still in use', ErrorCodes.ASSET_IN_USE, 409);
+    }
+
+    // ANTES de borrar el archivo, sacarlo de las lecciones donde este puesto.
+    // Si se borrara primero, la leccion quedaria con una entrada apuntando a un
+    // archivo inexistente — que es exactamente lo que este paso viene a evitar.
+    if (usageCount > 0) {
+      await desvincularAssetDeLecciones(orgId, assetId);
     }
 
     const deleted = await deleteAsset(assetId, orgId);

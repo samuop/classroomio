@@ -59,3 +59,64 @@ export function findLessonMediaIndex(entries: readonly ({ id?: string } | undefi
 
   return ref.index >= 0 && ref.index < entries.length ? ref.index : -1;
 }
+
+/** Nombres de los atributos del marcador. Espejo de `LESSON_MEDIA_ATTR` en @cio/ui. */
+const ATRIBUTO_TIPO = 'data-cio-media';
+const ATRIBUTO_ID = 'data-cio-media-id';
+
+/**
+ * Saca de la nota los marcadores que apuntan a placements que ya no existen.
+ *
+ * Hace falta porque borrar la entrada de `videos[]` no alcanza: el marcador
+ * queda en el HTML apuntando a la nada, y la vista de lectura dibuja un cartel
+ * de "este medio ya no esta". Para quien borro el video eso es lo mismo que
+ * dejarlo roto — pidio que desapareciera, no que quedara un hueco anunciado.
+ *
+ * Quita el elemento ENTERO, con su cierre si lo tiene. El marcador es inerte por
+ * diseño (el reproductor real se monta aparte, ver `lesson-media-embed`), asi
+ * que no puede contener nada que valga la pena conservar.
+ *
+ * Devuelve el HTML tal cual si no hay nada que sacar, para que quien llama pueda
+ * saltarse la escritura.
+ */
+export function quitarMarcadoresDeMedio(html: string, idsAQuitar: ReadonlySet<string>): string {
+  if (typeof html !== 'string' || !html || idsAQuitar.size === 0) return html;
+
+  // Igual que en @cio/ui: cualquier orden de atributos, y los dos obligatorios.
+  // Un marcador a medias es HTML comun y no se toca.
+  const marcador = new RegExp(
+    '<([a-z]+)\\b[^>]*\\b' + ATRIBUTO_TIPO + '\\s*=\\s*["\'][a-z]+["\'][^>]*>(?:<\\/\\1>)?',
+    'gi'
+  );
+
+  return html.replace(marcador, (etiqueta) => {
+    const id = etiqueta.match(new RegExp('\\b' + ATRIBUTO_ID + '\\s*=\\s*["\']([^"\']*)["\']', 'i'))?.[1];
+
+    return id && idsAQuitar.has(id) ? '' : etiqueta;
+  });
+}
+
+/**
+ * Las entradas de `videos[]`/`documents[]` que apuntan a un archivo subido.
+ *
+ * Se compara por `assetId` y no por el enlace: el enlace es una URL firmada que
+ * vence, asi que dos referencias al mismo archivo no se parecen en nada.
+ */
+export function separarPorAsset<T extends { id?: string; assetId?: string | null }>(
+  entradas: readonly T[] | null | undefined,
+  assetId: string
+): { quedan: T[]; idsQuitados: string[] } {
+  const quedan: T[] = [];
+  const idsQuitados: string[] = [];
+
+  for (const entrada of entradas ?? []) {
+    if (entrada && entrada.assetId === assetId) {
+      if (entrada.id) idsQuitados.push(entrada.id);
+      continue;
+    }
+
+    quedan.push(entrada);
+  }
+
+  return { quedan, idsQuitados };
+}

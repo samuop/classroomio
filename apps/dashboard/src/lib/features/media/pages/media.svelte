@@ -300,6 +300,10 @@
         El aviso nombra los cursos. El bloqueo anterior decia "todavia se usa" y
         nada mas, asi que quien estaba seguro de haberlo sacado no tenia como
         comprobar quien de los dos se equivocaba.
+
+        Y no avisa de algo que se rompe: al borrar, el medio se SACA de esas
+        lecciones (entrada + marcador en la nota), asi que quedan como si nunca
+        lo hubieran subido. Ver `desvincularAssetDeLecciones`.
       -->
       <div class="ui:border-destructive/40 ui:bg-destructive/5 rounded-md border p-3">
         <p class="text-sm font-medium">{$t('media_manager.delete_confirm.in_use_title')}</p>

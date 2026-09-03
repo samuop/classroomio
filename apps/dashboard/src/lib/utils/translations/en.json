@@ -1265,7 +1265,7 @@
       "in_use_title": "This file is still used in:",
       "more_courses": "and {count} more course(s)",
       "in_use_unknown": "It is used in {count} place(s).",
-      "in_use_warning": "If you delete it, it will be broken in those lessons.",
+      "in_use_warning": "If you delete it, it is removed from those lessons — as if it had never been uploaded.",
       "confirm_anyway": "Delete anyway",
       "cancel": "Cancel",
       "confirm": "Delete"
