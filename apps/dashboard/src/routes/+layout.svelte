@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/state';
+  import { page, updated } from '$app/state';
+  import { beforeNavigate } from '$app/navigation';
   import { onMount } from 'svelte';
 
   // Import the component file directly, NOT the `$features/ui` barrel: the barrel
@@ -68,6 +69,26 @@
       $globalStore.isOrgSite = true;
       currentOrg.set(mergeAccountOrgFromServer(data.org));
       setTheme(data.org.theme || 'blue');
+    }
+  });
+
+  /**
+   * Si se desplegó una versión nueva, la próxima navegación recarga entera.
+   *
+   * Sin esto, quien tenía la aplicación abierta durante un deploy se lleva una
+   * pantalla rota: los trozos de código llevan un hash en el nombre, el deploy
+   * los reemplaza, y al ir a otra pantalla el navegador pide un archivo que ya
+   * no existe ("Failed to fetch dynamically imported module"). No hay forma de
+   * recuperarse por dentro —el código que haría falta es justo el que falta—,
+   * así que la única salida es pedir la página de nuevo.
+   *
+   * `willUnload` se respeta para no pisar una navegación que ya sale del sitio.
+   * Ver `version.pollInterval` en svelte.config.js, que es lo que enciende
+   * `updated`.
+   */
+  beforeNavigate((navegacion) => {
+    if (updated.current && !navegacion.willUnload && navegacion.to?.url) {
+      location.href = navegacion.to.url.href;
     }
   });
 

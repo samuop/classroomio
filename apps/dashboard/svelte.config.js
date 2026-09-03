@@ -30,6 +30,23 @@ const config = {
   kit: {
     // Default: Node server (Render, Docker). Opt into Cloudflare Pages only when CI_ENVIRONMENT=cloudflare.
     adapter: IS_CLOUDFLARE ? adapterCloudflare() : adapterNode(),
+    /**
+     * Avisar al navegador que se desplegó una versión nueva.
+     *
+     * SvelteKit le pone un hash al nombre de cada trozo de código. Un deploy los
+     * reemplaza, así que quien tenía la aplicación abierta queda con nombres de
+     * archivo que ya no existen: al ir a otra pantalla, el trozo no se puede
+     * bajar y se rompe con "Failed to fetch dynamically imported module". Pasó en
+     * producción el 2026-09-02 con una clienta usando la plataforma.
+     *
+     * Con esto SvelteKit pregunta cada 5 minutos si cambió la versión, y el
+     * guardia de `+layout.svelte` convierte la próxima navegación en una recarga
+     * entera. 5 minutos es a propósito: es un pedido diminuto a un JSON, y de
+     * nada sirve enterarse una hora después de que la pantalla ya se rompió.
+     */
+    version: {
+      pollInterval: 5 * 60 * 1000
+    },
     alias: {
       $lib: path.resolve('./src/lib'),
       $features: path.resolve('./src/lib/features'),
