@@ -1,9 +1,10 @@
 import { enqueueEmailSend, isRedisConfigured } from '@cio/jobs';
-import { EmailRegistry, type EmailId, type EmailSchemaFor } from '@cio/email';
+import { EmailRegistry, buildEmailFromName, type EmailId, type EmailSchemaFor } from '@cio/email';
 import * as z from 'zod';
 
 import { logRedisUnavailableOnce } from '@api/utils/redis/redis';
 import { resolveEmailOverride } from '@api/services/organization/email-template';
+import { resolveSenderName } from '@api/services/organization/sender-name';
 
 type Recipient = string | string[];
 
@@ -85,6 +86,21 @@ export async function enqueueTransactionalEmail<TId extends EmailId>(
   // sigue exactamente como antes.
   const override = await resolveEmailOverride(input.orgId, template, validatedFields);
 
+  /**
+   * Con qué nombre se firma, por el mismo motivo que el texto: acá y no en cada
+   * punto de envío.
+   *
+   * `resolveSenderName` existía y funcionaba, pero había que acordarse de
+   * llamarlo en cada sitio — y en tres no se llamó (`inviteTeacher`,
+   * `programGoalReminder`, `welcome`). Sin `from`, el envío cae a `SMTP_SENDER`,
+   * que es el nombre del DESPLIEGUE: una invitación de una empresa cliente salía
+   * firmada con la marca de la plataforma en vez de con la de su consultora.
+   *
+   * Se respeta el `from` que venga armado: quien ya lo resolvió sabe más que
+   * esta función.
+   */
+  const from = input.from ?? (input.orgId ? buildEmailFromName(await resolveSenderName(input.orgId)) : undefined);
+
   for (const recipient of recipients) {
     const jobId = await enqueueEmailSend(
       override
@@ -94,7 +110,7 @@ export async function enqueueTransactionalEmail<TId extends EmailId>(
             to: recipient,
             subject: override.subject,
             content: override.content,
-            from: input.from,
+            from,
             replyTo: input.replyTo
           }
         : {
@@ -102,7 +118,7 @@ export async function enqueueTransactionalEmail<TId extends EmailId>(
             template,
             to: recipient,
             fields: validatedFields,
-            from: input.from,
+            from,
             replyTo: input.replyTo
           },
       { idempotencyKey: recipientKey(input.idempotencyKey, recipient, recipients.length) }
