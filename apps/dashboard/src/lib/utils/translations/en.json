@@ -2239,7 +2239,9 @@
     }
   },
   "course": {
-    "list": { "updated": "Updated" },
+    "list": {
+      "updated": "Updated"
+    },
     "creator": {
       "heading": "What course do you want to create?",
       "placeholder": "Describe the course you want — who it's for, the topic, and the outcome. e.g. \"A 5-module onboarding for new sales reps covering our CRM and pitch.\"",
@@ -2260,9 +2262,9 @@
           "url_label": "Web pages to research (optional)",
           "url_hint": "Paste links and the assistant will read them to ground your course.",
           "url_placeholder": "https://docs.example.com/…",
-      "url_saving_heading": "Saving the pages…",
-      "url_saving_subtext": "Reading {count} page(s) and saving them as course sources, so the assistant builds from them.",
-      "url_failed": "Could not read {count} page(s). You can add them from Sources.",
+          "url_saving_heading": "Saving the pages…",
+          "url_saving_subtext": "Reading {count} page(s) and saving them as course sources, so the assistant builds from them.",
+          "url_failed": "Could not read {count} page(s). You can add them from Sources.",
           "add_url": "Add another link"
         },
         "step_of": "Step {current} of {total}",
@@ -4284,15 +4286,10 @@
   "legal": {
     "menu_link": "About & License",
     "title": "About & License",
-    "subtitle": "Attribution and source code for this platform.",
-    "attribution_heading": "About this platform",
-    "attribution_body": "{brand} is a customized fork of ClassroomIO, an open-source learning management system. It has been modified and is operated independently; issues with this deployment are not the responsibility of the original ClassroomIO project.",
     "license_heading": "License",
     "license_body": "This software is distributed under the",
-    "source_heading": "Source code",
-    "source_body": "In accordance with the AGPL-3.0, the source code of this modified version is available to its users:",
-    "source_this": "This deployment's source",
-    "source_upstream": "Original upstream project",
+    "full_text_heading": "Full license text",
+    "full_text_note": "Reproduced in the original English, the only version the Free Software Foundation recognizes as legally valid.",
     "contact_heading": "Contact"
   },
   "student_overview": {
@@ -4645,9 +4642,9 @@
       "resolve_video_failed": "Failed to resolve media playback URL",
       "update_failed": "Failed to update media asset",
       "update_success": "Media asset updated",
-    "delete_success": "Media file deleted",
-    "delete_failed": "Could not delete the media file",
-    "delete_in_use": "Cannot delete: the file is still used in a lesson",
+      "delete_success": "Media file deleted",
+      "delete_failed": "Could not delete the media file",
+      "delete_in_use": "Cannot delete: the file is still used in a lesson",
       "usage_failed": "Failed to load asset usage",
       "download_failed": "Failed to get asset download URL",
       "thumbnail_uploaded": "Thumbnail uploaded",

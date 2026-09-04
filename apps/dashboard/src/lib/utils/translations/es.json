@@ -1023,7 +1023,9 @@
     "toggle_label": "Seleccionar idioma preferido"
   },
   "course": {
-    "list": { "updated": "Actualizado" },
+    "list": {
+      "updated": "Actualizado"
+    },
     "not_permitted": {
       "header": "Sin permiso",
       "body": "No tenés acceso a este curso.",
@@ -2708,9 +2710,9 @@
           "url_label": "Páginas web para investigar (opcional)",
           "url_hint": "Pegá enlaces y el asistente los va a leer para fundamentar tu curso.",
           "url_placeholder": "https://docs.ejemplo.com/…",
-      "url_saving_heading": "Guardando las páginas…",
-      "url_saving_subtext": "Estamos leyendo {count} página(s) y guardándolas como fuente del curso, para que el asistente construya con ellas.",
-      "url_failed": "No se pudieron leer {count} página(s). Podés agregarlas desde Fuentes.",
+          "url_saving_heading": "Guardando las páginas…",
+          "url_saving_subtext": "Estamos leyendo {count} página(s) y guardándolas como fuente del curso, para que el asistente construya con ellas.",
+          "url_failed": "No se pudieron leer {count} página(s). Podés agregarlas desde Fuentes.",
           "add_url": "Agregar otro enlace"
         },
         "step_of": "Paso {current} de {total}",
@@ -3228,15 +3230,10 @@
   "legal": {
     "menu_link": "Acerca de y Licencia",
     "title": "Acerca de y Licencia",
-    "subtitle": "Atribución y código fuente de esta plataforma.",
-    "attribution_heading": "Acerca de esta plataforma",
-    "attribution_body": "{brand} es un fork personalizado de ClassroomIO, un sistema de gestión de aprendizaje de código abierto. Ha sido modificado y se opera de forma independiente; los problemas de esta instancia no son responsabilidad del proyecto original ClassroomIO.",
     "license_heading": "Licencia",
     "license_body": "Este software se distribuye bajo la",
-    "source_heading": "Código fuente",
-    "source_body": "Conforme a la AGPL-3.0, el código fuente de esta versión modificada está disponible para sus usuarios:",
-    "source_this": "Código de esta instancia",
-    "source_upstream": "Proyecto original",
+    "full_text_heading": "Texto completo de la licencia",
+    "full_text_note": "Se reproduce el original en inglés, que es la única versión con validez legal según la Free Software Foundation.",
     "contact_heading": "Contacto"
   },
   "lms_navigation": {
@@ -4776,9 +4773,9 @@
       "resolve_video_failed": "No se pudo resolver la URL de reproducción multimedia",
       "update_failed": "No se pudo actualizar el recurso multimedia",
       "update_success": "Activo multimedia actualizado",
-    "delete_success": "Medio eliminado",
-    "delete_failed": "No se pudo eliminar el medio",
-    "delete_in_use": "No se puede eliminar: el medio todavía se usa en una lección",
+      "delete_success": "Medio eliminado",
+      "delete_failed": "No se pudo eliminar el medio",
+      "delete_in_use": "No se puede eliminar: el medio todavía se usa en una lección",
       "usage_failed": "No se pudo cargar el uso de activos",
       "download_failed": "No se pudo obtener la URL de descarga del recurso",
       "thumbnail_uploaded": "Miniatura cargada",
