@@ -2,6 +2,7 @@ import {
   ZCertificateDownloadRequest,
   ZCourseClone,
   ZCourseCloneParam,
+  ZCourseCoverGenerate,
   ZCourseCreate,
   ZCourseDeleteParam,
   ZCourseDownloadContent,
@@ -27,6 +28,7 @@ import {
   updateCourse
 } from '@api/services/course/course';
 import { assertCertificateDownloadAllowed, evaluateCourseCertification } from '@api/services/course/completion';
+import { generateCourseCover } from '@api/services/course/cover-image';
 import { getCourseTags, replaceCourseTags } from '@api/services/tag';
 
 import { Hono } from '@api/utils/hono';
@@ -371,6 +373,36 @@ export const courseRouter = new Hono()
         );
       } catch (error) {
         return handleError(c, error, 'Failed to update course');
+      }
+    }
+  )
+  /**
+   * POST /course/:courseId/cover
+   *
+   * Dibuja una portada a partir de un texto. Devuelve la dirección de la imagen
+   * y NO toca el curso: quien pidió la portada la ve primero y decide si la
+   * guarda, igual que con una subida. Generar y guardar en un solo paso
+   * convertiría cada intento en un cambio hecho.
+   *
+   * Descuenta del tope de imágenes de la empresa dueña del curso.
+   */
+  .post(
+    '/:courseId/cover',
+    authMiddleware,
+    courseTeamMemberMiddleware,
+    zValidator('param', ZCourseUpdateParam),
+    zValidator('json', ZCourseCoverGenerate),
+    async (c) => {
+      try {
+        const { courseId } = c.req.valid('param');
+        const { prompt } = c.req.valid('json');
+        const user = c.get('user')!;
+
+        const image = await generateCourseCover({ courseId, userId: user.id, prompt });
+
+        return c.json({ success: true as const, data: image }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to generate the course cover');
       }
     }
   )

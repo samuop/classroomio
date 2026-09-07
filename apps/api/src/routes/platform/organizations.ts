@@ -101,8 +101,8 @@ export const platformOrganizationsRouter = new Hono()
     async (c) => {
       try {
         const { orgId } = c.req.valid('param');
-        const { planName, aiTokenAllowance, aiModel } = c.req.valid('json');
-        const result = await setOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel);
+        const { planName, aiTokenAllowance, aiModel, aiImageAllowance } = c.req.valid('json');
+        const result = await setOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel, aiImageAllowance);
 
         return c.json({ success: true as const, data: result });
       } catch (error) {

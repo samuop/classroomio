@@ -27,6 +27,13 @@
     ENTERPRISE: 15_000_000
   };
 
+  /** Espeja `PLAN_IMAGE_ALLOWANCES` de la API: es sólo el texto de ayuda. */
+  const PLAN_DEFAULT_IMAGES: Record<PlatformPlanName, number> = {
+    BASIC: 20,
+    EARLY_ADOPTER: 100,
+    ENTERPRISE: 300
+  };
+
   async function onChangePlan(value: string | undefined) {
     if (!orgId || !value || value === detail?.planName) return;
 
@@ -59,6 +66,22 @@
     await platformApi.setPlan(orgId, detail.planName, parsedAllowance());
   }
 
+  /** Igual que el cupo de fichas: vacío es "el del plan", cero apaga las imágenes. */
+  function parsedImageAllowance(): number | null {
+    const raw = imageAllowanceInput.trim();
+    if (raw === '') return null;
+
+    const value = Number(raw.replace(/[.\s]/g, ''));
+
+    return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+  }
+
+  async function onSaveImageAllowance() {
+    if (!orgId || !detail?.planName) return;
+
+    await platformApi.setPlan(orgId, detail.planName, undefined, undefined, parsedImageAllowance());
+  }
+
   /** The inherit sentinel means "use the deployment's model", sent as null. */
   async function onChangeModel(value: string) {
     if (!orgId || !detail?.planName) return;
@@ -75,6 +98,7 @@
 
   let newDomain = $state('');
   let allowanceInput = $state('');
+  let imageAllowanceInput = $state('');
   /** Which org the box was last filled for, so typing is not overwritten on every refresh. */
   let allowanceLoadedFor = $state<string | null>(null);
 
@@ -97,6 +121,7 @@
 
     allowanceLoadedFor = orgId;
     allowanceInput = loaded.aiTokenAllowance == null ? '' : String(loaded.aiTokenAllowance);
+    imageAllowanceInput = loaded.aiImageAllowance == null ? '' : String(loaded.aiImageAllowance);
   });
 
   const detail = $derived(platformApi.detail);
@@ -188,6 +213,34 @@
             <Field.Description>
               {$t('platform.detail.allowance_hint', {
                 plan: formatTokens(PLAN_DEFAULT_ALLOWANCE[detail.planName ?? 'BASIC'])
+              })}
+            </Field.Description>
+          </Field.Field>
+
+          <!--
+            Tope de IMAGENES del mes, aparte del de fichas.
+            Va separado y no dentro del mismo cupo porque una imagen no gasta
+            fichas: sin este numero, una empresa con el chat agotado podia
+            seguir generando imagenes sin limite, que es lo caro.
+          -->
+          <Field.Field>
+            <Field.Label>{$t('platform.detail.image_allowance')}</Field.Label>
+            <div class="flex items-center gap-2">
+              <Input
+                type="text"
+                inputmode="numeric"
+                bind:value={imageAllowanceInput}
+                placeholder={String(PLAN_DEFAULT_IMAGES[detail.planName ?? 'BASIC'])}
+                disabled={platformApi.isLoading || !detail.planName}
+                class="tabular-nums"
+              />
+              <Button size="sm" disabled={platformApi.isLoading || !detail.planName} onclick={onSaveImageAllowance}>
+                {$t('platform.detail.allowance_save')}
+              </Button>
+            </div>
+            <Field.Description>
+              {$t('platform.detail.image_allowance_hint', {
+                plan: String(PLAN_DEFAULT_IMAGES[detail.planName ?? 'BASIC'])
               })}
             </Field.Description>
           </Field.Field>

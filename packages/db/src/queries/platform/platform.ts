@@ -210,6 +210,8 @@ export interface PlatformOrgDetail extends TOrganization {
    * a second home would mean two answers to the same question.
    */
   aiTokenAllowance: number | null;
+  /** Cuántas imágenes puede generar por mes, o null para usar el tope del plan. */
+  aiImageAllowance: number | null;
   /** Per-organisation chat model, or null to run on the deployment's. */
   aiModel: string | null;
 }
@@ -217,6 +219,19 @@ export interface PlatformOrgDetail extends TOrganization {
 /** The override as stored, ignoring anything that is not a usable number. */
 function readAiTokenAllowance(payload: unknown): number | null {
   const value = (payload as { aiTokenAllowance?: unknown } | null | undefined)?.aiTokenAllowance;
+
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * El tope de imágenes del mes, si la empresa tiene uno propio.
+ *
+ * Vive en el mismo `payload` que el cupo de fichas porque responde la misma
+ * pregunta —qué tiene permitido esta empresa— y separarlo obligaría a mirar dos
+ * lugares para contestarla.
+ */
+function readAiImageAllowance(payload: unknown): number | null {
+  const value = (payload as { aiImageAllowance?: unknown } | null | undefined)?.aiImageAllowance;
 
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
@@ -264,6 +279,7 @@ export async function getPlatformOrganizationDetail(orgId: string): Promise<Plat
     ...org,
     planName: activePlan?.planName ?? null,
     aiTokenAllowance: readAiTokenAllowance(activePlan?.payload),
+    aiImageAllowance: readAiImageAllowance(activePlan?.payload),
     aiModel: readAiModel(activePlan?.payload),
     memberCount,
     tokensAllTime,
@@ -344,12 +360,14 @@ export async function setPlatformOrganizationPlan(
   orgId: string,
   planName: PlatformPlanName,
   aiTokenAllowance?: number | null,
-  aiModel?: string | null
+  aiModel?: string | null,
+  aiImageAllowance?: number | null
 ): Promise<{
   orgId: string;
   planName: PlatformPlanName;
   aiTokenAllowance: number | null;
   aiModel: string | null;
+  aiImageAllowance: number | null;
 } | null> {
   try {
     return await db.transaction(async (tx) => {
@@ -370,6 +388,11 @@ export async function setPlatformOrganizationPlan(
       const carried = (current?.payload as Record<string, unknown> | null) ?? {};
       const nextAllowance = aiTokenAllowance === undefined ? readAiTokenAllowance(current?.payload) : aiTokenAllowance;
       const nextModel = aiModel === undefined ? readAiModel(current?.payload) : aiModel;
+      // Mismo trato que el cupo de fichas, y por el mismo motivo: si no se toca,
+      // se arrastra. Un tope que se borra al editar el plan es peor que no
+      // tenerlo, porque nadie vuelve a mirarlo.
+      const nextImages =
+        aiImageAllowance === undefined ? readAiImageAllowance(current?.payload) : aiImageAllowance;
 
       // Retire the current active plan (if any).
       await tx
@@ -377,7 +400,12 @@ export async function setPlatformOrganizationPlan(
         .set({ isActive: false, deactivatedAt: sql`timezone('utc'::text, now())` })
         .where(and(eq(schema.organizationPlan.orgId, orgId), eq(schema.organizationPlan.isActive, true)));
 
-      const { aiTokenAllowance: _dropped, aiModel: _droppedModel, ...rest } = carried;
+      const {
+        aiTokenAllowance: _dropped,
+        aiModel: _droppedModel,
+        aiImageAllowance: _droppedImages,
+        ...rest
+      } = carried;
 
       await tx.insert(schema.organizationPlan).values({
         orgId,
@@ -389,11 +417,18 @@ export async function setPlatformOrganizationPlan(
           ...rest,
           assignedBy: 'platform-admin',
           ...(nextAllowance === null ? {} : { aiTokenAllowance: nextAllowance }),
-          ...(nextModel === null ? {} : { aiModel: nextModel })
+          ...(nextModel === null ? {} : { aiModel: nextModel }),
+          ...(nextImages === null ? {} : { aiImageAllowance: nextImages })
         }
       });
 
-      return { orgId, planName, aiTokenAllowance: nextAllowance, aiModel: nextModel };
+      return {
+        orgId,
+        planName,
+        aiTokenAllowance: nextAllowance,
+        aiModel: nextModel,
+        aiImageAllowance: nextImages
+      };
     });
   } catch (error) {
     console.error('setPlatformOrganizationPlan error:', error);

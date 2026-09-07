@@ -176,7 +176,13 @@ class PlatformApi extends BaseApiWithErrors {
    * server unchanged: omitted keeps the current cap, null clears the override
    * back to the plan's default, a number sets it.
    */
-  async setPlan(orgId: string, planName: PlatformPlanName, aiTokenAllowance?: number | null, aiModel?: string | null) {
+  async setPlan(
+    orgId: string,
+    planName: PlatformPlanName,
+    aiTokenAllowance?: number | null,
+    aiModel?: string | null,
+    aiImageAllowance?: number | null
+  ) {
     return this.execute<SetPlatformOrgPlanRequest>({
       requestFn: () =>
         classroomio.platform.organizations[':orgId'].plan.$put({
@@ -184,7 +190,8 @@ class PlatformApi extends BaseApiWithErrors {
           json: {
             planName,
             ...(aiTokenAllowance === undefined ? {} : { aiTokenAllowance }),
-            ...(aiModel === undefined ? {} : { aiModel })
+            ...(aiModel === undefined ? {} : { aiModel }),
+            ...(aiImageAllowance === undefined ? {} : { aiImageAllowance })
           }
         }),
       logContext: 'updating organization plan',

@@ -7,6 +7,7 @@ export * from './chat-run';
 export * from './plan-registry';
 export * from './credit-purchase';
 export * from './token-usage';
+export * from './image-usage';
 export * from './usage-aggregations';
 export * from './tutor-config';
 export * from './tutor-usage';

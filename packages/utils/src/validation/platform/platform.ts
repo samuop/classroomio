@@ -57,6 +57,19 @@ export const ZPlatformSetPlan = z.object({
    */
   aiTokenAllowance: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
   /**
+   * Cuántas imágenes puede generar esta empresa por mes, por encima del número
+   * que trae su plan.
+   *
+   * Los mismos tres estados que el cupo de fichas: omitir para no tocarlo, null
+   * para volver al del plan, un número para fijarlo. El cero también sirve, y
+   * apaga la generación de imágenes sin tocar nada más.
+   *
+   * El techo es bajo a propósito. Una imagen cuesta unas cien veces más que un
+   * mensaje de chat, así que acá un dígito de más se nota en la factura mucho
+   * antes que en las fichas.
+   */
+  aiImageAllowance: z.number().int().min(0).max(100_000).nullable().optional(),
+  /**
    * Run this organisation on a specific chat model instead of the deployment's.
    *
    * Same three states as the cap: omit to keep, null to clear, a name to set.

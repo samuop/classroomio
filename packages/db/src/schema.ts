@@ -3185,6 +3185,47 @@ export const aiTokenUsage = pgTable(
   ]
 );
 
+// ─── Uso de imágenes generadas ───────────────────────────────────────────────
+//
+// Una fila por imagen generada, para poder ponerle un tope por empresa.
+//
+// Tabla aparte y no una fila más en `ai_token_usage` porque una imagen no gasta
+// fichas: mezclarlas obligaría a excluirlas de cada suma de consumo, y ese es
+// exactamente el tipo de resta que alguien olvida y termina inflando el cupo de
+// otra cosa. Acá se cuentan imágenes, y una imagen es una fila.
+//
+// `course_id` es opcional: la vista previa de estilo que mira un administrador
+// no pertenece a ningún curso, y aun así se cobra y tiene que contarse.
+
+export const aiImageUsage = pgTable(
+  'ai_image_usage',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedByDefaultAsIdentity({
+      name: 'ai_image_usage_id_seq',
+      startWith: 1,
+      increment: 1,
+      minValue: 1,
+      cache: 1
+    }),
+    orgId: uuid('org_id').notNull(),
+    userId: uuid('user_id'),
+    courseId: uuid('course_id'),
+    /** Para qué se pidió: `lesson`, `cover`, `preview`. */
+    kind: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.orgId],
+      foreignColumns: [organization.id],
+      name: 'ai_image_usage_org_id_fkey'
+    }),
+    // El tope es mensual y por empresa: ese es el único conteo que se consulta
+    // en el camino caliente, antes de cada imagen.
+    index('idx_ai_image_usage_org_month').on(table.orgId, table.createdAt)
+  ]
+);
+
 // ─── AI Credit Balance ───────────────────────────────────────────────────────
 
 export const aiCreditBalance = pgTable(

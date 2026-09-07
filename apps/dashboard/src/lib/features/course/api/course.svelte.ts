@@ -7,6 +7,7 @@ import type {
   CreatePaymentRequestRequest,
   DeleteCourseRequest,
   EnrollCourseRequest,
+  GenerateCoverRequest,
   GetCourseAnalyticsRequest,
   GetCourseBySlugRequest,
   GetCertificationEvaluationRequest,
@@ -450,6 +451,36 @@ export class CourseApi extends BaseApiWithErrors {
    * @param fields Course update fields
    * @returns The updated course data or null on error
    */
+  /**
+   * Dibuja una portada a partir de un texto y devuelve su direccion.
+   *
+   * NO guarda el curso: deja la imagen en el formulario para que quien la pidio
+   * la vea antes de quedarse con ella. Guardar de una convertiria cada intento
+   * en un cambio hecho, y una portada fea que ya se guardo es peor que ninguna.
+   */
+  generatingCover = $state(false);
+
+  async generateCover(courseId: string, prompt: string): Promise<string | null> {
+    this.generatingCover = true;
+    let url: string | null = null;
+
+    await this.execute<GenerateCoverRequest>({
+      requestFn: () =>
+        classroomio.course[':courseId'].cover.$post({
+          param: { courseId },
+          json: { prompt }
+        }),
+      logContext: 'generating course cover',
+      onSuccess: (response) => {
+        url = response.data.url;
+      }
+    });
+
+    this.generatingCover = false;
+
+    return url;
+  }
+
   async update(
     courseId: string,
     fields: TCourseUpdate,

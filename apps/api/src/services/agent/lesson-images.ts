@@ -102,6 +102,7 @@ export async function regenerateLessonImage(params: {
   lessonId: string;
   locale: string;
   instruction?: string;
+  userId?: string | null;
 }): Promise<{ content: string; url: string; alt: string }> {
   const target = requireImage(params.content, params.index);
   const instruction = params.instruction?.trim();
@@ -126,7 +127,9 @@ export async function regenerateLessonImage(params: {
     lessonId: params.lessonId,
     locale: params.locale,
     styleReferenceUrl: style?.styleReferenceUrl,
-    styleNote: style?.styleNote
+    styleNote: style?.styleNote,
+    orgId: params.orgId,
+    userId: params.userId
   });
 
   // The alt text follows the instruction, so a second regeneration starts from
@@ -157,6 +160,7 @@ export async function replaceDiagramWithImage(params: {
   courseId: string;
   lessonId: string;
   locale: string;
+  userId?: string | null;
 }): Promise<{ content: string; url: string; alt: string }> {
   const style = await getOrgAiImageSettingsService(params.orgId).catch(() => null);
 
@@ -167,7 +171,9 @@ export async function replaceDiagramWithImage(params: {
     locale: params.locale,
     styleReferenceUrl: style?.styleReferenceUrl,
     styleNote: style?.styleNote,
-    aspectRatio: '16:9' as ImageAspectRatio
+    aspectRatio: '16:9' as ImageAspectRatio,
+    orgId: params.orgId,
+    userId: params.userId
   });
 
   return {

@@ -446,7 +446,9 @@ export function buildAgentTools(
             locale: args.locale,
             aspectRatio: args.aspectRatio,
             styleReferenceUrl: style?.styleReferenceUrl,
-            styleNote: style?.styleNote
+            styleNote: style?.styleNote,
+            orgId,
+            userId
           });
 
           imagesGenerated += 1;

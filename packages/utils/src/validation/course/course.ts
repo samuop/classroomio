@@ -694,3 +694,15 @@ export const ZCourseUserAnalyticsParam = z.object({
   userId: z.string().uuid()
 });
 export type TCourseUserAnalyticsParam = z.infer<typeof ZCourseUserAnalyticsParam>;
+
+/**
+ * Lo que se le pide al modelo para la portada de un curso.
+ *
+ * Es sólo el asunto, no el estilo: el estilo sale de la configuración de la
+ * empresa, igual que las ilustraciones de las lecciones. Si cada portada trajera
+ * el suyo, dos cursos de la misma empresa no se parecerían en nada.
+ */
+export const ZCourseCoverGenerate = z.object({
+  prompt: z.string().trim().min(3).max(600)
+});
+export type TCourseCoverGenerate = z.infer<typeof ZCourseCoverGenerate>;

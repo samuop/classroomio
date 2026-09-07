@@ -113,7 +113,8 @@ export async function setOrganizationPlan(
   orgId: string,
   planName: PlatformPlanName,
   aiTokenAllowance?: number | null,
-  aiModel?: string | null
+  aiModel?: string | null,
+  aiImageAllowance?: number | null
 ) {
   // Checked against the same list the panel offers (Google's, when it answers),
   // so a model can never be offered and then rejected on save.
@@ -121,7 +122,7 @@ export async function setOrganizationPlan(
     throw new AppError(`Unsupported chat model: ${aiModel}`, ErrorCodes.VALIDATION_ERROR, 400);
   }
 
-  const result = await setPlatformOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel);
+  const result = await setPlatformOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel, aiImageAllowance);
   if (!result) {
     throw new AppError('Organization not found', ErrorCodes.ORGANIZATION_NOT_FOUND, 404);
   }

@@ -167,6 +167,29 @@
     hasUnsavedChanges = true;
   };
 
+  /**
+   * Dibuja la portada a partir de lo que escribio el docente.
+   *
+   * La imagen queda en el formulario, sin guardar: se ve primero y despues se
+   * decide, igual que una que se sube. Y por eso marca cambios sin guardar — si
+   * la persona se va sin apretar Guardar, tiene que avisarle.
+   */
+  let coverPrompt = $state('');
+  let showCoverPrompt = $state(false);
+
+  async function generarPortada() {
+    const curso = courseApi.course;
+    if (!curso || !coverPrompt.trim()) return;
+
+    const url = await courseApi.generateCover(curso.id, coverPrompt.trim());
+    if (!url) return;
+
+    $settings.logo = url;
+    hasUnsavedChanges = true;
+    showCoverPrompt = false;
+    coverPrompt = '';
+  }
+
   async function handleDeleteCourse() {
     if (!courseApi.course) return;
 
@@ -405,10 +428,33 @@
           <Button onclick={widgetControl}>
             {$t('course.navItem.settings.replace')}
           </Button>
+          <Button variant="outline" onclick={() => (showCoverPrompt = !showCoverPrompt)}>
+            {$t('course.navItem.settings.cover_generate')}
+          </Button>
           <Button variant="outline" onclick={deleteBannerImage}>
             {$t('ai.reset')}
           </Button>
         </div>
+        {#if showCoverPrompt}
+          <div class="mt-2 flex flex-col gap-2">
+            <TextareaField
+              label={$t('course.navItem.settings.cover_prompt_label')}
+              placeholder={$t('course.navItem.settings.cover_prompt_placeholder')}
+              bind:value={coverPrompt}
+              className="w-full"
+            />
+            <div>
+              <Button
+                disabled={courseApi.generatingCover || coverPrompt.trim().length < 3}
+                onclick={generarPortada}
+              >
+                {courseApi.generatingCover
+                  ? $t('course.navItem.settings.cover_generating')
+                  : $t('course.navItem.settings.cover_generate')}
+              </Button>
+            </div>
+          </div>
+        {/if}
         {#if $handleOpenWidget.open}
           <UploadWidget
             bind:imageURL={$settings.logo}

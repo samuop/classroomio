@@ -282,6 +282,7 @@ export type CourseBySlugWithOrg = GetCourseBySlugData & {
   org?: CourseSlugPayloadOrg | null;
 };
 export type UpdateCourseRequest = (typeof classroomio.course)[':courseId']['$put'];
+export type GenerateCoverRequest = (typeof classroomio.course)[':courseId']['cover']['$post'];
 export type DeleteCourseRequest = (typeof classroomio.course)[':courseId']['$delete'];
 export type UpdateCourseContentRequest = (typeof classroomio.course)[':courseId']['content']['$put'];
 export type DeleteCourseContentRequest = (typeof classroomio.course)[':courseId']['content']['$delete'];

@@ -21,6 +21,8 @@ import { getImageModel, IMAGE_SIZE } from '@cio/ai-assistant';
 import { getStorageConfig } from '@api/config/storage';
 import { uploadToS3 } from '@api/utils/s3';
 import { AppError } from '@api/utils/errors';
+import { enforceImageBalance, noteImageGenerated } from '@api/services/agent/image-usage';
+import type { ImageUsageKind } from '@cio/db/queries/agent';
 
 /**
  * Images one round may generate.
@@ -139,7 +141,20 @@ export async function generateLessonImage(params: {
   styleReferenceUrl?: string | null;
   /** The organisation's house direction in words, appended to the style. */
   styleNote?: string;
+  /**
+   * De qué empresa sale el gasto. Obligatorio: el tope se aplica ACÁ ADENTRO y
+   * no en cada punto de llamada, que es lo que hace imposible olvidarlo. Pedirlo
+   * como parámetro obligatorio hace que agregar una forma nueva de generar
+   * imágenes no compile hasta decir a cuenta de quién va.
+   */
+  orgId: string;
+  /** Quién la pidió y para qué, para poder explicar un consumo. */
+  userId?: string | null;
+  usageKind?: ImageUsageKind;
 }): Promise<GeneratedLessonImage> {
+  // Antes de tocar el proveedor: si la empresa se pasó del tope, no se gasta.
+  await enforceImageBalance(params.orgId);
+
   const model = getImageModel();
 
   if (!model) {
@@ -203,6 +218,15 @@ export async function generateLessonImage(params: {
     );
   }
 
+  // Recién acá, con la imagen guardada y servible: contarla antes convertiría un
+  // fallo del proveedor o del almacenamiento en cupo consumido.
+  await noteImageGenerated({
+    orgId: params.orgId,
+    userId: params.userId,
+    courseId: params.courseId,
+    kind: params.usageKind ?? 'lesson'
+  });
+
   return {
     url: `${config.mediaPublicBaseUrl.replace(/\/+$/, '')}/${key}`,
     aspectRatio,
@@ -232,6 +256,7 @@ const STYLE_PREVIEW_SUBJECT =
  */
 export async function generateStylePreview(params: {
   orgId: string;
+  userId?: string | null;
   styleNote?: string;
   styleReferenceUrl?: string | null;
 }): Promise<GeneratedLessonImage> {
@@ -240,6 +265,11 @@ export async function generateStylePreview(params: {
     courseId: `org-${params.orgId}/previews`,
     styleNote: params.styleNote,
     styleReferenceUrl: params.styleReferenceUrl,
-    aspectRatio: '16:9'
+    aspectRatio: '16:9',
+    orgId: params.orgId,
+    userId: params.userId,
+    // La vista previa se cobra igual que cualquier otra imagen, así que cuenta
+    // igual. Que sea "sólo una prueba" es justamente lo que invita a repetirla.
+    usageKind: 'preview'
   });
 }
