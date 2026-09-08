@@ -40,9 +40,26 @@ class AccountApi extends BaseApiWithErrors {
   }
 
   async createWorkspace(fields: TCreateWorkspace) {
+    /**
+     * Empezar en limpio, y esto NO es higiene: es el arreglo.
+     *
+     * `success` es del pedido anterior, y la pantalla lista los espacios de
+     * trabajo apenas se abre, así que llega en `true`. Cuando la validación
+     * fallaba volvíamos acá abajo sin tocarlo, quien llama leía ese éxito viejo
+     * y cerraba el diálogo — con el mensaje de error adentro. El resultado para
+     * la persona era que el botón no hacía nada: ni empresa creada, ni una
+     * palabra sobre por qué.
+     *
+     * Un `return` temprano que deja el estado del intento anterior es la forma
+     * de este bug; limpiarlo ANTES de poder salir es lo que impide repetirlo.
+     */
+    this.reset();
+
     const parsed = ZCreateWorkspace.safeParse(fields);
     if (!parsed.success) {
-      this.errors = mapZodErrorsToTranslations(parsed.error);
+      // `workspace` como entidad para que los mensajes puedan hablar de estos
+      // campos y no del genérico "El valor es demasiado pequeño".
+      this.errors = mapZodErrorsToTranslations(parsed.error, 'workspace');
       return;
     }
 

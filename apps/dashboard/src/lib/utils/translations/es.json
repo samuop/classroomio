@@ -5114,6 +5114,18 @@
       "min_char": "El nombre del sitio debe contener 5 o más caracteres.",
       "hyphen_rule": "El nombre del sitio no puede empezar ni terminar con un guión."
     },
+    "workspace": {
+      "name": {
+        "too_small": "El nombre tiene que tener al menos {minimum} caracteres.",
+        "custom": "El nombre no puede empezar ni terminar con un guión."
+      },
+      "siteName": {
+        "too_small": "La dirección tiene que tener al menos {minimum} caracteres.",
+        "too_big": "La dirección no puede pasar de {maximum} caracteres.",
+        "invalid_format": "La dirección sólo admite minúsculas, números y guiones simples. Sin espacios, acentos ni símbolos.",
+        "custom": "Esa dirección está reservada por la plataforma. Elegí otra."
+      }
+    },
     "organization_name": {
       "min_char": "La organización debe contener 5 o más caracteres.",
       "hyphen_rule": "El nombre de la organización no puede comenzar ni terminar con un guión."

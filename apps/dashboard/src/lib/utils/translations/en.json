@@ -4930,6 +4930,18 @@
       "min_char": "Site name must contain 5 or more characters",
       "hyphen_rule": "Site name cannot start or end with a hyphen"
     },
+    "workspace": {
+      "name": {
+        "too_small": "The name needs at least {minimum} characters.",
+        "custom": "The name cannot start or end with a hyphen."
+      },
+      "siteName": {
+        "too_small": "The address needs at least {minimum} characters.",
+        "too_big": "The address cannot be longer than {maximum} characters.",
+        "invalid_format": "The address only takes lowercase letters, numbers and single hyphens. No spaces, accents or symbols.",
+        "custom": "That address is reserved by the platform. Pick another one."
+      }
+    },
     "news_feed": {
       "min_char": "Field must contain 5 or more characters"
     },
