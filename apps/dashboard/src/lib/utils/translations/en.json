@@ -4166,7 +4166,11 @@
       "refresh_cache_aria": "Read this source again",
       "download_aria": "Download the original file",
       "reconciling": "Updating…",
-      "read_mark": "Read"
+      "read_mark": "Read",
+      "read_inline": "Small: the assistant reads it whole on every request.",
+      "read_cacheable": "Large enough that the provider will serve it from its cache once the assistant uses it.",
+      "read_cached": "The provider is serving it from its cache.",
+      "read_over_limit": "Past the course's material limit: the assistant only reads part of it."
     },
     "load_error": {
       "title": "We couldn't open this course",

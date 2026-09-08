@@ -64,8 +64,27 @@ export interface CourseSource {
   mimeType: string;
   wordCount: number;
   pageCount: number | null;
+  /**
+   * Como la va a leer el asistente, decidido por el tamaño del texto guardado:
+   *
+   * - `too_small`  — por debajo del mínimo del proveedor. Nunca es una unidad
+   *                  de caché propia: viaja entera en cada consulta.
+   * - `cache`      — bastante grande como para que el proveedor la sirva desde
+   *                  su caché cuando el asistente la use.
+   * - `over_limit` — pasa el techo de material del curso y se lee recortada.
+   *
+   * Es una PREDICCIÓN por tamaño, disponible apenas se carga la fuente. No
+   * confundir con `DocumentCacheStatus.cached`, que es una OBSERVACIÓN: sólo
+   * existe después de un turno de chat que el proveedor facturó como lectura
+   * de caché. Los dos hacen falta para no prometer un descuento que todavía no
+   * pasó.
+   */
+  cacheEligibility: CacheEligibility;
   createdAt: string;
 }
+
+/** Ver `CourseSource.cacheEligibility`. Espeja la política del servidor. */
+export type CacheEligibility = 'too_small' | 'cache' | 'over_limit';
 
 export type CourseSourceMimeType = 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 

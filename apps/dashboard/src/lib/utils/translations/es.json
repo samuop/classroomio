@@ -2950,7 +2950,11 @@
       "refresh_cache_aria": "Volver a leer esta fuente",
       "download_aria": "Descargar el archivo original",
       "reconciling": "Actualizando…",
-      "read_mark": "Leída"
+      "read_mark": "Leída",
+      "read_inline": "Es chica: el asistente la lee entera en cada consulta.",
+      "read_cacheable": "Es grande: cuando el asistente la use, el proveedor la va a servir desde su caché.",
+      "read_cached": "El proveedor la está sirviendo desde su caché.",
+      "read_over_limit": "Pasa el máximo de material del curso: el asistente lee sólo una parte."
     },
     "load_error": {
       "title": "No pudimos abrir este curso",

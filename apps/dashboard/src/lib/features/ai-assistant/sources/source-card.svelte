@@ -77,6 +77,38 @@
    */
   const leida = $derived(Boolean(cacheStatus?.cached && cacheStatus.observedSecondsAgo !== null));
 
+  /**
+   * Cómo la va a leer el asistente, en un punto de 6px.
+   *
+   * Son dos hechos de naturaleza distinta y mezclarlos sería mentir:
+   *
+   * - El TAMAÑO (`cacheEligibility`) se sabe apenas se carga la fuente y no
+   *   cambia nunca. Decide si la fuente puede llegar a ser una unidad de caché
+   *   o si viaja entera en cada consulta.
+   * - La CACHÉ (`cacheStatus.cached`) sólo se sabe DESPUÉS. Ningún proveedor
+   *   deja preguntar si algo está cacheado, así que la única prueba es una
+   *   consulta real que haya venido facturada como lectura de caché.
+   *
+   * Por eso el azul tiene dos formas: relleno cuando hay prueba, hueco cuando
+   * la fuente tiene el tamaño pero todavía nadie la usó. Un azul relleno sin
+   * prueba estaría prometiendo un descuento que quizá no ocurrió — y es
+   * exactamente el error que ya se cometió una vez, cuando abrir el panel
+   * alcanzaba para encender la marca de caché.
+   */
+  const lectura = $derived.by(() => {
+    if (source.cacheEligibility === 'over_limit') {
+      return { clase: 'bg-amber-500', titulo: t.get('course.sources.read_over_limit') };
+    }
+
+    if (source.cacheEligibility === 'too_small') {
+      return { clase: 'bg-emerald-500', titulo: t.get('course.sources.read_inline') };
+    }
+
+    return cacheStatus?.cached
+      ? { clase: 'bg-blue-500', titulo: t.get('course.sources.read_cached') }
+      : { clase: 'border border-blue-500/60', titulo: t.get('course.sources.read_cacheable') };
+  });
+
   async function handleConfirmDelete() {
     confirmOpen = false;
     await onDelete();
@@ -105,16 +137,27 @@
           </span>
         {/if}
         <!-- One line, truncated: it used to wrap to one word per line in a narrow card. -->
-        <span class="ui:text-muted-foreground truncate text-xs">
-          <!-- En una pagina el mime seria "text/markdown", que no le dice nada
-               a nadie; el dominio si dice de donde salio el material. -->
-          {dominio || mimeLabel}
-          {#if source.pageCount}
-            · {t.get('course.sources.meta_pages', { count: source.pageCount })}
-          {/if}
-          {#if source.wordCount}
-            · {t.get('course.sources.meta_words', { count: source.wordCount })}
-          {/if}
+        <span class="ui:text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
+          <!-- Discreto a proposito: el color es el mensaje y el detalle vive en
+               el `title`. `shrink-0` porque el truncado de al lado se come
+               cualquier cosa que pueda achicarse. -->
+          <span
+            role="img"
+            aria-label={lectura.titulo}
+            title={lectura.titulo}
+            class="size-1.5 shrink-0 rounded-full {lectura.clase}"
+          ></span>
+          <span class="truncate">
+            <!-- En una pagina el mime seria "text/markdown", que no le dice nada
+                 a nadie; el dominio si dice de donde salio el material. -->
+            {dominio || mimeLabel}
+            {#if source.pageCount}
+              · {t.get('course.sources.meta_pages', { count: source.pageCount })}
+            {/if}
+            {#if source.wordCount}
+              · {t.get('course.sources.meta_words', { count: source.wordCount })}
+            {/if}
+          </span>
         </span>
       </div>
     </div>

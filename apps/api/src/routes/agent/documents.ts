@@ -22,6 +22,7 @@ import {
   getDocumentCacheStatus,
   refreshDocumentCache,
   reconcileCourseSourceCache,
+  classifyDocumentForCache,
   type ReconcileResult
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
@@ -122,6 +123,16 @@ export const agentDocumentsRouter = new Hono()
             mimeType: d.mimeType,
             wordCount: d.wordCount,
             pageCount: d.pageCount,
+            /**
+             * Como la va a leer el asistente. Se calcula acá y no en el
+             * dashboard porque el umbral es una política del servidor: si el
+             * navegador lo decidiera, cambiarlo obligaría a un deploy del
+             * dashboard para que la pantalla dejara de mentir.
+             *
+             * Sale gratis: la fila ya viene con el texto entero (el `select()`
+             * de la consulta lo trae), sólo que no se devuelve.
+             */
+            cacheEligibility: classifyDocumentForCache(d.text),
             createdAt: d.createdAt
           };
         });

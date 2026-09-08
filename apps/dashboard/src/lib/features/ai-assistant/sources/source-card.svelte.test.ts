@@ -26,6 +26,7 @@ const FUENTE: CourseSource = {
   mimeType: 'application/pdf',
   wordCount: 4200,
   pageCount: 18,
+  cacheEligibility: 'cache',
   createdAt: '2026-08-01T10:00:00.000Z'
 };
 
@@ -172,5 +173,64 @@ describe('volver al original', () => {
     // seria un test que mide la biblioteca, no la tarjeta.
     expect(container.textContent).toMatch(/\d{1,2} de \w+ de 2026/);
     expect(container.textContent).not.toMatch(/\d{1,2}\/\d{1,2}\/\d{4}/);
+  });
+});
+
+/**
+ * El punto que dice cómo la va a leer el asistente.
+ *
+ * Lo que estos tests protegen es una distinción que se pierde sola: el TAMAÑO
+ * se sabe al cargar la fuente, la CACHÉ sólo se sabe después de una consulta
+ * facturada. Si alguien colapsa las dos cosas en "grande = cacheada", la
+ * pantalla promete un descuento que quizá nunca ocurrió — que es exactamente
+ * el error que ya se cometió una vez, cuando abrir el panel alcanzaba para
+ * encender la marca.
+ *
+ * Por eso el caso central no es el verde ni el azul lleno: es el azul HUECO.
+ */
+describe('el punto de lectura', () => {
+  const punto = (nombre: string) => screen.getByRole('img', { name: nombre });
+
+  it('una fuente chica se marca en verde: se lee entera cada vez', () => {
+    dibujar(undefined, { cacheEligibility: 'too_small' });
+
+    expect(punto('Es chica: el asistente la lee entera en cada consulta.').className).toContain(
+      'bg-emerald-500'
+    );
+  });
+
+  it('el azul se rellena sólo cuando el proveedor facturó una lectura de caché', () => {
+    dibujar(estado({ cached: true }), { cacheEligibility: 'cache' });
+
+    expect(punto('El proveedor la está sirviendo desde su caché.').className).toContain('bg-blue-500');
+  });
+
+  it('una fuente grande SIN prueba de caché queda hueca, no rellena', () => {
+    dibujar(undefined, { cacheEligibility: 'cache' });
+
+    const hueco = punto(
+      'Es grande: cuando el asistente la use, el proveedor la va a servir desde su caché.'
+    );
+
+    // Hueco = borde sin relleno. Si esto se volviera `bg-blue-500`, la tarjeta
+    // estaría afirmando un hecho que nadie observó.
+    expect(hueco.className).toContain('border');
+    expect(hueco.className).not.toContain('bg-blue-500');
+  });
+
+  it('el material que pasa el techo se avisa, en vez de quedar mudo', () => {
+    dibujar(estado(), { cacheEligibility: 'over_limit' });
+
+    expect(
+      punto('Pasa el máximo de material del curso: el asistente lee sólo una parte.').className
+    ).toContain('bg-amber-500');
+  });
+
+  it('el punto no depende de que el estado de caché haya llegado', () => {
+    // Se dibuja con lo que ya trae la lista. Si dependiera de la llamada de
+    // estado, la pantalla arrancaría sin ningún punto y aparecerían de a poco.
+    dibujar(undefined, { cacheEligibility: 'too_small' });
+
+    expect(screen.getByRole('img', { name: /Es chica/ })).toBeDefined();
   });
 });
