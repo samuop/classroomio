@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
+import { isPlatformAdminCondition } from '../organization/platform-access';
 
 export async function createGroup(values: TNewGroup, dbClient: DbOrTxClient = db) {
   try {
@@ -160,7 +161,15 @@ export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: 
       )
     )
     .where(
-      and(eq(schema.course.id, courseId), or(isNotNull(schema.groupmember.id), isNotNull(schema.organizationmember.id)))
+      and(
+        eq(schema.course.id, courseId),
+        or(
+          isNotNull(schema.groupmember.id),
+          isNotNull(schema.organizationmember.id),
+          // The platform operator administers every organization (see platform-access.ts).
+          isPlatformAdminCondition(profileId)
+        )
+      )
     )
     .limit(1);
 
@@ -216,7 +225,15 @@ export const isCourseTeamMemberOrOrgAdmin = async (courseId: string, profileId: 
       )
     )
     .where(
-      and(eq(schema.course.id, courseId), or(isNotNull(schema.groupmember.id), isNotNull(schema.organizationmember.id)))
+      and(
+        eq(schema.course.id, courseId),
+        or(
+          isNotNull(schema.groupmember.id),
+          isNotNull(schema.organizationmember.id),
+          // The platform operator administers every organization (see platform-access.ts).
+          isPlatformAdminCondition(profileId)
+        )
+      )
     )
     .limit(1);
 

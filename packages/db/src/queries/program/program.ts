@@ -1,9 +1,10 @@
 import * as schema from '@db/schema';
 
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
+import { isPlatformAdminCondition } from '../organization/platform-access';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -290,9 +291,9 @@ export async function getProgramMemberRole(programId: string, profileId: string)
 export async function isOrgAdminByProgramId(programId: string, profileId: string): Promise<boolean> {
   try {
     const result = await db
-      .select({ orgMemberId: schema.organizationmember.id })
+      .select({ programId: schema.program.id })
       .from(schema.program)
-      .innerJoin(
+      .leftJoin(
         schema.organizationmember,
         and(
           eq(schema.organizationmember.organizationId, schema.program.organizationId),
@@ -300,7 +301,13 @@ export async function isOrgAdminByProgramId(programId: string, profileId: string
           eq(schema.organizationmember.roleId, ROLE.ADMIN)
         )
       )
-      .where(eq(schema.program.id, programId))
+      .where(
+        and(
+          eq(schema.program.id, programId),
+          // The platform operator administers every organization (see platform-access.ts).
+          or(isNotNull(schema.organizationmember.id), isPlatformAdminCondition(profileId))
+        )
+      )
       .limit(1);
     return result.length > 0;
   } catch (error) {

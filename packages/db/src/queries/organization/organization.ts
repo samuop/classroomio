@@ -13,6 +13,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql }
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
 import type { TAudienceSortBy, TAudienceSortOrder } from '@cio/utils/validation/organization';
+import { isPlatformAdmin, operatesOrganization, selectLiveOrganizations } from './platform-access';
 
 export function getOrgIdBySiteName(siteName: string) {
   return db
@@ -81,6 +82,51 @@ export function orgIdsAdministeredBy(rolesByOrgId: Record<string, number>): stri
     .map(([orgId]) => orgId);
 }
 
+type OrganizationSwitcherEntry = {
+  organization: typeof schema.organization.$inferSelect;
+  memberId: number | undefined;
+  roleId: number | undefined;
+  plans: Array<OrganizationPlan>;
+};
+
+/**
+ * Adds organizations reached through a derived grant, with their plans, in one
+ * query. No membership row exists for them — the access is derived, not granted.
+ */
+async function addDerivedAdminEntries(
+  organizationMap: Map<string, OrganizationSwitcherEntry>,
+  organizations: Array<typeof schema.organization.$inferSelect>
+) {
+  if (organizations.length === 0) return;
+
+  const plans = await db
+    .select()
+    .from(schema.organizationPlan)
+    .where(
+      inArray(
+        schema.organizationPlan.orgId,
+        organizations.map((org) => org.id)
+      )
+    );
+
+  for (const org of organizations) {
+    organizationMap.set(org.id, {
+      organization: org,
+      memberId: undefined,
+      roleId: ROLE.ADMIN,
+      plans: plans
+        .filter((plan) => plan.orgId === org.id)
+        .map((plan) => ({
+          planName: plan.planName,
+          isActive: plan.isActive,
+          provider: plan.provider,
+          subscriptionId: plan.subscriptionId,
+          customerId: (plan.payload as { customerId?: string } | null)?.customerId ?? null
+        }))
+    });
+  }
+}
+
 export const getOrganizationByProfileId = async (profileId: string): Promise<OrganizationWithMemberAndPlans[]> => {
   const result = await db
     .select({
@@ -105,15 +151,7 @@ export const getOrganizationByProfileId = async (profileId: string): Promise<Org
     .where(and(eq(schema.organizationmember.profileId, profileId), isNull(schema.organization.deletedAt)));
 
   // Group by organization and collect plans into an array
-  const organizationMap = new Map<
-    string,
-    {
-      organization: typeof schema.organization.$inferSelect;
-      memberId: number | undefined;
-      roleId: number | undefined;
-      plans: Array<OrganizationPlan>;
-    }
-  >();
+  const organizationMap = new Map<string, OrganizationSwitcherEntry>();
 
   for (const row of result) {
     const orgId = row.organization.id;
@@ -155,34 +193,19 @@ export const getOrganizationByProfileId = async (profileId: string): Promise<Org
   );
 
   const children = (await selectChildOrganizations(administered)).filter((child) => !organizationMap.has(child.id));
+  await addDerivedAdminEntries(organizationMap, children);
 
-  if (children.length > 0) {
-    const childPlans = await db
-      .select()
-      .from(schema.organizationPlan)
-      .where(
-        inArray(
-          schema.organizationPlan.orgId,
-          children.map((child) => child.id)
-        )
-      );
+  // The platform operator reaches every live organization (see
+  // `platform-access.ts`), and this list is how that access becomes reachable,
+  // for the same reason as the client companies above. Where the operator also
+  // holds a real membership, the switcher shows the role the server enforces —
+  // ADMIN — rather than the row's.
+  if (await isPlatformAdmin(profileId)) {
+    const others = (await selectLiveOrganizations()).filter((org) => !organizationMap.has(org.id));
+    await addDerivedAdminEntries(organizationMap, others);
 
-    for (const child of children) {
-      organizationMap.set(child.id, {
-        organization: child,
-        // No membership row exists — the access is derived, not granted.
-        memberId: undefined,
-        roleId: ROLE.ADMIN,
-        plans: childPlans
-          .filter((plan) => plan.orgId === child.id)
-          .map((plan) => ({
-            planName: plan.planName,
-            isActive: plan.isActive,
-            provider: plan.provider,
-            subscriptionId: plan.subscriptionId,
-            customerId: (plan.payload as { customerId?: string } | null)?.customerId ?? null
-          }))
-      });
+    for (const data of organizationMap.values()) {
+      data.roleId = ROLE.ADMIN;
     }
   }
 
@@ -551,7 +574,10 @@ export const isUserOrgAdmin = async (orgId: string, profileId: string): Promise<
     )
     .limit(1);
 
-  return result.length > 0;
+  if (result.length > 0) return true;
+
+  // The platform operator administers every live organization (see platform-access.ts).
+  return operatesOrganization(profileId, orgId);
 };
 
 /**
@@ -567,7 +593,12 @@ export const getUserOrgRole = async (orgId: string, profileId: string): Promise<
     .where(and(eq(schema.organizationmember.organizationId, orgId), eq(schema.organizationmember.profileId, profileId)))
     .limit(1);
 
-  return result.length > 0 ? Number(result[0].roleId) : null;
+  const role = result.length > 0 ? Number(result[0].roleId) : null;
+  if (role === ROLE.ADMIN) return role;
+
+  // The platform operator administers every live organization, whatever row it
+  // may also hold there (see platform-access.ts).
+  return (await operatesOrganization(profileId, orgId)) ? ROLE.ADMIN : role;
 };
 
 /**
@@ -603,6 +634,15 @@ export const getUserOrgRolesMap = async (profileId: string): Promise<Record<stri
       map[child.id] = ROLE.ADMIN;
     }
 
+    // The platform operator administers every live organization — the same
+    // derivation, as wide as it goes (see platform-access.ts). Written last and
+    // over whatever the person holds, which again can only add power.
+    if (await isPlatformAdmin(profileId)) {
+      for (const org of await selectLiveOrganizations()) {
+        map[org.id] = ROLE.ADMIN;
+      }
+    }
+
     return map;
   } catch (error) {
     console.error('getUserOrgRolesMap error:', error);
@@ -629,7 +669,10 @@ export const isUserOrgTeamMember = async (orgId: string, profileId: string): Pro
     )
     .limit(1);
 
-  return result.length > 0;
+  if (result.length > 0) return true;
+
+  // The platform operator administers every live organization (see platform-access.ts).
+  return operatesOrganization(profileId, orgId);
 };
 
 /**

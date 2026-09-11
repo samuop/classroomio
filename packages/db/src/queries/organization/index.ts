@@ -6,3 +6,4 @@ export * from './automation-usage';
 export * from './tracking';
 export * from './clients';
 export * from './email-template';
+export * from './platform-access';
