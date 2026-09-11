@@ -16,6 +16,21 @@ export const emptyParam = z.object({});
 
 export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string().default('en') });
 
+/**
+ * Leer varias lecciones de una vez, como texto. Es para escribir preguntas que
+ * salgan de lo que las lecciones dicen: el constructor ya no las escribe él
+ * mismo, así que no tiene su texto. Hasta 12 por llamada alcanza para una
+ * sección entera, o para un bloque del examen final, en un solo paso.
+ */
+export const readLessonsParam = z.object({
+  lessonIds: z
+    .array(z.string())
+    .min(1)
+    .max(12)
+    .describe('Ids of the lessons to read, copied from get_course_structure or from a tool result.'),
+  locale: z.string().default('en').describe('The course locale from the Current Context.')
+});
+
 // RAG for edits (step 6): search relevant fragments of an attached document
 // instead of reading the whole thing. documentId is injected from context.
 export const searchDocumentParam = z.object({
@@ -26,7 +41,46 @@ export const searchDocumentParam = z.object({
     .describe('What to look for in the attached document (a topic, concept, or question).'),
   limit: z.number().int().min(1).max(10).default(6)
 });
+/**
+ * Leer una fuente del curso, por tramos.
+ *
+ * `offset`/`limit` en LÍNEAS y no en caracteres porque es lo que el modelo puede
+ * seguir sin llevar la cuenta: la lectura vuelve numerada, así que continuar es
+ * pedir desde la última línea que vio.
+ */
+export const readSourceParam = z.object({
+  sourceId: z
+    .string()
+    .min(1)
+    .describe('The id of the source, copied exactly from the "## Course Sources — index" list.'),
+  offset: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe('First line to read (1-based). Omit to start at the beginning.'),
+  limit: z.number().int().min(1).max(2000).optional().describe('How many lines to read. Defaults to 600.')
+});
+
 export const exerciseReadParam = z.object({ exerciseId: z.string() });
+
+/**
+ * Borrar exige decir QUÉ se borra, no sólo cuál id.
+ *
+ * `confirmTitle` no es cortesía: es el único control que atrapa el error que de
+ * verdad ocurre, que es un id equivocado. Un id equivocado apunta a otra fila, y
+ * esa fila casi nunca se llama igual. Ver `deletion.ts`.
+ */
+const confirmTitleParam = z
+  .string()
+  .min(1)
+  .describe(
+    'The exact current title of the item you are deleting, copied from get_course_structure. The server refuses the delete if it does not match the row this id points at — that is what stops a wrong id from destroying the wrong work.'
+  );
+
+export const deleteLessonParam = z.object({ lessonId: z.string(), confirmTitle: confirmTitleParam });
+export const deleteExerciseParam = z.object({ exerciseId: z.string(), confirmTitle: confirmTitleParam });
+export const deleteSectionParam = z.object({ sectionId: z.string(), confirmTitle: confirmTitleParam });
 
 /**
  * Ties a create_* call back to the plan item it implements. Optional and free of
@@ -84,6 +138,49 @@ export const createLessonParam = z.object({
     .default('en')
     .describe('Locale for `content` — pass the course locale from the Current Context. Ignored when `content` is omitted.')
 });
+/**
+ * Escribir una lección con el sub-agente escritor.
+ *
+ * La entrada es CHICA a propósito, y es la mitad del beneficio: el agente que
+ * construye el curso manda una consigna y una lista de fuentes, no veinte mil
+ * caracteres de HTML. Esa entrada queda en su contexto por el resto de la ronda;
+ * con `create_lesson` + `content`, a la lección doce arrastraba las once
+ * anteriores enteras.
+ *
+ * Un solo objeto con `.refine` y no una unión: la unión se serializa como
+ * `anyOf`, y el mismo archivo documenta más abajo que el modelo, antes que
+ * armarla mal, prefiere omitir la clave entera.
+ */
+export const writeLessonParam = z
+  .object({
+    lessonId: z
+      .string()
+      .optional()
+      .describe('Rewrite this existing lesson. Omit it to create a new lesson with sectionId, title and order.'),
+    sectionId: z.string().optional().describe('Section for a new lesson.'),
+    title: z.string().min(1).optional().describe('Title for a new lesson.'),
+    order: z.number().int().min(0).optional().describe('Order of a new lesson within its section.'),
+    planKey: planKeyParam,
+    locale: z
+      .string()
+      .default('en')
+      .describe('The course locale from the Current Context. The lesson is written in it.'),
+    brief: z
+      .string()
+      .min(1)
+      .describe(
+        'What this lesson must teach: its description from the plan, plus anything the teacher asked for it. The writer sees ONLY this brief, the course outline and the sources you list — so be specific about scope, and about what the neighbouring lessons already cover.'
+      ),
+    sources: z
+      .array(z.string())
+      .describe(
+        'The sources for this lesson exactly as the approved plan declared them (file names or ids from the Course Sources list). An empty array means the teacher agreed it is written from general professional knowledge.'
+      )
+  })
+  .refine((d) => !!d.lessonId || (!!d.sectionId && !!d.title && d.order !== undefined), {
+    message: 'Pass lessonId to rewrite an existing lesson, or sectionId + title + order to create a new one.'
+  });
+
 export const updateLessonParam = z
   .object({
     lessonId: z.string(),

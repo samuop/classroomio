@@ -40,6 +40,13 @@
   import { DefaultChatTransport } from 'ai';
   import { courseApi, lessonApi } from '$features/course/api';
   import { getMentionableContent } from '$features/course/utils/content';
+  import {
+    getMentionRoute,
+    resolveMention,
+    type MentionRef,
+    type MentionTarget
+  } from '$features/ai-assistant/utils/mentions';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
   import { getRequestBaseUrl, apiClient } from '$lib/utils/services/api';
   import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
@@ -802,8 +809,37 @@
     void handleSend();
   });
 
-  function handleMentionClick(route: string) {
-    goto(resolve(route, {}));
+  /**
+   * Where a click on one of the agent's links goes.
+   *
+   * The render already repaired what it could (see `resolveMention`), but it
+   * ran against the course as the chat had it at that moment — and right after
+   * a build, the lesson the agent just wrote may not be loaded yet. So a link
+   * that could not be verified is checked again here, after refreshing the
+   * course once, instead of being trusted or thrown away. Only if it is still
+   * nowhere does the teacher get a message, rather than a page that does not
+   * exist.
+   */
+  async function handleMentionClick(route: string, mention?: MentionRef) {
+    if (!mention || !courseId) {
+      goto(resolve(route, {}));
+      return;
+    }
+
+    let resolution = resolveMention(mention, mentionTargets);
+    const profileId = $profile.id;
+
+    if (resolution.status === 'unknown' && profileId) {
+      await courseApi.refreshCourse(courseId, profileId);
+      resolution = resolveMention(mention, buildMentionTargets());
+    }
+
+    if (resolution.status === 'unknown') {
+      snackbar.error(t.get('ai_assistant.mention_not_found', { title: mention.title }));
+      return;
+    }
+
+    goto(resolve(getMentionRoute(courseId, resolution.type, resolution.id), {}));
   }
 
   const isStreaming = $derived(chat.status === 'streaming' || chat.status === 'submitted');
@@ -919,6 +955,17 @@
       type: item.type
     }))
   );
+
+  /** The course as the agent's links are checked against it. See `resolveMention`. */
+  function buildMentionTargets(): MentionTarget[] {
+    return getMentionableContent(courseApi.course).map((item) => ({
+      id: item.id,
+      title: item.title,
+      type: String(item.type).toLowerCase() as MentionTarget['type']
+    }));
+  }
+
+  const mentionTargets = $derived(buildMentionTargets());
 
   // Show an activity card whenever the agent calls any tool.
   // Hides automatically once the agent finishes cleanly; stays visible if stopped mid-way.
@@ -1173,6 +1220,7 @@
     onRetryStep={handleRetryStep}
     onResume={handleResume}
     onMentionClick={handleMentionClick}
+    {mentionTargets}
   />
 
   <!--

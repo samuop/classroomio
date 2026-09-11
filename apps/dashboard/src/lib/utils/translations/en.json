@@ -4167,8 +4167,8 @@
       "download_aria": "Download the original file",
       "reconciling": "Updating…",
       "read_mark": "Read",
-      "read_inline": "Small: the assistant reads it whole on every request.",
-      "read_cacheable": "Large enough that the provider will serve it from its cache once the assistant uses it.",
+      "read_inline": "It's small: when the assistant needs it, it reads all of it.",
+      "read_cacheable": "It's large: when the assistant reads all of it, the provider can serve it from its cache.",
       "read_cached": "The provider is serving it from its cache.",
       "read_over_limit": "Past the course's material limit: the assistant only reads part of it."
     },
@@ -5203,7 +5203,13 @@
         "search_web": "Searching the web",
         "search_web_with_query": "Searching: {query}",
         "generate_image": "Generating an image",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "read_source": "Reading the source material",
+        "delete_lesson": "Deleting a lesson",
+        "delete_exercise": "Deleting an exercise",
+        "delete_section": "Deleting a section",
+        "write_lesson": "Writing the lesson from its material",
+        "read_lessons": "Reading the lessons"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -5240,7 +5246,12 @@
         "fetch_documentation_url": "Read {url}",
         "search_web": "Search “{query}”: {count, plural, one {# result} other {# results}}",
         "generate_image": "Generated an image",
-        "replace_lesson_block_fallback": "Edited the lesson ({count, plural, one {# character} other {# characters}})"
+        "replace_lesson_block_fallback": "Edited the lesson ({count, plural, one {# character} other {# characters}})",
+        "read_source": "Read \"{title}\" (lines {from}–{to} of {total})",
+        "delete_lesson": "Lesson deleted: {title}",
+        "delete_exercise": "Exercise deleted: {title}",
+        "delete_section": "Section deleted: {title}",
+        "read_lessons": "Read {count, plural, one {# lesson} other {# lessons}}"
       }
     },
     "mention_lesson": "Lesson",
@@ -5266,7 +5277,9 @@
     "context_compacted_badge": "Conversation compacted ({count} earlier messages)",
     "plan_incomplete_notice": "{pending} item(s) still missing and {empty} empty. Click Continue to have the assistant finish the plan.",
     "plan_estimated_cost_pct": "Estimated cost: ~{pct}% of what's left",
-    "context_usage_tooltip_pct": "Context window in use: {pct}%"
+    "context_usage_tooltip_pct": "Context window in use: {pct}%",
+    "mention_not_found": "Could not find “{title}” in this course: it may have been deleted, or the link is wrong.",
+    "writer_notes_title": "To review in these lessons"
   },
   "side_panel": {
     "close_aria": "Close panel",

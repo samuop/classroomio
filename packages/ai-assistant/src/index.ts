@@ -64,6 +64,7 @@ export {
   buildStudentContextMessage,
   SVG_DIAGRAM_RULES,
   MATH_FORMULA_RULES,
+  buildLessonWriterPrompt,
   IMAGE_GENERATION_RULES
 } from './prompt';
 export type { TeacherPromptMode } from './prompt/teacher';

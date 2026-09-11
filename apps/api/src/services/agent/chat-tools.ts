@@ -5,28 +5,46 @@ import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
+import { listChatDocumentsByCourse } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
-import { listCourseSections, createCourseSection, updateCourseSectionService } from '@api/services/course/section';
-import { createLesson, getLesson, updateLessonService } from '@api/services/lesson/lesson';
+import {
+  listCourseSections,
+  createCourseSection,
+  updateCourseSectionService,
+  deleteCourseSectionService
+} from '@api/services/course/section';
+import { createLesson, getLesson, updateLessonService, deleteLessonService } from '@api/services/lesson/lesson';
 import { upsertLessonLanguageService } from '@api/services/lesson-language';
 import {
   createExercise,
   getExercise,
   createExerciseSectionService,
   updateExerciseService,
-  updateExerciseSectionMetadataService
+  updateExerciseSectionMetadataService,
+  deleteExerciseForCourseService
 } from '@api/services/exercise/exercise';
 import { reorderCourseContent } from '@api/services/course/content';
 import {
   convertMarkdownMathToKatex,
   normalizeAgentLessonContent,
   repairSvgGeometry,
-  validateLessonDepth,
   validateLessonMath,
   validateLessonVisuals,
   validateSvgDiagram
 } from '@api/services/agent/lesson-content';
+import type { RedisClient } from '@api/utils/redis/redis';
+import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
+import {
+  avisoLeerAntes,
+  leccionesSinLeer,
+  MAX_LECTURA_LECCIONES_CHARS,
+  type LeccionObjetivo
+} from '@api/services/agent/exercise-reading';
+import type { EscritorDeLecciones } from '@api/services/agent/lesson-writer';
+import { avisoDeCobertura, medirCobertura } from '@api/services/agent/plan-coverage';
+import { avisoDeConfirmacion, confirmacionCoincide } from '@api/services/agent/deletion';
+import { leerFuente } from '@api/services/agent/source-index';
 import { generateLessonImage, MAX_IMAGES_PER_ROUND } from '@api/services/agent/image-generation';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
@@ -47,6 +65,9 @@ import {
   createExerciseSectionParam,
   createLessonParam,
   createSectionParam,
+  deleteExerciseParam,
+  deleteLessonParam,
+  deleteSectionParam,
   editContentParam,
   emptyParam,
   exerciseReadParam,
@@ -54,6 +75,8 @@ import {
   generateImageParam,
   goLiveParam,
   lessonReadParam,
+  readLessonsParam,
+  readSourceParam,
   reorderContentParam,
   replaceBlockParam,
   updateContentParam,
@@ -64,7 +87,8 @@ import {
   updateExerciseSectionParam,
   updateLessonParam,
   updateQuestionsParam,
-  updateSectionParam
+  updateSectionParam,
+  writeLessonParam
 } from '@api/services/agent/agent-tool-schemas';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 import { searchWeb } from '@api/services/agent/web-search';
@@ -130,14 +154,18 @@ async function writeLessonBody(params: {
   lessonTitle: string;
   locale: string;
   content: string;
-  /** Only a full build gets the thin-lesson check — see `buildAgentTools`. */
-  checkDepth?: boolean;
+  /** Sólo una construcción completa pide una ilustración — ver `buildAgentTools`. */
+  isBuilding?: boolean;
+  /** El chequeo de fundamento, si esta ronda lo tiene. Ver `grounding.ts`. */
+  verificarFundamento?: Verificador;
+  /** Lo que tuvo delante quien escribió, si se sabe: se contrasta contra eso. */
+  fuentesDeLaLeccion?: FuenteVista[];
 }): Promise<{
   normalizedContent: string;
   svgWarnings: string[];
   mathWarnings: string[];
-  depthWarnings: string[];
   visualWarnings: string[];
+  groundingWarnings: string[];
 }> {
   const normalizedContent = normalizeAgentLessonContent(params.content, params.lessonTitle);
 
@@ -146,9 +174,22 @@ async function writeLessonBody(params: {
     content: normalizedContent
   });
 
+  // El chequeo de fundamento sale a la red, así que arranca ANTES de las
+  // comprobaciones locales y se espera al final: los avisos de SVG y de fórmulas
+  // son puro cómputo y no tienen por qué hacer cola detrás de una llamada al
+  // proveedor.
+  const fundamento =
+    params.isBuilding && params.verificarFundamento
+      ? params.verificarFundamento({
+          lessonTitle: params.lessonTitle,
+          contenido: normalizedContent,
+          soloFuentes: params.fuentesDeLaLeccion
+        })
+      : Promise.resolve<string[]>([]);
+
   // Problems the prompt forbids but nothing used to catch (labels below the
   // readable size, rows stacked on top of each other, formulas KaTeX will never
-  // reach, a lesson too thin to teach from). Reported rather than repaired:
+  // reach). Reported rather than repaired:
   // fixing an overlap means moving a label, which needs to know what the diagram
   // is saying. Handing the warning back lets the model correct its own work
   // instead of shipping it broken.
@@ -156,11 +197,10 @@ async function writeLessonBody(params: {
     normalizedContent,
     svgWarnings: validateSvgDiagram(normalizedContent),
     mathWarnings: validateLessonMath(normalizedContent),
-    depthWarnings: params.checkDepth ? validateLessonDepth(normalizedContent) : [],
-    // Same gate as depth, and for the same reason: during a build an all-prose
-    // lesson is a defect, but a teacher editing one lesson by hand may well want
-    // exactly the paragraph they asked for and nothing else.
-    visualWarnings: params.checkDepth ? validateLessonVisuals(normalizedContent) : []
+    // Sólo durante una construcción: un docente que edita una lección a mano
+    // puede querer exactamente el párrafo que pidió y nada más.
+    visualWarnings: params.isBuilding ? validateLessonVisuals(normalizedContent) : [],
+    groundingWarnings: await fundamento
   };
 }
 
@@ -168,25 +208,28 @@ async function writeLessonBody(params: {
 function contentWarningFields(warnings: {
   svgWarnings: string[];
   mathWarnings: string[];
-  depthWarnings?: string[];
   visualWarnings?: string[];
+  groundingWarnings?: string[];
 }) {
-  const depthWarnings = warnings.depthWarnings ?? [];
   const visualWarnings = warnings.visualWarnings ?? [];
+  const groundingWarnings = warnings.groundingWarnings ?? [];
   const notes: string[] = [];
+  // El fundamento va primero a propósito. Los otros tres avisos son sobre cómo
+  // se ve la lección; éste es sobre si lo que dice es cierto, y si hay que
+  // elegir uno solo para atender, es ése.
+  if (groundingWarnings.length > 0) notes.push('parts of it are not supported by the sources');
   if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
-  if (depthWarnings.length > 0) notes.push('it is too thin to teach from');
   if (visualWarnings.length > 0) notes.push('it has no diagram and no picture');
 
   if (notes.length === 0) return {};
 
   return {
+    ...(groundingWarnings.length > 0 ? { groundingWarnings } : {}),
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
-    ...(depthWarnings.length > 0 ? { depthWarnings } : {}),
     ...(visualWarnings.length > 0 ? { visualWarnings } : {}),
-    note: `The lesson was saved, but ${notes.join(' and ')}. Fix that now with edit_lesson_content before moving on.`
+    note: `The lesson was saved, but ${notes.join(', and ')}. Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.`
   };
 }
 
@@ -334,11 +377,29 @@ export function buildAgentTools(
     conversationId?: string | null;
     searchableDocumentId?: string | null;
     isBuilding?: boolean;
+    /**
+     * Contrasta cada leccion escrita contra las fuentes del curso. Ausente
+     * cuando el curso no tiene ninguna, o cuando el chequeo esta apagado.
+     */
+    verificarFundamento?: Verificador;
+    /** Necesario para `read_source`: el texto de las fuentes vive cacheado ahí. */
+    redis?: RedisClient;
+    /** El sub-agente que escribe una lección con contexto limpio. Ver `lesson-writer.ts`. */
+    escribirLeccion?: EscritorDeLecciones;
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
   const searchableDocumentId = _options?.searchableDocumentId ?? null;
   const isBuilding = _options?.isBuilding ?? false;
+  const verificarFundamento = _options?.verificarFundamento;
+  const redisParaFuentes = _options?.redis;
+  const escribirLeccion = _options?.escribirLeccion;
+
+  // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
+  // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
+  // otro. Es lo que controla que las preguntas salgan de lo que la lección dice.
+  // Ver `exercise-reading.ts`.
+  const leccionesConocidas = new Set<string>();
 
   // Images are the only tool here that spends money per call rather than per
   // token, so the guard has to live where the calls are counted. The tool set is
@@ -393,7 +454,115 @@ export function buildAgentTools(
     }
   }
 
+  /**
+   * La lección de un ítem del plan: la que ya se construyó para él, o una nueva.
+   *
+   * Compartida por `create_lesson` y `write_lesson` para que no puedan divergir
+   * en lo único que importa acá, que es no duplicar. Con una copia en cada una,
+   * el primer arreglo de idempotencia llegaría a una sola.
+   */
+  async function crearOReusarLeccion(args: {
+    sectionId: string;
+    title: string;
+    order: number;
+    planKey?: string;
+  }): Promise<{ id: string; title: string; order: number; reused: boolean }> {
+    await verifySectionBelongsToCourse(args.sectionId, courseId);
+
+    const boundId = await findBoundEntity(args.planKey, 'lesson');
+
+    if (boundId) {
+      // getLesson throws when missing; the binding was just verified, so a
+      // failure here is a race, not a real absence — fall back to the args.
+      const existing = await getLesson(boundId).catch(() => null);
+
+      return {
+        id: boundId,
+        title: existing?.title ?? args.title,
+        order: existing?.order ?? args.order,
+        reused: true
+      };
+    }
+
+    const lesson = await createLesson(courseId, {
+      title: args.title,
+      courseId,
+      sectionId: args.sectionId,
+      order: args.order
+    });
+    // Bind before writing the body: if the content write fails, the retry has to
+    // find this lesson and fill it, not create a second one.
+    await recordBinding(args.planKey, lesson.id);
+
+    return { id: lesson.id, title: lesson.title ?? args.title, order: lesson.order ?? args.order, reused: false };
+  }
+
+  /**
+   * Las lecciones cuyo contenido cubre un ejercicio: la suya si está atado a
+   * una, o las de su sección. Vacío cuando no hay ninguna: el examen final vive
+   * en una sección sin lecciones, y ahí el control no tiene contra qué comparar
+   * (lo cubre el prompt, que manda leer cada sección antes de su bloque).
+   */
+  async function leccionesQueCubre(params: { lessonId?: string; sectionId?: string }): Promise<LeccionObjetivo[]> {
+    if (!params.lessonId && !params.sectionId) return [];
+
+    const items = await getCourseContentItems(courseId);
+
+    if (params.lessonId) {
+      const leccion = items.find((item) => item.id === params.lessonId);
+
+      return [{ id: params.lessonId, title: leccion?.title ?? null }];
+    }
+
+    return items
+      .filter((item) => item.sectionId === params.sectionId && String(item.type).toLowerCase() === 'lesson')
+      .map((item) => ({ id: item.id, title: item.title }));
+  }
+
   return {
+    read_source: tool({
+      description:
+        'Read one of the source documents the teacher attached to this course, by id from the "## Course Sources — index" list. Returns the text with line numbers, in pages: pass `offset` (the line to start at) and `limit` to keep reading a long document. Read the source BEFORE writing anything that claims to come from it — the index tells you what exists, this tells you what it says.',
+      inputSchema: readSourceParam,
+      execute: async (args) => {
+        return executeAgentTool('read_source', { orgId, userId, courseId, args }, async () => {
+          if (!redisParaFuentes) {
+            throw new Error('Source reading is unavailable on this turn.');
+          }
+
+          const lectura = await leerFuente({
+            documentId: args.sourceId,
+            courseId,
+            userId,
+            redis: redisParaFuentes,
+            offset: args.offset,
+            limit: args.limit
+          });
+
+          if (!lectura) {
+            // Devuelto como resultado y no lanzado: el modelo lo lee, corrige el
+            // id contra el índice y reintenta dentro de la misma ronda.
+            throw new Error(
+              `No source with id "${args.sourceId}" belongs to this course. Copy an id from the "## Course Sources — index" list — do not invent one.`
+            );
+          }
+
+          return {
+            fileName: lectura.fileName,
+            fromLine: lectura.desdeLinea,
+            toLine: lectura.hastaLinea,
+            totalLines: lectura.totalLineas,
+            content: lectura.content,
+            ...(lectura.hayMas
+              ? {
+                  more: `${lectura.totalLineas - lectura.hastaLinea} more line(s). Call read_source again with offset ${lectura.hastaLinea + 1} to continue.`
+                }
+              : {})
+          };
+        });
+      }
+    }),
+
     search_document: tool({
       description:
         'Search the attached reference document for the fragments most relevant to a query, instead of reading the whole document. Use this when editing or extending a course from an attached document: search for the specific topic/section you need, then write from the returned fragments. Returns the top matching passages.',
@@ -501,6 +670,7 @@ export function buildAgentTools(
           };
           const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale);
           const content = langContent?.content || null;
+          leccionesConocidas.add(args.lessonId);
           // The ids are already in the HTML above; listing them separately saves
           // the model from parsing them out, and is cheap — id plus a short
           // preview, not the block bodies again.
@@ -512,6 +682,69 @@ export function buildAgentTools(
             content,
             locale: args.locale,
             ...(blocks.length > 0 ? { blocks } : {})
+          };
+        });
+      }
+    }),
+
+    read_lessons: tool({
+      description:
+        'Read the text of up to 12 lessons of this course at once, as plain text: no HTML, diagram labels kept as [diagram: …]. Use it before writing exercise questions — they must test what the lessons actually say — and to check what other lessons already cover. To EDIT a lesson use get_lesson_content instead: it returns the HTML and the block ids.',
+      inputSchema: readLessonsParam,
+      execute: async (args) => {
+        return executeAgentTool('read_lessons', { orgId, userId, courseId, args }, async () => {
+          const items = await getCourseContentItems(courseId);
+          const lessons: Array<{ id: string; title: string | null; text: string }> = [];
+          const noEncontradas: string[] = [];
+          const recortadas: string[] = [];
+          let usados = 0;
+
+          for (const id of [...new Set(args.lessonIds)]) {
+            const item = items.find((i) => i.id === id && String(i.type).toLowerCase() === 'lesson');
+
+            if (!item) {
+              noEncontradas.push(id);
+              continue;
+            }
+
+            const lesson = (await getLesson(id)) as {
+              lessonLanguages?: Array<{ locale: string; content: string | null }>;
+            };
+            const html = lesson.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+            let texto = html ? textoDeLeccion(html) : '';
+            const lugar = MAX_LECTURA_LECCIONES_CHARS - usados;
+            const recortada = texto.length > lugar;
+
+            if (recortada) {
+              texto = `${texto.slice(0, Math.max(0, lugar))} […]`;
+              recortadas.push(item.title ?? id);
+            }
+
+            usados += texto.length;
+
+            // Una lección cortada no cuenta como leída: el modelo no vio el
+            // resto, y el control de preguntas le va a pedir que la lea entera
+            // en otra llamada, donde sí entra.
+            if (!recortada) leccionesConocidas.add(id);
+
+            lessons.push({ id, title: item.title, text: texto || '(This lesson has no content in this locale yet.)' });
+          }
+
+          return {
+            count: lessons.length,
+            lessons,
+            ...(noEncontradas.length > 0
+              ? {
+                  notFound: noEncontradas,
+                  note: 'These ids are not lessons of this course. Copy lesson ids from get_course_structure — never invent them.'
+                }
+              : {}),
+            ...(recortadas.length > 0
+              ? {
+                  truncated: recortadas,
+                  truncatedNote: 'The read budget ran out and these lessons were cut. Read them again in a separate call.'
+                }
+              : {})
           };
         });
       }
@@ -573,37 +806,33 @@ export function buildAgentTools(
 
     create_lesson: tool({
       description:
-        'Create a new lesson within a section of this course, and write its content in the SAME call by passing `content`. That one-call form is the normal way to build a planned lesson — creating the lesson empty and filling it with a follow-up update_lesson_content costs an extra round trip for nothing. Use update_lesson_content only to rewrite a lesson that already exists.',
+        'Create a new lesson within a section of this course, optionally writing its content in the SAME call by passing `content`. While building an approved plan, write lessons with write_lesson instead: it keeps the lesson HTML out of your context. Use create_lesson with `content` for a lesson you write yourself — a one-off, or the fallback when write_lesson fails. Creating a lesson empty and filling it with a follow-up update_lesson_content costs an extra round trip for nothing.',
       inputSchema: createLessonParam,
       execute: async (args) => {
         return executeAgentTool('create_lesson', { orgId, userId, courseId, args }, async () => {
-          await verifySectionBelongsToCourse(args.sectionId, courseId);
+          const leccion = await crearOReusarLeccion(args);
 
-          const boundId = await findBoundEntity(args.planKey, 'lesson');
-
-          if (boundId) {
-            // getLesson throws when missing; the binding was just verified, so a
-            // failure here is a race, not a real absence — fall back to the args.
-            const existing = await getLesson(boundId).catch(() => null);
-            const title = existing?.title ?? args.title;
-
+          if (leccion.reused) {
             // A retry after an interrupted round lands here. It still carries the
             // body, and the lesson it belongs to may well be empty — so write it
             // rather than returning early and stranding the content.
             const written = args.content
               ? await writeLessonBody({
-                  lessonId: boundId,
-                  lessonTitle: title,
+                  lessonId: leccion.id,
+                  lessonTitle: leccion.title,
                   locale: args.locale,
                   content: args.content,
-                  checkDepth: isBuilding
+                  isBuilding,
+                  verificarFundamento
                 })
               : null;
 
+            if (written) leccionesConocidas.add(leccion.id);
+
             return {
-              id: boundId,
-              title,
-              order: existing?.order ?? args.order,
+              id: leccion.id,
+              title: leccion.title,
+              order: leccion.order,
               reused: true,
               ...(written
                 ? {
@@ -617,35 +846,118 @@ export function buildAgentTools(
             };
           }
 
-          const lesson = await createLesson(courseId, {
-            title: args.title,
-            courseId,
-            sectionId: args.sectionId,
-            order: args.order
-          });
-          // Bind before writing the body: if the content write fails, the retry
-          // has to find this lesson and fill it, not create a second one.
-          await recordBinding(args.planKey, lesson.id);
-
           if (!args.content) {
-            return { id: lesson.id, title: lesson.title, order: lesson.order };
+            return { id: leccion.id, title: leccion.title, order: leccion.order };
           }
 
           const written = await writeLessonBody({
-            lessonId: lesson.id,
-            lessonTitle: lesson.title,
+            lessonId: leccion.id,
+            lessonTitle: leccion.title,
             locale: args.locale,
             content: args.content,
-            checkDepth: isBuilding
+            isBuilding,
+            verificarFundamento
           });
+          leccionesConocidas.add(leccion.id);
 
           return {
-            id: lesson.id,
-            title: lesson.title,
-            order: lesson.order,
+            id: leccion.id,
+            title: leccion.title,
+            order: leccion.order,
             locale: args.locale,
             contentWritten: true,
             contentLength: written.normalizedContent.length,
+            ...contentWarningFields(written)
+          };
+        });
+      }
+    }),
+
+    write_lesson: tool({
+      description:
+        'Write ONE lesson through a dedicated writer that sees only the brief for this lesson, the course outline and the sources you list. While building an approved plan, this is how every lesson gets written: you send a short brief plus the sources the plan declared for it — never the lesson HTML — so your own context stays small for the whole course. Pass sectionId + title + order + planKey to create a lesson, or lessonId to rewrite one. The result carries the same checks as any saved lesson (diagrams, formulas, and grounding against exactly the sources the writer saw) and, when there is one, a writerNote about what the writer could not cover: pass that note on to the teacher.',
+      inputSchema: writeLessonParam,
+      execute: async (args) => {
+        return executeAgentTool('write_lesson', { orgId, userId, courseId, args }, async () => {
+          if (!escribirLeccion) {
+            throw new Error(
+              'The lesson writer is unavailable on this turn. Write the lesson yourself with create_lesson + content.'
+            );
+          }
+
+          let leccion: { id: string; title: string; order: number | null | undefined; reused: boolean };
+
+          if (args.lessonId) {
+            await verifyLessonBelongsToCourse(args.lessonId, courseId);
+            const existente = await getLesson(args.lessonId);
+            leccion = { id: args.lessonId, title: existente.title, order: existente.order, reused: false };
+          } else if (args.sectionId && args.title && args.order !== undefined) {
+            leccion = await crearOReusarLeccion({
+              sectionId: args.sectionId,
+              title: args.title,
+              order: args.order,
+              planKey: args.planKey
+            });
+          } else {
+            throw new Error('Pass lessonId to rewrite a lesson, or sectionId + title + order to create one.');
+          }
+
+          // Lo que ya tiene escrito, si algo. Al reescribir, el escritor tiene
+          // que conservar lo que la consigna no pide cambiar —y las imágenes—;
+          // en un reintento, no tirar lo que ya había quedado guardado.
+          const actual = (await getLesson(leccion.id).catch(() => null)) as {
+            lessonLanguages?: Array<{ locale: string; content: string | null }>;
+          } | null;
+          const contenidoActual =
+            actual?.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content || undefined;
+
+          let escrito;
+
+          try {
+            escrito = await escribirLeccion({
+              lessonTitle: leccion.title,
+              brief: args.brief,
+              locale: args.locale,
+              sources: args.sources,
+              contenidoActual
+            });
+          } catch (error) {
+            const motivo = error instanceof Error ? error.message : String(error);
+            const estado = contenidoActual ? 'keeps its previous content' : 'exists but is still empty';
+
+            throw new Error(
+              `The writer could not write "${leccion.title}": ${motivo} The lesson ${estado}. Retry write_lesson once; if it fails again, write it yourself with update_lesson_content.`
+            );
+          }
+
+          const written = await writeLessonBody({
+            lessonId: leccion.id,
+            lessonTitle: leccion.title,
+            locale: args.locale,
+            content: escrito.html,
+            // El escritor es un paso de construcción por naturaleza, en cualquier
+            // fase: el texto no lo dictó el docente, lo redactó un modelo a
+            // partir de fuentes. Así que corren los chequeos de construcción,
+            // fundamento incluido — contra lo que el escritor tuvo delante.
+            isBuilding: true,
+            verificarFundamento,
+            fuentesDeLaLeccion: escrito.material
+          });
+
+          return {
+            id: leccion.id,
+            lessonId: leccion.id,
+            title: leccion.title,
+            lessonTitle: leccion.title,
+            order: leccion.order,
+            locale: args.locale,
+            ...(leccion.reused ? { reused: true } : {}),
+            contentWritten: true,
+            contentLength: written.normalizedContent.length,
+            sourcesUsed: escrito.fuentesUsadas,
+            ...(escrito.fuentesNoEncontradas.length > 0 ? { sourcesNotFound: escrito.fuentesNoEncontradas } : {}),
+            ...(escrito.recortadas.length > 0 ? { sourcesTruncated: escrito.recortadas } : {}),
+            ...(escrito.nota ? { writerNote: escrito.nota } : {}),
             ...contentWarningFields(written)
           };
         });
@@ -692,8 +1004,10 @@ export function buildAgentTools(
             lessonTitle: lesson.title,
             locale: args.locale,
             content: args.content,
-            checkDepth: isBuilding
+            isBuilding,
+            verificarFundamento
           });
+          leccionesConocidas.add(args.lessonId);
 
           return {
             lessonId: args.lessonId,
@@ -863,7 +1177,8 @@ export function buildAgentTools(
     }),
 
     create_exercise: tool({
-      description: 'Create a new exercise with questions and answer options in this course.',
+      description:
+        'Create a new exercise with questions and answer options in this course. Its questions must test what the lessons it covers actually say: read those lessons first with read_lessons. The tool refuses questions for a lesson whose text you have not read in this round, and tells you which ids to read.',
       inputSchema: createExerciseParam,
       execute: async (args) => {
         return executeAgentTool('create_exercise', { orgId, userId, courseId, args }, async () => {
@@ -886,6 +1201,16 @@ export function buildAgentTools(
               reused: true,
               note: 'This plan item was already built. Reusing the existing exercise — add questions with add_questions instead of creating a duplicate.'
             };
+          }
+
+          // Leer antes de preguntar: ver `exercise-reading.ts`.
+          if (args.questions.length > 0) {
+            const sinLeer = leccionesSinLeer(
+              await leccionesQueCubre({ lessonId: args.lessonId, sectionId: args.sectionId }),
+              leccionesConocidas
+            );
+
+            if (sinLeer.length > 0) throw new Error(avisoLeerAntes(sinLeer));
           }
 
           const exercise = await createExercise({
@@ -993,7 +1318,7 @@ export function buildAgentTools(
 
     add_questions: tool({
       description:
-        'Add questions to an existing exercise in this course. When get_exercise_details lists in-exercise sections, pass exerciseSectionId so new questions are added to the correct block.',
+        'Add questions to an existing exercise in this course. When get_exercise_details lists in-exercise sections, pass exerciseSectionId so new questions are added to the correct block. Like create_exercise, it refuses questions for a lesson whose text you have not read in this round.',
       inputSchema: addQuestionsParam,
       execute: async (args) => {
         return executeAgentTool('add_questions', { orgId, userId, courseId, args }, async () => {
@@ -1015,6 +1340,19 @@ export function buildAgentTools(
           }
 
           const existingExercise = await getExercise(args.exerciseId);
+
+          if (args.questions.length > 0) {
+            const vinculo = existingExercise as { lessonId?: string | null; sectionId?: string | null };
+            const sinLeer = leccionesSinLeer(
+              await leccionesQueCubre({
+                lessonId: vinculo.lessonId ?? undefined,
+                sectionId: vinculo.sectionId ?? undefined
+              }),
+              leccionesConocidas
+            );
+
+            if (sinLeer.length > 0) throw new Error(avisoLeerAntes(sinLeer));
+          }
           const existingQuestions = existingExercise.questions || [];
           const nextOrder = existingQuestions.length;
 
@@ -1195,6 +1533,130 @@ export function buildAgentTools(
       }
     }),
 
+    /*
+     * Borrar. Ver `deletion.ts` para por qué cada una pide el título.
+     *
+     * Son tres y no una genérica a propósito: una herramienta
+     * `delete(type, id)` deja que un `type` equivocado apunte a la tabla que no
+     * era, y acá el costo de equivocarse no se puede deshacer.
+     */
+    delete_lesson: tool({
+      description:
+        'Delete a lesson from this course, permanently. This also destroys its content, any exercise attached to it, and any learner progress on it — there is no undo. Pass `confirmTitle` with the lesson’s exact current title from get_course_structure; the delete is refused if it does not match. Only delete when the teacher asked for it: emptying a lesson is update_lesson_content with new text, not this.',
+      inputSchema: deleteLessonParam,
+      execute: async (args) => {
+        return executeAgentTool('delete_lesson', { orgId, userId, courseId, args }, async () => {
+          await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          const lesson = await getLesson(args.lessonId);
+
+          if (!confirmacionCoincide(args.confirmTitle, lesson.title)) {
+            throw new Error(
+              avisoDeConfirmacion({
+                tipo: 'lesson',
+                id: args.lessonId,
+                declarado: args.confirmTitle,
+                real: lesson.title
+              })
+            );
+          }
+
+          await deleteLessonService(args.lessonId);
+
+          return {
+            deleted: true,
+            id: args.lessonId,
+            title: lesson.title,
+            note: 'The lesson is gone. If it was part of an approved plan, the Plan Progress block will now show it as missing and you must NOT rebuild it — tell the teacher it is out of the plan too.'
+          };
+        });
+      }
+    }),
+
+    delete_exercise: tool({
+      description:
+        'Delete an exercise from this course, permanently, along with its questions and any learner submissions. There is no undo. Pass `confirmTitle` with the exercise’s exact current title from get_course_structure; the delete is refused if it does not match.',
+      inputSchema: deleteExerciseParam,
+      execute: async (args) => {
+        return executeAgentTool('delete_exercise', { orgId, userId, courseId, args }, async () => {
+          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          const exercise = await getExercise(args.exerciseId);
+
+          if (!confirmacionCoincide(args.confirmTitle, exercise.title)) {
+            throw new Error(
+              avisoDeConfirmacion({
+                tipo: 'exercise',
+                id: args.exerciseId,
+                declarado: args.confirmTitle,
+                real: exercise.title
+              })
+            );
+          }
+
+          await deleteExerciseForCourseService(courseId, args.exerciseId);
+
+          return { deleted: true, id: args.exerciseId, title: exercise.title };
+        });
+      }
+    }),
+
+    delete_section: tool({
+      description:
+        'Delete an EMPTY section from this course. If the section still contains lessons or exercises, the delete is refused and they are listed — remove them one by one first, so that destroying a whole branch of the course is never a single call. Pass `confirmTitle` with the section’s exact current title from get_course_structure.',
+      inputSchema: deleteSectionParam,
+      execute: async (args) => {
+        return executeAgentTool('delete_section', { orgId, userId, courseId, args }, async () => {
+          await verifySectionBelongsToCourse(args.sectionId, courseId);
+
+          const [sections, items] = await Promise.all([listCourseSections(courseId), getCourseContentItems(courseId)]);
+          const section = sections.find((s) => s.id === args.sectionId);
+
+          if (!section) {
+            throw new Error(
+              `No section with id "${args.sectionId}" exists in this course. Call get_course_structure and use a real id.`
+            );
+          }
+
+          // Una sección sin título no se puede confirmar por título, y ese es
+          // justo el caso en que hay que negarse: sin nada contra qué contrastar,
+          // el único control que tenemos no existe.
+          if (!section.title) {
+            throw new Error(
+              `Section ${args.sectionId} has no title, so the confirmation check cannot run and this delete is refused. Give it a title with update_section first, or ask the teacher to delete it from the course page.`
+            );
+          }
+
+          if (!confirmacionCoincide(args.confirmTitle, section.title)) {
+            throw new Error(
+              avisoDeConfirmacion({
+                tipo: 'section',
+                id: args.sectionId,
+                declarado: args.confirmTitle,
+                real: section.title
+              })
+            );
+          }
+
+          // Una sección borra en cascada todo lo que cuelga de ella. Que eso pase
+          // en UNA llamada convierte un id equivocado en la pérdida de un curso
+          // entero, así que se exige vaciarla primero: el modelo tiene que pasar
+          // por cada hijo, y cada uno de esos pasos vuelve a pedir el título.
+          const dentro = items.filter((i) => i.sectionId === args.sectionId);
+
+          if (dentro.length > 0) {
+            const lista = dentro.map((i) => `"${i.title ?? '(sin título)'}" (${i.type}, id: ${i.id})`).join(', ');
+
+            throw new Error(
+              `Refusing to delete section "${section.title}": it still contains ${dentro.length} item(s) — ${lista}. Nothing was deleted. Delete each one first with delete_lesson / delete_exercise, then delete the section. If the teacher only wanted the section EMPTIED, stop here: it is already empty once those are gone.`
+            );
+          }
+
+          await deleteCourseSectionService(args.sectionId);
+
+          return { deleted: true, id: args.sectionId, title: section.title };
+        });
+      }
+    }),
+
     generate_course_plan: tool({
       description:
         'Generate a structured course plan with sections and lessons. Always use this when asked to design or plan a course.',
@@ -1208,7 +1670,36 @@ export function buildAgentTools(
 
           trackAgentEvent(AgentEvent.PLAN_GENERATED, { orgId, userId, courseId, sectionCount, itemCount });
 
-          return plan;
+          // Cobertura: cuáles de estas lecciones tienen material atrás y cuáles
+          // no. Se mide ACÁ, con el plan todavía sin construir, porque es el
+          // único momento en que la respuesta puede ser "no la escribas".
+          //
+          // Nunca falla el plan: si las fuentes no se pueden listar, el plan
+          // sale igual y sin aviso. Un plan es demasiado caro de rehacer como
+          // para perderlo por una consulta que no anduvo.
+          let cobertura;
+          try {
+            const fuentes = await listChatDocumentsByCourse(courseId, userId);
+            const items = plan.sections.flatMap((section) => section.items);
+            const medida = medirCobertura(items, fuentes);
+            const aviso = avisoDeCobertura(medida, fuentes.length);
+
+            if (aviso) {
+              cobertura = {
+                sourcesAttached: fuentes.length,
+                lessonsWithSource: medida.cubiertas,
+                lessonsWithoutSource: medida.sinFuente,
+                ...(medida.fuentesInexistentes.length > 0
+                  ? { citedSourcesThatDoNotExist: medida.fuentesInexistentes }
+                  : {}),
+                note: aviso
+              };
+            }
+          } catch (error) {
+            console.error('[agent-tool] no se pudo medir la cobertura del plan:', error);
+          }
+
+          return cobertura ? { ...plan, coverage: cobertura } : plan;
         });
       }
     }),

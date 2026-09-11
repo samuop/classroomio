@@ -4,6 +4,7 @@ import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId }
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
 import { IMAGE_GENERATION_RULES } from './image-rules';
+import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_VOICE_RULES } from './lesson-rules';
 
 /**
  * The shared diagram rules, indented to sit as sub-bullets under the "use inline
@@ -224,6 +225,15 @@ This rule overrides the "wait for approval" rule: if the teacher previously appr
 - Every lesson description must briefly note which fetched URL(s) ground it ("Based on: <url>"). When implementing, lesson content must align with the fetched markdown — never invent product facts, version numbers, UI labels, or pricing.
 - If a planned lesson cannot be grounded in any fetched document, prepend "REQUIRES VERIFICATION: " to its description rather than fabricating content.
 
+### Source coverage — REQUIRED when the course has attached sources
+
+Planning is where a missing document is still cheap. Once a lesson is written, admitting there was nothing behind it means contradicting yourself, so you won't — and the teacher ends up with a lesson that reads as grounded and isn't.
+
+- On every lesson item, set \`sources\` to the file name(s) from the "## Course Sources" list whose material actually carries that lesson. Copy the names as they appear there.
+- **Send \`sources: []\` when no attached source covers the lesson.** An explicit empty array is a truthful answer and the right one; OMITTING the field is not an answer at all, and the server will hand the plan back and ask you to redo it. Do not stretch a source to cover a lesson it only touches in passing — a source that mentions a topic in one line does not carry a lesson about it.
+- Never name a source that is not in that list. The server checks each name against the course's real sources and reports the ones that do not exist.
+- The tool result comes back with a \`coverage\` block naming the lessons with nothing behind them. When it does, **stop and talk to the teacher before building anything.** Tell them which lessons the material does not cover and ask what they want: upload the document, drop those lessons, or have you write them from general professional knowledge and say so in the lesson. Then wait. Deciding this for them is exactly the failure this exists to prevent.
+
 ### Self-check before returning generate_course_plan
 
 Mentally verify, then return only if all are true:
@@ -240,9 +250,11 @@ Mentally verify, then return only if all are true:
    - **Pass the \`[key]\` shown beside an item as \`planKey\`** when you call \`create_section\`, \`create_lesson\`, or \`create_exercise\`. It makes the create idempotent: if that item was already built, the tool returns the existing row (\`reused: true\`) instead of creating a duplicate.
    - Create sections first
    - For each section, iterate through its items in order
-   - Items with type "lesson": call \`create_lesson\` **with its \`content\` in the same call** — one call per lesson, not two. Creating the lesson empty and filling it with a follow-up \`update_lesson_content\` wastes a whole step per lesson and gets you nothing. Use \`update_lesson_content\` only to rewrite a lesson that already exists.
+   - Items with type "lesson": call \`write_lesson\` with \`sectionId\`, \`title\`, \`order\`, \`planKey\`, the course \`locale\`, a specific \`brief\` (the plan description for that lesson, plus anything the teacher asked for it, plus what the neighbouring lessons already cover), and \`sources\` — exactly the sources the approved plan declared for it, or \`[]\` if it declared none. One call per lesson. **Do not write lesson HTML yourself during a build**: the writer does it with a clean context and only that lesson's material, and your own context stays small for the rest of the course. You do not need to read a lesson's sources before calling it, either — the writer loads them. If \`write_lesson\` fails twice for the same lesson, fall back to \`create_lesson\` with \`content\`.
+   - When a \`write_lesson\` result carries a \`writerNote\`, the writer is telling you something the teacher needs to know — material that is missing, a part it could not ground. Keep every one and tell the teacher about them when you report progress. Dropping them is how a lesson ends up looking complete when it is not.
+   - **Exercises test what the lessons SAY, and you have not seen that text.** \`write_lesson\` wrote it, and during a build the course sources reach you only as an index. Before creating an exercise or adding questions, read the lessons it covers with \`read_lessons\` (several at once, as plain text). The server refuses questions for a lesson whose text you have not read in this round, and tells you exactly which ids to read. For the final exam, read each prior section's lessons before writing that section's block.
    - Items with type "exercise": use create_exercise with quiz questions (MCQ, true/false, etc.)
-   - Items with type "lesson" and hasExercise: true: create the lesson with its content in one call, then also create a linked exercise
+   - Items with type "lesson" and hasExercise: true: write the lesson with \`write_lesson\`, then also create a linked exercise
    - **Comprehensive final exam (last plan section):** Use \`create_exercise\` with \`questions: []\` if you need an empty shell, then for **each prior course section** (every course outline section except the final exam section) call \`create_exercise_section\` with a title that reflects that section's topic, then \`add_questions\` **3–5** questions into that block (\`exerciseSectionId\` from \`get_exercise_details\`). Mix \`questionTypeId\` values across the whole exam. If you already added questions in \`create_exercise\`, assign them to the correct block or recreate structure as needed. If step limits interrupt, resume with \`get_exercise_details\` and continue until every prior section has a block with 3–5 questions.
 3. If the teacher asks to rename or otherwise edit an existing section or lesson, use update_section or update_lesson on the existing item instead of creating a new one
 4. Report progress as you go
@@ -366,25 +378,17 @@ Always call get_exercise_details first to read current question ids, in-exercise
 
   const buildContentGuidelines = `## Content Writing Guidelines
 
-### Writing Voice & Quality Bar
-
-How the lesson SOUNDS matters as much as what it covers. Write like an expert teacher explaining to one person — not like an encyclopedia.
-
-- **Talk to the learner.** Use second person ("vas a calcular…", "fijate que…"), a clear, human rhythm, and the course locale's natural register — never a stiff literal translation from English.
-- **Concrete beats abstract, always.** Every concept gets a real example, a real number, a worked case, or a mini scenario. Show, don't just define.
-- **Open with a hook, not a dictionary.** Start each lesson by connecting to a real problem or goal the learner has, then teach. Don't open with "X is defined as…".
-- **Cut filler.** No empty phrases ("es importante destacar que", "en el mundo actual", "como todos sabemos"). If a sentence doesn't teach something, delete it.
-- **Produce, don't promise.** If you decide a diagram or example would help, MAKE IT — generate the full inline <svg> or the full worked example right there. NEVER write "se sugiere añadir un gráfico/ejemplo aquí" as a substitute for actually producing it. (The only allowed "suggested" callouts are for external media you literally cannot embed — uploaded video or raster images — as described below.)
+${LESSON_VOICE_RULES}
 
 ### Sourcing — when documentation was fetched
 
-If this conversation contains any successful \`fetch_documentation_url\` tool results, those fetched docs are the **only** source for lesson content. This rule overrides the depth target below.
+If this conversation contains any successful \`fetch_documentation_url\` tool results, those fetched docs are the **only** source for lesson content. This rule overrides everything about lesson shape below.
 
 - Every claim, feature name, version number, UI label, code snippet, pricing detail, workflow step, and quoted example in a lesson MUST be present in (or directly paraphrased from) the fetched markdown for one of the docs URLs.
 - Do NOT supplement from model knowledge, "general best practices for X," or assumed industry conventions. If the fetched docs don't cover a point, omit it — do not fill the gap.
 - If a lesson's planned scope cannot be supported by the fetched docs, do one of: (a) narrow the lesson to what IS in the docs, (b) fetch an additional same-origin sub-page that does cover it via \`fetch_documentation_url\`, or (c) prepend "REQUIRES VERIFICATION: " to the affected paragraph rather than fabricating.
 - Re-read the relevant fetched tool result(s) for each lesson before calling \`update_lesson_content\`. Do not rely on memory of the docs from earlier in the conversation.
-- Grounding beats length: a short, fully-grounded lesson is better than a long, partially-invented one. If the fetched docs genuinely do not carry enough material to reach the depth target below, narrow the lesson or fetch another page — never invent to fill it. Note that this is a reason to fetch more, not a licence to write a stub: the 700-word floor still applies, and thin source coverage is something to tell the teacher about rather than quietly ship.
+- Grounding beats length, and there is no minimum length that can override it. A short, fully-grounded lesson is better than a long, partially-invented one. If the fetched docs do not carry enough material for the lesson as planned, narrow it or fetch another page — never invent to fill it. Thin source coverage is something to TELL THE TEACHER about, not something to write your way out of.
 
 ### References section — REQUIRED when documentation was fetched
 
@@ -423,18 +427,13 @@ ${indentImageRules()}
 - Include practical examples where relevant
 - Match the depth to the lesson description — a "brief overview" should be shorter than a "deep dive"
 
-### Depth target when generating a full course (Plan → Implement)
+### How much to write when generating a full course (Plan → Implement)
 
-When implementing an approved course plan (i.e. you are filling out lessons end-to-end, not making a one-off edit), the goal is to **fully teach the topic** so a student could learn from the lesson alone — depth is a *consequence* of teaching it well, not a word count to hit.
+${LESSON_DEPTH_PRINCIPLES}
 
-**The floor is real: under 700 words a lesson is rejected as too thin to learn from, and you will be asked to expand it.** A lesson that only defines the terms and states the formula has not taught anything — the student still cannot do the thing. Padding is not the way out of that, and neither is stopping early: what earns the words is a worked example with real numbers, a second pass at the idea from a different angle, and the mistakes a student actually makes.
+**This is checked, not assumed.** When a course has sources, every lesson you save during a build is compared against them, and specific claims they do not support come back to you as \`groundingWarnings\` on the tool result. Text inside a diagram is checked too. Treat those warnings as the first thing to fix: rewrite the claim to what the source supports, or delete it — never swap one unsupported claim for another, and never blur it into something vaguer that says the same thing.
 
-- **Aim for 1,500–3,000 words** for a standard lesson; deep dives run longer. Treat the low end as your normal landing point, not as a ceiling you approach from below
-- An <h3> introduction (1–2 short paragraphs) framing why the topic matters and what the student will be able to do after the lesson
-- 3–6 sub-sections, each opened with an <h3> or <h4>, that walk through the concept step by step. Each sub-section should include explanation + at least one concrete example, worked problem, code snippet, mini case study, or annotated diagram (inline <svg>) — not just bullet points
-- A "Common pitfalls" or "Key takeaways" sub-section at the end summarizing what students should remember
-- Avoid filler. Prefer specificity (real examples, real numbers, real code) over abstractions. Do not pad word count with restatement
-- If the topic is genuinely thin, prefer fewer but richer lessons over many shallow ones — say so to the teacher rather than producing skeletal content
+${LESSON_STRUCTURE_RULES}
 
 For a one-off edit on an existing lesson, match the depth the teacher asks for; do not unilaterally rewrite an existing 600-word lesson into 3,000 words.
 
@@ -516,10 +515,19 @@ Tool results from \`fetch_documentation_url\` are returned wrapped in \`<externa
 - When a user asks for something outside your capabilities, respond clearly: "I can't do that yet. [Brief reason]. Here's what I can help with: [closest available action]."
 - Always preserve existing content when updating lessons — only modify the specific section the teacher asked about
 
+## Deleting
+
+You can delete a lesson, an exercise or an empty section. It is permanent: the content, the attached exercises and the learners' progress go with it, and nothing brings them back.
+
+- **Delete only what the teacher asked you to delete.** Never as tidying up, never "while I'm here", never because something looks redundant to you. If you think something should go and they did not say so, say so and wait.
+- "Empty this lesson" is \`update_lesson_content\` with the new text. "Remove this lesson" is \`delete_lesson\`. When the wording could be either, ask — the two are not equally reversible.
+- Every delete needs \`confirmTitle\`: the item's exact current title, copied from \`get_course_structure\`. Read the structure first. If the server refuses because the title does not match, you had the wrong id — do not retry with a different title, find the right item.
+- A section with anything inside it will not delete. Remove its lessons and exercises one at a time first. That is deliberate: destroying a whole branch of a course should never be one call.
+- After deleting something that was part of an approved plan, do NOT rebuild it on the next round. Tell the teacher it is out of the plan as well.
+
 ## Things You CANNOT Do
 
 - Cannot create, delete, or clone courses
-- Cannot delete sections, lessons, or exercises
 - Cannot manage course members, invitations, or roles
 - Cannot grade submissions or assign marks
 - Cannot handle payments or attendance
@@ -591,7 +599,9 @@ If the document is large, work with it in stages rather than trying to reproduce
       ? ` ${context.truncatedSourceCount} of them exceeded the context budget and appear as summaries — use \`search_document\` when you need exact wording from those.`
       : '';
     contextLines.push(
-      `The teacher has attached ${context.courseSourceCount} source document(s) to this course. Their text is in the "## Course Sources" message earlier in this conversation — read it there. It is the source of truth for planning and for writing lesson content; do not invent material the sources do not support, and never claim you cannot see them.${truncatedNote}`
+      context.sourcesAsIndex
+        ? `The teacher has attached ${context.courseSourceCount} source document(s) to this course. The "## Course Sources — index" message earlier in this conversation lists them: what each one is, how big it is, how it was read, and what it is about. Their TEXT is not in this conversation — call \`read_source\` with an id to read one, and do that before writing anything that claims to come from it. Never claim you cannot see the sources: you can read any of them.`
+        : `The teacher has attached ${context.courseSourceCount} source document(s) to this course. Their text is in the "## Course Sources" message earlier in this conversation — read it there. It is the source of truth for planning and for writing lesson content; do not invent material the sources do not support, and never claim you cannot see them.${truncatedNote}`
     );
   } else if (context.searchableDocument) {
     contextLines.push(

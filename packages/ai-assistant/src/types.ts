@@ -62,6 +62,17 @@ export interface AgentContext {
   courseSourceCount?: number;
   /** Sources that had to be summarized because the pack budget ran out. */
   truncatedSourceCount?: number;
+  /**
+   * Las fuentes viajan como ÍNDICE (nombre, tamaño, cómo se leyó, de qué trata)
+   * y no como texto: el contenido se pide con `read_source`.
+   *
+   * Cambia lo que hay que decirle al modelo. Con el paquete, la instrucción es
+   * "el texto está más arriba, leelo ahí"; con el índice, "el texto no está,
+   * pedilo". Decirle lo primero cuando es lo segundo es cómo un agente termina
+   * afirmando que no puede ver un documento que sí tiene a mano — o peor,
+   * escribiendo como si lo hubiera leído.
+   */
+  sourcesAsIndex?: boolean;
   existingSectionCount?: number;
 }
 
@@ -75,7 +86,31 @@ export const CoursePlanItemSchema = z.object({
   hasExercise: z
     .boolean()
     .default(false)
-    .describe('Only for lessons: whether to also create an exercise linked to this lesson')
+    .describe('Only for lessons: whether to also create an exercise linked to this lesson'),
+  /**
+   * De qué fuente sale esta lección — declarado por el agente y contrastado por
+   * el servidor contra las fuentes que el curso tiene de verdad.
+   *
+   * `.optional()` y NO `.default([])`, que es la diferencia que hace que esto
+   * funcione. Con un valor por defecto, «no contestó la pregunta» y «contestó
+   * que no hay ninguna» llegan al servidor como el mismo array vacío, y son
+   * cosas opuestas: la primera se responde pidiéndole que declare, la segunda
+   * hablando con el docente. Medido: la primera vez que se probó, el modelo
+   * omitió el campo entero y el servidor reportó 14 lecciones huérfanas de 14,
+   * incluidas las que el organigrama sí cubría.
+   *
+   * Opcional y no obligatorio porque un campo obligatorio que el modelo no
+   * puede producir tira la llamada entera, y un plan es lo más caro que hay acá
+   * para perder. Además, los planes aprobados antes de que el campo existiera
+   * tienen que seguir parseando: si `getLatestImplementationPlan` deja de
+   * reconocerlos, el ancla de progreso desaparece a mitad de una construcción.
+   */
+  sources: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'REQUIRED on every lesson when the course has attached sources. The file name(s) from the "## Course Sources" list whose material actually carries this lesson. Send an EMPTY ARRAY when no attached source covers it — that is a truthful answer and the server surfaces it to the teacher. Never name a source that is not in that list.'
+    )
 });
 
 export const CoursePlanSectionSchema = z.object({

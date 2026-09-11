@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { AppError } from '@api/utils/errors';
+import { decidirSiMirar, leerDocumentoConVision } from '@api/services/agent/document-vision';
 
 /**
  * Title of the hidden conversation every course source lands in.
@@ -86,6 +87,34 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
       break;
     default:
       throw new AppError('Unsupported file type', 'UNSUPPORTED_FILE_TYPE', 415);
+  }
+
+  /**
+   * Si de este archivo no salió texto plausible, MIRARLO antes de darlo por
+   * bueno.
+   *
+   * Un organigrama, un diagrama o un PowerPoint exportado a PDF son imágenes:
+   * el parser devuelve casi nada y hasta acá esa nada seguía viaje etiquetada
+   * como el documento completo. Ver `document-vision.ts` para el caso real que
+   * originó esto.
+   *
+   * Sólo PDF: es el único formato que el modelo lee de forma nativa. Un DOCX o
+   * un PPTX habría que rasterizarlo primero, y eso es otro problema.
+   */
+  if (mimeType === 'application/pdf') {
+    const decision = decidirSiMirar({ textoExtraido: extractedText, pageCount, bytes: buffer.length });
+
+    if (decision.leer) {
+      console.info(
+        `[parseDocument] "${file.name}": ${extractedText.trim().length} caracteres en ${pageCount} página(s) — leyendo con visión`
+      );
+
+      const visto = await leerDocumentoConVision({ buffer, mediaType: mimeType, fileName: file.name });
+
+      // La transcripción reemplaza y no se suma: el modelo que miró el PDF ve
+      // también su capa de texto, así que lo que devuelve ya la contiene.
+      if (visto) extractedText = visto.texto;
+    }
   }
 
   const truncated = extractedText.length > MAX_DOCUMENT_TEXT_LENGTH;

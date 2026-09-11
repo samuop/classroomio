@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { MentionRef, MentionTarget } from '$features/ai-assistant/utils/mentions';
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import { Button } from '@cio/ui/base/button';
@@ -49,7 +50,8 @@
     onSkipDiscoveryForm: (payload: { formId: string }) => void;
     onRetryStep?: (step: ProgressStep) => void;
     onResume: () => void;
-    onMentionClick: (route: string) => void;
+    onMentionClick: (route: string, mention?: MentionRef) => void;
+    mentionTargets?: MentionTarget[];
   }
 
   let {
@@ -68,7 +70,8 @@
     onSkipDiscoveryForm,
     onRetryStep,
     onResume,
-    onMentionClick
+    onMentionClick,
+    mentionTargets
   }: Props = $props();
 
   let messagesContainer: HTMLDivElement | undefined = $state();
@@ -210,6 +213,7 @@
           {onSubmitDiscoveryAnswers}
           {onSkipDiscoveryForm}
           {onMentionClick}
+          {mentionTargets}
         />
       {/each}
 

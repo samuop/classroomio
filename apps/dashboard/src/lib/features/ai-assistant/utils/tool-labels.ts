@@ -55,7 +55,13 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'ask_discovery_questions',
   'fetch_documentation_url',
   'search_web',
-  'generate_image'
+  'generate_image',
+  'read_source',
+  'delete_lesson',
+  'delete_exercise',
+  'delete_section',
+  'write_lesson',
+  'read_lessons'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */
@@ -108,6 +114,44 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         key: 'ai_assistant.tool.done.create_section',
         vars: { title: readString(r, 'title') ?? '' }
       };
+    // Los tres borrados dicen QUÉ se borró, no "listo". Es la única acción del
+    // agente que no se puede deshacer: el docente tiene que poder leer en el
+    // registro qué desapareció, sin abrir nada.
+    case 'delete_lesson':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.delete_lesson',
+        vars: { title: readString(r, 'title') ?? '' }
+      };
+    case 'delete_exercise':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.delete_exercise',
+        vars: { title: readString(r, 'title') ?? '' }
+      };
+    case 'delete_section':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.delete_section',
+        vars: { title: readString(r, 'title') ?? '' }
+      };
+    case 'read_lessons':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.read_lessons',
+        vars: { count: readPositiveInt(r, 'count') }
+      };
+    case 'read_source':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.read_source',
+        vars: {
+          title: readString(r, 'fileName') ?? '',
+          from: readPositiveInt(r, 'fromLine'),
+          to: readPositiveInt(r, 'toLine'),
+          total: readPositiveInt(r, 'totalLines')
+        }
+      };
     case 'update_section':
       return {
         shape: 'i18n',
@@ -126,6 +170,10 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         key: 'ai_assistant.tool.done.update_lesson',
         vars: { title: readString(r, 'title') ?? '' }
       };
+    // write_lesson devuelve los mismos campos que update_lesson_content a
+    // propósito: para el docente las dos son "se escribió esta lección", y el
+    // enlace a la lección es lo que importa, no qué agente la redactó.
+    case 'write_lesson':
     case 'update_lesson_content': {
       const lessonId = readString(r, 'lessonId') ?? '';
       const rawTitle = readString(r, 'lessonTitle');
@@ -341,5 +389,13 @@ export const MUTATION_TOOLS = [
   'update_questions',
   'reorder_content',
   'update_course_landing_page',
-  'go_live_course'
+  'go_live_course',
+  'write_lesson',
+  // Los borrados cambian la estructura igual que las altas. Fuera de esta
+  // lista, una ronda que sólo borra no refresca el curso mientras corre (los
+  // umbrales de `ai-course-chat.svelte` se saltean sin `hasMutations`) y la
+  // tarjeta dice "trabajando" en vez de "aplicando cambios".
+  'delete_lesson',
+  'delete_exercise',
+  'delete_section'
 ];

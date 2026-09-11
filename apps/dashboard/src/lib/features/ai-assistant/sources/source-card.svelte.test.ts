@@ -191,10 +191,13 @@ describe('volver al original', () => {
 describe('el punto de lectura', () => {
   const punto = (nombre: string) => screen.getByRole('img', { name: nombre });
 
-  it('una fuente chica se marca en verde: se lee entera cada vez', () => {
+  it('una fuente chica se marca en verde: cuando se usa, se lee entera', () => {
     dibujar(undefined, { cacheEligibility: 'too_small' });
 
-    expect(punto('Es chica: el asistente la lee entera en cada consulta.').className).toContain(
+    // Antes decía "la lee entera en cada consulta", y dejó de ser cierto: fuera
+    // de la planificación el asistente recibe un índice y lee cada fuente
+    // cuando la necesita.
+    expect(punto('Es chica: cuando el asistente la necesita, la lee entera.').className).toContain(
       'bg-emerald-500'
     );
   });
@@ -209,7 +212,7 @@ describe('el punto de lectura', () => {
     dibujar(undefined, { cacheEligibility: 'cache' });
 
     const hueco = punto(
-      'Es grande: cuando el asistente la use, el proveedor la va a servir desde su caché.'
+      'Es grande: cuando el asistente la lee entera, el proveedor puede servirla desde su caché.'
     );
 
     // Hueco = borde sin relleno. Si esto se volviera `bg-blue-500`, la tarjeta

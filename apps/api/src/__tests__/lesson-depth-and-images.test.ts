@@ -1,20 +1,22 @@
 /**
- * Lesson depth, and the one raster image a lesson is allowed to carry.
+ * El largo de una lección ya NO se controla, y la imagen que puede llevar sí.
  *
- * Both come from the same production observation: on gemini-3.5-flash-lite a real
- * 32-lesson course averaged 311 words against a stated 1,500–3,000 target, and
- * the only visuals it could produce were SVG diagrams.
+ * Hubo un piso de 700 palabras: menos que eso y la lección volvía al modelo como
+ * "demasiado delgada, expandila". Se saco porque medía lo que no importa. El
+ * largo se verificaba en el servidor; el FUNDAMENTO —que lo escrito salga de una
+ * fuente real— solo se pedía en prosa. Con una fuente de 15 palabras y un piso
+ * de 700, lo unico que el sistema empujaba era "escribí más", y el modelo
+ * llenaba el hueco inventando.
+ *
+ * `countLessonWords` sobrevive porque la regla de la imagen la necesita: una
+ * lección de dos párrafos no necesita ilustración, una larga sí.
  */
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import {
-  countLessonWords,
-  THIN_LESSON_WORD_COUNT,
-  validateLessonDepth,
-  validateLessonVisuals
-} from '@api/services/agent/lesson-content';
+import { countLessonWords, validateLessonVisuals } from '@api/services/agent/lesson-content';
+import * as contenidoDeLeccion from '@api/services/agent/lesson-content';
 
 function lessonOf(words: number): string {
   return `<p>${Array.from({ length: words }, (_, i) => `palabra${i}`).join(' ')}</p>`;
@@ -41,29 +43,24 @@ describe('countLessonWords', () => {
   });
 });
 
-describe('validateLessonDepth', () => {
-  it('flags a lesson of the length the model actually produced', () => {
-    // 311 words was the measured average across the real course.
-    const warnings = validateLessonDepth(lessonOf(311));
+describe('el piso de palabras, que ya no existe', () => {
+  it('no queda ningun verificador de largo que el modelo pueda sentir', () => {
+    // El test que muerde de verdad: si alguien reintroduce `validateLessonDepth`
+    // —o cualquier primo suyo— vuelve la presion que hacia inventar, y esto lo
+    // caza antes de que llegue a produccion.
+    const exportados = Object.keys(contenidoDeLeccion);
 
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('311 words');
-    expect(warnings[0]).toContain('edit_lesson_content');
+    expect(exportados).not.toContain('validateLessonDepth');
+    expect(exportados).not.toContain('THIN_LESSON_WORD_COUNT');
+    expect(exportados.filter((n) => /depth|thin|wordFloor|minWords/i.test(n))).toEqual([]);
   });
 
-  it('says nothing once the lesson clears the floor', () => {
-    expect(validateLessonDepth(lessonOf(THIN_LESSON_WORD_COUNT))).toEqual([]);
-    expect(validateLessonDepth(lessonOf(2000))).toEqual([]);
-  });
+  it('una leccion corta y fundada no genera ninguna queja', () => {
+    // 120 palabras con su diagrama: antes esto volvia con "demasiado delgada".
+    // Es exactamente lo que deberia producir una fuente honesta pero chica.
+    const svg = '<svg viewBox="0 0 400 300"><text x="10" y="20" font-size="16">Direccion</text></svg>';
 
-  it('tells the model to teach rather than to pad', () => {
-    expect(validateLessonDepth(lessonOf(100))[0]).toContain('Do not pad');
-  });
-
-  it('judges a diagram-heavy lesson on its prose', () => {
-    const bigSvg = `<svg viewBox="0 0 900 700">${'<rect x="1" y="2" width="3" height="4"/>'.repeat(400)}</svg>`;
-
-    expect(validateLessonDepth(`${bigSvg}${lessonOf(120)}`)).toHaveLength(1);
+    expect(validateLessonVisuals(`${svg}${lessonOf(120)}`)).toEqual([]);
   });
 });
 

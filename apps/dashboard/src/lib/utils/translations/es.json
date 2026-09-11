@@ -275,7 +275,13 @@
         "search_web": "Buscando en internet",
         "search_web_with_query": "Buscando: {query}",
         "generate_image": "Generando una imagen",
-        "replace_lesson_block": "Editando la lección"
+        "replace_lesson_block": "Editando la lección",
+        "read_source": "Leyendo el material de la fuente",
+        "delete_lesson": "Borrando una lección",
+        "delete_exercise": "Borrando un ejercicio",
+        "delete_section": "Borrando una sección",
+        "write_lesson": "Escribiendo la lección con su material",
+        "read_lessons": "Leyendo las lecciones"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# carácter} other {# caracteres}})",
@@ -312,7 +318,12 @@
         "fetch_documentation_url": "Leer {url}",
         "search_web": "Búsqueda «{query}»: {count, plural, one {# resultado} other {# resultados}}",
         "generate_image": "Imagen generada",
-        "replace_lesson_block_fallback": "Lección editada ({count, plural, one {# carácter} other {# caracteres}})"
+        "replace_lesson_block_fallback": "Lección editada ({count, plural, one {# carácter} other {# caracteres}})",
+        "read_source": "Se leyó «{title}» (líneas {from}–{to} de {total})",
+        "delete_lesson": "Lección borrada: {title}",
+        "delete_exercise": "Ejercicio borrado: {title}",
+        "delete_section": "Sección borrada: {title}",
+        "read_lessons": "Se {count, plural, one {leyó # lección} other {leyeron # lecciones}}"
       }
     },
     "student_empty_state": "Pregúntame cualquier cosa sobre este curso: obtén explicaciones, hazte pruebas o resume lo que estás leyendo.",
@@ -408,7 +419,9 @@
     },
     "plan_incomplete_notice": "Todavía faltan {pending} elemento(s) por crear y {empty} sin contenido. Hacé clic en Continuar para que el asistente termine el plan.",
     "plan_estimated_cost_pct": "Costo estimado: ~{pct}% de lo que te queda",
-    "context_usage_tooltip_pct": "Ventana de contexto: {pct}% en uso"
+    "context_usage_tooltip_pct": "Ventana de contexto: {pct}% en uso",
+    "mention_not_found": "No se encontró «{title}» en este curso: puede que se haya borrado, o que el enlace esté mal.",
+    "writer_notes_title": "Para revisar en estas lecciones"
   },
   "analytics": {
     "title": "Analítica",
@@ -2951,8 +2964,8 @@
       "download_aria": "Descargar el archivo original",
       "reconciling": "Actualizando…",
       "read_mark": "Leída",
-      "read_inline": "Es chica: el asistente la lee entera en cada consulta.",
-      "read_cacheable": "Es grande: cuando el asistente la use, el proveedor la va a servir desde su caché.",
+      "read_inline": "Es chica: cuando el asistente la necesita, la lee entera.",
+      "read_cacheable": "Es grande: cuando el asistente la lee entera, el proveedor puede servirla desde su caché.",
       "read_cached": "El proveedor la está sirviendo desde su caché.",
       "read_over_limit": "Pasa el máximo de material del curso: el asistente lee sólo una parte."
     },

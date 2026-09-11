@@ -527,19 +527,28 @@ export function validateLessonMath(content: string): string[] {
 
 // ─── Lesson depth ────────────────────────────────────────────────────────────
 
-/**
- * Words below which a lesson written during a full build is reported as thin.
+/*
+ * Acá vivía un piso de 700 palabras: una lección más corta se devolvía al modelo
+ * como "demasiado delgada para aprender de ella, expandila AHORA".
  *
- * Measured, not guessed: across a real 32-lesson course the agent averaged 311
- * words against a stated target of 1,500–3,000 — the longest lesson was 557.
- * The prompt asks for depth in prose and then hedges it five ways, so on a small
- * model the hedges win. Prose alone cannot fix that; a measurement can.
+ * Se sacó porque medía lo que no importa y presionaba en la dirección
+ * equivocada. El largo se contaba en el servidor y volvía al modelo; el
+ * FUNDAMENTO —que lo escrito salga de una fuente real— sólo se pedía en prosa y
+ * nadie lo comprobaba. Cuando dos reglas chocan y sólo una se verifica, gana la
+ * que se verifica: con una fuente de 15 palabras y un piso de 700, lo único que
+ * el sistema empujaba era "escribí más", y el modelo llenaba el hueco
+ * inventando.
  *
- * Set well under the target on purpose. This is not "make it 2,000 words", it
- * is "this is too thin to teach from" — a floor a genuinely concise lesson can
- * still clear, so the warning stays rare and therefore worth reading.
+ * Eso paso de verdad: un organigrama del que solo se pudo extraer la frase
+ * "ASESORES DE CAPITAL HUMANO" termino convertido en una jerarquia completa que
+ * nadie de esa empresa escribio, presentada a los ingresantes como su
+ * estructura real.
+ *
+ * La respuesta a una leccion delgada no es exigir palabras, es conseguir
+ * material. Los avisos que quedan (diagramas ilegibles, formulas que no
+ * renderizan, una leccion sin ninguna imagen) siguen: esos describen defectos
+ * que se ven, no una cuota que se llena estirando.
  */
-export const THIN_LESSON_WORD_COUNT = 700;
 
 /**
  * Words of real prose in a lesson body.
@@ -591,21 +600,6 @@ export function validateLessonVisuals(content: string): string[] {
 
   return [
     'This lesson is all prose — not one diagram and not one picture. A learner facing an unbroken wall of text skims it. Add at least one visual now with edit_lesson_content: draw an inline <svg> for anything with structure in it (a process, a comparison, a relationship, a sequence of steps — this is free and the teacher can edit it afterwards), or call generate_image for a scene, a human situation or a visual metaphor that a diagram cannot carry. Pick the one the material actually calls for; do not add a decorative figure.'
-  ];
-}
-
-/**
- * Thin-lesson warning, handed back through the same loop as the SVG and maths
- * checks — the one mechanism in this agent that demonstrably changes what the
- * model writes next.
- */
-export function validateLessonDepth(content: string): string[] {
-  const words = countLessonWords(content);
-
-  if (words >= THIN_LESSON_WORD_COUNT) return [];
-
-  return [
-    `This lesson is ${words} words, which is too thin to learn from — a student reading only this would not be able to do the thing it teaches. Expand it now with edit_lesson_content: add a worked example with real numbers, a second sub-section that goes a level deeper, and a "Common pitfalls" or "Key takeaways" close. Do not pad with restatement; add material that teaches.`
   ];
 }
 

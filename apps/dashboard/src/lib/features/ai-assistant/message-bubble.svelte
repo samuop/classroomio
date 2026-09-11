@@ -6,7 +6,13 @@
   import CopyIcon from '@lucide/svelte/icons/copy';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import { renderMarkdown } from '$features/ai-assistant/utils/markdown';
-  import { renderMentions } from '$features/ai-assistant/utils/mentions';
+  import {
+    getMentionRoute,
+    renderMentions,
+    type MentionRef,
+    type MentionTarget
+  } from '$features/ai-assistant/utils/mentions';
+  import { getWriterNotes } from '$features/ai-assistant/utils/writer-notes';
   import PlanView from '$features/ai-assistant/plan-view.svelte';
   import TodoChecklist from '$features/ai-assistant/todo-checklist.svelte';
   import ThinkingBlock from '$features/ai-assistant/thinking-block.svelte';
@@ -58,7 +64,13 @@
       fields: TemplateFormField[];
     }) => void;
     onSkipDiscoveryForm: (payload: { formId: string }) => void;
-    onMentionClick: (route: string) => void;
+    /**
+     * Gets what the agent wrote along with the route, so the click can check it
+     * against a fresher course than the one this render saw.
+     */
+    onMentionClick: (route: string, mention?: MentionRef) => void;
+    /** The course items the agent's links are checked against. See `resolveMention`. */
+    mentionTargets?: MentionTarget[];
   }
 
   let {
@@ -72,6 +84,7 @@
     onSubmitDiscoveryAnswers,
     onSkipDiscoveryForm,
     onMentionClick,
+    mentionTargets,
     isStreaming,
     isLast = false,
     liveProgressActive = false
@@ -91,14 +104,23 @@
     if (mentionLink) {
       event.preventDefault();
       const route = mentionLink.dataset.mentionRoute;
+      const { mentionType, mentionId, mentionTitle } = mentionLink.dataset;
+      const mention =
+        mentionType === 'lesson' || mentionType === 'exercise' || mentionType === 'section'
+          ? { type: mentionType, id: mentionId ?? '', title: mentionTitle ?? '' }
+          : undefined;
 
       if (route) {
-        onMentionClick(route);
+        onMentionClick(route, mention);
       }
     }
   }
 
   const messageAttachment = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.attachment);
+
+  // What the lesson writer could not cover, read from the tool results rather
+  // than left to the agent to repeat. See `getWriterNotes`.
+  const writerNotes = $derived(message.role === 'assistant' ? getWriterNotes(message.parts ?? []) : []);
   /** Tool parts rendered in a second pass so narrative text always appears above them (stream order often emits tools first). */
   function isDeferredPlanPart(part: Record<string, unknown>) {
     if (!isAgentToolPart(part)) {
@@ -344,10 +366,32 @@
               'ui:text-primary-foreground!'}"
           >
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-            {@html renderMentions(renderMarkdown(part.text as string), courseId)}
+            {@html renderMentions(renderMarkdown(part.text as string), courseId, mentionTargets)}
           </div>
         {/if}
       {/each}
+
+      {#if writerNotes.length > 0}
+        <div class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs" data-writer-notes>
+          <p class="mb-1 font-medium">{$t('ai_assistant.writer_notes_title')}</p>
+          <ul class="space-y-1">
+            {#each writerNotes as item, noteIndex (noteIndex)}
+              <li>
+                {#if item.lessonId && item.title}
+                  <button
+                    type="button"
+                    class="mention-link font-medium"
+                    onclick={() => onMentionClick(getMentionRoute(courseId, 'lesson', item.lessonId))}
+                  >
+                    {item.title}</button
+                  >:
+                {/if}
+                <span class="ui:text-muted-foreground">{item.note}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
 
       {#each deferredPlanParts as part, partIndex (partIndex)}
         {@const toolName = getAgentToolName(part)}

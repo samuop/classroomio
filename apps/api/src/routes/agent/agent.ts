@@ -59,6 +59,8 @@ import {
 import { createChatConversation } from '@api/services/agent/chat-history';
 import { recordObservedCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
 import { buildSourcePack } from '@api/services/agent/source-pack';
+import { buildSourceIndex, decidirMaterial } from '@api/services/agent/source-index';
+import { mencionesRotas } from '@api/services/agent/mention-check';
 import { runResearch } from '@api/services/agent/research';
 import { isWebSearchConfigured, WEB_SEARCH_UNCONFIGURED } from '@api/services/agent/web-search';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
@@ -112,6 +114,8 @@ import {
   verifyLessonBelongsToCourse
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
+import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
+import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
@@ -756,26 +760,56 @@ const agentCoreRouter = new Hono()
         }
       }
 
-      // Source pack: for planning and building, the model needs EVERY source at
-      // once — you cannot decide a syllabus, or write lesson 9 without repeating
-      // lesson 3, from retrieved snippets. It ships as its own stable message so
-      // the provider can cache it; see source-pack.ts.
+      // La fase de la conversación, resuelta ACÁ y no más abajo, porque es lo que
+      // decide cuánto material viaja. Ver `resolveTeacherPromptMode` para por qué
+      // participa `existingSections`.
       //
-      // Single-lesson edits keep the old per-message loader: they're cheap, scoped,
-      // and served better by RAG than by a hundred thousand tokens of context.
-      //
-      // NOTE (measured, not hypothetical): `isSingleLessonEdit` is just
-      // `context.lessonId`, i.e. whether a lesson page happens to be OPEN — not
-      // what the teacher asked for. Building a whole course with a lesson tab
-      // open therefore runs WITHOUT the pack, and the same request with the tab
-      // closed runs with it. Across one real session the pack was present on 1
-      // turn out of 9, and every switch between the two shapes is a prompt-cache
-      // miss on ~71k tokens (that is the "cache anomaly": a 16% hit right after
-      // the pack reappeared, not a caching fault).
-      //
-      // Left as-is deliberately: flipping it costs ~71k tokens on every lesson
-      // turn, so it is a cost decision, not a bug fix.
-      const useSourcePack = role === AgentRole.TEACHER && !isSingleLessonEdit && !searchableDocumentId;
+      // Cada modo produce un prefijo estable y cacheable; el único fallo de caché
+      // ocurre en la transición plan→build, y de ahí en adelante el prefijo de
+      // construcción se cachea toda la corrida.
+      const approvedPlan = role === AgentRole.TEACHER ? getLatestImplementationPlan(messages) : undefined;
+      const teacherPromptMode: TeacherPromptMode = resolveTeacherPromptMode({
+        isTeacher: role === AgentRole.TEACHER,
+        hasApprovedPlan: !!approvedPlan,
+        lessonId: context?.lessonId,
+        existingSectionCount: existingSections.length
+      });
+
+      /**
+       * Cuánto material viaja en este turno, y por qué.
+       *
+       * Sólo PLANIFICAR recibe las fuentes enteras: no se decide un temario con
+       * fragmentos recuperados. El paquete viaja como su propio mensaje estable
+       * para que el proveedor pueda cachearlo (ver `source-pack.ts`).
+       *
+       * Todo lo demás recibe el ÍNDICE —qué material existe, cómo se leyó y de
+       * qué trata, en unos cientos de fichas— y pide el contenido con
+       * `read_source`. Construir incluido: el paquete estaba ahí porque el mismo
+       * agente escribía cada lección, y ya no lo hace. `write_lesson` carga por
+       * su cuenta sólo las fuentes de cada lección, y los ejercicios salen de lo
+       * que las lecciones dicen (`read_lessons`). Ver `decidirMaterial`.
+       *
+       * ── Lo que esto arregla ─────────────────────────────────────────────────
+       *
+       * Antes la condición era `!context.lessonId`: o sea, si el docente tenía
+       * abierta una pestaña de lección. No lo que pidió — dónde estaba parado.
+       * Construir un curso entero con una pestaña abierta corría SIN las fuentes,
+       * y el mismo pedido con la pestaña cerrada corría con ellas.
+       *
+       * Medido en una sesión real de nueve turnos: el paquete viajó en uno. Y
+       * cada cambio de forma es un fallo de caché de unas 71.000 fichas (eso era
+       * la "anomalía de caché": un 16% de acierto justo después de que el paquete
+       * reapareciera, no una falla del cacheo).
+       *
+       * Ahora la forma depende de la fase, que no cambia turno a turno dentro de
+       * una construcción. La caché deja de romperse por una pestaña.
+       */
+      const formaDelMaterial = decidirMaterial({
+        esDocente: role === AgentRole.TEACHER,
+        fase: teacherPromptMode,
+        hayDocumentoBuscable: !!searchableDocumentId
+      });
+      const useSourcePack = formaDelMaterial === 'paquete';
 
       const sourcePack = useSourcePack
         ? await buildSourcePack({
@@ -786,10 +820,27 @@ const agentCoreRouter = new Hono()
           })
         : undefined;
 
+      // El estado intermedio que faltaba: saber qué material hay sin cargarlo.
+      // Un agente que ve el listado puede decir "para esto necesito el manual de
+      // higiene y no lo tenés subido"; uno que no ve nada sólo puede adivinar.
+      const sourceIndex =
+        formaDelMaterial === 'indice' ? await buildSourceIndex({ courseId, userId: user.id, redis }) : undefined;
+
+      // Con el índice, los documentos adjuntados en mensajes ANTERIORES ya están
+      // en él: se promovieron a fuentes del curso (ver `promoteDraftDocuments`
+      // más arriba) y el índice trae su resumen. Cargarlos también acá los
+      // duplicaba, y encima el bloque <document> le gana al índice en el prompt:
+      // le decía al modelo que tenía el texto completo "del PDF que el docente
+      // acaba de adjuntar" cuando lo que tenía eran resúmenes, y le ocultaba que
+      // podía leerlos con `read_source`. Sólo el adjunto de ESTE mensaje entra
+      // entero, porque es el foco del turno.
+      const documentosEnLinea =
+        formaDelMaterial === 'indice' ? (context?.documentId ? [context.documentId] : []) : documentIds;
+
       const documentText =
-        !useSourcePack && documentIds.length > 0
+        !useSourcePack && documentosEnLinea.length > 0
           ? await loadDocumentsContext(
-              documentIds,
+              documentosEnLinea,
               context?.documentId,
               user.id,
               // Exclude the doc's full text when it's cached OR searchable-via-RAG.
@@ -844,8 +895,9 @@ const agentCoreRouter = new Hono()
         documentId: context?.documentId,
         documentText,
         searchableDocument: !!searchableDocumentId,
-        courseSourceCount: sourcePack?.entries.length,
+        courseSourceCount: sourcePack?.entries.length ?? sourceIndex?.entries.length,
         truncatedSourceCount: sourcePack?.truncatedCount,
+        sourcesAsIndex: !!sourceIndex?.text,
         existingSectionCount: existingSections.length
       };
 
@@ -860,30 +912,8 @@ const agentCoreRouter = new Hono()
 
       const startTime = Date.now();
       const model = createModel(providerConfig);
-      const approvedPlan = role === AgentRole.TEACHER ? getLatestImplementationPlan(messages) : undefined;
       const activeTemplateId = role === AgentRole.TEACHER ? getActiveCourseTemplateId(messages) : undefined;
       const activeTemplate = activeTemplateId ? getCourseTemplate(activeTemplateId) : undefined;
-
-      // Paso 3 (prompt por fase): scope the system prompt to the conversation's
-      // phase instead of always sending the 12.6k-token monolith.
-      // - build: a plan was approved → implementation/content rules (~9.3k tokens).
-      // - plan: no plan AND nothing to edit yet → pure planning conversation
-      //   (wizard/discovery) → planning rules only (~6.6k tokens).
-      // - full: there is already something to edit — a lesson is open, or the
-      //   course has sections — so the content-writing rules are required.
-      //
-      // See resolveTeacherPromptMode for why `existingSections` participates:
-      // deriving the phase from the transcript alone made every fresh chat on an
-      // already-built course read-only.
-      //
-      // Each mode yields a stable, cacheable prefix; the one cache miss happens
-      // at the plan→build transition, then the build prefix caches for the run.
-      const teacherPromptMode: TeacherPromptMode = resolveTeacherPromptMode({
-        isTeacher: role === AgentRole.TEACHER,
-        hasApprovedPlan: !!approvedPlan,
-        lessonId: context?.lessonId,
-        existingSectionCount: existingSections.length
-      });
 
       // Stable across requests — safe to cache as a long-lived Anthropic prefix.
       // Volatile per-request context (lesson/exercise/document/section count/
@@ -918,8 +948,11 @@ const agentCoreRouter = new Hono()
       const hasInlineDocumentContext = role === AgentRole.TEACHER && !!documentText && documentText.length > 0;
 
       // Same idea for the source pack, which is the far bigger block and lives in
-      // its own message (see below).
-      const hasSourcePackContext = role === AgentRole.TEACHER && !!sourcePack?.text;
+      // its own message (see below). El índice ocupa el mismo lugar cuando el
+      // paquete no viaja: es chico, pero es igual de estable, así que se cachea
+      // con el mismo criterio.
+      const materialText = sourcePack?.text ?? sourceIndex?.text;
+      const hasSourcePackContext = role === AgentRole.TEACHER && !!materialText;
 
       // Server-measured build progress, reused three ways: as the coherence anchor
       // in the prompt, as the checklist the UI renders, and as the signal that
@@ -994,11 +1027,37 @@ const agentCoreRouter = new Hono()
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
               searchableDocumentId,
-              // The thin-lesson check belongs to a full build and nowhere else:
-              // on a one-off edit the teacher may well be asking for something
-              // short, and the prompt explicitly forbids inflating an existing
-              // 600-word lesson into 3,000.
-              isBuilding: teacherPromptMode === 'build'
+              // Los chequeos que sólo tienen sentido construyendo: durante una
+              // edición suelta el docente puede estar pidiendo exactamente un
+              // párrafo corto, y le está dictando el contenido él mismo — o sea
+              // que él es la fuente, y contrastarlo contra los documentos sería
+              // marcar como inventado lo que acaba de escribir.
+              isBuilding: teacherPromptMode === 'build',
+              // El chequeo de fundamento. Lee las fuentes por su cuenta en vez
+              // de mirar `sourcePack`: el paquete viaja o no según si hay una
+              // pestaña de lección abierta (ver la nota de `useSourcePack`), y
+              // que se verifique lo escrito no puede depender de eso.
+              verificarFundamento: crearVerificadorDeFundamento({
+                orgId,
+                userId: user.id,
+                courseId,
+                redis,
+                providerConfig
+              }),
+              redis,
+              // El sub-agente escritor. Recibe el temario del plan aprobado para
+              // no repetir lo que cubren las otras lecciones; fuera de una
+              // construcción no hay plan y escribe sin temario, que para
+              // reescribir una lección suelta alcanza.
+              escribirLeccion: crearEscritorDeLecciones({
+                orgId,
+                userId: user.id,
+                courseId,
+                redis,
+                providerConfig,
+                courseTitle: courseRow.title,
+                temario: temarioDelPlan(approvedPlan)
+              })
             });
 
       const contextManaged = await buildModelContextMessages({
@@ -1087,10 +1146,10 @@ const agentCoreRouter = new Hono()
       // block and invalidated the sources with it: the pack was re-written at
       // 1.25x on every build turn instead of being read back at 0.1x — the exact
       // opposite of what the cache is for.
-      const sourcePackMessage = sourcePack?.text
+      const sourcePackMessage = materialText
         ? {
             role: 'user' as const,
-            content: [{ type: 'text' as const, text: sourcePack.text }],
+            content: [{ type: 'text' as const, text: materialText }],
             ...(isAnthropicCompatible && hasSourcePackContext
               ? {
                   providerOptions: {
@@ -1130,6 +1189,11 @@ const agentCoreRouter = new Hono()
         console.log(
           `[agent.chat] source pack: ${sourcePack.entries.length} source(s), ` +
             `~${sourcePack.estimatedTokens} tokens, ${sourcePack.truncatedCount} summarized`
+        );
+      } else if (sourceIndex?.text) {
+        console.log(
+          `[agent.chat] source index: ${sourceIndex.entries.length} source(s), ` +
+            `~${Math.ceil(sourceIndex.text.length / 4)} tokens (contenido bajo demanda con read_source)`
         );
       }
 
@@ -1397,6 +1461,26 @@ const agentCoreRouter = new Hono()
               `toolsOffered=${activeToolNames?.length ?? 'all'} toolCalls=[${toolCalls.join(', ') || 'NONE'}] ` +
               `docInline=${hasInlineDocumentContext}`
           );
+
+          // Enlaces del resumen a contenido que no existe. El dashboard los
+          // repara por título al mostrarlos (`mentions.ts`); esto sólo MIDE
+          // cuántas veces pasa y si esa reparación alcanza (`mention-check.ts`).
+          const textoDeLaRonda = steps.map((step) => step.text ?? '').join('');
+
+          if (role === AgentRole.TEACHER && textoDeLaRonda.includes('@[')) {
+            try {
+              const rotas = mencionesRotas(textoDeLaRonda, await getCourseContentItems(courseId));
+
+              for (const rota of rotas) {
+                console.warn(
+                  `[agent.chat] enlace a contenido inexistente: @[${rota.titulo}](${rota.tipo}:${rota.id}) — ` +
+                    (rota.reparablePorTitulo ? 'el dashboard lo repara por título' : 'NO se puede reparar por título')
+                );
+              }
+            } catch (error) {
+              console.error('[agent.chat] no se pudieron verificar los enlaces del resumen:', error);
+            }
+          }
 
           // Re-check the plan vs the (now-updated) live course. If items are still
           // missing/empty, flag it so the UI can offer "Continue" — regardless of
