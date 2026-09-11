@@ -22,9 +22,6 @@ export const load = async ({ params, url, cookies }) => {
   const cookieKey = `${ORG_ID_COOKIE_PREFIX}${siteName}`;
   const cachedOrgId = cookies.get(cookieKey);
 
-  console.log('cachedOrgId', cachedOrgId);
-  console.log('cookieKey', cookieKey);
-
   let orgId: string | undefined = cachedOrgId;
 
   if (!orgId) {
@@ -42,8 +39,6 @@ export const load = async ({ params, url, cookies }) => {
       });
     }
   }
-
-  console.log('returning orgId', orgId);
 
   return {
     orgName: siteName,

@@ -385,8 +385,9 @@ export function getApiHeaders(
     cookie: cioCookies || ''
   };
 
-  console.log('headers', headers);
-  console.log('orgId', orgId);
+  // OJO: `headers` lleva la cookie de sesión. No loguearlo. El log del dashboard
+  // lo lee cualquier usuario del servidor, y una cookie ahí es una sesión ajena
+  // servida — duran 30 días. Quedaron ~500 líneas así, de agosto y septiembre.
 
   if (orgId) {
     headers['cio-org-id'] = orgId;
