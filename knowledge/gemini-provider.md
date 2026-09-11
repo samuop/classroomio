@@ -3,6 +3,14 @@
 **Last updated**: 2026-08-10. Written while making `gemini-3.5-flash-lite` a
 provider we can move to on any given day, without a code change.
 
+> **Since then:** production's default model is `gemini-flash-latest`, and it is
+> set in the deploy workflow (`.github/workflows/deploy-classroomio.yml`, step
+> "Write API .env"), which rewrites the API `.env` on every deploy — so editing
+> the VPS `.env` by hand, as "How to switch" below says, lasts until the next
+> deploy. And `GOOGLE_MODEL` is only the fallback: the platform panel's global
+> model and each organisation's `aiModel` win over it (`providerConfigForOrg`).
+> The measurements below are still the `gemini-3.5-flash-lite` ones.
+
 ## TL;DR
 
 - Flipping to Gemini is **two env vars and a restart** — `CHAT_PROVIDER=google`

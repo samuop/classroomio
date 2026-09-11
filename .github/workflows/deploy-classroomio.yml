@@ -223,12 +223,19 @@ jobs:
       # secreto, y dentro de seis meses "¿desde cuándo estamos en Gemini?" se
       # responde con git log en vez de abriendo un secreto que no se puede leer.
       #
-      # CHAT_PROVIDER=google + GOOGLE_MODEL=gemini-3.5-flash-lite: se migró desde
-      # MiniMax-M3. GOOGLE_API_KEY ya estaba (la usa el RAG) y sirve igual para
-      # el chat — es la misma clave, no hay una por servicio. Gemini cachea el
-      # prefijo de la petición SOLO, sin pedirle nada: medido con el prompt real
-      # y las 26 herramientas, 88% de un prompt de 74k fichas vuelve como
-      # cacheRead. Para volver a MiniMax, borrar estas dos líneas.
+      # CHAT_PROVIDER=google: se migró desde MiniMax-M3. GOOGLE_API_KEY ya estaba
+      # (la usa el RAG) y sirve igual para el chat — es la misma clave, no hay
+      # una por servicio. Gemini cachea el prefijo de la petición SOLO, sin
+      # pedirle nada: medido con el prompt real y las 26 herramientas, 88% de un
+      # prompt de 74k fichas vuelve como cacheRead. Para volver a MiniMax,
+      # borrar CHAT_PROVIDER y GOOGLE_MODEL.
+      #
+      # GOOGLE_MODEL=gemini-flash-latest (antes gemini-3.5-flash-lite):
+      # planificar y construir un curso pide un modelo más capaz que Flash-Lite.
+      # Es sólo el modelo POR DEFECTO: el ajuste global del panel de plataforma
+      # y el `aiModel` del plan de cada empresa le ganan (providerConfigForOrg).
+      # Sin GOOGLE_SEARCH_MODEL, la investigación web sigue a este modelo, y
+      # se comprobó contra la API real que soporta Grounding con Google Search.
       # OJO: NO agregar providerOptions.google.cachedContent — es un 400 contra
       # cualquier petición que lleve herramientas. Ver knowledge/gemini-provider.md.
       #
@@ -259,7 +266,7 @@ jobs:
           PUBLIC_IS_SELFHOSTED=false
           AUTH_COOKIE_DOMAIN=
           CHAT_PROVIDER=google
-          GOOGLE_MODEL=gemini-3.5-flash-lite
+          GOOGLE_MODEL=gemini-flash-latest
           AUDIT_SLOW_REQUEST_MS=2000
           AUDIT_RETENTION_DAYS=365
           ENVEOF

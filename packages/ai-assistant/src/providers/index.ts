@@ -65,7 +65,8 @@ export function getImageModel(): ImageModel | null {
  * capability: pointing `GOOGLE_MODEL` at something that does not support the
  * tool would take research down with the chat, and the two decisions are not the
  * same decision. Unset, it follows `GOOGLE_MODEL` — which in production is
- * `gemini-3.5-flash-lite`, a model that does support it.
+ * `gemini-flash-latest`, checked against the real API to support it. It follows
+ * the environment only: an organisation's `aiModel` does not reach research.
  *
  * The tool must be named `google_search` in the tool set; the provider matches
  * it by name.
