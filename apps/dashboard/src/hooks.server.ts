@@ -101,7 +101,9 @@ const handlePagesRoutes: Handle = async ({ event, resolve }) => {
   }
 
   if (!event?.locals?.user && !hasCioCookie) {
-    console.log('no user and no cio cookie, redirecting to login');
+    // Sin log: que alguien sin sesión caiga en una ruta privada es el caso
+    // normal (y un robot barriendo el login escribía decenas de líneas por
+    // segundo). Los 401/403 que sí importan quedan en `audit_incident`.
     const shouldAddRedirectParam = !pathname.includes(ROUTE.LOGOUT);
     const fullPath = pathname + event.url.search;
     const redirectPath = shouldAddRedirectParam

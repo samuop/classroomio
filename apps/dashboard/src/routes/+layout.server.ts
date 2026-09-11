@@ -1,8 +1,8 @@
 import type { AccountOrg } from '$features/app/types';
 import type { MetaTagsProps } from 'svelte-meta-tags';
-import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
 import { getBaseMetaTags } from '$lib/utils/functions/metaTags';
 import { getOrgSiteInfo } from '$features/app/layout-setup';
+import { logSlowLoad } from '$lib/utils/functions/ssr-log';
 
 export const ssr = true;
 
@@ -37,9 +37,7 @@ export const load = async ({ url, cookies, request, locals }): Promise<LoadOutpu
   };
 
   const loadMs = Math.round((performance.now() - loadStart) * 100) / 100;
-  console.log(
-    `[+layout.server] load: ${loadMs}ms (getOrgSiteInfo: ${orgSiteInfoMs}ms) | PUBLIC_IS_SELFHOSTED=${PUBLIC_IS_SELFHOSTED}`
-  );
+  logSlowLoad('+layout.server', loadMs, `getOrgSiteInfo: ${orgSiteInfoMs}ms`);
 
   // If it isn't a registered dashboard domain and also not a valid sub domain.
   // if (!APP_SUBDOMAINS.includes(orgSiteInfo.subdomain) && !dev && !orgSiteInfo.isOrgSite) {

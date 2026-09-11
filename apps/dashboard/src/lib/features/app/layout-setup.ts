@@ -52,12 +52,15 @@ export async function getOrgSiteInfo(url: URL, cookies: Cookies): Promise<OrgSit
 
   // Custom domain
   if (isURLCustomDomain(url)) {
-    console.log('it is custom domain');
     const apiKeyHeaders = getApiKeyHeaders();
+    // Acá se volcaba la empresa entera —planes, ajustes, marca— en cada carga
+    // del dominio propio de cada cliente. No aportaba nada y tapaba el resto del
+    // log. Lo que sí hay que ver es el caso que rompe: un dominio propio que no
+    // resuelve a ninguna empresa deja la pantalla vacía sin decir por qué.
     const orgs = await getOrgsByCustomDomain(url.host, true, apiKeyHeaders);
-    console.log('orgs', orgs);
 
     if (!orgs || orgs.length === 0) {
+      console.warn('dominio propio sin empresa asociada:', url.host);
       return response;
     }
 

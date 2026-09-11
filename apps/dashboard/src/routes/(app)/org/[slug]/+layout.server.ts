@@ -14,7 +14,6 @@ export const load = async ({ params, url, cookies }) => {
 
   // If this is LMS but user is on org site, redirect to LMS
   if (isOrgSite && PUBLIC_IS_SELFHOSTED !== 'true') {
-    console.log('isOrgSite redirecting to lms');
     redirect(307, `/lms`);
   }
 
