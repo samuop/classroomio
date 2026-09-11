@@ -255,10 +255,17 @@ jobs:
       # diaria lo borre — o sea, hasta cuándo se puede reconstruir qué pasó. Un
       # año es lo que hace falta para investigar un incidente viejo sin que la
       # tabla crezca sin techo. Para apagar la purga: AUDIT_PURGE_DISABLED=1.
+      # `umask 077` y no el umask por defecto: sin eso el archivo queda 664 y lo
+      # lee CUALQUIER usuario del servidor. Adentro están DATABASE_URL con
+      # permiso de escritura, las claves del proveedor de IA, el SMTP y
+      # BETTER_AUTH_SECRET — con ese secreto se firma un enlace de entrada
+      # (`/api/auth/login-link`) que abre sesión como cualquier usuario, operador
+      # de la plataforma incluido. Los procesos corren como `deploy`, que es el
+      # dueño, así que 600 les alcanza.
       - name: Write API .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
+            "umask 077 && cat > /var/www/classroomio/apps/api/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_API_ENV }}
           JINA_API_KEY=${{ secrets.JINA_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -294,7 +301,7 @@ jobs:
       - name: Write Dashboard .env
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
-            "cat > /var/www/classroomio/apps/dashboard/.env" <<'ENVEOF'
+            "umask 077 && cat > /var/www/classroomio/apps/dashboard/.env" <<'ENVEOF'
           ${{ secrets.VPS_CIO_DASHBOARD_ENV }}
           PUBLIC_IS_SELFHOSTED=false
           ORIGIN=

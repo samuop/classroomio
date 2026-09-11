@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { jwtVerify } from 'jose';
 
 import { getAllActiveTokenAuth } from '@db/queries/organization/token-auth';
@@ -20,6 +20,82 @@ export class TokenExchangeError extends Error {
     super(message);
     this.name = 'TokenExchangeError';
   }
+}
+
+/**
+ * El token de una empresa sólo puede reclamar identidades de ESA empresa.
+ *
+ * Antes alcanzaba con que el correo existiera en cualquier parte: se buscaba el
+ * usuario por correo en toda la base y, si aparecía, se le abría sesión. Eso
+ * convertía el secreto de firma de cualquier empresa cliente en una llave
+ * maestra — firmar un token con el correo del operador de la plataforma, o con
+ * el de un alumno de otro cliente, devolvía la sesión de esa persona. El secreto
+ * lo genera y lo ve el admin de cada empresa desde su propia pantalla.
+ *
+ * Dos cierres, en orden de gravedad:
+ *
+ * 1. Una cuenta con rol global (hoy, el operador de la plataforma) NUNCA entra
+ *    por acá, tenga o no fila de membresía — esa fila la puede fabricar el admin
+ *    de la empresa importando el correo a su audiencia. Se rechaza cualquier rol
+ *    que no sea el común, y no sólo los conocidos: un rol nuevo tiene que entrar
+ *    a esta lista a propósito, no heredar el permiso por olvido.
+ * 2. El resto de las cuentas que ya existen tienen que estar YA relacionadas con
+ *    la empresa que firma: miembro, fila creada por la importación de audiencia
+ *    (mismo correo, todavía sin perfil) o invitación abierta. Para alguien nuevo
+ *    no cambia nada: se crea como siempre.
+ */
+async function assertTokenMayClaim(
+  userId: string,
+  role: string | null,
+  emailLower: string,
+  orgId: string
+): Promise<void> {
+  if (role && role !== 'user') {
+    console.warn('token-exchange: cuenta con rol global rechazada', { orgId, role });
+    throw new TokenExchangeError(
+      'This account cannot be signed in with an organization token',
+      'TOKEN_EXCHANGE_PRIVILEGED_ACCOUNT',
+      403
+    );
+  }
+
+  const [member] = await db
+    .select({ id: schema.organizationmember.id })
+    .from(schema.organizationmember)
+    .where(
+      and(
+        eq(schema.organizationmember.organizationId, orgId),
+        or(
+          eq(schema.organizationmember.profileId, userId),
+          eq(schema.organizationmember.email, emailLower)
+        )
+      )
+    )
+    .limit(1);
+
+  if (member) return;
+
+  const [invite] = await db
+    .select({ id: schema.organizationInvite.id })
+    .from(schema.organizationInvite)
+    .where(
+      and(
+        eq(schema.organizationInvite.organizationId, orgId),
+        eq(schema.organizationInvite.email, emailLower),
+        eq(schema.organizationInvite.isRevoked, false),
+        isNull(schema.organizationInvite.acceptedAt)
+      )
+    )
+    .limit(1);
+
+  if (invite) return;
+
+  console.warn('token-exchange: cuenta ajena a la empresa rechazada', { orgId });
+  throw new TokenExchangeError(
+    'That account exists and does not belong to this organization. Invite or import it first.',
+    'TOKEN_EXCHANGE_USER_NOT_IN_ORG',
+    403
+  );
 }
 
 /**
@@ -71,6 +147,7 @@ export async function exchangeToken(
 
   let user: User;
   if (existingUser) {
+    await assertTokenMayClaim(existingUser.id, existingUser.role, emailLower, orgId);
     user = existingUser as User;
   } else {
     const randomPassword = crypto.randomUUID() + crypto.randomUUID();
