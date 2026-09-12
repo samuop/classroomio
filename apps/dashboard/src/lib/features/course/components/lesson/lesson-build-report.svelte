@@ -19,7 +19,7 @@
    * Acá se muestra al lado del contenido que describe, que es donde sirve.
    */
   import { t } from '$lib/utils/functions/translations';
-  import { formatDisplayDate } from '$lib/utils/functions/formatDate';
+  import { formatDisplayDate } from '$lib/utils/functions/date';
 
   interface Props {
     /** Tal cual lo guardó la API. Clave abierta: se lee a la defensiva. */

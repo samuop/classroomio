@@ -34,6 +34,25 @@ describe('de qué está hecha la lección', () => {
   });
 
   /**
+   * Con fecha, que NO es un detalle del caso feliz.
+   *
+   * La primera versión de este archivo nunca pasaba `builtAt`, así que nunca
+   * llegaba a llamar al formateador de fechas — y el import de ese formateador
+   * apuntaba a un módulo que no lo exporta. Los tests pasaron en verde y el
+   * build del dashboard se cayó en el deploy: vitest deja un import inexistente
+   * como `undefined` hasta que alguien lo usa; Rollup lo corta al compilar.
+   *
+   * O sea: un test que no ejercita una rama tampoco protege sus imports.
+   */
+  it('muestra la fecha, que es lo que ejercita el formateador', () => {
+    const { container } = render(LessonBuildReport, {
+      props: { report: { sources: [], groundingWarnings: [], builtAt: '2026-09-12T04:30:00.000Z' } }
+    });
+
+    expect(container.textContent).toMatch(/\d/);
+  });
+
+  /**
    * El caso que motivó todo: una lección escrita sin ninguna fuente del curso.
    * Callarlo la deja indistinguible de una fundada.
    */
