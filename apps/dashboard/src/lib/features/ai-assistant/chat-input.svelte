@@ -360,10 +360,21 @@ import BookOpenIcon from '@lucide/svelte/icons/book-open';
                 <SquareIcon size={12} />
               </Button>
             {:else}
+              <!--
+                `() => onSend()` y NO `onSend`: el que recibe esto es un
+                `onclick`, así que pasarle la función pelada le entrega el
+                MouseEvent como primer argumento. Del otro lado, `handleSend`
+                tiene una firma `(textOverride?: string)` para poder mandar un
+                texto armado desde otra tarjeta — y recibía el evento ahí.
+                Hacía `.trim()` sobre un MouseEvent y se caía en silencio: el
+                botón no hacía nada y Enter sí, porque Enter llama sin
+                argumentos. TypeScript no lo ve, porque una función de cero
+                parámetros es asignable a un manejador de uno.
+              -->
               <Button
                 size="sm"
                 onmousedown={(event: MouseEvent) => event.preventDefault()}
-                onclick={onSend}
+                onclick={() => onSend()}
                 disabled={!inputValue.trim()}
                 class="shrink-0"
               >

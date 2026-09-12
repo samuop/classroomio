@@ -423,7 +423,18 @@
   }
 
   async function handleSend(textOverride?: string) {
-    const text = (textOverride ?? inputValue).trim();
+    /**
+     * Sólo una cadena cuenta como texto a mandar.
+     *
+     * Esta función se pasa como manejador de eventos en varios lugares, y un
+     * manejador recibe el evento como primer argumento: el botón de enviar le
+     * entregaba un MouseEvent acá y `.trim()` reventaba, así que el botón no
+     * hacía nada mientras Enter —que llama sin argumentos— funcionaba. El
+     * guardia está en el lado que no se puede olvidar: cada call site nuevo
+     * sería otra oportunidad de repetirlo, y el tipo no lo atrapa.
+     */
+    const override = typeof textOverride === 'string' ? textOverride : undefined;
+    const text = (override ?? inputValue).trim();
     if (!text || chat.status === 'streaming') return;
     if (!courseId) return;
 
@@ -500,8 +511,8 @@
     }
 
     // Only mutate the textarea when the user actually typed (not on a retry
-    // call where `textOverride` carried the value).
-    if (textOverride === undefined) {
+    // call where the text came in as an override).
+    if (override === undefined) {
       inputValue = '';
     }
 
