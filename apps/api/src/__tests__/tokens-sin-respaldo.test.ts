@@ -223,6 +223,39 @@ describe('tokens que la fuente no respalda', () => {
     });
   });
 
+  /**
+   * Una unidad que termina en un signo —«%», «°», «m²»— también es un dato.
+   *
+   * El patrón cerraba con `\b`, y entre «%» y un espacio no hay límite de
+   * palabra: la unidad se caía, quedaba el número pelado y, por debajo de mil,
+   * se descartaba. En producción el chequeo había marcado 20 números en 7
+   * lecciones y ningún porcentaje, aunque 9 lecciones contrastadas tenían alguno
+   * escrito — entre ellas una que inventó «el 30% restante».
+   */
+  describe('las unidades que terminan en un signo', () => {
+    const TALLER = [{ fileName: 'taller.pptx', text: 'El turno de la tarde resuelve el 70% de la actualización.' }];
+    const numeros = (texto: string) =>
+      verificarTokens({ texto, fuentes: TALLER })
+        .filter((hallazgo) => hallazgo.tipo === 'numero')
+        .map((hallazgo) => hallazgo.valor);
+
+    it('marca un porcentaje inventado seguido de espacio, coma o punto', () => {
+      expect(numeros('La noche completa el 30% restante, y audita el 100%.')).toEqual(['30 %', '100 %']);
+    });
+
+    it('no marca el porcentaje que la fuente sí dice', () => {
+      expect(numeros('La tarde resuelve el 70% de la actualización.')).toEqual([]);
+    });
+
+    it('marca grados y metros cuadrados sueltos', () => {
+      expect(numeros('Se guarda a 40 ° y el depósito tiene 120 m² libres.')).toEqual(['40 °', '120 m²']);
+    });
+
+    it('una unidad no es el comienzo de una palabra más larga', () => {
+      expect(numeros('Se usan unos 10 gramos por envase.')).toEqual([]);
+    });
+  });
+
   describe('la forma del hallazgo', () => {
     it('trae el tipo y un contexto donde ubicarlo', () => {
       const [hallazgo] = verificar('El área metropolitana concentra 500.000 habitantes y mucha obra nueva.');

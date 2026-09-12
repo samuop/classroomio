@@ -149,8 +149,25 @@ function soloDigitos(numero: string): string {
 const UNIDADES =
   '%|°c|°f|°|km2|km|m2|m²|m3|cm|mm|kg|grs|gr|g|tn|lts|lt|litros?|l|ml|hs|horas?|h|minutos?|segundos?|d[íi]as?|semanas?|meses?|a[ñn]os?|usd|ars|eur|pesos?|d[óo]lares?|personas?|habitantes?|empleados?|sucursales?|puntos?';
 
-/** Un número con su unidad opcional, tal como se escribe en español. */
-const NUMERO = new RegExp(String.raw`(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(${UNIDADES})?\b`, 'gi');
+/**
+ * Un número con su unidad opcional, tal como se escribe en español.
+ *
+ * El cierre NO es `\b`. Con `\b`, una unidad que termina en un signo —«%», «°»,
+ * «m²»— no podía ir seguida de un espacio ni de una coma: entre dos caracteres
+ * que no son de palabra no hay límite de palabra, así que la expresión soltaba
+ * la unidad, se quedaba con el número pelado y, por debajo de MAGNITUD_MINIMA,
+ * lo descartaba. «El 30% restante» no se marcaba nunca, aunque la regla de
+ * arriba dice que un porcentaje es un dato siempre. Medido: una lección
+ * reescrita que inventó «el 30% restante» y «el 100% de cobertura» pasó sin un
+ * solo aviso.
+ *
+ * Lo que `\b` sí hacía bien se conserva: la unidad no puede ser el comienzo de
+ * una palabra más larga («10 gramos» no es «10 g»).
+ */
+const NUMERO = new RegExp(
+  String.raw`(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(${UNIDADES})?(?![\p{L}\p{N}])`,
+  'giu'
+);
 
 /** Desde cuánto un número sin unidad ya es un dato por su tamaño. */
 const MAGNITUD_MINIMA = 1000;
