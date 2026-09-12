@@ -156,6 +156,14 @@ const NUMERO = new RegExp(String.raw`(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(${
 const MAGNITUD_MINIMA = 1000;
 
 /**
+ * Hasta cuántas palabras una cita entrecomillada se lee como el NOMBRE de algo.
+ *
+ * Más largo que esto es una frase, y una lección tiene todo el derecho de
+ * inventar la frase que dice un cliente en un ejemplo.
+ */
+const MAX_PALABRAS_CITA = 6;
+
+/**
  * Palabras que aparecen en mayúscula sin ser nombres propios.
  *
  * La lista es corta a propósito. El trabajo pesado lo hace la regla de posición
@@ -408,10 +416,39 @@ export function extraerCitas(texto: string): Candidato[] {
   const encontradas: Candidato[] = [];
 
   for (const m of texto.matchAll(entrecomillado)) {
-    encontradas.push({ valor: m[1].trim(), indice: (m.index ?? 0) + 1 });
+    const valor = m[1].trim();
+
+    // Sólo lo que tiene forma de NOMBRE de algo —una sección, un programa, un
+    // título—, no una frase entre comillas.
+    //
+    // Medido: de catorce hallazgos en una sección, tres eran parlamentos
+    // inventados dentro de un ejemplo de rol («Llevate este látex interior de 4
+    // litros…»), que es justamente lo que una lección tiene que poder escribir.
+    // Las citas que sí importaban eran cortas y eran nombres: la lección
+    // remitía a una sección «SOBRE NOSOTROS» que en la fuente se llama de otra
+    // manera, y el lector que va a verificar no encuentra nada.
+    if (valor.split(/\s+/).length > MAX_PALABRAS_CITA) continue;
+
+    encontradas.push({ valor, indice: (m.index ?? 0) + 1 });
   }
 
   return encontradas;
+}
+
+/**
+ * Los tramos del texto que son etiquetas de un diagrama.
+ *
+ * Hacen falta porque ahí la mayúscula NO significa nada: una etiqueta se
+ * escribe en capital por convención tipográfica («Diagnóstico», «Sinergia»,
+ * «Mejora continua»), así que una palabra sola capitalizada dentro de un
+ * diagrama no es evidencia de nombre propio. Las de dos o más sí —«Casa
+ * Central», «Planta Rosalía»— y ésas son las cajas inventadas que importan.
+ */
+function tramosDeDiagrama(texto: string): Array<[number, number]> {
+  return [...texto.matchAll(/\[diagram:[^\]]*\]/g)].map((m) => [
+    m.index ?? 0,
+    (m.index ?? 0) + m[0].length
+  ]);
 }
 
 /**
@@ -514,6 +551,7 @@ export function verificarTokens(params: {
     [...texto.matchAll(/(?<!\p{L})(\p{Ll}[\p{L}]*)/gu)].map((m) => normalizar(m[1])).filter(Boolean)
   );
 
+  const diagramas = tramosDeDiagrama(texto);
   const hallazgos: HallazgoDeToken[] = [];
   const registrados: string[] = [];
 
@@ -566,6 +604,13 @@ export function verificarTokens(params: {
 
     const unaSolaPalabra = !buscado.includes(' ');
     if (unaSolaPalabra && enMinuscula.has(buscado)) continue;
+
+    // Una palabra sola dentro de una etiqueta de diagrama: la mayúscula es
+    // tipográfica, no un nombre. Las de dos o más siguen contando, que son las
+    // cajas inventadas por las que existe todo esto.
+    if (unaSolaPalabra && diagramas.some(([desde, hasta]) => candidato.indice >= desde && candidato.indice < hasta)) {
+      continue;
+    }
 
     // «Provincia de Maipú»: lo que la lección puso de más es la categoría, y
     // el nombre que queda al recortarla sí está en la fuente. Se juzga el

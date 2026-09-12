@@ -191,6 +191,38 @@ describe('tokens que la fuente no respalda', () => {
     });
   });
 
+  /**
+   * Las dos clases de ruido que aparecieron al correrlo contra una sección
+   * recién escrita en produccion. Las dos son "donde la mayuscula o las
+   * comillas NO significan nada", y por eso se arreglan con una regla y no con
+   * una lista de palabras.
+   */
+  describe('donde las comillas y la mayúscula no dicen nada', () => {
+    it('no marca el parlamento inventado de un ejemplo', () => {
+      // Una lección tiene todo el derecho de escribir lo que dice un cliente en
+      // un caso práctico. Marcarlo era 3 de 14 hallazgos de una sección.
+      expect(
+        verificar('Respuesta transaccional: "Llevate este sellador de 4 litros y pasale dos manos".')
+      ).toEqual([]);
+    });
+
+    it('sí marca una cita corta, que es el nombre de una sección', () => {
+      // La sección real se llama «QUIENES SOMOS». Esta es la cita que importa.
+      expect(valores('Más detalle en «SOBRE NOSOTROS».')).toContain('SOBRE NOSOTROS');
+    });
+
+    it('no marca una palabra sola dentro de un diagrama', () => {
+      // En una etiqueta la capital es tipográfica: «Sinergia», «Diagnóstico».
+      expect(verificar('El modelo se resume así: [diagram: Sinergia · Diagnóstico · Mejora]')).toEqual([]);
+    });
+
+    it('sí marca una caja de dos palabras dentro de un diagrama', () => {
+      // Que es el caso por el que existe todo esto: una caja inventada en un
+      // organigrama.
+      expect(valores('La estructura: [diagram: Casa Central · Planta Rosalía]')).toContain('Planta Rosalía');
+    });
+  });
+
   describe('la forma del hallazgo', () => {
     it('trae el tipo y un contexto donde ubicarlo', () => {
       const [hallazgo] = verificar('El área metropolitana concentra 500.000 habitantes y mucha obra nueva.');
