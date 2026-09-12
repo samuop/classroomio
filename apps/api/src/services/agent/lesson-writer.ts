@@ -107,7 +107,26 @@ export function armarMaterial(
  * completa en el editor y termina a mitad de una oración— es peor que avisar que
  * no se pudo.
  */
-export function extraerLeccion(respuesta: string): { html: string; nota?: string } | null {
+export function extraerLeccion(
+  respuesta: string
+): { html: string; nota?: string } | { faltaMaterial: string } | null {
+  /**
+   * El escritor puede NEGARSE, y esa negativa es un resultado, no un error.
+   *
+   * Hasta acá sólo podía escribir. Si el material mencionaba el tema de pasada
+   * —o directamente no lo mencionaba— su única salida era escribir igual y
+   * poner el hueco en una nota que se relataba en prosa y se iba hacia arriba
+   * en el chat. O sea: el hueco quedaba tapado con algo verosímil, que es el
+   * peor resultado de todos porque nadie puede ver qué parte es invento.
+   *
+   * Con esto puede devolver «para esta lección no hay material», y quien lo
+   * llamó deja el ítem PENDIENTE en vez de rellenarlo. Un hueco declarado lo
+   * llena el docente subiendo lo que falta; uno tapado no lo ve nadie.
+   */
+  const negativa = respuesta.match(/<sin-material>([\s\S]*?)<\/sin-material>/i)?.[1].trim();
+
+  if (negativa) return { faltaMaterial: negativa };
+
   const leccion = respuesta.match(/<lesson>([\s\S]*?)<\/lesson>/i);
 
   if (!leccion) return null;
@@ -159,7 +178,7 @@ export function temarioDelPlan(
     .join('\n');
 }
 
-export interface ResultadoEscritor {
+export interface LeccionEscrita {
   html: string;
   nota?: string;
   /** Lo que el escritor tuvo delante, completo: contra esto se verifica. */
@@ -168,6 +187,22 @@ export interface ResultadoEscritor {
   fuentesNoEncontradas: string[];
   recortadas: string[];
 }
+
+/**
+ * El escritor miro el material y dijo que no alcanza para esta leccion.
+ *
+ * Es un resultado valido, no una falla: quien llama deja el item pendiente y se
+ * lo cuenta al docente. Por eso es un tipo aparte y no un `html` vacio — un
+ * vacio se cuela por cualquier rama que no lo mire, una union obliga al
+ * compilador a preguntar.
+ */
+export interface LeccionSinMaterial {
+  faltaMaterial: string;
+  fuentesUsadas: string[];
+  fuentesNoEncontradas: string[];
+}
+
+export type ResultadoEscritor = LeccionEscrita | LeccionSinMaterial;
 
 export type EscritorDeLecciones = (params: {
   lessonTitle: string;
@@ -290,6 +325,17 @@ export function crearEscritorDeLecciones(params: {
 
     if (!extraida) {
       throw new Error('it did not return a lesson in the expected <lesson>…</lesson> envelope, so nothing was saved.');
+    }
+
+    // Se nego: el material no sostiene esta leccion. Vuelve como resultado —no
+    // como error— para que quien llamo deje el item pendiente y se lo diga al
+    // docente, en vez de reintentar hasta que salga algo.
+    if ('faltaMaterial' in extraida) {
+      console.info(
+        `[lesson-writer] "${lessonTitle}": sin material suficiente — ${extraida.faltaMaterial.slice(0, 120)}`
+      );
+
+      return { faltaMaterial: extraida.faltaMaterial, fuentesUsadas, fuentesNoEncontradas };
     }
 
     console.info(

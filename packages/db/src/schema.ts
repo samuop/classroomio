@@ -1126,7 +1126,27 @@ export const lesson = pgTable(
       onDelete: 'cascade',
       onUpdate: 'cascade'
     }),
-    slug: varchar()
+    slug: varchar(),
+    /**
+     * De que esta hecha esta leccion: con que fuentes se escribio, que quedo
+     * sin respaldo y que aviso quien la escribio.
+     *
+     * ── Por que se guarda ──────────────────────────────────────────────────
+     *
+     * El sistema YA sabia todo esto en el momento de escribir —las fuentes
+     * asignadas, el resultado del verificador de fundamento, la nota del
+     * escritor— y lo devolvia al modelo, que lo relataba en prosa en el chat.
+     * Prosa que se va hacia arriba y desaparece. Resultado: el docente abre la
+     * leccion y no tiene forma de saber que parrafo salio de un documento y
+     * cual es relleno plausible; las dos se leen con la misma autoridad.
+     *
+     * Guardarlo es lo que convierte "confia en el agente" en "mira y deci".
+     *
+     * Clave abierta a proposito: un `$type<>` cerrado en una columna de esta
+     * tabla obliga a tocar tipos de toda la app por cada campo nuevo, y ya tiro
+     * el build una vez (TS7056). La forma se valida con zod al leerla, no acá.
+     */
+    buildReport: jsonb('build_report').$type<Record<string, unknown> | null>()
   },
   (table) => [
     foreignKey({

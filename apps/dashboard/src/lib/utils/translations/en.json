@@ -3353,6 +3353,13 @@
           "complete_and_finish": "Complete and finish",
           "completed": "Completed",
           "go_next": "Next"
+        },
+        "build_report": {
+          "title": "What this lesson is made of",
+          "written_from": "Written from:",
+          "no_sources": "Written without course sources: its content is general knowledge, not your organisation’s material.",
+          "unsupported": "Claims the sources do not support",
+          "writer_note": "Note from the writer:"
         }
       },
       "attendance": {

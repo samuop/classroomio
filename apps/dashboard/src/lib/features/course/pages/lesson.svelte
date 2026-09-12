@@ -21,6 +21,7 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import { RefreshPageData, UnsavedChanges } from '$features/ui';
   import LessonVersionHistory from '$features/course/components/lesson/lesson-version-history.svelte';
+  import LessonBuildReport from '$features/course/components/lesson/lesson-build-report.svelte';
   import { courseApi, lessonApi } from '$features/course/api';
   import { isHtmlValueEmpty } from '$lib/utils/functions/toHtml';
   import { lessonVideoUpload, lessonDocUpload } from '$features/course/components/lesson/store';
@@ -473,6 +474,8 @@
           class="text-center"
         />
       {:else if mode === MODES.edit}
+        <!-- Solo en edicion: es la pantalla del docente, y es una decision suya. -->
+        <LessonBuildReport report={lessonApi.lesson?.buildReport} />
         <UnderlineTabs.Root
           bind:value={currentTabValue}
           onValueChange={(e) => {

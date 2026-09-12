@@ -15,6 +15,7 @@ import {
   deleteCourseSectionService
 } from '@api/services/course/section';
 import { createLesson, getLesson, updateLessonService, deleteLessonService } from '@api/services/lesson/lesson';
+import { updateLesson as updateLessonQuery } from '@cio/db/queries/lesson';
 import { upsertLessonLanguageService } from '@api/services/lesson-language';
 import {
   createExercise,
@@ -160,6 +161,8 @@ async function writeLessonBody(params: {
   verificarFundamento?: Verificador;
   /** Lo que tuvo delante quien escribió, si se sabe: se contrasta contra eso. */
   fuentesDeLaLeccion?: FuenteVista[];
+  /** Lo que el escritor avisó que no pudo cubrir, si avisó algo. */
+  notaDelEscritor?: string;
 }): Promise<{
   normalizedContent: string;
   svgWarnings: string[];
@@ -206,14 +209,38 @@ async function writeLessonBody(params: {
   // fixing an overlap means moving a label, which needs to know what the diagram
   // is saying. Handing the warning back lets the model correct its own work
   // instead of shipping it broken.
+  const svgWarnings = validateSvgDiagram(normalizedContent);
+  const groundingWarnings = await fundamento;
+
+  /**
+   * Queda escrito de qué está hecha la lección.
+   *
+   * Todo esto ya se sabía acá y se devolvía al modelo, que lo contaba en prosa
+   * en el chat — prosa que se va hacia arriba y desaparece. El docente abría la
+   * lección y no tenía forma de distinguir el párrafo que salió de un documento
+   * del que es relleno plausible: los dos se leen con la misma autoridad.
+   *
+   * Se guarda en la lección, al lado del contenido que describe, y nunca falla
+   * el guardado: si esto se cae, la lección igual se escribió.
+   */
+  await updateLessonQuery(params.lessonId, {
+    buildReport: {
+      builtAt: new Date().toISOString(),
+      sources: (params.fuentesDeLaLeccion ?? []).map((f) => f.fileName),
+      groundingWarnings,
+      diagramWarnings: svgWarnings,
+      ...(params.notaDelEscritor ? { writerNote: params.notaDelEscritor } : {})
+    }
+  }).catch((error) => console.error('[lesson] no se pudo guardar el informe de la lección:', error));
+
   return {
     normalizedContent,
-    svgWarnings: validateSvgDiagram(normalizedContent),
+    svgWarnings,
     mathWarnings: validateLessonMath(normalizedContent),
     // Sólo durante una construcción: un docente que edita una lección a mano
     // puede querer exactamente el párrafo que pidió y nada más.
     visualWarnings: params.isBuilding ? validateLessonVisuals(normalizedContent) : [],
-    groundingWarnings: await fundamento
+    groundingWarnings
   };
 }
 
@@ -982,6 +1009,36 @@ export function buildAgentTools(
             );
           }
 
+          /**
+           * El escritor se nego: el material no sostiene esta leccion.
+           *
+           * La leccion queda PENDIENTE — creada y vacia, en su lugar del plan —
+           * y no se rellena con nada. Un hueco declarado lo llena el docente
+           * subiendo lo que falta; uno tapado con parrafos verosimiles no lo ve
+           * nadie, y es como se construyo una seccion entera sobre un
+           * organigrama que el agente nunca habia leido.
+           *
+           * Se devuelve como resultado y no como error a proposito: un error
+           * invita a reintentar, y reintentar contra el mismo material vacio
+           * termina en el relleno que esto vino a evitar.
+           */
+          if ('faltaMaterial' in escrito) {
+            return {
+              id: leccion.id,
+              lessonId: leccion.id,
+              title: leccion.title,
+              order: leccion.order,
+              locale: args.locale,
+              contentWritten: false,
+              pendingForLackOfMaterial: escrito.faltaMaterial,
+              sourcesUsed: escrito.fuentesUsadas,
+              ...(escrito.fuentesNoEncontradas.length > 0 ? { sourcesNotFound: escrito.fuentesNoEncontradas } : {}),
+              note:
+                'The lesson was left empty on purpose. Do NOT write it yourself and do NOT retry: tell the teacher, ' +
+                'in the course language, what material this lesson needs so they can add it. Move on to the next item.'
+            };
+          }
+
           const written = await writeLessonBody({
             lessonId: leccion.id,
             lessonTitle: leccion.title,
@@ -993,7 +1050,8 @@ export function buildAgentTools(
             // fundamento incluido — contra lo que el escritor tuvo delante.
             isBuilding: true,
             verificarFundamento,
-            fuentesDeLaLeccion: escrito.material
+            fuentesDeLaLeccion: escrito.material,
+            notaDelEscritor: escrito.nota
           });
 
           return {
