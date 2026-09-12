@@ -142,10 +142,16 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
 
     if (decision.leer) {
       console.info(
-        `[parseDocument] "${file.name}": ${extractedText.trim().length} caracteres en ${pageCount} página(s) — leyendo con visión`
+        `[parseDocument] "${file.name}": ${extractedText.trim().length} caracteres en ${pageCount} página(s) — ` +
+          `leyendo con visión (${decision.porque})`
       );
 
-      const visto = await leerDocumentoConVision({ buffer, mediaType: mimeType, fileName: file.name });
+      const visto = await leerDocumentoConVision({
+        buffer,
+        mediaType: mimeType,
+        fileName: file.name,
+        porque: decision.porque
+      });
 
       // La transcripción reemplaza y no se suma: el modelo que miró el PDF ve
       // también su capa de texto, así que lo que devuelve ya la contiene.

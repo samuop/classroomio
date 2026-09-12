@@ -26,11 +26,27 @@ import { AIProvider, createModel, getProviderConfigForProvider } from '@cio/ai-a
  *
  * ── Cuándo se dispara ────────────────────────────────────────────────────────
  *
- * Sólo cuando la extracción es implausible para el tamaño del documento, no en
- * cada subida: mirar cuesta plata y la enorme mayoría de los PDF traen su texto
- * perfectamente. El umbral se compara CONTRA LAS PÁGINAS, no contra un total
- * fijo: 300 caracteres son normales en un PDF de una página y son una falla
- * evidente en uno de veinte.
+ * Por dos motivos distintos, y el segundo se agregó después de medir.
+ *
+ * 1. **Hay muy poco texto para el tamaño del documento.** El umbral se compara
+ *    CONTRA LAS PÁGINAS, no contra un total fijo: 300 caracteres son normales
+ *    en un PDF de una página y son una falla evidente en uno de veinte.
+ *
+ * 2. **Hay texto, pero el documento es un diagrama.** Este es el caso que el
+ *    umbral por cantidad no ve, y es el más traicionero de los dos: un
+ *    organigrama exportado de PowerPoint normalmente SÍ trae capa de texto con
+ *    todas las etiquetas de las cajas. Contando caracteres, la extracción
+ *    "funcionó" — cinco mil caracteres en siete páginas pasan cómodos el piso
+ *    de doscientos por página— y la visión no corre nunca. Pero lo que el
+ *    modelo recibe es una PILA DE ETIQUETAS SIN JERARQUÍA: los nombres de los
+ *    puestos sin quién depende de quién. Y con eso escribe un organigrama que
+ *    se parece al original y no es el original, que es peor que no tener nada,
+ *    porque nada se nota.
+ *
+ *    El nuestro pasó por visión de casualidad: esa exportación dejó 104
+ *    caracteres —un pie de página— y cayó del lado del umbral por cantidad. Con
+ *    la capa de texto completa habríamos tenido las palabras y la estructura
+ *    equivocada, sin un solo aviso.
  */
 
 /**
@@ -57,9 +73,83 @@ const MAX_INLINE_BYTES = 18 * 1024 * 1024;
 export const VISION_NOTICE =
   '[Este documento no tenía texto extraíble: fue leído visualmente y transcripto abajo.]';
 
+/**
+ * La misma marca para el otro motivo, y con otro texto porque el primero seria
+ * MENTIRA acá: este documento sí tenía texto extraíble. Lo que no tenía era la
+ * estructura, y eso es precisamente lo que hay que decirle al modelo para que
+ * sepa cuánta confianza tenerle a la jerarquía que va a leer.
+ *
+ * El texto de `VISION_NOTICE` no se toca: hay documentos ya guardados que lo
+ * llevan, y `comoSeLeyo` los tiene que seguir reconociendo.
+ */
+export const VISION_NOTICE_DIAGRAMA =
+  '[Este documento es un diagrama: se leyó visualmente para conservar su estructura, y se transcribió abajo.]';
+
+/** ¿Este texto salió de mirar el documento, por cualquiera de los dos motivos? */
+export function esLecturaVisual(texto: string): boolean {
+  return texto.startsWith(VISION_NOTICE) || texto.startsWith(VISION_NOTICE_DIAGRAMA);
+}
+
+export type MotivoParaMirar = 'poco_texto' | 'parece_diagrama';
+
 export type VisionDecision =
-  | { leer: true }
+  | { leer: true; porque: MotivoParaMirar }
   | { leer: false; motivo: 'texto_suficiente' | 'sin_paginas' | 'demasiadas_paginas' | 'archivo_muy_grande' };
+
+/**
+ * Cuántos finales de oración por cada mil caracteres separan la prosa de un
+ * diagrama.
+ *
+ * La señal es el PUNTO, no el largo de la línea, y la diferencia importa: el
+ * largo de la línea depende del maquetado —una columna angosta da renglones de
+ * cuarenta caracteres, igual que una etiqueta— mientras que la puntuación
+ * depende de si el documento dice frases. Un texto corrido cierra una oración
+ * cada cien o ciento cincuenta caracteres, o sea entre siete y diez por mil.
+ * Un organigrama no cierra ninguna.
+ *
+ * Dos por mil es «una oración cada quinientos caracteres»: nada que se escriba
+ * en prosa baja de eso, y nada que sea un diagrama lo alcanza.
+ */
+export const MAX_ORACIONES_POR_MIL = 2;
+
+/**
+ * Largo medio de fragmento por encima del cual hay prosa, aunque falten puntos.
+ *
+ * Es la segunda condición y está para acotar: un índice o una portada también
+ * tienen pocos puntos, y mirarlos no aporta nada. Las dos condiciones se exigen
+ * juntas.
+ */
+export const MAX_LARGO_MEDIO_FRAGMENTO = 45;
+
+/** Con menos que esto no hay muestra para decidir nada. */
+const MIN_FRAGMENTOS = 6;
+const MIN_CARACTERES_PARA_JUZGAR = 200;
+
+/**
+ * ¿Lo que se extrajo tiene forma de diagrama y no de texto?
+ *
+ * Cuenta pura, sin red y sin modelo, igual que el umbral por cantidad — porque
+ * lo que decide gastar en visión tiene que poder testearse en los bordes.
+ */
+export function pareceDiagrama(params: { textoExtraido: string; pageCount: number }): boolean {
+  const texto = params.textoExtraido.trim();
+  const caracteres = texto.length;
+
+  if (caracteres < MIN_CARACTERES_PARA_JUZGAR) return false;
+
+  const fragmentos = texto
+    .split(/\r?\n/)
+    .map((f) => f.trim())
+    .filter(Boolean);
+
+  if (fragmentos.length < MIN_FRAGMENTOS) return false;
+
+  const finalesDeOracion = (texto.match(/[.!?](?=\s|$)/g) ?? []).length;
+  const porMil = (finalesDeOracion * 1000) / caracteres;
+  const largoMedio = fragmentos.reduce((suma, f) => suma + f.length, 0) / fragmentos.length;
+
+  return porMil < MAX_ORACIONES_POR_MIL && largoMedio <= MAX_LARGO_MEDIO_FRAGMENTO;
+}
 
 /**
  * ¿Vale la pena mirar este documento?
@@ -83,9 +173,13 @@ export function decidirSiMirar(params: {
 
   const caracteres = textoExtraido.trim().length;
 
-  if (caracteres >= MIN_CHARS_PER_PAGE * pageCount) return { leer: false, motivo: 'texto_suficiente' };
+  if (caracteres < MIN_CHARS_PER_PAGE * pageCount) return { leer: true, porque: 'poco_texto' };
 
-  return { leer: true };
+  // Hay texto de sobra y aun así hay que mirar: la cantidad dice que la
+  // extracción anduvo, y la forma dice que lo que trajo son etiquetas sueltas.
+  if (pareceDiagrama({ textoExtraido, pageCount })) return { leer: true, porque: 'parece_diagrama' };
+
+  return { leer: false, motivo: 'texto_suficiente' };
 }
 
 /**
@@ -126,6 +220,12 @@ export async function leerDocumentoConVision(params: {
   buffer: Buffer;
   mediaType: string;
   fileName: string;
+  /**
+   * Por qué se lo está mirando. Elige el aviso que encabeza la transcripción, y
+   * ese aviso viaja con el texto a todas partes: decirle al modelo «no tenía
+   * texto extraíble» sobre un documento que sí lo tenía es empezar mintiéndole.
+   */
+  porque?: MotivoParaMirar;
 }): Promise<VisionResult | null> {
   const config = getProviderConfigForProvider(AIProvider.GOOGLE);
 
@@ -154,7 +254,9 @@ export async function leerDocumentoConVision(params: {
 
     if (!transcripcion) return null;
 
-    return { texto: `${VISION_NOTICE}\n\n${transcripcion}`, modelo: modelo ?? 'default' };
+    const aviso = params.porque === 'parece_diagrama' ? VISION_NOTICE_DIAGRAMA : VISION_NOTICE;
+
+    return { texto: `${aviso}\n\n${transcripcion}`, modelo: modelo ?? 'default' };
   } catch (error) {
     console.error('[document-vision] no se pudo leer el documento:', error);
     return null;

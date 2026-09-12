@@ -1,6 +1,6 @@
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { getCourseSourceText, getDocumentSummary } from '@api/services/agent/document';
-import { VISION_NOTICE } from '@api/services/agent/document-vision';
+import { esLecturaVisual } from '@api/services/agent/document-vision';
 import type { RedisClient } from '@api/utils/redis/redis';
 
 /**
@@ -99,7 +99,7 @@ const MAX_RESUMEN_CHARS = 240;
  * a lo que va a leer.
  */
 export function comoSeLeyo(doc: { text: string; sourceUrl: string | null }): ComoSeLeyo {
-  if (doc.text.startsWith(VISION_NOTICE)) return 'vision';
+  if (esLecturaVisual(doc.text)) return 'vision';
   if (doc.sourceUrl) return 'web';
 
   return 'texto';
