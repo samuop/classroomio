@@ -93,7 +93,7 @@ ${LESSON_VOICE_RULES}
 - Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, inline <svg> diagrams, and the two math nodes described below. Nothing else: no <table>, <iframe>, <script>, <style>, and no other <span> or <div>.
 - The only attributes you may add are \`href\` on a link, the SVG geometry attributes, the math attributes below, and \`data-sin-fuente\` on a passage that is yours (move 2 above). Any other attribute is dropped.
 - You cannot create pictures. If a real picture would genuinely help, say so in <note>; do not describe one in the lesson as if it were there.
-- Draw an inline <svg> for anything with structure in it — a process, a hierarchy, a comparison, a sequence. Draw it; never write a sentence suggesting that someone add one. Follow these rules exactly:
+- Draw an inline <svg> for EACH structure the lesson teaches — a decision that depends on a condition, a process, a timeline with deadlines, who does what, a comparison. That is usually more than one per lesson, and each goes next to the paragraph it explains. Draw it; never write a sentence suggesting that someone add one. Follow these rules exactly:
 ${sangrar(SVG_DIAGRAM_RULES)}
 - Formulas — lesson content is HTML, so markdown math does not render:
 ${sangrar(MATH_FORMULA_RULES)}
