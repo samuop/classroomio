@@ -1026,11 +1026,15 @@ const agentCoreRouter = new Hono()
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
               searchableDocumentId,
-              // Los chequeos que sólo tienen sentido construyendo: durante una
-              // edición suelta el docente puede estar pidiendo exactamente un
-              // párrafo corto, y le está dictando el contenido él mismo — o sea
-              // que él es la fuente, y contrastarlo contra los documentos sería
-              // marcar como inventado lo que acaba de escribir.
+              // Ahora gobierna SÓLO los avisos de recursos visuales: durante
+              // una edición suelta el docente puede estar pidiendo exactamente
+              // un párrafo corto, y pedirle además un diagrama sería ruido.
+              //
+              // El fundamento ya NO cuelga de acá — corre siempre que se guarda
+              // el cuerpo entero de una lección, sea la fase que sea. Ver la
+              // nota en `writeLessonBody`: atarlo a la fase dejaba sin ningún
+              // chequeo al pedido más natural que existe ("completá la sección
+              // 2"), que es exactamente por donde se coló una sección inventada.
               isBuilding: teacherPromptMode === 'build',
               // El chequeo de fundamento. Lee las fuentes por su cuenta en vez
               // de mirar `sourcePack`: el paquete viaja o no según si hay una

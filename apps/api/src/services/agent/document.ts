@@ -25,15 +25,46 @@ import { summarizeDocument } from '@api/services/agent/summarize';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import type { RedisClient } from '@api/utils/redis/redis';
 import {
+  actualizarLecturaDeFuente,
   createChatDocument,
   getChatDocument,
   getCourseSource,
   findChatDocumentByContentHash
 } from '@cio/db/queries/agent';
 import { generateFileKey } from '@api/utils/upload';
-import { uploadToS3 } from '@api/utils/s3';
+import { getFromS3, uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
 import { createAssetFromUploadService } from '@api/services/assets/assets';
+import { getAssetsByIds } from '@cio/db/queries/assets';
+
+/**
+ * Versión del lector de archivos.
+ *
+ * Se sube cuando cambia lo que el lector es capaz de sacar de un archivo — no
+ * cuando se toca cualquier cosa de este módulo. Hoy vale 1: la lectura por
+ * visión, que transcribe las páginas de un PDF sin texto extraíble.
+ *
+ * Para qué sirve: el texto se extrae UNA vez y es lo único que el agente
+ * conoce del documento. Sin este número, cada mejora del lector nace sin
+ * alcance sobre lo ya subido y no hay forma de saber qué quedó atrás. Con él,
+ * `fuenteConLecturaVieja` puede señalarlo y `releerFuente` rehacerlo.
+ */
+export const EXTRACTOR_VERSION = 1;
+
+/**
+ * ¿A esta fuente le conviene una lectura nueva?
+ *
+ * Dos condiciones, y las dos importan:
+ *   - se leyó con una versión anterior del lector, y
+ *   - tenemos el archivo original para volver a leerlo (`assetId`).
+ *
+ * Una página web queda afuera a propósito: su "lector" es la descarga, y una
+ * versión nueva del lector de PDFs no la deja vieja. Releerla sería volver a
+ * bajar la página, que es otra acción y otra decisión del docente.
+ */
+export function fuenteConLecturaVieja(doc: { extractorVersion: number; assetId: string | null }): boolean {
+  return doc.extractorVersion < EXTRACTOR_VERSION && !!doc.assetId;
+}
 
 export interface ParsedDocument {
   text: string;
@@ -309,7 +340,8 @@ export async function promoteDraftDocuments(
         text: draft.text,
         contentHash,
         wordCount: draft.wordCount ?? draft.text.split(/\s+/).filter(Boolean).length,
-        pageCount: draft.pageCount ?? null
+        pageCount: draft.pageCount ?? null,
+        extractorVersion: draft.assetId ? EXTRACTOR_VERSION : 0
       });
 
       promoted += 1;
@@ -399,7 +431,8 @@ export async function parseAndStoreDocument(
     text: extractedText,
     contentHash,
     wordCount,
-    pageCount
+    pageCount,
+    extractorVersion: EXTRACTOR_VERSION
   });
 
   trackAgentEvent(AgentEvent.DOCUMENT_UPLOADED, {
@@ -610,6 +643,74 @@ export async function getCourseSourceText(
   );
 
   return record.text;
+}
+
+/**
+ * Vuelve a leer una fuente desde su archivo original, con el lector de hoy.
+ *
+ * ── Por qué hace falta ───────────────────────────────────────────────────────
+ *
+ * El texto se extrae al subir y no se vuelve a mirar nunca. Cuando el lector
+ * mejora, lo ya subido se queda atrás para siempre — y eso no es hipotético:
+ * un organigrama subido el 2026-09-10 a las 17:06 quedó con 104 caracteres
+ * porque la lectura por visión se desplegó a las 23:04 del mismo día.
+ *
+ * Baja el archivo del almacenamiento y lo pasa por `parseDocument`, el MISMO
+ * camino que una subida nueva — incluida la decisión de mirarlo. No es una
+ * segunda implementación de la extracción: si lo fuera, se separaría de la
+ * primera en el próximo cambio.
+ *
+ * No crea una fuente nueva: reemplaza el texto de la que ya está. El curso que
+ * la cita, su lugar en el panel y su original siguen siendo los mismos.
+ */
+export async function releerFuente(params: {
+  documentId: string;
+  courseId: string;
+  redis: RedisClient;
+}): Promise<{ before: number; after: number; pageCount: number | null; wordCount: number }> {
+  const doc = await getCourseSource(params.documentId, params.courseId);
+
+  if (!doc) throw new AppError('Source not found in this course', 'DOCUMENT_NOT_FOUND', 404);
+
+  if (!doc.assetId) {
+    throw new AppError(
+      'This source has no stored file to re-read. A web page is re-read by adding it again.',
+      'SOURCE_HAS_NO_FILE',
+      400
+    );
+  }
+
+  const [asset] = await getAssetsByIds([doc.assetId]);
+
+  if (!asset?.storageKey) {
+    throw new AppError('The original file is no longer in storage', 'SOURCE_FILE_MISSING', 410);
+  }
+
+  const descarga = await getFromS3({ Bucket: getStorageConfig().bucketDocuments, Key: asset.storageKey });
+
+  if (!descarga.success || !descarga.data?.Body) {
+    throw new AppError('Could not read the original file from storage', 'SOURCE_FILE_UNREADABLE', 502);
+  }
+
+  const bytes = Buffer.from(await descarga.data.Body.transformToByteArray());
+  const archivo = new File([bytes], doc.fileName, { type: doc.mimeType });
+  const leido = await parseDocument(archivo);
+
+  await actualizarLecturaDeFuente(params.documentId, {
+    text: leido.text,
+    wordCount: leido.wordCount,
+    pageCount: leido.pageCount,
+    contentHash: computeContentHash(leido.text),
+    extractorVersion: EXTRACTOR_VERSION
+  });
+
+  // La copia caliente y el resumen quedaron describiendo el texto viejo. Se
+  // borran los dos: dejar el resumen sería peor que no tenerlo, porque describe
+  // con seguridad un contenido que ya no está.
+  await params.redis.del(agentDocumentKey(params.documentId));
+  await params.redis.del(agentDocumentSummaryKey(params.documentId));
+
+  return { before: doc.text.length, after: leido.text.length, pageCount: leido.pageCount, wordCount: leido.wordCount };
 }
 
 const DOCUMENT_SUMMARY_EXCERPT_CHARS = 1_500;

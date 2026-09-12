@@ -14,6 +14,7 @@ import {
   listChatDocumentsByConversation,
   deleteChatDocument,
   getChatDocumentCacheKey,
+  getChatDocumentCourseId,
   type ChatDocumentRecord
 } from '@cio/db/queries/agent/chat-document';
 import { createChatConversation, getChatConversation } from '@cio/db/queries/agent';
@@ -26,7 +27,13 @@ import {
   type ReconcileResult
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
-import { getCourseSourceText, storeUrlDocument, SOURCES_CONVERSATION_TITLE } from '@api/services/agent/document';
+import {
+  fuenteConLecturaVieja,
+  getCourseSourceText,
+  releerFuente,
+  storeUrlDocument,
+  SOURCES_CONVERSATION_TITLE
+} from '@api/services/agent/document';
 import { getAssetsByIds } from '@cio/db/queries/assets/assets';
 import { generateDocumentDownloadPresignedUrls } from '@api/utils/s3';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
@@ -133,6 +140,17 @@ export const agentDocumentsRouter = new Hono()
              * de la consulta lo trae), sólo que no se devuelve.
              */
             cacheEligibility: classifyDocumentForCache(d.text),
+            /**
+             * Esta fuente se leyo con un lector mas viejo que el de hoy.
+             *
+             * Se dice en la lista porque es la unica pantalla donde el docente
+             * la ve: el texto se extrae una sola vez y de ahi en mas es lo
+             * unico que el agente conoce del archivo, asi que una lectura
+             * pobre es invisible hasta que aparece en una leccion. Con esto,
+             * la pantalla puede ofrecer releerla.
+             */
+            needsReread: fuenteConLecturaVieja(d),
+            extractorVersion: d.extractorVersion,
             createdAt: d.createdAt
           };
         });
@@ -386,6 +404,51 @@ export const agentDocumentsRouter = new Hono()
         return c.json({ success: true as const, data: status });
       } catch (error) {
         return handleError(c, error, 'Failed to refresh cache');
+      }
+    }
+  )
+
+  /**
+   * POST /agent/documents/:documentId/reread
+   *
+   * Vuelve a leer el archivo original con el lector de hoy.
+   *
+   * Existe porque el texto de una fuente se extrae UNA vez, al subirla, y es
+   * lo unico que el agente conoce del documento: cuando el lector mejora, lo
+   * ya subido se queda con la lectura vieja para siempre. Medido: un
+   * organigrama subido tres horas antes de que se desplegara la lectura por
+   * vision quedo con 104 caracteres — el pie de pagina — y una seccion entera
+   * se escribio sin el.
+   *
+   * Lo pide el docente, no corre solo: releer gasta (baja el archivo y puede
+   * mirar cada pagina con el modelo) y reemplaza el texto que el curso ya esta
+   * usando. Esa decision es suya.
+   */
+  .post(
+    '/:documentId/reread',
+    authMiddleware,
+    orgMemberMiddleware,
+    zValidator('param', ZAgentDocumentParam),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const { documentId } = c.req.valid('param');
+
+        const courseId = await getChatDocumentCourseId(documentId);
+        if (!courseId) {
+          throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
+        }
+
+        const permitido = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
+        if (!permitido) {
+          throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
+        }
+
+        const resultado = await releerFuente({ documentId, courseId, redis });
+
+        return c.json({ success: true as const, data: resultado });
+      } catch (error) {
+        return handleError(c, error, 'Failed to re-read source');
       }
     }
   );

@@ -49,6 +49,8 @@ export interface ChatDocumentRecord {
   contentHash: string | null;
   wordCount: number;
   pageCount: number | null;
+  /** Versión del lector con la que se sacó `text`. 0 = antes de que existiera. */
+  extractorVersion: number;
   createdAt: string;
 }
 
@@ -65,6 +67,7 @@ export async function createChatDocument(record: {
   contentHash?: string | null;
   wordCount: number;
   pageCount: number | null;
+  extractorVersion?: number;
 }): Promise<void> {
   try {
     await db.transaction(async (tx) => {
@@ -117,6 +120,26 @@ export async function findChatDocumentByContentHash(
   } catch (error) {
     console.error('findChatDocumentByContentHash error:', error);
     throw new Error('Failed to find chat document by contentHash');
+  }
+}
+
+/**
+ * Reemplaza el texto de una fuente con una lectura nueva del mismo archivo.
+ *
+ * No crea una fila ni toca el original: la fuente sigue siendo la misma, lo que
+ * cambia es cuánto pudimos leer de ella. Por eso se conservan `id`, `assetId` y
+ * `createdAt` — el curso que la cita, la caché que la referencia y el orden del
+ * panel siguen valiendo.
+ */
+export async function actualizarLecturaDeFuente(
+  documentId: string,
+  lectura: { text: string; wordCount: number; pageCount: number | null; contentHash: string | null; extractorVersion: number }
+): Promise<void> {
+  try {
+    await db.update(schema.aiChatDocument).set(lectura).where(eq(schema.aiChatDocument.id, documentId));
+  } catch (error) {
+    console.error('actualizarLecturaDeFuente error:', error);
+    throw new Error('Failed to update course source extraction');
   }
 }
 

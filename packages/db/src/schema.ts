@@ -3447,6 +3447,25 @@ export const aiChatDocument = pgTable(
     contentHash: text('content_hash'),
     wordCount: integer('word_count').notNull().default(0),
     pageCount: integer('page_count'),
+    /**
+     * Con qué versión del lector se sacó este texto.
+     *
+     * El texto se extrae UNA vez, al subir el archivo, y de ahí en más es lo
+     * único que el agente conoce del documento: nunca vuelve a abrir el
+     * original. Así que cuando el lector mejora, lo ya subido se queda con la
+     * lectura vieja para siempre.
+     *
+     * Pasó, y se puede fechar: la lectura por visión —que transcribe las
+     * páginas cuando no hay texto extraíble— se desplegó el 2026-09-10 a las
+     * 23:04. Un organigrama subido ese mismo día a las 17:06 quedó con 104
+     * caracteres (un pie de página) en vez de su contenido, y nada iba a
+     * arreglarlo: el arreglo existía tres horas después de que hiciera falta.
+     *
+     * Guardar la versión convierte eso en algo que se puede ver y rehacer. Las
+     * filas viejas quedan en 0, que es correcto: se leyeron antes de que esto
+     * existiera.
+     */
+    extractorVersion: integer('extractor_version').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull()
   },
   (table) => [

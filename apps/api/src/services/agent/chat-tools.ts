@@ -178,14 +178,27 @@ async function writeLessonBody(params: {
   // comprobaciones locales y se espera al final: los avisos de SVG y de fórmulas
   // son puro cómputo y no tienen por qué hacer cola detrás de una llamada al
   // proveedor.
-  const fundamento =
-    params.isBuilding && params.verificarFundamento
-      ? params.verificarFundamento({
-          lessonTitle: params.lessonTitle,
-          contenido: normalizedContent,
-          soloFuentes: params.fuentesDeLaLeccion
-        })
-      : Promise.resolve<string[]>([]);
+  // El fundamento NO depende de la fase, y esa fue la falla.
+  //
+  // Estaba atado a `isBuilding`, que es verdadero sólo cuando hay un plan
+  // aprobado en los mensajes del chat. Así que pedir "completá la sección 2" en
+  // una conversación nueva escribía sin ningún chequeo. Medido en producción el
+  // 2026-09-12: tres lecciones, 31.600 caracteres y un examen de 7 preguntas,
+  // todo sobre una estructura inventada, sin que nada lo mirara.
+  //
+  // Lo que decide si hay que verificar es lo que se está haciendo —guardar el
+  // cuerpo entero de una lección— y no en qué modo está la conversación. Por
+  // eso vive acá: los tres caminos que escriben una lección completa pasan por
+  // esta función. Los retoques quirúrgicos (`edit_lesson_content`,
+  // `replace_lesson_block`) no pasan, y está bien: son de una frase, con el
+  // docente mirando.
+  const fundamento = params.verificarFundamento
+    ? params.verificarFundamento({
+        lessonTitle: params.lessonTitle,
+        contenido: normalizedContent,
+        soloFuentes: params.fuentesDeLaLeccion
+      })
+    : Promise.resolve<string[]>([]);
 
   // Problems the prompt forbids but nothing used to catch (labels below the
   // readable size, rows stacked on top of each other, formulas KaTeX will never
@@ -405,6 +418,29 @@ export function buildAgentTools(
   // token, so the guard has to live where the calls are counted. The tool set is
   // rebuilt for each round, which makes this counter per-round by construction.
   let imagesGenerated = 0;
+
+  /**
+   * Lecciones escritas en esta ronda sin un plan aprobado.
+   *
+   * ── Por qué hay un tope ──────────────────────────────────────────────────
+   *
+   * Medido el 2026-09-12 con el mismo pedido, dos veces: sin fuentes el agente
+   * escribió tres lecciones de una y armó el examen; con fuentes propuso un
+   * plan y esperó. O sea que pasar por el plan —el único camino donde el
+   * docente ve la forma ANTES de que se escriban treinta mil caracteres, donde
+   * cada lección declara de qué fuente sale, y donde se mide la cobertura—
+   * dependía del azar.
+   *
+   * El tope no prohíbe escribir: una o dos lecciones sueltas son un pedido
+   * normal y siguen andando. Lo que corta es construir un curso entero de
+   * prendida, que es otra cosa y tiene su camino.
+   *
+   * Como el juego de herramientas se rearma en cada ronda, el contador es por
+   * ronda por construcción.
+   */
+  let leccionesEscritasSinPlan = 0;
+  /** Dos son un pedido suelto; a la tercera ya es un curso, y eso va por el plan. */
+  const MAX_LECCIONES_SIN_PLAN = 2;
   const runScope = { orgId, courseId, conversationId, userId };
 
   /**
@@ -809,6 +845,21 @@ export function buildAgentTools(
       inputSchema: createLessonParam,
       execute: async (args) => {
         return executeAgentTool('create_lesson', { orgId, userId, courseId, args }, async () => {
+          // Escribir un curso entero sin plan aprobado: se rechaza, no se
+          // corrige después. Devuelto como resultado y no lanzado, para que el
+          // modelo lea el motivo y llame a `generate_course_plan` en la misma
+          // ronda en vez de reintentar lo mismo.
+          if (!isBuilding && args.content && leccionesEscritasSinPlan >= MAX_LECCIONES_SIN_PLAN) {
+            return {
+              created: false,
+              note:
+                `Ya escribiste ${MAX_LECCIONES_SIN_PLAN} lecciones en esta ronda sin un plan aprobado. ` +
+                'Escribir una sección o un curso entero va por el plan: llamá a generate_course_plan con lo que falta, ' +
+                'declarando para cada lección de qué fuente sale, y esperá a que el docente lo apruebe. ' +
+                'Así ve la forma antes de que se escriba, y cada lección queda atada a su material.'
+            };
+          }
+
           const leccion = await crearOReusarLeccion(args);
 
           if (leccion.reused) {
@@ -848,6 +899,8 @@ export function buildAgentTools(
           if (!args.content) {
             return { id: leccion.id, title: leccion.title, order: leccion.order };
           }
+
+          if (!isBuilding) leccionesEscritasSinPlan += 1;
 
           const written = await writeLessonBody({
             lessonId: leccion.id,
