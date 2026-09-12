@@ -48,7 +48,15 @@ import type { EscritorDeLecciones } from '@api/services/agent/lesson-writer';
 import { avisoDeCobertura, medirCobertura } from '@api/services/agent/plan-coverage';
 import { avisoDeConfirmacion, confirmacionCoincide } from '@api/services/agent/deletion';
 import { leerFuente } from '@api/services/agent/source-index';
-import { generateLessonImage, MAX_IMAGES_PER_ROUND } from '@api/services/agent/image-generation';
+import {
+  decidirSiGenerarImagen,
+  generateLessonImage,
+  MAX_IMAGES_PER_ROUND
+} from '@api/services/agent/image-generation';
+import {
+  conAvisoDePresupuesto,
+  type PresupuestoDePasos
+} from '@api/services/agent/step-budget';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
@@ -455,6 +463,11 @@ export function buildAgentTools(
     redis?: RedisClient;
     /** El sub-agente que escribe una lección con contexto limpio. Ver `lesson-writer.ts`. */
     escribirLeccion?: EscritorDeLecciones;
+    /**
+     * En qué paso de la ronda va. Ausente, las herramientas no avisan nada —
+     * que es lo que corresponde donde no hay un techo de pasos que gastar.
+     */
+    presupuesto?: PresupuestoDePasos;
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -474,6 +487,12 @@ export function buildAgentTools(
   // token, so the guard has to live where the calls are counted. The tool set is
   // rebuilt for each round, which makes this counter per-round by construction.
   let imagesGenerated = 0;
+
+  // Y el contador global no alcanza: la regla real es una imagen POR LECCIÓN, y
+  // para verla hay que saber de qué lección se trata. Ver
+  // `decidirSiGenerarImagen`, que documenta la ronda que pagó cuatro imágenes
+  // que nadie insertó.
+  const leccionesConImagen = new Set<string>();
 
   /**
    * Lecciones escritas en esta ronda sin un plan aprobado.
@@ -611,7 +630,7 @@ export function buildAgentTools(
       .map((item) => ({ id: item.id, title: item.title }));
   }
 
-  return {
+  const herramientas: ToolSet = {
     read_source: tool({
       description:
         'Read one of the source documents the teacher attached to this course, by id from the "## Course Sources — index" list. Returns the text with line numbers, in pages: pass `offset` (the line to start at) and `limit` to keep reading a long document. Read the source BEFORE writing anything that claims to come from it — the index tells you what exists, this tells you what it says.',
@@ -683,10 +702,23 @@ export function buildAgentTools(
         return executeAgentTool('generate_image', { orgId, userId, courseId, args }, async () => {
           // Refused rather than thrown: an error would push the model to retry,
           // which is precisely what must not happen when the reason is spend.
-          if (imagesGenerated >= MAX_IMAGES_PER_ROUND) {
+          const decision = decidirSiGenerarImagen({
+            lessonId: args.lessonId,
+            yaIlustradas: leccionesConImagen,
+            generadasEnLaRonda: imagesGenerated
+          });
+
+          if (!decision.generar) {
             return {
               generated: false,
-              note: `This round has already generated its limit of ${MAX_IMAGES_PER_ROUND} images. Continue without one — write the lesson, or draw an inline <svg> if the idea is structural. Do not call generate_image again this round.`
+              note:
+                decision.motivo === 'ya_tiene_imagen'
+                  ? // El caso medido: cuatro lecciones ilustradas y el modelo
+                    // volvio a pedir las mismas cuatro con otro subject. Se le
+                    // dice que ya la tiene y donde esta, para que no lo lea
+                    // como un fallo que conviene reintentar.
+                    'That lesson already got its illustration in this round — one picture per lesson is the limit, and the <img> is already in its body. Do not generate another for it: if the picture is wrong, change it with edit_lesson_content, and otherwise move on to the next lesson.'
+                  : `This round has already generated its limit of ${MAX_IMAGES_PER_ROUND} images. Continue without one — write the lesson, or draw an inline <svg> if the idea is structural. Do not call generate_image again this round.`
             };
           }
 
@@ -712,6 +744,7 @@ export function buildAgentTools(
           });
 
           imagesGenerated += 1;
+          if (args.lessonId) leccionesConImagen.add(args.lessonId);
 
           return {
             generated: true,
@@ -1920,4 +1953,6 @@ export function buildAgentTools(
       }
     })
   };
+
+  return _options?.presupuesto ? conAvisoDePresupuesto(herramientas, _options.presupuesto) : herramientas;
 }

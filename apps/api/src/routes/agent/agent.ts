@@ -1019,10 +1019,25 @@ const agentCoreRouter = new Hono()
         contextMessageText = contextMessageText ? `${contextMessageText}\n\n${capNotice}` : capNotice;
       }
 
+      /**
+       * Dónde está parado el modelo dentro de la ronda, para que lo sepa él.
+       *
+       * Lo actualiza `prepareStep` y lo leen las herramientas al devolver. Una
+       * ronda medida gastó 38 de 40 pasos releyendo las mismas dos fuentes e
+       * hizo 2 de las 8 ediciones que le faltaban: `stopWhen` la cortó desde
+       * afuera sin que el modelo se enterara nunca de que se estaba quedando
+       * sin margen. Ver `step-budget.ts`.
+       *
+       * Sólo la ronda del docente: la del alumno no construye nada y su techo
+       * chico no es un presupuesto que haya que administrar.
+       */
+      const presupuestoDePasos = { paso: 1, maxPasos: MAX_STEPS_PER_ROUND };
+
       const agentTools =
         role === AgentRole.STUDENT
           ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings, agentContext.locale as TLocale)
           : buildAgentTools(orgId, user.id, courseId, messages, {
+              presupuesto: presupuestoDePasos,
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
               searchableDocumentId,
@@ -1423,6 +1438,11 @@ const agentCoreRouter = new Hono()
         // pair the model is actively working with stays intact, and the override
         // carries forward so the window stays flat instead of growing quadratically.
         prepareStep: ({ stepNumber, messages: stepMessages }) => {
+          // 1-based para el modelo: `stepNumber` viene en base 0 y "paso 0 de
+          // 40" no le dice nada a nadie. Se escribe ANTES del paso, así que las
+          // herramientas que corran dentro de él leen el número correcto.
+          presupuestoDePasos.paso = stepNumber + 1;
+
           if (stepNumber < 5) return {};
           return {
             messages: pruneMessages({

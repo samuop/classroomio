@@ -34,6 +34,50 @@ import type { ImageUsageKind } from '@cio/db/queries/agent';
  */
 export const MAX_IMAGES_PER_ROUND = 8;
 
+/**
+ * ¿Se genera esta imagen?
+ *
+ * ── Por qué no alcanza el tope por ronda ─────────────────────────────────────
+ *
+ * Medido en producción el 2026-09-12: una ronda para ilustrar CUATRO lecciones
+ * generó OCHO imágenes. Las cuatro primeras, una por lección, se insertaron; con
+ * eso el trabajo estaba hecho, y el modelo volvió a llamar con los MISMOS cuatro
+ * `lessonId` y el subject reformulado. Esas cuatro se pagaron y no se usaron.
+ * La novena llamada —el mismo id por tercera vez— fue la única que el tope
+ * frenó, cuando el gasto ya estaba hecho.
+ *
+ * El problema no es el número. `MAX_IMAGES_PER_ROUND` está dimensionado para el
+ * PEOR caso (una construcción grande), así que en una ronda chica le regala
+ * margen para desperdiciar y frena después del daño en vez de antes. Subirlo
+ * empeoraría esto, y bajarlo rompería la construcción grande.
+ *
+ * La regla que de verdad importa —«como mucho una imagen por lección»— ya está
+ * escrita en el prompt, y un contador global no puede verla porque no sabe de
+ * qué lección se trata. Acá sí: la herramienta ya recibe el `lessonId`. O sea
+ * que la regla pasa de prosa a cuenta, que es lo único que la hace valer.
+ *
+ * Una imagen sin `lessonId` (la portada de un curso) no tiene lección contra la
+ * que contarse, y queda sólo bajo el tope de ronda.
+ */
+export type RechazoDeImagen = 'ya_tiene_imagen' | 'tope_de_ronda';
+
+export function decidirSiGenerarImagen(params: {
+  lessonId?: string;
+  /** Lecciones que YA recibieron su imagen en esta ronda. */
+  yaIlustradas: ReadonlySet<string>;
+  generadasEnLaRonda: number;
+}): { generar: true } | { generar: false; motivo: RechazoDeImagen } {
+  if (params.lessonId && params.yaIlustradas.has(params.lessonId)) {
+    return { generar: false, motivo: 'ya_tiene_imagen' };
+  }
+
+  if (params.generadasEnLaRonda >= MAX_IMAGES_PER_ROUND) {
+    return { generar: false, motivo: 'tope_de_ronda' };
+  }
+
+  return { generar: true };
+}
+
 /** What the model may ask for. Anything wider is a diagram's job, not a photo's. */
 const ASPECT_RATIOS = ['16:9', '4:3', '1:1', '3:4'] as const;
 export type ImageAspectRatio = (typeof ASPECT_RATIOS)[number];
