@@ -648,7 +648,7 @@ const agentCoreRouter = new Hono()
        * A file dropped in the course wizard is uploaded before the course
        * exists, so `/agent/upload-draft` can only put it in Redis. Everything
        * downstream reads Postgres instead: the Sources panel lists
-       * `listChatDocumentsByCourse`, and so does `buildSourcePack` — the block
+       * `listCourseSources`, and so does `buildSourcePack` — the block
        * that actually carries the material to the model. A Redis-only draft is
        * therefore invisible to BOTH, which is why the panel said "no sources
        * yet" while the agent replied that it could not read the file.
@@ -814,7 +814,6 @@ const agentCoreRouter = new Hono()
       const sourcePack = useSourcePack
         ? await buildSourcePack({
             courseId,
-            userId: user.id,
             redis,
             excludeFullTextForId: documentCache.excludeDocumentId ?? undefined
           })
@@ -824,7 +823,7 @@ const agentCoreRouter = new Hono()
       // Un agente que ve el listado puede decir "para esto necesito el manual de
       // higiene y no lo tenés subido"; uno que no ve nada sólo puede adivinar.
       const sourceIndex =
-        formaDelMaterial === 'indice' ? await buildSourceIndex({ courseId, userId: user.id, redis }) : undefined;
+        formaDelMaterial === 'indice' ? await buildSourceIndex({ courseId, redis }) : undefined;
 
       // Con el índice, los documentos adjuntados en mensajes ANTERIORES ya están
       // en él: se promovieron a fuentes del curso (ver `promoteDraftDocuments`

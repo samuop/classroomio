@@ -193,6 +193,39 @@ function shapeBox(tag: string, attrs: string): Box | null {
  *
  * Returns [] for content with no SVG, which is the common case.
  */
+/**
+ * Sube al piso legible cualquier texto de un diagrama que quede por debajo.
+ *
+ * ── Por qué se repara en vez de avisar ───────────────────────────────────────
+ *
+ * Esto ya se avisaba: el validador devolvía "10 text element(s) use font-size
+ * below 12 (smallest: 11). Fix that now with edit_lesson_content before moving
+ * on". Medido en producción el 2026-09-12: el agente leyó la lección, no la
+ * corrigió, y siguió con el examen. La lección quedó publicada con letra 11.
+ *
+ * Un aviso que el modelo puede ignorar no es un guardia — y este defecto no
+ * necesita criterio: el piso es un número, y subir una letra hasta él es una
+ * cuenta, no una decisión. Lo que SÍ necesita criterio (acortar una etiqueta
+ * que ya no entra, mover una caja) sigue siendo aviso, y lo detecta el chequeo
+ * de superposición que corre DESPUÉS de esta reparación, ya sobre el texto
+ * agrandado.
+ *
+ * Repara exactamente la forma que el validador mira, y no más: si reparara
+ * formas que el validador no revisa, las dos mitades se separarían y volvería a
+ * haber un defecto que nadie atrapa.
+ */
+export function subirLetraIlegible(content: string): string {
+  return content.replace(/<svg\b[\s\S]*?<\/svg>/gi, (svg) =>
+    svg.replace(/font-size(\s*=\s*["']?\s*)([\d.]+)/gi, (entero, medio: string, valor: string) => {
+      const tamano = Number.parseFloat(valor);
+
+      if (!Number.isFinite(tamano) || tamano >= MIN_READABLE_FONT_SIZE) return entero;
+
+      return `font-size${medio}${MIN_READABLE_FONT_SIZE}`;
+    })
+  );
+}
+
 export function validateSvgDiagram(content: string): string[] {
   const warnings: string[] = [];
   const svgBlocks = content.match(/<svg\b[\s\S]*?<\/svg>/gi);
@@ -609,9 +642,22 @@ export function normalizeAgentLessonContent(content: string, lessonTitle: string
   normalizedContent = stripLeadingLessonTitle(normalizedContent, lessonTitle);
   normalizedContent = normalizeHeadingLevels(normalizedContent);
   normalizedContent = repairSvgGeometry(normalizedContent);
+  normalizedContent = subirLetraIlegible(normalizedContent);
   normalizedContent = convertMarkdownMathToKatex(normalizedContent);
 
   return normalizedContent.trim();
+}
+
+/**
+ * Las dos reparaciones deterministas de un diagrama, juntas y en orden.
+ *
+ * Se expone así —y no cada una por su lado— porque los caminos que escriben
+ * fragmentos sueltos (`edit_lesson_content`, `replace_lesson_block`, el
+ * generador de diagramas) las llamaban de a una. Una sola función significa que
+ * no hay forma de conseguir la geometría sin la legibilidad.
+ */
+export function repararDiagrama(html: string): string {
+  return subirLetraIlegible(repairSvgGeometry(html));
 }
 
 /** Exposed so edit_lesson_content (which bypasses full normalization) can still

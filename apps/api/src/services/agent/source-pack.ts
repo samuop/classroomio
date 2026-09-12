@@ -1,5 +1,5 @@
-import { listChatDocumentsByCourse } from '@cio/db/queries/agent/chat-document';
-import { getDocumentText, getDocumentSummary } from '@api/services/agent/document';
+import { listCourseSources } from '@cio/db/queries/agent/chat-document';
+import { getCourseSourceText, getDocumentSummary } from '@api/services/agent/document';
 import type { RedisClient } from '@api/utils/redis/redis';
 
 /**
@@ -73,7 +73,6 @@ const EMPTY_PACK: SourcePack = { entries: [], truncatedCount: 0, estimatedTokens
  */
 export async function buildSourcePack(params: {
   courseId: string;
-  userId: string;
   redis: RedisClient;
   budgetTokens?: number;
   /**
@@ -82,12 +81,12 @@ export async function buildSourcePack(params: {
    */
   excludeFullTextForId?: string;
 }): Promise<SourcePack> {
-  const { courseId, userId, redis, excludeFullTextForId } = params;
+  const { courseId, redis, excludeFullTextForId } = params;
   const budgetChars = (params.budgetTokens ?? resolveSourcePackBudget()) * CHARS_PER_TOKEN;
 
   let documents;
   try {
-    documents = await listChatDocumentsByCourse(courseId, userId);
+    documents = await listCourseSources(courseId);
   } catch (error) {
     console.error('[source-pack] failed to list course sources:', error);
     return EMPTY_PACK;
@@ -111,14 +110,14 @@ export async function buildSourcePack(params: {
     let kind: 'full' | 'summary' = 'full';
 
     try {
-      const text = await getDocumentText(doc.id, userId, redis);
+      const text = await getCourseSourceText(doc.id, courseId, redis);
 
       if (text && usedChars + text.length <= budgetChars) {
         body = text;
       } else if (text) {
         // Over budget: keep the source present as a summary rather than dropping
         // it, so the model knows it exists and can search it.
-        body = await getDocumentSummary(doc.id, userId, redis);
+        body = await getDocumentSummary(doc.id, redis, () => getCourseSourceText(doc.id, courseId, redis));
         kind = 'summary';
         truncatedCount += 1;
       }

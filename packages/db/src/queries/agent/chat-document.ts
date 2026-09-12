@@ -223,13 +223,26 @@ export async function listChatDocumentsByCourse(courseId: string, userId: string
 }
 
 /**
- * List every document in the course regardless of owner — used by the Sources
- * panel to show "shared" sources (uploaded by another user of the same course).
- * Cross-user: returns docs from all users in the course.
+ * Las fuentes del curso, sin mirar quién las subió.
+ *
+ * ── Por qué el alcance es el curso ───────────────────────────────────────────
+ *
+ * Una fuente es material del curso, no del archivo personal de quien la subió.
+ * Cuando el alcance era el usuario, un segundo docente del mismo curso —o el
+ * operador de plataforma— abría el chat y el agente corría SIN NINGUNA fuente,
+ * sin que nada lo avisara: el panel también salía vacío, así que ni siquiera se
+ * veía la falta. Medido en producción el 2026-09-11: una sección entera escrita
+ * a ciegas sobre un organigrama que el agente nunca vio.
+ *
+ * El permiso no se pierde por esto. Quien llama ya pasó por
+ * `isCourseTeamMemberOrOrgAdmin`: el curso ES la frontera de autorización, y
+ * esta consulta no hace más que respetarla. Filtrar además por dueño no sumaba
+ * seguridad —cualquiera del equipo puede abrir el curso— y sí restaba material.
+ *
+ * Borrar sigue siendo del dueño (ver `deleteChatDocument`): leer lo del equipo
+ * es colaborar, borrarlo es otra cosa.
  */
-export async function listChatDocumentsByCourseAllUsers(
-  courseId: string
-): Promise<ChatDocumentRecord[]> {
+export async function listCourseSources(courseId: string): Promise<ChatDocumentRecord[]> {
   try {
     return await db
       .select()
@@ -237,8 +250,35 @@ export async function listChatDocumentsByCourseAllUsers(
       .where(eq(schema.aiChatDocument.courseId, courseId))
       .orderBy(desc(schema.aiChatDocument.createdAt));
   } catch (error) {
-    console.error('listChatDocumentsByCourseAllUsers error:', error);
-    throw new Error('Failed to list chat documents by course (all users)');
+    console.error('listCourseSources error:', error);
+    throw new Error('Failed to list course sources');
+  }
+}
+
+/**
+ * Una fuente del curso por id, sin mirar quién la subió.
+ *
+ * El par de `listCourseSources`: si el índice muestra una fuente, leerla tiene
+ * que funcionar. Listar con un alcance y leer con otro deja al agente pidiendo
+ * un id que existe y recibiendo "no existe" — el peor error posible, porque se
+ * parece a un id inventado.
+ *
+ * El `courseId` no es decorativo: ata el documento al curso que el llamador ya
+ * tiene autorizado, así un id de otro curso no se lee ni por equivocación ni a
+ * propósito.
+ */
+export async function getCourseSource(documentId: string, courseId: string): Promise<ChatDocumentRecord | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(schema.aiChatDocument)
+      .where(and(eq(schema.aiChatDocument.id, documentId), eq(schema.aiChatDocument.courseId, courseId)))
+      .limit(1);
+
+    return row ?? null;
+  } catch (error) {
+    console.error('getCourseSource error:', error);
+    throw new Error('Failed to fetch course source');
   }
 }
 

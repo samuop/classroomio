@@ -158,7 +158,7 @@ export async function loadDocumentsContext(
         return text ? { id, kind: 'full' as const, body: text } : null;
       }
 
-      const summary = await getDocumentSummary(id, userId, redis);
+      const summary = await getDocumentSummary(id, redis, () => getDocumentText(id, userId, redis));
 
       return summary ? { id, kind: 'summary' as const, body: summary } : null;
     })

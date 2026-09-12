@@ -286,7 +286,6 @@ export function crearVerificadorDeFundamento(params: {
   function fuentes(): Promise<string | undefined> {
     fuentesPromesa ??= buildSourcePack({
       courseId: params.courseId,
-      userId: params.userId,
       redis: params.redis,
       budgetTokens: PRESUPUESTO_FUENTES_TOKENS
     })

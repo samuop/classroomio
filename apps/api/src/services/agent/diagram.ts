@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { AIProvider, SVG_DIAGRAM_RULES, createModel, type AIProviderConfig } from '@cio/ai-assistant';
 import { AppError } from '@api/utils/errors';
-import { repairSvgGeometry, validateSvgDiagram } from '@api/services/agent/lesson-content';
+import { repararDiagrama, validateSvgDiagram } from '@api/services/agent/lesson-content';
 
 /**
  * Regenerate a single diagram inside a lesson, optionally following a plain-language
@@ -160,7 +160,7 @@ export async function regenerateLessonDiagram(params: {
       continue;
     }
 
-    const svg = repairSvgGeometry(raw);
+    const svg = repararDiagrama(raw);
     const warnings = validateSvgDiagram(svg);
 
     // Keep the first result even if imperfect: a diagram with a warning still

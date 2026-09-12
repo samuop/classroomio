@@ -5,7 +5,7 @@ import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
-import { listChatDocumentsByCourse } from '@cio/db/queries/agent/chat-document';
+import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import {
@@ -28,7 +28,7 @@ import { reorderCourseContent } from '@api/services/course/content';
 import {
   convertMarkdownMathToKatex,
   normalizeAgentLessonContent,
-  repairSvgGeometry,
+  repararDiagrama,
   validateLessonMath,
   validateLessonVisuals,
   validateSvgDiagram
@@ -533,7 +533,6 @@ export function buildAgentTools(
           const lectura = await leerFuente({
             documentId: args.sourceId,
             courseId,
-            userId,
             redis: redisParaFuentes,
             offset: args.offset,
             limit: args.limit
@@ -1060,7 +1059,7 @@ export function buildAgentTools(
           }
 
           const repaired = convertMarkdownMathToKatex(
-            args.html.includes('<svg') ? repairSvgGeometry(args.html) : args.html
+            args.html.includes('<svg') ? repararDiagrama(args.html) : args.html
           );
           // An empty replacement deletes the block; there is no id left to keep.
           const replacement = repaired.trim() ? preserveBlockId(repaired, args.blockId) : '';
@@ -1140,7 +1139,7 @@ export function buildAgentTools(
           // often used to redo just a diagram); ensures the <svg> keeps viewBox +
           // explicit width/height so it isn't clipped. No-op for non-SVG fragments.
           const newString = convertMarkdownMathToKatex(
-            args.newString.includes('<svg') ? repairSvgGeometry(args.newString) : args.newString
+            args.newString.includes('<svg') ? repararDiagrama(args.newString) : args.newString
           );
 
           // String replace (no regex) so $&, $1, $$ etc. in newString are not interpreted.
@@ -1679,7 +1678,7 @@ export function buildAgentTools(
           // para perderlo por una consulta que no anduvo.
           let cobertura;
           try {
-            const fuentes = await listChatDocumentsByCourse(courseId, userId);
+            const fuentes = await listCourseSources(courseId);
             const items = plan.sections.flatMap((section) => section.items);
             const medida = medirCobertura(items, fuentes);
             const aviso = avisoDeCobertura(medida, fuentes.length);

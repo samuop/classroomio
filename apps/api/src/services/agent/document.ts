@@ -24,7 +24,12 @@ import { agentDocumentKey, agentDocumentSummaryKey, computeContentHash } from '@
 import { summarizeDocument } from '@api/services/agent/summarize';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import type { RedisClient } from '@api/utils/redis/redis';
-import { createChatDocument, getChatDocument, findChatDocumentByContentHash } from '@cio/db/queries/agent';
+import {
+  createChatDocument,
+  getChatDocument,
+  getCourseSource,
+  findChatDocumentByContentHash
+} from '@cio/db/queries/agent';
 import { generateFileKey } from '@api/utils/upload';
 import { uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
@@ -559,6 +564,54 @@ export async function getDocumentText(documentId: string, userId: string, redis:
   return record.text;
 }
 
+/**
+ * El texto de una fuente DEL CURSO, sin mirar quién la subió.
+ *
+ * Misma caché que `getDocumentText` —la entrada de Redis es por documento, así
+ * que se reaprovecha— pero sin el chequeo de dueño: acá la autorización ya la
+ * dio el curso (ver `listCourseSources`). Sin esta versión, el índice listaría
+ * la fuente de un compañero de equipo y `read_source` devolvería "no existe".
+ *
+ * El `courseId` ata el documento al curso autorizado. La entrada cacheada no
+ * lo guarda, así que en un acierto de caché la comprobación no corre; por eso
+ * la entrada se escribe sólo después de que Postgres confirmó la pertenencia,
+ * y la clave de Redis es el id del documento, que ya es único por curso.
+ */
+export async function getCourseSourceText(
+  documentId: string,
+  courseId: string,
+  redis: RedisClient
+): Promise<string | null> {
+  const raw = await redis.get(agentDocumentKey(documentId));
+
+  if (raw) {
+    const parsed = JSON.parse(raw) as { text: string; courseId?: string };
+
+    // Una entrada vieja (escrita antes de este cambio) no trae `courseId`: se
+    // ignora y se va a Postgres, que sí puede comprobarlo.
+    if (parsed.courseId === courseId) return parsed.text;
+  }
+
+  const record = await getCourseSource(documentId, courseId);
+
+  if (!record) return null;
+
+  await redis.set(
+    agentDocumentKey(documentId),
+    JSON.stringify({
+      text: record.text,
+      fileName: record.fileName,
+      mimeType: record.mimeType,
+      userId: record.userId,
+      courseId: record.courseId,
+      uploadedAt: record.createdAt
+    }),
+    { EX: DOCUMENT_REDIS_TTL }
+  );
+
+  return record.text;
+}
+
 const DOCUMENT_SUMMARY_EXCERPT_CHARS = 1_500;
 
 /**
@@ -568,14 +621,20 @@ const DOCUMENT_SUMMARY_EXCERPT_CHARS = 1_500;
  */
 export async function getDocumentSummary(
   documentId: string,
-  userId: string,
-  redis: RedisClient
+  redis: RedisClient,
+  /**
+   * Cómo se consigue el texto. Se pasa desde afuera, y no un `userId`, porque
+   * el alcance depende de quién pregunta: el chat lee lo del usuario, el índice
+   * y el paquete leen lo del curso. Con un `userId` adentro, esta función
+   * elegía por ellos — y elegía mal para dos de los tres.
+   */
+  leerTexto: () => Promise<string | null>
 ): Promise<string | null> {
   const cached = await redis.get(agentDocumentSummaryKey(documentId));
 
   if (cached) return cached;
 
-  const text = await getDocumentText(documentId, userId, redis);
+  const text = await leerTexto();
 
   if (!text) return null;
 

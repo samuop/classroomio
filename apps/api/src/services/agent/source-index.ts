@@ -1,5 +1,5 @@
-import { listChatDocumentsByCourse } from '@cio/db/queries/agent/chat-document';
-import { getDocumentSummary, getDocumentText } from '@api/services/agent/document';
+import { listCourseSources } from '@cio/db/queries/agent/chat-document';
+import { getCourseSourceText, getDocumentSummary } from '@api/services/agent/document';
 import { VISION_NOTICE } from '@api/services/agent/document-vision';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -133,13 +133,12 @@ function describirLectura(entrada: EntradaDelIndice): string {
  */
 export async function buildSourceIndex(params: {
   courseId: string;
-  userId: string;
   redis: RedisClient;
 }): Promise<IndiceDeFuentes> {
   let documents;
 
   try {
-    documents = await listChatDocumentsByCourse(params.courseId, params.userId);
+    documents = await listCourseSources(params.courseId);
   } catch (error) {
     console.error('[source-index] no se pudieron listar las fuentes:', error);
     return VACIO;
@@ -158,7 +157,9 @@ export async function buildSourceIndex(params: {
     let resumen: string | null = null;
 
     try {
-      const bruto = await getDocumentSummary(doc.id, params.userId, params.redis);
+      const bruto = await getDocumentSummary(doc.id, params.redis, () =>
+        getCourseSourceText(doc.id, params.courseId, params.redis)
+      );
       resumen = bruto ? bruto.replace(/\s+/g, ' ').trim().slice(0, MAX_RESUMEN_CHARS) : null;
     } catch (error) {
       console.error(`[source-index] sin resumen para ${doc.id}:`, error);
@@ -221,7 +222,6 @@ export interface LecturaDeFuente {
 export async function leerFuente(params: {
   documentId: string;
   courseId: string;
-  userId: string;
   redis: RedisClient;
   offset?: number;
   limit?: number;
@@ -229,7 +229,7 @@ export async function leerFuente(params: {
   let documents;
 
   try {
-    documents = await listChatDocumentsByCourse(params.courseId, params.userId);
+    documents = await listCourseSources(params.courseId);
   } catch (error) {
     console.error('[source-index] no se pudieron listar las fuentes:', error);
     return null;
@@ -239,7 +239,7 @@ export async function leerFuente(params: {
 
   if (!doc) return null;
 
-  const texto = (await getDocumentText(doc.id, params.userId, params.redis)) ?? doc.text;
+  const texto = (await getCourseSourceText(doc.id, params.courseId, params.redis)) ?? doc.text;
 
   return { fileName: doc.fileName, ...recortarLineas(texto, params.offset, params.limit) };
 }

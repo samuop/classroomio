@@ -10,7 +10,7 @@ import {
 import { handleError, AppError } from '@api/utils/errors';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import {
-  listChatDocumentsByCourse,
+  listCourseSources,
   listChatDocumentsByConversation,
   deleteChatDocument,
   getChatDocumentCacheKey,
@@ -26,7 +26,7 @@ import {
   type ReconcileResult
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
-import { getDocumentText, storeUrlDocument, SOURCES_CONVERSATION_TITLE } from '@api/services/agent/document';
+import { getCourseSourceText, storeUrlDocument, SOURCES_CONVERSATION_TITLE } from '@api/services/agent/document';
 import { getAssetsByIds } from '@cio/db/queries/assets/assets';
 import { generateDocumentDownloadPresignedUrls } from '@api/utils/s3';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
@@ -77,7 +77,7 @@ export const agentDocumentsRouter = new Hono()
 
         const documents = conversationId
           ? await listChatDocumentsByConversation(conversationId, user.id)
-          : await listChatDocumentsByCourse(courseId, user.id);
+          : await listCourseSources(courseId);
 
         /**
          * De donde se saca el original de cada fuente.
@@ -271,7 +271,7 @@ export const agentDocumentsRouter = new Hono()
           throw new AppError('Not authorized for this course', 'COURSE_FORBIDDEN', 403);
         }
 
-        const documents = await listChatDocumentsByCourse(courseId, user.id);
+        const documents = await listCourseSources(courseId);
 
         // Pull the full text for each document so the reconciler can
         // re-classify size eligibility. The text isn't returned to the
@@ -281,7 +281,7 @@ export const agentDocumentsRouter = new Hono()
           documents.map(async (d) => ({
             id: d.id,
             updatedAt: d.createdAt,
-            text: (await getDocumentText(d.id, user.id, redis)) ?? ''
+            text: (await getCourseSourceText(d.id, courseId, redis)) ?? ''
           }))
         );
 
@@ -330,8 +330,8 @@ export const agentDocumentsRouter = new Hono()
         if (!cacheKey) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
-        const owned = await listChatDocumentsByCourse(cacheKey.courseId, user.id);
-        if (!owned.some((d) => d.id === documentId)) {
+        const permitido = await isCourseTeamMemberOrOrgAdmin(cacheKey.courseId, user.id);
+        if (!permitido) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
 
@@ -372,8 +372,8 @@ export const agentDocumentsRouter = new Hono()
         if (!cacheKey) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
-        const owned = await listChatDocumentsByCourse(cacheKey.courseId, user.id);
-        if (!owned.some((d) => d.id === documentId)) {
+        const permitido = await isCourseTeamMemberOrOrgAdmin(cacheKey.courseId, user.id);
+        if (!permitido) {
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
 

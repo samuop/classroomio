@@ -1,7 +1,7 @@
 import { generateText } from 'ai';
 import { buildLessonWriterPrompt, createModel, resolveModelName, type AIProviderConfig } from '@cio/ai-assistant';
-import { listChatDocumentsByCourse } from '@cio/db/queries/agent/chat-document';
-import { getDocumentText } from '@api/services/agent/document';
+import { listCourseSources } from '@cio/db/queries/agent/chat-document';
+import { getCourseSourceText } from '@api/services/agent/document';
 import type { FuenteVista } from '@api/services/agent/grounding';
 import { buscarFuente } from '@api/services/agent/plan-coverage';
 import { recordTokenUsage } from '@api/services/agent/usage';
@@ -201,7 +201,7 @@ export function crearEscritorDeLecciones(params: {
   const system = buildLessonWriterPrompt();
 
   return async ({ lessonTitle, brief, locale, sources, contenidoActual }) => {
-    const documentos = sources.length > 0 ? await listChatDocumentsByCourse(params.courseId, params.userId) : [];
+    const documentos = sources.length > 0 ? await listCourseSources(params.courseId) : [];
 
     const material: FuenteVista[] = [];
     const fuentesUsadas: string[] = [];
@@ -219,7 +219,7 @@ export function crearEscritorDeLecciones(params: {
       if (vistas.has(doc.id)) continue;
       vistas.add(doc.id);
 
-      const text = (await getDocumentText(doc.id, params.userId, params.redis)) ?? doc.text;
+      const text = (await getCourseSourceText(doc.id, params.courseId, params.redis)) ?? doc.text;
       material.push({ fileName: doc.fileName, text });
       fuentesUsadas.push(doc.fileName);
     }
