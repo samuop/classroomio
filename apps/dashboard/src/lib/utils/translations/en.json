@@ -3359,6 +3359,7 @@
           "written_from": "Written from:",
           "no_sources": "Written without course sources: its content is general knowledge, not your organisation’s material.",
           "unsupported": "Claims the sources do not support",
+          "tokens": "Details that do not appear in the sources",
           "writer_note": "Note from the writer:"
         }
       },

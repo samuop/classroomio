@@ -35,6 +35,34 @@
   const sinRespaldo = $derived(textos(report?.groundingWarnings));
   const avisoDelEscritor = $derived(typeof report?.writerNote === 'string' ? report.writerNote : '');
   const fecha = $derived(typeof report?.builtAt === 'string' ? report.builtAt : '');
+
+  /**
+   * Los datos que no están en la fuente: nombres, números y citas.
+   *
+   * Se muestran aparte de las afirmaciones sin respaldo porque son otra cosa y
+   * se revisan distinto. Aquéllas las juzgó un modelo y admiten discusión;
+   * éstos son una búsqueda —el token está en el documento o no está— y se
+   * verifican mirando el contexto que viene al lado. Por eso van con su
+   * contexto y no sueltos: medido, uno de cada cinco es un dato bien dicho de
+   * otra manera, y sin el contexto el docente no puede descartarlo de un
+   * vistazo.
+   */
+  interface Token {
+    valor: string;
+    contexto: string;
+  }
+
+  const tokens = $derived(
+    Array.isArray(report?.tokenWarnings)
+      ? (report.tokenWarnings as unknown[])
+          .filter((t): t is Record<string, unknown> => typeof t === 'object' && t !== null)
+          .map((t) => ({
+            valor: typeof t.valor === 'string' ? t.valor : '',
+            contexto: typeof t.contexto === 'string' ? t.contexto : ''
+          }))
+          .filter((t: Token) => t.valor.length > 0)
+      : []
+  );
 </script>
 
 {#if report}
@@ -73,6 +101,24 @@
         <ul class="text-gray-700 dark:text-gray-300 mt-1 list-disc space-y-1 pl-4 text-xs">
           {#each sinRespaldo as aviso (aviso)}
             <li>{aviso}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
+    {#if tokens.length > 0}
+      <div class="mt-3">
+        <p class="text-xs font-semibold text-amber-700 dark:text-amber-400">
+          {$t('course.navItem.lessons.build_report.tokens')}
+        </p>
+        <ul class="text-gray-700 dark:text-gray-300 mt-1 space-y-1 text-xs">
+          {#each tokens as token (token.valor)}
+            <li>
+              <span class="font-semibold">{token.valor}</span>
+              {#if token.contexto}
+                <span class="text-gray-500 dark:text-gray-400">— {token.contexto}</span>
+              {/if}
+            </li>
           {/each}
         </ul>
       </div>

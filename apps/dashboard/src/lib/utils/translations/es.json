@@ -2511,6 +2511,7 @@
           "written_from": "Escrita a partir de:",
           "no_sources": "Escrita sin fuentes del curso: su contenido es conocimiento general, no material de tu organización.",
           "unsupported": "Afirmaciones que las fuentes no respaldan",
+          "tokens": "Datos que no figuran en las fuentes",
           "writer_note": "Aviso de quien la escribió:"
         }
       },

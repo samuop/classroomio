@@ -36,6 +36,7 @@ import {
 } from '@api/services/agent/lesson-content';
 import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
+import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
 import {
   avisoLeerAntes,
   leccionesSinLeer,
@@ -210,6 +211,18 @@ async function writeLessonBody(params: {
   // is saying. Handing the warning back lets the model correct its own work
   // instead of shipping it broken.
   const svgWarnings = validateSvgDiagram(normalizedContent);
+
+  /**
+   * La mitad determinista del fundamento: los datos que se buscan, no se opinan.
+   *
+   * Corre siempre que se sepa con qué fuentes se escribió, no sale a la red y
+   * no puede fallar la escritura. Va sólo al informe del docente y NO a los
+   * avisos que vuelven al modelo — el porqué está en `grounding-tokens.ts`.
+   */
+  const tokenWarnings = params.fuentesDeLaLeccion?.length
+    ? verificarTokens({ texto: textoParaTokens(normalizedContent), fuentes: params.fuentesDeLaLeccion })
+    : [];
+
   const groundingWarnings = await fundamento;
 
   /**
@@ -229,6 +242,7 @@ async function writeLessonBody(params: {
       sources: (params.fuentesDeLaLeccion ?? []).map((f) => f.fileName),
       groundingWarnings,
       diagramWarnings: svgWarnings,
+      tokenWarnings,
       ...(params.notaDelEscritor ? { writerNote: params.notaDelEscritor } : {})
     }
   }).catch((error) => console.error('[lesson] no se pudo guardar el informe de la lección:', error));

@@ -75,6 +75,39 @@ describe('de qué está hecha la lección', () => {
     expect(container.textContent).toContain('Gerencia de Personas y Cultura');
   });
 
+  /**
+   * Los datos sin respaldo van con su contexto, y eso NO es decorativo.
+   *
+   * Este chequeo es una búsqueda literal: medido contra una sección real, uno
+   * de cada cinco hallazgos es un dato bien dicho de otra manera. Sin el tramo
+   * de texto al lado, el docente no puede descartarlo de un vistazo y la lista
+   * entera se vuelve ruido.
+   */
+  it('muestra los datos que no figuran en las fuentes, con su contexto', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Organigrama actual.pdf'],
+          groundingWarnings: [],
+          tokenWarnings: [{ valor: 'Arlux', contexto: '…distribución oficial de Arlux y otras…' }]
+        }
+      }
+    });
+
+    expect(container.textContent).toContain('Arlux');
+    expect(container.textContent).toContain('distribución oficial');
+  });
+
+  it('aguanta un hallazgo de dato con la forma equivocada', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: { sources: [], groundingWarnings: [], tokenWarnings: ['no es un objeto', null, { contexto: 'sin valor' }] }
+      }
+    });
+
+    expect(container.querySelector('section')).not.toBeNull();
+  });
+
   it('muestra el aviso de quien la escribió', () => {
     const { container } = render(LessonBuildReport, {
       props: { report: { sources: [], groundingWarnings: [], writerNote: 'Falta el manual de depósito.' } }
