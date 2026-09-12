@@ -115,6 +115,7 @@ import {
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
+import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
@@ -1008,6 +1009,10 @@ const agentCoreRouter = new Hono()
         }
       }
 
+      // Medido ANTES de que la ronda escriba nada, para poder responder «¿esta
+      // ronda movió el plan?». `planProgress` se pisa durante la ronda; esto no.
+      const completadasAntesDeLaRonda = planProgress?.completed;
+
       // Material-cap notice (policy: 400k cached tokens per course). Tell the model
       // so it warns the instructor, in the conversation's language, that no more
       // source material fits this course and a separate course is the way forward.
@@ -1118,10 +1123,77 @@ const agentCoreRouter = new Hono()
       let completedStepCount = 0;
       let lastStepInputTokens: number | undefined;
       let finishReason: string | undefined;
-      // Set in onFinish (async) so the sync messageMetadata callback can report to the
-      // UI whether the plan is still incomplete — this drives the "Continue" button
-      // even when the model wrongly claimed the course was finished.
+      /**
+       * Si el plan todavía tiene ítems sin hacer, para que `messageMetadata`
+       * —que es SÍNCRONA— pueda ofrecerle «Continuar» al docente aunque el
+       * modelo haya dicho que terminó.
+       *
+       * Se calcula en `onStepFinish` y NO en `onFinish`. Ver
+       * `recalcularProgresoDelPlan`: `onFinish` corre demasiado tarde.
+       */
       let planIncomplete: { pendingCount: number; emptyCount: number } | undefined;
+
+      /**
+       * El plan contra el curso vivo, después de las escrituras de la ronda.
+       *
+       * ── Por qué corre al final de cada PASO y no en `onFinish` ─────────────
+       *
+       * Vivía en `onFinish`, y su resultado no llegó al panel ni una sola vez:
+       * `planProgress` aparece cero veces en los 24 streams guardados de
+       * producción, y `continuation.finishReason` —asignado en la primera
+       * línea de ese mismo `onFinish`— tampoco.
+       *
+       * No es una carrera que a veces se pierde: es el orden del SDK. La parte
+       * `finish` atraviesa el stream, y `messageMetadata` la lee y la emite, en
+       * el `transform`; el `onFinish` del usuario se llama después, en el
+       * `flush` de esa misma transformación. Para cuando el valor existía, la
+       * metadata ya había salido. `messageMetadata` además es síncrona, así que
+       * tampoco puede esperarlo.
+       *
+       * Lo que costaba: la continuación automática de la construcción nunca se
+       * disparó (el panel exige `planProgress`), el checklist medido por el
+       * servidor nunca se dibujó, y `continuation.reason = 'incomplete_plan'`
+       * era inalcanzable — o sea que cuando el modelo se detenía diciendo que
+       * había terminado sin terminar, al docente no se le ofrecía nada.
+       *
+       * `onStepFinish` sí sirve: el SDK lo espera sobre la parte `finish-step`,
+       * que pasa antes que `finish`. El test `progreso-del-plan.test.ts` fija
+       * ese orden, para que una actualización del SDK que lo cambie se note.
+       *
+       * Nunca tira: si la base falla, el progreso queda como estaba y la ronda
+       * sigue.
+       */
+      async function recalcularProgresoDelPlan(): Promise<void> {
+        if (!approvedPlan) return;
+
+        try {
+          const [itemsActuales, seccionesActuales, registroActual] = await Promise.all([
+            getCourseContentItems(courseId),
+            listCourseSections(courseId),
+            readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => [])
+          ]);
+          const progreso = buildPlanProgressAnchor(approvedPlan, seccionesActuales, itemsActuales, registroActual);
+          if (!progreso) return;
+
+          // Lo que el checklist del panel dibuja sale de ACÁ: reconciliado
+          // después de que las escrituras aterrizaron, así que informa lo que
+          // existe y no lo que el modelo dijo que hizo.
+          planProgress = progreso;
+
+          // Se recalcula entero en cada paso: un plan que estaba incompleto
+          // tres pasos atrás puede estar completo ahora.
+          planIncomplete =
+            progreso.pendingCount > 0 || progreso.emptyCount > 0
+              ? { pendingCount: progreso.pendingCount, emptyCount: progreso.emptyCount }
+              : undefined;
+
+          // Un checklist es un informe de AVANCE, no un encabezado permanente —
+          // ver `isChecklistWorthShowing`.
+          checklistProgress = isChecklistWorthShowing(progreso, completadasAntesDeLaRonda) ? progreso : undefined;
+        } catch (err) {
+          console.error('[agent.chat] no se pudo recalcular el progreso del plan:', err);
+        }
+      }
 
       const isAnthropic = providerConfig.provider === AIProvider.ANTHROPIC;
       const isAnthropicCompatible = isAnthropic || providerConfig.provider === AIProvider.MINIMAX;
@@ -1477,7 +1549,7 @@ const agentCoreRouter = new Hono()
             })
           };
         },
-        onStepFinish: (step) => {
+        onStepFinish: async (step) => {
           completedStepCount += 1;
           // Size of the LAST request actually sent to the provider. This — not
           // `totalUsage` — is what "how full is the context window" means.
@@ -1485,6 +1557,14 @@ const agentCoreRouter = new Hono()
           // over a 110k-token document reports ~220k and makes a brand-new
           // conversation look 100% full against the 200k budget.
           lastStepInputTokens = step.usage?.inputTokens ?? lastStepInputTokens;
+          // El del último paso es el de la ronda. Se toma acá porque el de
+          // `onFinish` llega tarde para la metadata — ver
+          // `recalcularProgresoDelPlan`.
+          finishReason = step.finishReason;
+
+          if (pasoPudoCambiarElCurso(step.toolCalls.map((call) => call.toolName))) {
+            await recalcularProgresoDelPlan();
+          }
         },
         onFinish: async ({ totalUsage, finishReason: resultFinishReason, steps }) => {
           completedStepCount = steps.length;
@@ -1523,44 +1603,10 @@ const agentCoreRouter = new Hono()
             }
           }
 
-          // Re-check the plan vs the (now-updated) live course. If items are still
-          // missing/empty, flag it so the UI can offer "Continue" — regardless of
-          // whether the model stopped by choice or hit the step limit.
-          if (approvedPlan) {
-            // Measured BEFORE the round's writes landed, so "did this round move
-            // the plan forward?" is answerable below.
-            const completedBefore = planProgress?.completed;
+          // El progreso del plan NO se recalcula acá: para cuando esto corre, la
+          // metadata del mensaje ya salió. Lo hace `onStepFinish` — ver
+          // `recalcularProgresoDelPlan`.
 
-            try {
-              const [finalItems, finalSections, finalRegistry] = await Promise.all([
-                getCourseContentItems(courseId),
-                listCourseSections(courseId),
-                readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => [])
-              ]);
-              const finalProgress = buildPlanProgressAnchor(approvedPlan, finalSections, finalItems, finalRegistry);
-              if (finalProgress) {
-                // The checklist the UI renders comes from HERE — reconciled after the
-                // round's writes landed, so it reports what exists rather than what
-                // the model said it did.
-                planProgress = finalProgress;
-
-                if (finalProgress.pendingCount > 0 || finalProgress.emptyCount > 0) {
-                  planIncomplete = {
-                    pendingCount: finalProgress.pendingCount,
-                    emptyCount: finalProgress.emptyCount
-                  };
-                }
-
-                // A checklist is a PROGRESS report, not a permanent header — see
-                // `isChecklistWorthShowing`.
-                if (isChecklistWorthShowing(finalProgress, completedBefore)) {
-                  checklistProgress = finalProgress;
-                }
-              }
-            } catch (err) {
-              console.error('[agent.chat] failed to recompute plan progress at finish:', err);
-            }
-          }
           /**
            * El modelo que realmente se llamó, resuelto con la MISMA función que
            * lo eligió (`createModel` hace `config.model || resolveModelName(...)`).
