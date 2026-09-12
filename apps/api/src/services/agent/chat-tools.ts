@@ -60,6 +60,7 @@ import {
   type PresupuestoDePasos
 } from '@api/services/agent/step-budget';
 import { buscarEnLecciones } from '@api/services/agent/lesson-search';
+import { anotarCambio, registroVacio, type RegistroDeRonda } from '@api/services/agent/round-ledger';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
@@ -177,6 +178,8 @@ async function writeLessonBody(params: {
   fuentesDeLaLeccion?: FuenteVista[];
   /** Lo que el escritor avisó que no pudo cubrir, si avisó algo. */
   notaDelEscritor?: string;
+  /** Dónde anotar que esta lección cambió. Ver `round-ledger.ts`. */
+  registro?: RegistroDeRonda;
 }): Promise<{
   normalizedContent: string;
   svgWarnings: string[];
@@ -190,6 +193,11 @@ async function writeLessonBody(params: {
     locale: params.locale as 'en',
     content: normalizedContent
   });
+
+  // Anotado DESPUÉS de guardar, nunca antes: el registro dice lo que pasó, no
+  // lo que se intentó. Si el guardado falla, esto no se ejecuta y la ronda no
+  // reclama un cambio que no existe.
+  if (params.registro) anotarCambio(params.registro, 'escribio', params.lessonTitle);
 
   // El chequeo de fundamento sale a la red, así que arranca ANTES de las
   // comprobaciones locales y se espera al final: los avisos de SVG y de fórmulas
@@ -472,6 +480,8 @@ export function buildAgentTools(
      * que es lo que corresponde donde no hay un techo de pasos que gastar.
      */
     presupuesto?: PresupuestoDePasos;
+    /** Dónde anotar lo que la ronda cambió de verdad. Ver `round-ledger.ts`. */
+    registro?: RegistroDeRonda;
     /**
      * El idioma del curso, resuelto por la ronda.
      *
@@ -490,6 +500,9 @@ export function buildAgentTools(
   const redisParaFuentes = _options?.redis;
   const escribirLeccion = _options?.escribirLeccion;
   const locale = _options?.locale ?? 'en';
+  // Sin registro provisto, se anota en uno propio que nadie lee: asi las
+  // llamadas a `anotarCambio` no tienen que preguntar si existe.
+  const registro = _options?.registro ?? registroVacio();
 
   // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
   // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
@@ -759,6 +772,7 @@ export function buildAgentTools(
 
           imagesGenerated += 1;
           if (args.lessonId) leccionesConImagen.add(args.lessonId);
+          anotarCambio(registro, 'ilustro', args.subject.slice(0, 60));
 
           return {
             generated: true,
@@ -804,7 +818,7 @@ export function buildAgentTools(
      */
     search_lessons: tool({
       description:
-        'Search inside the lessons THIS COURSE already has, instead of fetching them one by one. Returns the lessonId, the blockId when the text sits in an addressable block, and a snippet of the surrounding text. Use it whenever you need to find where something is said before changing it — accents and capitalisation are ignored, so "mision" finds "misión". This searches the COURSE; search_document searches the attached source material.',
+        'Search inside the lessons THIS COURSE already has, instead of fetching them one by one. Accents and capitalisation are ignored, so "mision" finds "misión". Each match gives you the lessonId, the blockId when the text sits in an addressable block, a readable snippet, and `textoExacto` — the surrounding text VERBATIM from the stored lesson. You can pass `textoExacto` straight to edit_lesson_content as oldString: for a find-and-replace across the course you do NOT need get_lesson_content at all. This searches the COURSE; search_document searches the attached source material.',
       inputSchema: searchLessonsParam,
       execute: async (args) => {
         return executeAgentTool('search_lessons', { orgId, userId, courseId, args }, async () => {
@@ -1048,6 +1062,7 @@ export function buildAgentTools(
             // rather than returning early and stranding the content.
             const written = args.content
               ? await writeLessonBody({
+                  registro,
                   lessonId: leccion.id,
                   lessonTitle: leccion.title,
                   locale: args.locale,
@@ -1083,6 +1098,7 @@ export function buildAgentTools(
           if (!isBuilding) leccionesEscritasSinPlan += 1;
 
           const written = await writeLessonBody({
+            registro,
             lessonId: leccion.id,
             lessonTitle: leccion.title,
             locale: args.locale,
@@ -1193,6 +1209,7 @@ export function buildAgentTools(
           }
 
           const written = await writeLessonBody({
+            registro,
             lessonId: leccion.id,
             lessonTitle: leccion.title,
             locale: args.locale,
@@ -1263,6 +1280,7 @@ export function buildAgentTools(
           const lesson = await getLesson(args.lessonId);
 
           const written = await writeLessonBody({
+            registro,
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
             locale: args.locale,
@@ -1337,6 +1355,9 @@ export function buildAgentTools(
             locale: args.locale as 'en',
             content: updated
           });
+
+          // Anotado despues de guardar: el registro dice lo que paso.
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
 
           return {
             lessonId: args.lessonId,
@@ -1419,6 +1440,9 @@ export function buildAgentTools(
             locale: args.locale as 'en',
             content: updated
           });
+
+          // Anotado despues de guardar: el registro dice lo que paso.
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
 
           return {
             lessonId: args.lessonId,

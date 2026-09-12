@@ -114,6 +114,7 @@ import {
   verifyLessonBelongsToCourse
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
+import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
@@ -1033,11 +1034,23 @@ const agentCoreRouter = new Hono()
        */
       const presupuestoDePasos = { paso: 1, maxPasos: MAX_STEPS_PER_ROUND };
 
+      /**
+       * Lo que la ronda cambió de verdad, anotado por el servidor mientras pasa.
+       *
+       * Va AL LADO del relato del modelo, no en lugar de él. Medido en un solo
+       * día: dijo haber escrito una lección con un id inexistente, haber
+       * eliminado seis menciones cuando eliminó cuatro, se atribuyó diagramas
+       * previos, y cerró con «era la única lección donde figuraba» después de
+       * editar cinco. Ver `round-ledger.ts`.
+       */
+      const registroDeRonda = registroVacio();
+
       const agentTools =
         role === AgentRole.STUDENT
           ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings, agentContext.locale as TLocale)
           : buildAgentTools(orgId, user.id, courseId, messages, {
               presupuesto: presupuestoDePasos,
+              registro: registroDeRonda,
               // El idioma del curso, resuelto acá y no adivinado por el modelo:
               // `search_lessons` busca en el contenido de ESE locale, y buscar
               // un curso en español bajo `en` devuelve vacío, que se lee como
@@ -1740,6 +1753,14 @@ const agentCoreRouter = new Hono()
             // course. Replaces the checklist that used to be drawn from the model's
             // own update_course_todo_list output, which drifted from reality because
             // nothing forced the model to keep it current.
+            /**
+             * Lo que el servidor VIO cambiar en esta ronda.
+             *
+             * Se manda siempre que haya algo, y el dashboard lo dibuja debajo
+             * del mensaje. No corrige el relato del modelo — lo deja
+             * comprobable, que es lo unico que se puede garantizar.
+             */
+            roundChanges: lineasDelRegistro(registroDeRonda),
             planProgress: checklistProgress
               ? {
                   total: checklistProgress.total,

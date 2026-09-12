@@ -3360,6 +3360,7 @@
           "no_sources": "Written without course sources: its content is general knowledge, not your organisation’s material.",
           "unsupported": "Claims the sources do not support",
           "tokens": "Details that do not appear in the sources",
+          "round_changes": "What the assistant changed in this round",
           "unsupported_passages": "Passages the source does not state, declared by the writer",
           "unsupported_passages_hint": "The model wrote these passages itself — they did not come from the material. Review them, or upload what is missing and ask for them to be rewritten.",
           "writer_note": "Note from the writer:"

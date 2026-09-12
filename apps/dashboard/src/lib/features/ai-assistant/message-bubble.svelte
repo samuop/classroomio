@@ -242,12 +242,27 @@
   // drifted badly — it read 1/32 with ten lessons already written.
   const planProgress = $derived(message.role === 'assistant' ? message.metadata?.planProgress : undefined);
   const showPlanProgress = $derived(!!planProgress && planProgress.total > 0);
+
+  /**
+   * Lo que el servidor vio cambiar, debajo de lo que el asistente cuenta.
+   *
+   * Se lee a la defensiva —llega de la metadata, que es clave abierta— y sólo
+   * se dibuja si hay algo: una ronda de preguntas y respuestas no cambia nada
+   * y no tiene por qué mostrar una caja vacía.
+   */
+  const roundChanges = $derived(
+    message.role === 'assistant' && Array.isArray(message.metadata?.roundChanges)
+      ? message.metadata.roundChanges.filter((linea): linea is string => typeof linea === 'string' && !!linea.trim())
+      : []
+  );
+
   const hasBubbleContent = $derived(
     inlineParts.length > 0 ||
       deferredPlanParts.length > 0 ||
       !!messageAttachment ||
       showAgentSteps ||
       showPlanProgress ||
+      roundChanges.length > 0 ||
       thinkingBlocks.length > 0
   );
   const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
@@ -487,6 +502,19 @@
           </div>
         {/if}
       {/each}
+
+      {#if roundChanges.length > 0}
+        <div class="border-gray-200 dark:border-neutral-700 mt-3 rounded-md border px-3 py-2">
+          <p class="text-gray-500 dark:text-gray-400 text-xs font-semibold">
+            {$t('course.navItem.lessons.build_report.round_changes')}
+          </p>
+          <ul class="text-gray-700 dark:text-gray-300 mt-1 space-y-0.5 text-xs">
+            {#each roundChanges as cambio (cambio)}
+              <li>{cambio}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
 
       {#if showPlanProgress && planProgress}
         <TodoChecklist progress={planProgress} />

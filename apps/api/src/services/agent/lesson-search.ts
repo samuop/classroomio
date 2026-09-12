@@ -53,6 +53,18 @@ export interface CoincidenciaEnLeccion {
   blockId?: string;
   /** El texto alrededor de la coincidencia, para decidir sin abrir la lección. */
   fragmento: string;
+  /**
+   * El mismo tramo pero TEXTUAL, listo para pasar como `oldString`.
+   *
+   * Medido: con sólo `fragmento`, el modelo encontraba las cinco lecciones y
+   * después abría diecinueve veces `get_lesson_content` igual. Y tenía razón —
+   * `fragmento` colapsa los espacios y corta con puntos suspensivos, así que no
+   * coincide con nada: le decía DÓNDE estaba y no le alcanzaba para ACTUAR.
+   *
+   * Nunca cruza una etiqueta, así que es texto puro y se puede buscar y
+   * reemplazar tal cual viene.
+   */
+  textoExacto: string;
 }
 
 /**
@@ -142,6 +154,46 @@ function bloqueQueContiene(html: string, posicion: number): string | undefined {
   return ultimo;
 }
 
+/** Hasta dónde se estira el tramo textual a cada lado, si no aparece un corte antes. */
+export const MAX_TRAMO = 140;
+
+/**
+ * El tramo TEXTUAL del HTML alrededor de la coincidencia, para usar de
+ * `oldString`.
+ *
+ * Se estira sobre el HTML y no sobre el texto visible a propósito: así lo que
+ * se devuelve son bytes que están de verdad en el contenido guardado, y un
+ * reemplazo exacto no puede fallar por un espacio.
+ *
+ * Se detiene en `<` y en `>` —o sea que nunca cruza una etiqueta— y en un final
+ * de oración, que es la unidad que suele ser única dentro de una lección. Un
+ * tramo demasiado corto coincidiría en varios lugares y el reemplazo sería
+ * ambiguo; uno demasiado largo se lleva media lección al contexto.
+ */
+function tramoExacto(html: string, inicio: number, fin: number): string {
+  const corta = (c: string) => c === '<' || c === '>';
+  let izq = inicio;
+  let der = fin;
+
+  while (izq > 0 && inicio - izq < MAX_TRAMO) {
+    const previo = html[izq - 1];
+    if (corta(previo)) break;
+    if (previo === '.' || previo === '!' || previo === '?') break;
+    izq -= 1;
+  }
+
+  while (der < html.length && der - fin < MAX_TRAMO) {
+    const actual = html[der];
+    if (corta(actual)) break;
+    der += 1;
+    // El punto entra en el tramo: cortar justo antes dejaría un `oldString`
+    // que el reemplazo tiene que volver a pegar.
+    if (actual === '.' || actual === '!' || actual === '?') break;
+  }
+
+  return html.slice(izq, der).trim();
+}
+
 function recortar(texto: string, desde: number, hasta: number): string {
   const inicio = Math.max(0, desde - CONTEXTO);
   const fin = Math.min(texto.length, hasta + CONTEXTO);
@@ -194,13 +246,16 @@ export function buscarEnLecciones(params: {
 
       const inicioVisible = aVisible[pos] ?? 0;
       const finVisible = (aVisible[pos + aguja.length - 1] ?? inicioVisible) + 1;
-      const blockId = bloqueQueContiene(leccion.content, aHtml[inicioVisible] ?? 0);
+      const inicioHtml = aHtml[inicioVisible] ?? 0;
+      const finHtml = (aHtml[finVisible - 1] ?? inicioHtml) + 1;
+      const blockId = bloqueQueContiene(leccion.content, inicioHtml);
 
       coincidencias.push({
         lessonId: leccion.id,
         title: leccion.title,
         ...(blockId ? { blockId } : {}),
-        fragmento: recortar(visible, inicioVisible, finVisible)
+        fragmento: recortar(visible, inicioVisible, finVisible),
+        textoExacto: tramoExacto(leccion.content, inicioHtml, finHtml)
       });
 
       enEstaLeccion += 1;

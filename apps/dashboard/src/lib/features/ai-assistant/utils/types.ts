@@ -232,6 +232,15 @@ export interface AiAssistantMessageMetadata {
   attachment?: AiAssistantMessageAttachment;
   tokenUsage?: AiAssistantMessageTokenUsage;
   planProgress?: AiAssistantPlanProgress;
+  /**
+   * Lo que el SERVIDOR vio cambiar en la ronda, en líneas ya escritas.
+   *
+   * Va al lado del relato del asistente, no en su lugar. Medido en un solo día:
+   * dijo haber escrito una lección con un id inexistente, haber eliminado seis
+   * menciones cuando eliminó cuatro, se atribuyó diagramas que ya estaban, y
+   * cerró con «era la única lección donde figuraba» después de editar cinco.
+   */
+  roundChanges?: string[];
   continuation?: AiAssistantMessageContinuation;
   template?: AiAssistantTemplateMetadata;
   discovery?: AiAssistantDiscoveryMetadata;

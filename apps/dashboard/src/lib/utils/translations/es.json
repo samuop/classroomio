@@ -2512,6 +2512,7 @@
           "no_sources": "Escrita sin fuentes del curso: su contenido es conocimiento general, no material de tu organización.",
           "unsupported": "Afirmaciones que las fuentes no respaldan",
           "tokens": "Datos que no figuran en las fuentes",
+          "round_changes": "Lo que el asistente cambió en esta vuelta",
           "unsupported_passages": "Pasajes que la fuente no dice, declarados por quien escribió",
           "unsupported_passages_hint": "Estos pasajes los escribió el modelo, no salieron del material. Revisalos, o subí lo que falta y pedí que se rehagan.",
           "writer_note": "Aviso de quien la escribió:"

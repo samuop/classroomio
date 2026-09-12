@@ -156,6 +156,57 @@ describe('buscar dentro de las lecciones', () => {
     });
   });
 
+  /**
+   * El tramo textual, que es lo que convierte «encontré» en «puedo editar».
+   *
+   * Medido en producción: con sólo el fragmento legible, el modelo encontró
+   * bien las cinco lecciones y después abrió diecinueve veces
+   * `get_lesson_content`. Tenía razón — el fragmento colapsa espacios y corta
+   * con puntos suspensivos, así que no coincide con nada y no sirve de
+   * `oldString`.
+   */
+  describe('el tramo listo para reemplazar', () => {
+    it('existe LITERALMENTE en el contenido guardado', () => {
+      // El criterio duro: si esto falla, el reemplazo exacto falla.
+      for (const hallazgo of buscar('Valdenia')) {
+        const leccion = LECCIONES.find((l) => l.id === hallazgo.lessonId)!;
+
+        expect(leccion.content).toContain(hallazgo.textoExacto);
+      }
+    });
+
+    it('no cruza una etiqueta', () => {
+      // Un tramo con `</p><p>` adentro no es texto: es markup, y usarlo de
+      // oldString acopla la edición a la estructura.
+      const [hallazgo] = buscar('Valdenia');
+
+      expect(hallazgo.textoExacto).not.toContain('<');
+      expect(hallazgo.textoExacto).not.toContain('>');
+    });
+
+    it('trae más contexto que lo buscado, para que el reemplazo sea único', () => {
+      const [hallazgo] = buscar('Valdenia');
+
+      expect(hallazgo.textoExacto.length).toBeGreaterThan('Valdenia'.length);
+    });
+
+    it('conserva los espacios tal como están guardados', () => {
+      // El fragmento legible los colapsa; este NO puede, o deja de coincidir.
+      const doble = { id: 'e', title: 'E', content: '<p>Hay  dos espacios en Valdenia  aca.</p>' };
+      const [hallazgo] = buscarEnLecciones({ lecciones: [doble], texto: 'Valdenia' });
+
+      expect(doble.content).toContain(hallazgo.textoExacto);
+      expect(hallazgo.textoExacto).toContain('  ');
+    });
+
+    it('no se lleva media lección cuando no hay ningún corte cerca', () => {
+      const largo = { id: 'f', title: 'F', content: `<p>${'x '.repeat(400)}Valdenia${' y'.repeat(400)}</p>` };
+      const [hallazgo] = buscarEnLecciones({ lecciones: [largo], texto: 'Valdenia' });
+
+      expect(hallazgo.textoExacto.length).toBeLessThan(400);
+    });
+  });
+
   describe('la coincidencia sin bloque', () => {
     it('no inventa un blockId cuando el contenido no los tiene', () => {
       // Contenido viejo, escrito antes de que el editor estampara ids.
