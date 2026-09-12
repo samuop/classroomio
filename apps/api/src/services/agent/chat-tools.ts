@@ -39,6 +39,7 @@ import {
 import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
 import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
+import { fuentesParaContrastar } from '@api/services/agent/fuentes-para-contrastar';
 import { extraerPasajesSinFuente } from '@api/services/agent/unsupported-passages';
 import {
   avisoLeerAntes,
@@ -176,6 +177,11 @@ async function writeLessonBody(params: {
   verificarFundamento?: Verificador;
   /** Lo que tuvo delante quien escribió, si se sabe: se contrasta contra eso. */
   fuentesDeLaLeccion?: FuenteVista[];
+  /**
+   * Las fuentes del curso, para contrastar cuando nadie declaró con cuáles se
+   * escribió. Se llama sólo si hace falta — ver `fuentes-para-contrastar.ts`.
+   */
+  cargarFuentesDelCurso?: () => Promise<FuenteVista[]>;
   /** Lo que el escritor avisó que no pudo cubrir, si avisó algo. */
   notaDelEscritor?: string;
   /** Dónde anotar que esta lección cambió. Ver `round-ledger.ts`. */
@@ -236,13 +242,23 @@ async function writeLessonBody(params: {
   /**
    * La mitad determinista del fundamento: los datos que se buscan, no se opinan.
    *
-   * Corre siempre que se sepa con qué fuentes se escribió, no sale a la red y
-   * no puede fallar la escritura. Va sólo al informe del docente y NO a los
-   * avisos que vuelven al modelo — el porqué está en `grounding-tokens.ts`.
+   * No sale a la red y no puede fallar la escritura. Va sólo al informe del
+   * docente y NO a los avisos que vuelven al modelo — el porqué está en
+   * `grounding-tokens.ts`.
+   *
+   * Corre también cuando nadie declaró con qué fuentes se escribió. Antes no:
+   * sólo `write_lesson` las pasaba, así que una lección reescrita desde el chat
+   * se guardaba con `sources: []` y cero avisos, y el informe se leía como
+   * limpio sin que el chequeo hubiera corrido. Ver `fuentes-para-contrastar.ts`.
    */
-  const tokenWarnings = params.fuentesDeLaLeccion?.length
-    ? verificarTokens({ texto: textoParaTokens(normalizedContent), fuentes: params.fuentesDeLaLeccion })
-    : [];
+  const contraste = await fuentesParaContrastar({
+    deLaLeccion: params.fuentesDeLaLeccion,
+    cargarDelCurso: params.cargarFuentesDelCurso
+  });
+  const tokenWarnings =
+    contraste.fuentes.length > 0
+      ? verificarTokens({ texto: textoParaTokens(normalizedContent), fuentes: contraste.fuentes })
+      : [];
 
   /**
    * Lo que el escritor marcó como propio.
@@ -274,6 +290,10 @@ async function writeLessonBody(params: {
     buildReport: {
       builtAt: new Date().toISOString(),
       sources: (params.fuentesDeLaLeccion ?? []).map((f) => f.fileName),
+      // Contra qué se buscaron los datos: las fuentes de la lección, todas las
+      // del curso (nadie declaró cuáles), o ninguna. Sin esto, «0 avisos» no
+      // distingue «limpia» de «no se contrastó».
+      checkedAgainst: contraste.alcance,
       groundingWarnings,
       diagramWarnings: svgWarnings,
       tokenWarnings,
@@ -503,6 +523,19 @@ export function buildAgentTools(
   // Sin registro provisto, se anota en uno propio que nadie lee: asi las
   // llamadas a `anotarCambio` no tienen que preguntar si existe.
   const registro = _options?.registro ?? registroVacio();
+
+  /**
+   * Las fuentes del curso, para contrastar una lección que se guarda sin decir
+   * con cuáles se escribió. Se leen una sola vez por ronda, y sólo si alguna
+   * lección lo necesita. Ver `fuentes-para-contrastar.ts`.
+   */
+  let fuentesDelCursoPromesa: Promise<FuenteVista[]> | null = null;
+  const cargarFuentesDelCurso = (): Promise<FuenteVista[]> => {
+    fuentesDelCursoPromesa ??= listCourseSources(courseId).then((documentos) =>
+      documentos.map((documento) => ({ fileName: documento.fileName, text: documento.text ?? '' }))
+    );
+    return fuentesDelCursoPromesa;
+  };
 
   // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
   // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
@@ -1068,7 +1101,8 @@ export function buildAgentTools(
                   locale: args.locale,
                   content: args.content,
                   isBuilding,
-                  verificarFundamento
+                  verificarFundamento,
+                  cargarFuentesDelCurso
                 })
               : null;
 
@@ -1104,7 +1138,8 @@ export function buildAgentTools(
             locale: args.locale,
             content: args.content,
             isBuilding,
-            verificarFundamento
+            verificarFundamento,
+            cargarFuentesDelCurso
           });
           leccionesConocidas.add(leccion.id);
 
@@ -1123,7 +1158,7 @@ export function buildAgentTools(
 
     write_lesson: tool({
       description:
-        'Write ONE lesson through a dedicated writer that sees only the brief for this lesson, the course outline and the sources you list. While building an approved plan, this is how every lesson gets written: you send a short brief plus the sources the plan declared for it — never the lesson HTML — so your own context stays small for the whole course. Pass sectionId + title + order + planKey to create a lesson, or lessonId to rewrite one. The result carries the same checks as any saved lesson (diagrams, formulas, and grounding against exactly the sources the writer saw) and, when there is one, a writerNote about what the writer could not cover: pass that note on to the teacher.',
+        'Write ONE lesson through a dedicated writer that sees only the brief for this lesson, the course outline and the sources you list. This is how a whole lesson gets written or rewritten from the course material — every lesson of an approved plan, and any single lesson the teacher asks you to write or rewrite in chat. You send a short brief plus the sources that carry it — never the lesson HTML — so your own context stays small. Pass sectionId + title + order + planKey to create a lesson, or lessonId to rewrite one. The result carries the same checks as any saved lesson (diagrams, formulas, and grounding against exactly the sources the writer saw) and, when there is one, a writerNote about what the writer could not cover: pass that note on to the teacher.',
       inputSchema: writeLessonParam,
       execute: async (args) => {
         return executeAgentTool('write_lesson', { orgId, userId, courseId, args }, async () => {
@@ -1272,7 +1307,7 @@ export function buildAgentTools(
 
     update_lesson_content: tool({
       description:
-        'Update the text content of a lesson in this course. Replaces full lesson HTML for the given locale. For lesson HTML, put only the lesson body in the content. Do not include the lesson title. Do not use h1 or h2 anywhere in lesson HTML. Start headings at h3 because that is the highest heading level allowed in lesson content.',
+        'Update the text content of a lesson in this course. Replaces full lesson HTML for the given locale. For lesson HTML, put only the lesson body in the content. Do not include the lesson title. Do not use h1 or h2 anywhere in lesson HTML. Start headings at h3 because that is the highest heading level allowed in lesson content. To write or rewrite a whole lesson from the course material, use write_lesson instead: it writes against the sources and its result is checked against them. Use this tool for text the teacher dictated or pasted, or when write_lesson has failed twice.',
       inputSchema: updateContentParam,
       execute: async (args) => {
         return executeAgentTool('update_lesson_content', { orgId, userId, courseId, args }, async () => {
@@ -1286,7 +1321,10 @@ export function buildAgentTools(
             locale: args.locale,
             content: args.content,
             isBuilding,
-            verificarFundamento
+            verificarFundamento,
+            // Nadie dice con qué fuentes se escribió este cuerpo: se contrasta
+            // contra las del curso en vez de no contrastar.
+            cargarFuentesDelCurso
           });
           leccionesConocidas.add(args.lessonId);
 
@@ -1319,7 +1357,7 @@ export function buildAgentTools(
 
           if (!current) {
             throw new Error(
-              `This lesson has no content in locale "${args.locale}" yet. Use update_lesson_content to write the initial content.`
+              `This lesson has no content in locale "${args.locale}" yet. Use write_lesson to write the initial content.`
             );
           }
 
@@ -1381,7 +1419,7 @@ export function buildAgentTools(
 
     edit_lesson_content: tool({
       description:
-        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). oldString must be text you have VERBATIM from the server, never text you reconstructed from memory — either the `textoExacto` of a search_lessons match (the direct route: no other call needed) or a fragment copied from get_lesson_content. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
+        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use write_lesson for that). oldString must be text you have VERBATIM from the server, never text you reconstructed from memory — either the `textoExacto` of a search_lessons match (the direct route: no other call needed) or a fragment copied from get_lesson_content. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
       inputSchema: editContentParam,
       execute: async (args) => {
         return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {
@@ -1396,7 +1434,7 @@ export function buildAgentTools(
 
           if (!current) {
             throw new Error(
-              `This lesson has no content in locale "${args.locale}" yet. Use update_lesson_content to write the initial content instead of edit_lesson_content.`
+              `This lesson has no content in locale "${args.locale}" yet. Use write_lesson to write the initial content instead of edit_lesson_content.`
             );
           }
 

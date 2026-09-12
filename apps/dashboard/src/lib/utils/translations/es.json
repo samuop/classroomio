@@ -2510,6 +2510,7 @@
           "title": "De qué está hecha esta lección",
           "written_from": "Escrita a partir de:",
           "no_sources": "Escrita sin fuentes del curso: su contenido es conocimiento general, no material de tu organización.",
+          "checked_against_course": "No quedó registrado con qué fuentes se escribió, así que sus datos se buscaron en todas las fuentes del curso. Un dato que figura en otro material no se marca, aunque no corresponda a esta lección.",
           "unsupported": "Afirmaciones que las fuentes no respaldan",
           "tokens": "Datos que no figuran en las fuentes",
           "round_changes": "Lo que el asistente cambió en esta vuelta",

@@ -184,12 +184,12 @@ export const writeLessonParam = z
       .string()
       .min(1)
       .describe(
-        'What this lesson must teach: its description from the plan, plus anything the teacher asked for it. The writer sees ONLY this brief, the course outline and the sources you list — so be specific about scope, and about what the neighbouring lessons already cover.'
+        'What this lesson must teach: its description from the plan, plus anything the teacher asked for it. The writer sees ONLY this brief, the course outline and the sources you list — so be specific about scope, and about what the neighbouring lessons already cover. When rewriting an existing lesson, the writer sees its current content and keeps what the brief does not ask to change: say so in the brief when the teacher wants it rewritten from scratch.'
       ),
     sources: z
       .array(z.string())
       .describe(
-        'The sources for this lesson exactly as the approved plan declared them (file names or ids from the Course Sources list). An empty array means the teacher agreed it is written from general professional knowledge.'
+        'The sources that carry this lesson (file names or ids from the Course Sources list): during a build, exactly as the approved plan declared them; for a single lesson asked for in chat, the ones whose material covers it. An empty array means it is written from general professional knowledge.'
       )
   })
   .refine((d) => !!d.lessonId || (!!d.sectionId && !!d.title && d.order !== undefined), {

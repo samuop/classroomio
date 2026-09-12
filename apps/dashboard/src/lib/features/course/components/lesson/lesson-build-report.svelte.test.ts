@@ -62,6 +62,23 @@ describe('de qué está hecha la lección', () => {
     expect(container.textContent).toContain('sin fuentes del curso');
   });
 
+  /**
+   * «Sin fuentes» y «contrastada contra el curso» no son lo mismo.
+   *
+   * Una lección reescrita desde el chat se guarda sin decir con qué fuentes se
+   * escribió, pero sus datos se buscan en todas las del curso. Mostrarle al
+   * docente «sin fuentes: es conocimiento general» afirmaría algo falso sobre
+   * una lección que salió de sus talleres.
+   */
+  it('contrastada contra todo el curso no dice que es conocimiento general', () => {
+    const { container } = render(LessonBuildReport, {
+      props: { report: { sources: [], checkedAgainst: 'course', groundingWarnings: [], tokenWarnings: [] } }
+    });
+
+    expect(container.textContent).toContain('todas las fuentes del curso');
+    expect(container.textContent).not.toContain('sin fuentes del curso');
+  });
+
   it('lista las afirmaciones sin respaldo', () => {
     const { container } = render(LessonBuildReport, {
       props: {

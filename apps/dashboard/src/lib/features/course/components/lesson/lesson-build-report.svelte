@@ -32,6 +32,10 @@
     Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
 
   const fuentes = $derived(textos(report?.sources));
+  // Guardada sin decir con qué fuentes se escribió, pero contrastada contra
+  // todas las del curso. No es lo mismo que «sin fuentes»: esa frase le dice al
+  // docente que el contenido es conocimiento general, y no lo es.
+  const contrastadaContraElCurso = $derived(report?.checkedAgainst === 'course');
   const sinRespaldo = $derived(textos(report?.groundingWarnings));
   const avisoDelEscritor = $derived(typeof report?.writerNote === 'string' ? report.writerNote : '');
   const fecha = $derived(typeof report?.builtAt === 'string' ? report.builtAt : '');
@@ -107,6 +111,8 @@
     <p class="text-gray-600 dark:text-gray-300 mt-2 text-xs">
       {#if fuentes.length > 0}
         {$t('course.navItem.lessons.build_report.written_from')}
+      {:else if contrastadaContraElCurso}
+        {$t('course.navItem.lessons.build_report.checked_against_course')}
       {:else}
         {$t('course.navItem.lessons.build_report.no_sources')}
       {/if}

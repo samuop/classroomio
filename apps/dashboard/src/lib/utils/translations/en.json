@@ -3358,6 +3358,7 @@
           "title": "What this lesson is made of",
           "written_from": "Written from:",
           "no_sources": "Written without course sources: its content is general knowledge, not your organisation’s material.",
+          "checked_against_course": "It was not recorded which sources this was written from, so its facts were looked up across all the course sources. A fact that appears in some other material is not flagged, even if it does not belong to this lesson.",
           "unsupported": "Claims the sources do not support",
           "tokens": "Details that do not appear in the sources",
           "round_changes": "What the assistant changed in this round",
