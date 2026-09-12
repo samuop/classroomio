@@ -20,6 +20,7 @@ import 'katex/dist/katex.min.css';
 import { InlineMathReplacer } from './extensions/InlineMathReplacer';
 import { Svg } from './extensions/svg/Svg';
 import { BlockId } from './extensions/block-id/BlockId';
+import { SinFuente } from './extensions/sin-fuente/SinFuente';
 
 export default (
   element?: HTMLElement,
@@ -125,6 +126,7 @@ export default (
       Markdown,
       Svg,
       BlockId,
+      SinFuente,
 
       ...(extensions ?? [])
     ],

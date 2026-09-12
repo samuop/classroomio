@@ -39,6 +39,12 @@ export const FORBID_ATTR = [
  *
  * `data-block-id` gives each top-level block a stable name, so the agent can
  * replace one by id instead of reproducing its old text character for character.
+ *
+ * `data-sin-fuente` marks a passage the writer could not ground in the source,
+ * carrying what is missing. It has to survive sanitising for the same reason it
+ * exists: the mark is the only difference between a paragraph that came out of
+ * a document and one the model supplied itself, and a stripped mark turns the
+ * second into the first silently.
  */
 export const ADD_ATTR = [
   'data-type',
@@ -46,7 +52,8 @@ export const ADD_ATTR = [
   'colwidth',
   'data-cio-media',
   'data-cio-media-id',
-  'data-block-id'
+  'data-block-id',
+  'data-sin-fuente'
 ] as const;
 
 export const ALLOWED_URI_REGEXP =

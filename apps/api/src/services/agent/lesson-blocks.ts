@@ -21,18 +21,26 @@ export interface LessonBlock {
   end: number;
 }
 
+/** A top-level element carrying some attribute, and that attribute's value. */
+export interface MarkedElement {
+  value: string;
+  /** The element's full outer HTML, exactly as stored. */
+  html: string;
+  start: number;
+  end: number;
+}
+
 /**
- * Matches a top-level element carrying a block id and everything up to its
+ * Matches a top-level element carrying `attribute` and everything up to its
  * matching close tag.
  *
  * Deliberately not a DOM parse: the API has no DOM, and re-serialising through
  * one would rewrite parts of the lesson this edit never touched. Scanning for
  * the tag boundary keeps every other byte identical.
  */
-const BLOCK_OPEN_TAG = new RegExp(
-  `<([a-z][a-z0-9]*)\\b[^>]*\\b${BLOCK_ID_ATTRIBUTE}\\s*=\\s*["']([^"']+)["'][^>]*>`,
-  'gi'
-);
+function openTagPattern(attribute: string): RegExp {
+  return new RegExp(`<([a-z][a-z0-9]*)\\b[^>]*\\b${attribute}\\s*=\\s*["']([^"']*)["'][^>]*>`, 'gi');
+}
 
 /** Elements that never have a closing tag, so the match ends at the open tag. */
 const VOID_TAGS = new Set([
@@ -72,16 +80,24 @@ function findClosingIndex(content: string, tagName: string, openEnd: number): nu
   return -1;
 }
 
-/** Every addressable block in a lesson body, in document order. */
-export function listLessonBlocks(content: string): LessonBlock[] {
+/**
+ * Every top-level element carrying `attribute`, in document order.
+ *
+ * Generic on purpose: block ids and the writer's ungrounded-passage marks are
+ * both "find the outer element that carries this attribute", and the subtle
+ * part — where a tag closes when the same tag nests inside it — is the part
+ * that must not exist twice. Two copies of it drift, and the one that drifts is
+ * the one nobody has tests for.
+ */
+export function listElementsWithAttribute(content: string, attribute: string): MarkedElement[] {
   if (!content) return [];
 
-  const blocks: LessonBlock[] = [];
-  const pattern = new RegExp(BLOCK_OPEN_TAG.source, BLOCK_OPEN_TAG.flags);
+  const found: MarkedElement[] = [];
+  const pattern = openTagPattern(attribute);
   let match: RegExpExecArray | null;
 
   while ((match = pattern.exec(content)) !== null) {
-    const [openTag, tagName, blockId] = match;
+    const [openTag, tagName, value] = match;
     const start = match.index;
     const openEnd = start + openTag.length;
 
@@ -90,14 +106,23 @@ export function listLessonBlocks(content: string): LessonBlock[] {
 
     if (end === -1) continue;
 
-    blocks.push({ blockId, html: content.slice(start, end), start, end });
+    found.push({ value, html: content.slice(start, end), start, end });
 
-    // Resume after the block, so a nested element carrying its own id is not
-    // reported as a sibling — only top-level blocks are addressable.
+    // Resume after the element, so a nested one carrying the same attribute is
+    // not reported as a sibling — only top-level ones count.
     pattern.lastIndex = end;
   }
 
-  return blocks;
+  return found;
+}
+
+/** Every addressable block in a lesson body, in document order. */
+export function listLessonBlocks(content: string): LessonBlock[] {
+  return listElementsWithAttribute(content, BLOCK_ID_ATTRIBUTE)
+    // An empty id addresses nothing, and splicing by it would hit the first
+    // block that happens to have one.
+    .filter((element) => element.value.length > 0)
+    .map(({ value, html, start, end }) => ({ blockId: value, html, start, end }));
 }
 
 export function findLessonBlock(content: string, blockId: string): LessonBlock | undefined {

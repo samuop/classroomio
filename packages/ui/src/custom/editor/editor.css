@@ -536,3 +536,40 @@ input[type='checkbox'] {
   border-color: var(--destructive);
   color: var(--destructive);
 }
+
+/*
+ * Un pasaje que el escritor marcó como propio, no sacado de la fuente.
+ *
+ * Sólo acá, en el editor, que es la vista del docente. En `.prose` NO: esa la
+ * lee tambien el alumno, y una marca es un pendiente del docente —material que
+ * tiene que confirmar o subir— no contenido para quien estudia.
+ *
+ * El riel va a la izquierda y el motivo sale del propio atributo con
+ * `content: attr(...)`, así el texto vive en un solo lugar: el que escribió la
+ * lección. Nada que traducir y nada que se pueda desincronizar.
+ */
+.tiptap [data-sin-fuente] {
+  position: relative;
+  padding-left: 0.75rem;
+}
+
+.tiptap [data-sin-fuente]::before {
+  content: ' ';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.25rem;
+  background-color: var(--sin-fuente);
+  border-radius: 0.5rem;
+}
+
+.tiptap [data-sin-fuente]::after {
+  content: attr(data-sin-fuente);
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--sin-fuente);
+}

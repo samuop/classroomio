@@ -108,6 +108,66 @@ describe('de qué está hecha la lección', () => {
     expect(container.querySelector('section')).not.toBeNull();
   });
 
+  /**
+   * Los pasajes que quien escribió marcó como propios.
+   *
+   * Es el aviso más confiable de la tarjeta y el único que no es una sospecha:
+   * los otros dos preguntan «¿esto estará bien?» —uno a un modelo, el otro a
+   * una búsqueda— y acá el que escribió la lección ya contestó que ese párrafo
+   * lo puso él.
+   *
+   * El caso real: una lección sobre las unidades de negocio de una empresa. Los
+   * cuatro nombres estaban en la fuente; lo que cada una HACE no estaba en
+   * ninguna parte, y una de las cuatro descripciones salió materialmente mal.
+   * Las dos cosas tienen que verse — el texto, para ubicar el párrafo, y el
+   * motivo, porque dice literalmente qué material falta subir.
+   */
+  it('muestra los pasajes que el escritor marcó como propios, con su motivo', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Sitio de la empresa'],
+          groundingWarnings: [],
+          unsupportedPassages: [
+            {
+              texto: 'La línea Halbex reúne selladores.',
+              porque: 'el sitio nombra las cuatro líneas pero no dice qué productos tiene cada una'
+            }
+          ]
+        }
+      }
+    });
+
+    expect(container.textContent).toContain('La línea Halbex');
+    expect(container.textContent).toContain('no dice qué productos tiene cada una');
+  });
+
+  it('muestra un pasaje marcado aunque venga sin motivo', () => {
+    // La marca sola ya dice lo esencial. Esconderla por venir sin explicación
+    // sería ocultar justo lo que hay que ver.
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: { sources: [], groundingWarnings: [], unsupportedPassages: [{ texto: 'Algo que puse yo.', porque: '' }] }
+      }
+    });
+
+    expect(container.textContent).toContain('Algo que puse yo.');
+  });
+
+  it('aguanta un pasaje con la forma equivocada', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: [],
+          groundingWarnings: [],
+          unsupportedPassages: ['no es un objeto', null, { porque: 'sin texto' }]
+        }
+      }
+    });
+
+    expect(container.querySelector('section')).not.toBeNull();
+  });
+
   it('muestra el aviso de quien la escribió', () => {
     const { container } = render(LessonBuildReport, {
       props: { report: { sources: [], groundingWarnings: [], writerNote: 'Falta el manual de depósito.' } }

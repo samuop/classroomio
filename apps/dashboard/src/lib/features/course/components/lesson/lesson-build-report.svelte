@@ -63,6 +63,33 @@
           .filter((t: Token) => t.valor.length > 0)
       : []
   );
+
+  /**
+   * Los pasajes que quien escribió marcó como propios.
+   *
+   * Van PRIMEROS, arriba de los otros dos avisos, y no por severidad: es el
+   * único de los tres que no es una sospecha. Los otros dos preguntan «¿esto
+   * estará bien?» —uno se lo pregunta a un modelo, el otro a una búsqueda— y
+   * acá el que escribió la lección ya contestó que ese párrafo lo puso él. Es
+   * el dato más confiable de la tarjeta y el más accionable, porque el motivo
+   * dice literalmente qué material falta.
+   */
+  interface Pasaje {
+    texto: string;
+    porque: string;
+  }
+
+  const pasajes = $derived(
+    Array.isArray(report?.unsupportedPassages)
+      ? (report.unsupportedPassages as unknown[])
+          .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+          .map((p) => ({
+            texto: typeof p.texto === 'string' ? p.texto : '',
+            porque: typeof p.porque === 'string' ? p.porque : ''
+          }))
+          .filter((p: Pasaje) => p.texto.length > 0)
+      : []
+  );
 </script>
 
 {#if report}
@@ -91,6 +118,27 @@
           <li class="bg-gray-100 dark:bg-neutral-800 rounded px-2 py-0.5 text-xs">{fuente}</li>
         {/each}
       </ul>
+    {/if}
+
+    {#if pasajes.length > 0}
+      <div class="mt-3">
+        <p class="text-xs font-semibold text-amber-700 dark:text-amber-400">
+          {$t('course.navItem.lessons.build_report.unsupported_passages')}
+        </p>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-xs">
+          {$t('course.navItem.lessons.build_report.unsupported_passages_hint')}
+        </p>
+        <ul class="mt-2 space-y-2">
+          {#each pasajes as pasaje (pasaje.texto)}
+            <li class="border-amber-400 dark:border-amber-500 border-s-2 ps-2 text-xs">
+              <p class="text-gray-700 dark:text-gray-300">{pasaje.texto}</p>
+              {#if pasaje.porque}
+                <p class="text-amber-700 dark:text-amber-400 mt-0.5 italic">{pasaje.porque}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
     {/if}
 
     {#if sinRespaldo.length > 0}

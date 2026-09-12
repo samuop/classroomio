@@ -37,6 +37,7 @@ import {
 import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
 import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
+import { extraerPasajesSinFuente } from '@api/services/agent/unsupported-passages';
 import {
   avisoLeerAntes,
   leccionesSinLeer,
@@ -223,6 +224,19 @@ async function writeLessonBody(params: {
     ? verificarTokens({ texto: textoParaTokens(normalizedContent), fuentes: params.fuentesDeLaLeccion })
     : [];
 
+  /**
+   * Lo que el escritor marcó como propio.
+   *
+   * No es un chequeo: es su declaración, y se guarda tal cual. Corre siempre
+   * —haya fuentes o no— porque el marcador también sirve en una lección escrita
+   * desde conocimiento general, donde lo que hay que marcar es cualquier cosa
+   * que suene a política de ESTA empresa.
+   *
+   * Y no vuelve al modelo como aviso: contarle lo que él mismo acaba de
+   * declarar es ruido, y encima lo entrenaría a marcar menos.
+   */
+  const pasajesSinFuente = extraerPasajesSinFuente(normalizedContent);
+
   const groundingWarnings = await fundamento;
 
   /**
@@ -243,6 +257,7 @@ async function writeLessonBody(params: {
       groundingWarnings,
       diagramWarnings: svgWarnings,
       tokenWarnings,
+      unsupportedPassages: pasajesSinFuente,
       ...(params.notaDelEscritor ? { writerNote: params.notaDelEscritor } : {})
     }
   }).catch((error) => console.error('[lesson] no se pudo guardar el informe de la lección:', error));
