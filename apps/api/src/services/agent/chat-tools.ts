@@ -40,6 +40,8 @@ import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
 import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
 import { fuentesParaContrastar } from '@api/services/agent/fuentes-para-contrastar';
+import { buscarEnFuentes, type FuenteParaBuscar } from '@api/services/agent/source-search';
+import { claveDeLectura, notaDeRelectura, type LecturaRegistrada } from '@api/services/agent/relecturas';
 import { extraerPasajesSinFuente } from '@api/services/agent/unsupported-passages';
 import {
   avisoLeerAntes,
@@ -50,7 +52,7 @@ import {
 import type { EscritorDeLecciones } from '@api/services/agent/lesson-writer';
 import { avisoDeCobertura, medirCobertura } from '@api/services/agent/plan-coverage';
 import { avisoDeConfirmacion, confirmacionCoincide } from '@api/services/agent/deletion';
-import { leerFuente } from '@api/services/agent/source-index';
+import { leerFuente, LINEAS_POR_LECTURA } from '@api/services/agent/source-index';
 import {
   decidirSiGenerarImagen,
   generateLessonImage,
@@ -525,17 +527,23 @@ export function buildAgentTools(
   const registro = _options?.registro ?? registroVacio();
 
   /**
-   * Las fuentes del curso, para contrastar una lección que se guarda sin decir
-   * con cuáles se escribió. Se leen una sola vez por ronda, y sólo si alguna
-   * lección lo necesita. Ver `fuentes-para-contrastar.ts`.
+   * El texto de las fuentes del curso, leído una sola vez por ronda y sólo si
+   * alguna herramienta lo pide: la búsqueda (`search_document` sin adjunto) y el
+   * contraste de una lección guardada sin fuentes declaradas
+   * (`fuentes-para-contrastar.ts`).
    */
-  let fuentesDelCursoPromesa: Promise<FuenteVista[]> | null = null;
-  const cargarFuentesDelCurso = (): Promise<FuenteVista[]> => {
-    fuentesDelCursoPromesa ??= listCourseSources(courseId).then((documentos) =>
-      documentos.map((documento) => ({ fileName: documento.fileName, text: documento.text ?? '' }))
+  let documentosDelCursoPromesa: Promise<FuenteParaBuscar[]> | null = null;
+  const documentosDelCurso = (): Promise<FuenteParaBuscar[]> => {
+    documentosDelCursoPromesa ??= listCourseSources(courseId).then((documentos) =>
+      documentos.map((documento) => ({ id: documento.id, fileName: documento.fileName, text: documento.text ?? '' }))
     );
-    return fuentesDelCursoPromesa;
+    return documentosDelCursoPromesa;
   };
+  const cargarFuentesDelCurso = (): Promise<FuenteVista[]> =>
+    documentosDelCurso().then((documentos) => documentos.map(({ fileName, text }) => ({ fileName, text })));
+
+  /** Lo que `read_source` ya devolvió en esta ronda. Ver `relecturas.ts`. */
+  const lecturasDeLaRonda = new Map<string, LecturaRegistrada>();
 
   // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
   // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
@@ -693,12 +701,26 @@ export function buildAgentTools(
   const herramientas: ToolSet = {
     read_source: tool({
       description:
-        'Read one of the source documents the teacher attached to this course, by id from the "## Course Sources — index" list. Returns the text with line numbers, in pages: pass `offset` (the line to start at) and `limit` to keep reading a long document. Read the source BEFORE writing anything that claims to come from it — the index tells you what exists, this tells you what it says.',
+        'Read one of the source documents the teacher attached to this course, by id from the "## Course Sources — index" list. Returns the text with line numbers, in pages: pass `offset` (the line to start at) and `limit` to keep reading a long document. Read the source BEFORE writing anything that claims to come from it — the index tells you what exists, this tells you what it says. If you do not know which source covers a topic, search first with search_document instead of opening them one by one. Reading the same lines of the same source twice in one round is refused: older results are trimmed from your context, so a second read would show you nothing new.',
       inputSchema: readSourceParam,
       execute: async (args) => {
         return executeAgentTool('read_source', { orgId, userId, courseId, args }, async () => {
           if (!redisParaFuentes) {
             throw new Error('Source reading is unavailable on this turn.');
+          }
+
+          const clave = claveDeLectura({
+            sourceId: args.sourceId,
+            offset: args.offset,
+            limit: args.limit,
+            limitePorDefecto: LINEAS_POR_LECTURA
+          });
+          const previa = lecturasDeLaRonda.get(clave);
+
+          // Contestado y no lanzado: un error invita a reintentar, y reintentar
+          // es exactamente el bucle que esto corta. Ver `relecturas.ts`.
+          if (previa) {
+            return { alreadyRead: true, fileName: previa.fileName, note: notaDeRelectura(previa) };
           }
 
           const lectura = await leerFuente({
@@ -716,6 +738,14 @@ export function buildAgentTools(
               `No source with id "${args.sourceId}" belongs to this course. Copy an id from the "## Course Sources — index" list — do not invent one.`
             );
           }
+
+          // Anotada DESPUÉS de leer: una lectura que falló no cuenta como hecha.
+          lecturasDeLaRonda.set(clave, {
+            fileName: lectura.fileName,
+            desde: lectura.desdeLinea,
+            hasta: lectura.hastaLinea,
+            paso: _options?.presupuesto?.paso
+          });
 
           return {
             fileName: lectura.fileName,
@@ -735,12 +765,41 @@ export function buildAgentTools(
 
     search_document: tool({
       description:
-        'Search the attached reference document for the fragments most relevant to a query, instead of reading the whole document. Use this when editing or extending a course from an attached document: search for the specific topic/section you need, then write from the returned fragments. Returns the top matching passages.',
+        'Search the text of the course source documents for the passages about a topic, instead of reading whole sources — or, when a document is attached to this chat, search that document. Each course-source passage comes with every source that contains it and the line where it starts. Use it BEFORE read_source: to find which sources carry a lesson (pass exactly those to write_lesson), or where in a source to read.',
       inputSchema: searchDocumentParam,
       execute: async (args) => {
         return executeAgentTool('search_document', { orgId, userId, courseId, args }, async () => {
+          /**
+           * Sin documento adjunto, busca en las fuentes del curso.
+           *
+           * Antes contestaba «no hay documento adjunto» y nada más. Medido: el
+           * agente la llamó seis veces en una ronda, recibió seis veces esa
+           * frase, y resolvió leyendo las fuentes enteras — 31 lecturas, sin
+           * llegar nunca a las dos que tenían el tema. Ver `source-search.ts`.
+           */
           if (!searchableDocumentId) {
-            return { fragments: [], note: 'No searchable document is attached to this conversation.' };
+            const fuentes = await documentosDelCurso().catch((error: unknown) => {
+              console.error('[search_document] no se pudieron leer las fuentes del curso:', error);
+              return [] as FuenteParaBuscar[];
+            });
+
+            if (fuentes.length === 0) {
+              return {
+                passages: [],
+                note: 'This course has no source documents to search, and no document is attached to this chat.'
+              };
+            }
+
+            const resultado = buscarEnFuentes({ fuentes, consulta: args.query, maxPasajes: args.limit });
+
+            return {
+              searched: 'course_sources',
+              ...resultado,
+              note:
+                resultado.passages.length > 0
+                  ? 'Each passage lists every source that contains it and the line where it starts there. sourcesWithMatches is ordered strongest first: a source whose best passage matches only two of your words usually mentions the topic in passing and does not carry it. To have a lesson written, pass write_lesson the sources whose passages actually cover it. To read around a passage, call read_source with its sourceId and offset = fromLine.'
+                  : 'No passage in the course sources contains these words. Try other words (a synonym, fewer words), or tell the teacher the material does not cover this — do not read every source looking for it.'
+            };
           }
           const results = await semanticSearchDocument({
             documentId: searchableDocumentId,

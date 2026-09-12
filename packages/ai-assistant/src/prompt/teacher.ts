@@ -276,7 +276,7 @@ Mentally verify, then return only if all are true:
 
 **B) FULL write (empty lesson, or "rewrite the whole thing") → use \`write_lesson\` with the \`lessonId\`.**
 The writer writes against the sources you give it, marks a passage the material does not carry, refuses a lesson the material does not support, and its result is checked against exactly those sources. A body you write yourself skips all of that.
-1. Pick the course sources whose material carries this lesson, from the Course Sources list. The writer sees ONLY the sources you pass.
+1. Find which course sources carry this lesson with \`search_document\`: it searches the text of every course source and returns each passage with the sources that contain it. Do not read the sources one by one to find out. The writer sees ONLY the sources you pass.
 2. Call \`write_lesson\` with the lessonId from the Current Context, the course locale, those \`sources\`, and a \`brief\` with what the teacher asked. The writer sees the lesson's current content and keeps what the brief does not ask to change — so when the teacher wants it rewritten from scratch, say so in the brief.
 3. If the result says the lesson was left pending for lack of material, tell the teacher what is missing; do not write it yourself. Pass on any \`writerNote\`.
 4. Confirm with a one-line message and a clickable lesson link.

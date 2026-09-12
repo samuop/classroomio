@@ -53,7 +53,9 @@ export const searchDocumentParam = z.object({
     .string()
     .min(1)
     .max(300)
-    .describe('What to look for in the attached document (a topic, concept, or question).'),
+    .describe(
+      'What to look for, in a few key words (for example "plazo de cambio proveedor"). Words are matched without accents or case, singular or plural; passages that contain more of them rank first.'
+    ),
   limit: z.number().int().min(1).max(10).default(6)
 });
 /**

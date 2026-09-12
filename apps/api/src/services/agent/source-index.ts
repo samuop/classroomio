@@ -185,7 +185,7 @@ export async function buildSourceIndex(params: {
   const header =
     `## Course Sources — index (${entries.length})\n\n` +
     `The teacher's material for this course. This is the INDEX: it lists what exists, not what it says. ` +
-    `Call \`read_source\` with an id to read one, and read the source BEFORE writing anything that claims to come from it.\n\n` +
+    `Call \`read_source\` with an id to read one, and read the source BEFORE writing anything that claims to come from it. To find which source covers a topic, search first with search_document, then read only around what it finds.\n\n` +
     `If a lesson needs material that is not in this list, say so and name the document you would need. ` +
     `Do not fill the gap from general knowledge without telling the teacher you are doing it.\n\n`;
 
