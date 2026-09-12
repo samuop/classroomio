@@ -5,6 +5,36 @@ import { and, desc, eq, lt, sql } from 'drizzle-orm';
 
 import { db } from '@db/drizzle';
 
+/**
+ * El contenido de TODAS las lecciones de un curso, en una sola consulta.
+ *
+ * Para buscar dentro del curso. Existe porque la alternativa —una consulta por
+ * lección— es lo que hacía el agente constructor: medido, 43 llamadas a
+ * `get_lesson_content` sobre 13 lecciones en una sola ronda, porque buscar algo
+ * y traerlo todo eran la misma operación.
+ *
+ * Lo caro nunca fue la base: es el contexto del modelo. Acá el servidor se
+ * trae todo y quien llama devuelve fragmentos.
+ */
+export async function getCourseLessonContents(
+  courseId: string,
+  locale: TLocale
+): Promise<Array<{ id: string; title: string | null; content: string | null }>> {
+  return db
+    .select({
+      id: schema.lesson.id,
+      title: schema.lesson.title,
+      content: schema.lessonLanguage.content
+    })
+    .from(schema.lesson)
+    .leftJoin(
+      schema.lessonLanguage,
+      and(eq(schema.lessonLanguage.lessonId, schema.lesson.id), eq(schema.lessonLanguage.locale, locale))
+    )
+    .where(eq(schema.lesson.courseId, courseId))
+    .orderBy(schema.lesson.order);
+}
+
 export async function getLessonLanguagesByLessonId(lessonId: string): Promise<TLessonLanguage[]> {
   const languages = await db.select().from(schema.lessonLanguage).where(eq(schema.lessonLanguage.lessonId, lessonId));
 

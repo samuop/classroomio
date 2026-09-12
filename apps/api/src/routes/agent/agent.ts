@@ -1038,6 +1038,11 @@ const agentCoreRouter = new Hono()
           ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings, agentContext.locale as TLocale)
           : buildAgentTools(orgId, user.id, courseId, messages, {
               presupuesto: presupuestoDePasos,
+              // El idioma del curso, resuelto acá y no adivinado por el modelo:
+              // `search_lessons` busca en el contenido de ESE locale, y buscar
+              // un curso en español bajo `en` devuelve vacío, que se lee como
+              // "eso no está en el curso".
+              locale: agentContext.locale,
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
               searchableDocumentId,

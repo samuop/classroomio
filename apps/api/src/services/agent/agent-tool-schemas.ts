@@ -33,6 +33,21 @@ export const readLessonsParam = z.object({
 
 // RAG for edits (step 6): search relevant fragments of an attached document
 // instead of reading the whole thing. documentId is injected from context.
+/**
+ * Buscar en lo que el CURSO ya dice, que es distinto de buscar en las fuentes.
+ *
+ * Literal y no semántica a propósito: el caso es «dónde dice esto que hay que
+ * sacar», y para eso una coincidencia exacta es la respuesta correcta. La
+ * búsqueda por significado ya existe para las fuentes (`search_document`).
+ */
+export const searchLessonsParam = z.object({
+  query: z
+    .string()
+    .min(3)
+    .max(200)
+    .describe('The exact words to find inside the course lessons. Accents and case are ignored.')
+});
+
 export const searchDocumentParam = z.object({
   query: z
     .string()

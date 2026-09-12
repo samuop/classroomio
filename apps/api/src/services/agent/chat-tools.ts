@@ -3,10 +3,12 @@ import { CoursePlanSchema } from '@cio/ai-assistant';
 import { AppError } from '@api/utils/errors';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
+import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
-import { semanticSearchDocument } from '@api/services/agent/embeddings';
+import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
+import type { TLocale } from '@cio/db/types';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import {
   listCourseSections,
@@ -57,6 +59,7 @@ import {
   conAvisoDePresupuesto,
   type PresupuestoDePasos
 } from '@api/services/agent/step-budget';
+import { buscarEnLecciones } from '@api/services/agent/lesson-search';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
@@ -94,6 +97,7 @@ import {
   updateCourseLandingPageParam,
   updateExerciseParam,
   searchDocumentParam,
+  searchLessonsParam,
   searchWebParam,
   updateExerciseSectionParam,
   updateLessonParam,
@@ -468,6 +472,15 @@ export function buildAgentTools(
      * que es lo que corresponde donde no hay un techo de pasos que gastar.
      */
     presupuesto?: PresupuestoDePasos;
+    /**
+     * El idioma del curso, resuelto por la ronda.
+     *
+     * Se pasa en vez de dejarlo en los argumentos con default `'en'`, que es la
+     * trampa que ya cobró una corrida entera: un curso en español buscado con
+     * locale `en` no encuentra su propio contenido y el resultado vacío se lee
+     * como "eso no está en el curso".
+     */
+    locale?: string;
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -476,6 +489,7 @@ export function buildAgentTools(
   const verificarFundamento = _options?.verificarFundamento;
   const redisParaFuentes = _options?.redis;
   const escribirLeccion = _options?.escribirLeccion;
+  const locale = _options?.locale ?? 'en';
 
   // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
   // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
@@ -766,6 +780,83 @@ export function buildAgentTools(
     // building. The model sensibly stopped paying it, so the checklist read 1/32
     // while ten lessons already existed. Progress is now derived on the server
     // from the plan registry (buildPlanProgressAnchor), which cannot drift.
+
+    /**
+     * Buscar en lo que el curso YA dice.
+     *
+     * El constructor no tenía ninguna forma de hacerlo: para el contenido del
+     * curso sólo existía «dame la lección entera». El tutor del alumno, en
+     * cambio, tiene `search_course` con camino semántico Y respaldo literal
+     * desde siempre — o sea que el agente que LEE el curso podía buscar y el
+     * que lo EDITA no. Medido: 43 `get_lesson_content` sobre 13 lecciones en
+     * una ronda, y 17 sobre 3 lecciones en otra.
+     *
+     * Literal PRIMERO y no semántico, porque el trabajo dominante del
+     * constructor es «encontrá este texto para cambiarlo», y ahí la
+     * coincidencia exacta es la respuesta correcta: devuelve la posición y el
+     * `blockId`, que es lo que permite editar sin traer nada más. El semántico
+     * entra sólo cuando el literal no encuentra nada, que es el caso «dónde
+     * hablamos de esto».
+     *
+     * Un solo tool con los dos caminos y no dos tools con un modo: pedirle al
+     * modelo que elija el modo es una decisión más para equivocarse, y la
+     * respuesta correcta se puede deducir del resultado.
+     */
+    search_lessons: tool({
+      description:
+        'Search inside the lessons THIS COURSE already has, instead of fetching them one by one. Returns the lessonId, the blockId when the text sits in an addressable block, and a snippet of the surrounding text. Use it whenever you need to find where something is said before changing it — accents and capitalisation are ignored, so "mision" finds "misión". This searches the COURSE; search_document searches the attached source material.',
+      inputSchema: searchLessonsParam,
+      execute: async (args) => {
+        return executeAgentTool('search_lessons', { orgId, userId, courseId, args }, async () => {
+          const lecciones = await getCourseLessonContents(courseId, locale as TLocale);
+          const literal = buscarEnLecciones({
+            lecciones: lecciones.map((l) => ({
+              id: l.id,
+              title: l.title ?? '(untitled)',
+              content: l.content ?? ''
+            })),
+            texto: args.query
+          });
+
+          if (literal.length > 0) {
+            return { query: args.query, matchedBy: 'exact text' as const, matches: literal };
+          }
+
+          // Nada literal: quizá lo que se busca está dicho con otras palabras.
+          // Sin `blockId` porque un fragmento del índice vectorial no sabe de
+          // qué bloque salió; para editar hay que abrir esa lección.
+          const titulos = new Map(lecciones.map((l) => [l.id, l.title ?? '(untitled)']));
+          const semantico = await semanticSearchCourse({
+            courseId,
+            query: args.query,
+            locale: locale as TLocale,
+            limit: 6
+          }).catch((error) => {
+            console.warn('[search_lessons] la búsqueda semántica falló, se devuelve sólo el literal:', error);
+            return [];
+          });
+
+          if (semantico.length === 0) {
+            return {
+              query: args.query,
+              matches: [],
+              note: 'Nothing in this course says that, literally or by meaning. If you expected it to be there, it is not — do not assume otherwise.'
+            };
+          }
+
+          return {
+            query: args.query,
+            matchedBy: 'meaning' as const,
+            note: 'No lesson contains those exact words. These are the passages closest in meaning — they have no blockId, so open the lesson to edit.',
+            matches: semantico.map((s) => ({
+              lessonId: s.lessonId,
+              title: titulos.get(s.lessonId) ?? '(untitled)',
+              fragmento: s.content.slice(0, 240)
+            }))
+          };
+        });
+      }
+    }),
 
     get_course_structure: tool({
       description:
