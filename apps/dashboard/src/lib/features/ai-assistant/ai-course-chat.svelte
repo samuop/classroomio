@@ -65,6 +65,12 @@
     AI_ASSISTANT_QUICK_ACTION_ENTRIES,
     STUDENT_QUICK_ACTION_ENTRIES
   } from '$features/ai-assistant/utils/constants';
+  import {
+    decidirContinuacion,
+    frenoArmado,
+    frenoInicial,
+    type FrenoDeContinuacion
+  } from '$features/ai-assistant/utils/auto-continue';
 
   /** Every ~30% / 60% / 90% of tool steps completed, refetch course so UI reflects partial mutations */
   const AGENT_STEP_PROGRESS_REFRESH_RATIOS = [0.3, 0.6, 0.9] as const;
@@ -75,12 +81,12 @@
 
   const CONTINUE_IMPLEMENTATION_PROMPT = 'Continue implementing the plan from where you left off.';
 
-  /** Automatic build continuation — see the $effect further down for the rules. */
-  const MAX_AUTO_CONTINUE_ROUNDS = 12;
-  let autoContinueDisabled = $state(false);
-  let autoContinueRounds = $state(0);
-  let autoResumedFromId = $state<string | null>(null);
-  let lastAutoProgress = $state<number | null>(null);
+  /**
+   * Automatic build continuation. Starts OFF: only approving a plan or pressing
+   * "Continue" turns it on — see `utils/auto-continue.ts` for why opening the
+   * panel must not.
+   */
+  let freno = $state<FrenoDeContinuacion>(frenoInicial());
 
   // Read course id from the route. The chat panel is only mounted inside the
   // course content layout, so `page.params.id` is always the active course.
@@ -378,7 +384,7 @@
     onError: () => {
       // A failed round must not be retried automatically — that is how a single
       // bad tool input turns into a loop that burns tokens. Hand control back.
-      autoContinueDisabled = true;
+      freno = { ...freno, habilitada: false };
     }
   });
 
@@ -699,7 +705,7 @@
   function handleStop() {
     // Stopping is also the teacher's opt-out of the automatic build: without this
     // the effect below would immediately start the next round.
-    autoContinueDisabled = true;
+    freno = { ...freno, habilitada: false };
     chat.stop();
   }
 
@@ -760,7 +766,9 @@
   }
 
   function handleResume() {
-    autoContinueDisabled = false;
+    // Pressing "Continue" is the teacher choosing to build: it turns the
+    // automatic continuation on for the rounds that follow.
+    freno = { ...freno, habilitada: true };
     inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
     void handleSend();
   }
@@ -783,39 +791,23 @@
    * model's claim that it has more to do.
    */
   function resetAutoContinue() {
-    autoContinueDisabled = false;
-    autoContinueRounds = 0;
-    autoResumedFromId = null;
-    lastAutoProgress = null;
+    freno = frenoArmado();
   }
 
   $effect(() => {
-    if (isStreaming || autoContinueDisabled) return;
+    if (isStreaming) return;
 
     const messages = chat.messages as AiAssistantMessage[];
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== 'assistant' || last.id === autoResumedFromId) return;
+    const decision = decidirContinuacion(freno, messages[messages.length - 1]);
 
-    const metadata = last.metadata as AiAssistantMessageMetadata | undefined;
-    if (!metadata?.continuation) return;
+    if (decision.tipo === 'esperar') return;
 
-    // Server truth only. No progress block means no approved plan in flight.
-    const progress = metadata.planProgress;
-    if (!progress || progress.total === 0 || progress.completed >= progress.total) return;
-
-    if (autoContinueRounds >= MAX_AUTO_CONTINUE_ROUNDS) {
-      autoContinueDisabled = true;
+    if (decision.tipo === 'frenar') {
+      freno = { ...freno, habilitada: false };
       return;
     }
 
-    if (lastAutoProgress !== null && progress.completed <= lastAutoProgress) {
-      autoContinueDisabled = true;
-      return;
-    }
-
-    autoResumedFromId = last.id;
-    lastAutoProgress = progress.completed;
-    autoContinueRounds += 1;
+    freno = decision.freno;
     inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
     void handleSend();
   });
