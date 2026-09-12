@@ -1304,7 +1304,7 @@ export function buildAgentTools(
 
     replace_lesson_block: tool({
       description:
-        'PREFERRED way to change part of a lesson: replace one block by its data-block-id, leaving the rest byte-for-byte untouched. Call get_lesson_content first and copy a blockId from its `blocks` list. You only write the new block — you do NOT have to reproduce the old one. Pass the complete replacement including its outer tag (e.g. "<p>…</p>"), or an empty string to delete the block. If the block has no id (older content), fall back to edit_lesson_content.',
+        'PREFERRED way to change part of a lesson: replace one block by its data-block-id, leaving the rest byte-for-byte untouched. Take the blockId from a search_lessons match (the direct route) or from the `blocks` list of get_lesson_content — never invent one. You only write the new block — you do NOT have to reproduce the old one. Pass the complete replacement including its outer tag (e.g. "<p>…</p>"), or an empty string to delete the block. If the block has no id (older content), fall back to edit_lesson_content.',
       inputSchema: replaceBlockParam,
       execute: async (args) => {
         return executeAgentTool('replace_lesson_block', { orgId, userId, courseId, args }, async () => {
@@ -1381,7 +1381,7 @@ export function buildAgentTools(
 
     edit_lesson_content: tool({
       description:
-        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). You MUST call get_lesson_content first and copy oldString VERBATIM from it. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
+        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use update_lesson_content for that). oldString must be text you have VERBATIM from the server, never text you reconstructed from memory — either the `textoExacto` of a search_lessons match (the direct route: no other call needed) or a fragment copied from get_lesson_content. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
       inputSchema: editContentParam,
       execute: async (args) => {
         return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {
