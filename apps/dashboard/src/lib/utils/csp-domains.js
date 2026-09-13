@@ -61,7 +61,11 @@ const saasDefaults = {
     'https://www.google.com',
     'https://google.com',
     'https://drive.google.com',
-    'https://docs.google.com'
+    'https://docs.google.com',
+    // La pestaña Diapositivas de la lección ofrece Canva desde siempre, y sin
+    // esta línea el navegador bloqueaba el marco: el estudiante veía un recuadro
+    // gris. Nadie lo notó porque ninguna lección usaba el campo.
+    'https://www.canva.com'
   ],
   fontSrc: ['https://fonts.gstatic.com', 'https://cdn.plyr.io'],
   mediaSrc: ['https:']

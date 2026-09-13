@@ -8,6 +8,7 @@
    */
   import { lessonApi } from '$features/course/api';
   import { findLessonDocument, findLessonVideo, SLIDE_MEDIA_ID } from '$features/course/utils/lesson-media';
+  import { diapositivaIncrustable } from '$features/course/utils/slide-embed';
   import { t } from '$lib/utils/functions/translations';
   import type { LessonMediaKind } from '@cio/ui/tools/sanitize';
   import { DocumentCard } from '@cio/ui';
@@ -26,12 +27,8 @@
   const document = $derived(kind === 'document' ? findLessonDocument(lesson, mediaId) : undefined);
   const slideUrl = $derived(kind === 'slide' && mediaId === SLIDE_MEDIA_ID ? lesson?.slideUrl : null);
 
-  const slideEmbedUrl = $derived.by(() => {
-    if (!slideUrl) return null;
-    // Canva only renders embedded with ?embed; mirrors slide.svelte.
-    if (slideUrl.includes('www.canva.com') && !slideUrl.includes('?embed')) return `${slideUrl}?embed`;
-    return slideUrl;
-  });
+  // Same conversion as the Slides tab (slide-embed.ts): a pasted share link is rarely the embeddable one.
+  const slideEmbedUrl = $derived(diapositivaIncrustable(slideUrl)?.url ?? null);
 
   const isMissing = $derived(!video && !document && !slideEmbedUrl);
 

@@ -61,4 +61,13 @@ describe('getCspDomains', () => {
   it('omits the storage origin entirely when none is configured', () => {
     expect(getCspDomains(true, undefined, undefined).mediaSrc).toEqual([]);
   });
+
+  it('lets a lesson embed every presentation site the slides field offers', () => {
+    // The field's helper text names both. Canva was missing here, so a Canva
+    // link rendered as a blocked grey frame with nothing in the page to say why.
+    const { frameSrc } = saas();
+
+    expect(frameSrc).toContain('https://docs.google.com');
+    expect(frameSrc).toContain('https://www.canva.com');
+  });
 });
