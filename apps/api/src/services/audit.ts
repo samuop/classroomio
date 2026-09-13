@@ -62,7 +62,8 @@ export interface RecordEventParams {
   method: string;
   route: string;
   status: number;
-  durationMs: number;
+  /** `null` cuando no hay un request que medir (un aviso del ingreso). */
+  durationMs: number | null;
   /**
    * Si es true, se saltea la ventana anti-repetición. Lo usan las escrituras:
    * cada una cambió algo distinto y perder la segunda sería perder un hecho.

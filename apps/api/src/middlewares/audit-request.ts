@@ -17,7 +17,15 @@
 
 import type { Context, Next } from 'hono';
 
-import { SLOW_REQUEST_MS, findInAuditMap, genericAction, isExcluded, isWrite } from '@api/utils/audit-map';
+import {
+  SLOW_REQUEST_MS,
+  findInAuditMap,
+  genericAction,
+  isExcluded,
+  isWrite,
+  redactRoute
+} from '@api/utils/audit-map';
+import type { AuditDetail } from '@api/types/auth';
 import { clientInfoFromHeaders } from '@api/utils/client-info';
 import { recordEvent, recordIncident } from '@api/services/audit';
 
@@ -67,14 +75,21 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
 
   const status = c.res.status;
   const method = c.req.method;
+  // La ruta que se guarda, con los tokens tapados: una invitación lleva su
+  // secreto en la URL, y la tabla de auditoría no puede ser donde quede escrito.
+  const route = redactRoute(path);
 
   const failed = status >= 400;
   const slow = durationMs >= SLOW_REQUEST_MS;
   const writes = isWrite(method);
   const mapped = findInAuditMap(method, url);
+  // Lo que el handler declaró con `anotarAuditoria`: el QUÉ que el middleware no
+  // puede ver sin leer el cuerpo.
+  const detail = (c.get('auditDetail') as AuditDetail | null | undefined) ?? null;
 
-  // La regla: falló, tardó de más, escribió, o es una lectura declarada.
-  if (!failed && !slow && !writes && !mapped) return;
+  // La regla: falló, tardó de más, escribió, es una lectura declarada, o el
+  // handler pidió que quedara registrado.
+  if (!failed && !slow && !writes && !mapped && !detail) return;
 
   const user = c.get('user');
   const session = c.get('session');
@@ -84,7 +99,7 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
   // `orgMemberMiddleware` cuando la ruta lo exige, y si no, el header que manda
   // el dashboard. En las rutas de plataforma no hay empresa activa: son
   // cross-empresa a propósito.
-  const orgId = c.get('orgId') ?? c.req.header('cio-org-id') ?? null;
+  const orgId = detail?.orgId ?? c.get('orgId') ?? c.req.header('cio-org-id') ?? null;
   const userId = user?.id ?? null;
   const sessionId = session?.id ?? null;
 
@@ -103,19 +118,21 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
       kind: !failed ? 'SLOW_REQUEST' : isServerError ? 'BACKEND_ERROR' : 'REQUEST_FAILED',
       source: 'BACKEND',
       message: !failed
-        ? `${method} ${path} tardó ${durationMs}ms`
-        : (thrown?.message ?? handled?.message ?? `${method} ${path} respondió ${status}`),
+        ? `${method} ${route} tardó ${durationMs}ms`
+        : (thrown?.message ?? handled?.message ?? `${method} ${route} respondió ${status}`),
       code: handled?.code ?? null,
       // El stack sólo para 5xx: en un 403 esperable no aporta nada y ocupa.
       stack: isServerError ? (thrown?.stack ?? handled?.stack ?? null) : null,
       status,
-      route: path,
+      route,
       method,
       durationMs,
       orgId,
       userId,
-      userLabel: user?.email ?? null,
+      userLabel: user?.email ?? detail?.actor ?? null,
       sessionId,
+      // Un intento rechazado de cargar crédito vale por lo que se intentó.
+      metadata: detail?.metadata ?? null,
       ip: client.ip,
       device: client.device,
       browser: client.browser,
@@ -124,30 +141,33 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
   }
 
   // ── Eventos: qué hizo la persona ──
-  // Sin usuario no hay nada que atribuir (un 401 ya quedó como incidencia).
-  if (!user) return;
-  if (!writes && !mapped) return;
+  // Sin usuario no hay nada que atribuir (un 401 ya quedó como incidencia),
+  // salvo una llamada entre servidores que el handler firmó con `actor`.
+  if (!user && !detail?.actor) return;
+  if (!writes && !mapped && !detail) return;
   // Una escritura que falló no cambió nada: ya quedó como incidencia, y
   // registrarla como acción diría que ocurrió algo que no ocurrió.
   if (failed) return;
 
+  const metadata = mapped?.metadata || detail?.metadata ? { ...mapped?.metadata, ...detail?.metadata } : null;
+
   await recordEvent({
     orgId,
     userId,
-    userLabel: user.email ?? null,
-    userRole: user.role ?? null,
+    userLabel: user?.email ?? detail?.actor ?? null,
+    userRole: user?.role ?? null,
     orgRole: resolveOrgRole(c.get('orgRoles'), orgId),
     sessionId,
-    action: mapped?.action ?? genericAction(method, path),
-    entity: mapped?.entity ?? null,
-    entityId: mapped?.entityId ?? null,
-    metadata: mapped?.metadata ?? null,
+    action: detail?.action ?? mapped?.action ?? genericAction(method, route),
+    entity: detail?.entity ?? mapped?.entity ?? null,
+    entityId: detail?.entityId ?? mapped?.entityId ?? null,
+    metadata,
     ip: client.ip,
     device: client.device,
     browser: client.browser,
     userAgent: client.userAgent,
     method,
-    route: path,
+    route,
     status,
     durationMs,
     // Las escrituras siempre se registran: cada una cambió algo distinto. La

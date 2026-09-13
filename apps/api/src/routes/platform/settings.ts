@@ -6,6 +6,7 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { platformAdminMiddleware } from '@api/middlewares/platform-admin';
 import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
+import { anotarAuditoria } from '@api/utils/audit-detail';
 import {
   PLATFORM_SETTING_KEYS,
   getGlobalChatModel,
@@ -34,6 +35,7 @@ export const platformSettingsRouter = new Hono()
   .put('/', authMiddleware, platformAdminMiddleware, zValidator('json', ZPlatformSettingsUpdate), async (c) => {
     try {
       const { chatModel } = c.req.valid('json');
+      anotarAuditoria(c, { metadata: { modeloDelChat: chatModel } });
 
       if (chatModel !== null && !(await isSelectableChatModel(chatModel))) {
         throw new AppError(`Unsupported chat model: ${chatModel}`, ErrorCodes.VALIDATION_ERROR, 400);

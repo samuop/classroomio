@@ -10,6 +10,11 @@
   registran solos.** Las lecturas son lista blanca, en
   `apps/api/src/utils/audit-map.ts` — el único archivo que hay que tocar para
   sumar acciones.
+- **Los ingresos, las salidas y los cambios de cuenta** no pasan por el
+  middleware (`/api/auth` está excluido): los avisa Better Auth y los registra
+  `services/audit-auth.ts`, con su propio mapa en `utils/audit-auth-map.ts`.
+- Un handler puede declarar el QUÉ que el middleware no ve (cuánto crédito,
+  el plan de antes y el de después) con `anotarAuditoria(c, {...})`.
 - El navegador reporta lo que el servidor no puede ver (pantallas rotas,
   requests que nunca llegaron, la espera real) contra `POST /audit/incident`.
 - **No hay pantalla.** Se consulta por SQL con la skill `/auditoria`.
@@ -132,14 +137,95 @@ Antes de decir "no pasó", hay que chequear si simplemente no se audita:
 - **La misma lectura repetida dentro de 5 minutos.** Hay una ventana
   anti-repetición: abrir el seguimiento tres veces deja un registro. No aplica a
   escrituras, ni a fallos, ni a lentitud.
-- **El ingreso.** `/api/auth/*` está excluido: un intento fallido no debe dejar
-  rastro que invite a adivinar qué mails existen. El ingreso exitoso ya queda en
-  `session` y en `analytics_login_events`.
+- **El sondeo de sesión de Better Auth** (`/get-session`) ni los endpoints de
+  `/api/auth` que no están en `ENDPOINTS_DE_CUENTA`. Los ingresos, los intentos
+  fallidos y los cambios de cuenta SÍ se registran desde 2026-09-13 (ver
+  «Ingresos y cuenta»). Antes de esa fecha no hay ningún ingreso en la tabla.
+- **Entrar y sólo mirar pantallas no declaradas.** El `INGRESO` queda; lo que
+  miró después, sólo si es una lectura del mapa.
 - **`/session`.** Un 401 ahí es la respuesta normal a "no estoy logueado".
 - **Escrituras que fallaron, como evento.** No cambiaron nada: quedan como
   incidencia. Registrarlas como acción diría que ocurrió algo que no ocurrió.
 - **Lo anterior a este deploy.** No hay historia hacia atrás.
 - **Ubicación geográfica.** La IP se guarda; país y ciudad no se derivan.
+
+## Ingresos y cuenta
+
+`/api/auth/*` sigue excluido del middleware: el sondeo de sesión pasa en cada
+navegación y llenaría la tabla. Hasta 2026-09-13 eso también dejaba afuera el
+ingreso, y la pregunta «¿entró alguien más con esta cuenta?» no tenía respuesta:
+la tabla `session` se purga al cerrar sesión y `analytics_login_events` guarda un
+día por persona, sin IP.
+
+Ahora Better Auth avisa y la API escribe:
+
+| Aviso (en `packages/db/src/auth.ts`) | Fila |
+| --- | --- |
+| `databaseHooks.session.create.after` | `INGRESO`, con `metadata.metodo` (contraseña, cuenta externa, sso, enlace de ingreso, token de empresa, suplantación…) y el `session_id` NUEVO: el mismo que firma después cada acción de esa sesión. |
+| `databaseHooks.session.delete.after` | `CERRO_SESION`, con `metadata.motivo` (salió, venció, cambio de contraseña, la cerró un administrador). |
+| `hooks.after` de un endpoint de `ENDPOINTS_DE_CUENTA` que salió bien | La acción declarada: `CAMBIO_SU_CONTRASENA`, `PIDIO_RECUPERAR_CONTRASENA`, `ADMIN_BLOQUEO_USUARIO`… |
+| `hooks.after` de uno que falló | Incidencia `REQUEST_FAILED` con `message` `<ACCION>_FALLIDO: <código>`; el ingreso con clave mala es `INGRESO_FALLIDO: INVALID_EMAIL_OR_PASSWORD`. |
+
+Por qué un puente (`packages/db/src/auth/audit-bridge.ts`) y no una llamada
+directa: Better Auth vive en `@cio/db` y la auditoría en la API, que depende de
+`@cio/db`. El ingreso sólo avisa; la API se anota al armar la app.
+
+Tres reglas, con tests en `audit-ingresos.test.ts`:
+
+1. **Campo por campo.** El aviso trae el cuerpo con la contraseña; del mapa sólo
+   sale lo declarado, y hay una lista de campos que no salen aunque alguien los
+   declare (`password`, `token`, `code`…).
+2. **Un intento no es de nadie.** El correo de un ingreso fallido va en
+   `metadata->>'email'` y `user_label` queda vacío: cualquiera puede escribir el
+   correo de otra persona, y «qué hizo Ana» no puede devolver lo que un
+   desconocido intentó con su cuenta.
+3. **El ingreso bueno no se duplica.** `/sign-in/email` exitoso no escribe nada
+   en el hook del endpoint: ya lo escribió la sesión creada.
+
+Formas del aviso medidas con better-auth 1.6.11 (con un adaptador en memoria):
+en `hooks.after`, un error llega como `APIError` en `ctx.context.returned` con
+`status` en TEXTO (`'UNAUTHORIZED'`) y el código en `body.code`; en un
+`/sign-out`, `ctx.context.session` ya es null, por eso la salida sale del hook de
+sesión borrada.
+
+## Lo que declara el handler
+
+El middleware no lee el cuerpo, a propósito. Pero hay acciones donde el QUÉ es lo
+importante, y sólo lo sabe el handler. Lo declara con `anotarAuditoria(c, {...})`
+(`utils/audit-detail.ts`):
+
+- `metadata`: campos puntuales; varias llamadas se suman. Si el request falla,
+  la incidencia se lleva lo que alcanzó a declarar (un intento rechazado vale por
+  lo que se intentó).
+- `orgId`: la empresa afectada cuando no es la del header, como en las rutas de
+  plataforma.
+- `actor`: quién actuó cuando no hay sesión (una llamada entre servidores, como
+  el webhook de pago). Sin `actor`, un request sin usuario sigue sin evento.
+
+Hoy lo usan los créditos (`CARGO_CREDITOS` con la cantidad y el saldo,
+`REGISTRO_COMPRA_DE_CREDITOS`), el plan de una empresa (`CAMBIO_PLAN_DE_EMPRESA`
+con `antes` y `despues`: plan, cupo de fichas, cupo de imágenes y modelo), la
+suspensión, el dominio y los ajustes de plataforma.
+
+## Secretos en la ruta
+
+Una invitación viaja con su token en la URL (`/invite/organization/:token/accept`)
+y quien tenga ese token entra a la empresa. Hasta 2026-09-13 quedaba escrito en
+`route` y en `action`. Ahora `redactRoute` lo reemplaza por `:token` en eventos e
+incidencias, y un param secreto nunca se usa como `entity_id`. Una ruta nueva con
+un secreto en el path va en `SECRET_ROUTES` (`audit-map.ts`).
+
+## Que el mapa apunte a rutas reales
+
+```bash
+pnpm --filter @cio/api audit:check-map
+```
+
+Carga la app y compara cada entrada del mapa con las rutas que existen. Una
+entrada mal escrita no falla nunca: simplemente no se dispara. La primera corrida
+encontró tres así desde el principio (`/organization/clients`,
+`POST /organization/keys`, `PUT /account/user`). No es un test de vitest porque
+importar la app entera no resuelve bajo vitest.
 
 ## Retención
 

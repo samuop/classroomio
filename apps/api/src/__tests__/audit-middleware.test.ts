@@ -39,10 +39,13 @@ vi.mock('@api/services/audit', () => ({
 }));
 
 const { auditRequest } = await import('@api/middlewares/audit-request');
+const { anotarAuditoria } = await import('@api/utils/audit-detail');
 
 const ORG = '3f1c9f2e-8a4b-4c1d-9e7a-2b5d6c8f0a13';
 const USER = 'a1b2c3d4-e5f6-4789-8abc-def012345678';
 const SESSION = '9c8b7a65-4321-4fed-8cba-0987654321fe';
+/** La empresa a la que la plataforma le carga crédito: no es la del header. */
+const OTRA_EMPRESA = '7d2e4f60-1a3b-4c5d-8e9f-0a1b2c3d4e5f';
 
 const CHROME_WINDOWS =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
@@ -99,6 +102,22 @@ function buildApp() {
       .get('/explota', () => {
         throw new Error('Cannot read properties of undefined');
       })
+      .post('/agent/credits', (c) => {
+        anotarAuditoria(c, { orgId: OTRA_EMPRESA, entity: 'Organization', entityId: OTRA_EMPRESA });
+        anotarAuditoria(c, { metadata: { cantidad: 5_000_000 } });
+        anotarAuditoria(c, { metadata: { saldoDeCreditos: 5_000_000 } });
+        return c.json({ ok: true });
+      })
+      .post('/agent/credits/purchase', (c) => {
+        anotarAuditoria(c, { actor: 'webhook de pago', orgId: OTRA_EMPRESA, metadata: { fichas: 50_000_000 } });
+        return c.json({ ok: true });
+      })
+      .put('/platform/organizations/o1/plan', (c) => {
+        anotarAuditoria(c, { orgId: OTRA_EMPRESA, metadata: { antes: { cupoDeFichas: 15_000_000 } } });
+        return c.json({ error: 'modelo no soportado' }, 400);
+      })
+      .post('/invite/organization/tok-secreto-123/accept', (c) => c.json({ ok: true }))
+      .get('/invite/organization/tok-secreto-123/preview', (c) => c.json({ error: 'vencida' }, 410))
       .get('/session', (c) => c.body(null, 401))
       .post('/audit/incident', (c) => c.body(null, 204))
   );
@@ -253,6 +272,81 @@ describe('fallos', () => {
 
     expect(recordEvent).not.toHaveBeenCalled();
     expect(incidentRow()).toMatchObject({ status: 403, userId: null, userLabel: null });
+  });
+});
+
+describe('lo que declara el handler', () => {
+  it('suma la metadata de cada anotación y la empresa afectada, que no es la del header', async () => {
+    await call('/agent/credits', { method: 'POST' });
+    await flushAudit();
+
+    expect(eventRow()).toMatchObject({
+      action: 'CARGO_CREDITOS',
+      orgId: OTRA_EMPRESA,
+      entity: 'Organization',
+      entityId: OTRA_EMPRESA,
+      metadata: { cantidad: 5_000_000, saldoDeCreditos: 5_000_000 },
+      userLabel: 'ana@consultora-ejemplo.com.ar'
+    });
+  });
+
+  it('una llamada entre servidores queda registrada a nombre del actor que declaró', async () => {
+    // Sin sesión no había a quién atribuir nada y la compra no dejaba rastro.
+    currentUser = null;
+
+    await call('/agent/credits/purchase', { method: 'POST' });
+    await flushAudit();
+
+    expect(eventRow()).toMatchObject({
+      action: 'REGISTRO_COMPRA_DE_CREDITOS',
+      userId: null,
+      userLabel: 'webhook de pago',
+      orgId: OTRA_EMPRESA,
+      metadata: { fichas: 50_000_000 }
+    });
+  });
+
+  it('sin usuario y sin actor sigue sin haber evento', async () => {
+    currentUser = null;
+
+    await call('/organization', { method: 'PUT' });
+    await flushAudit();
+
+    expect(recordEvent).not.toHaveBeenCalled();
+  });
+
+  it('si falló, la incidencia se lleva lo que el handler alcanzó a declarar', async () => {
+    await call('/platform/organizations/o1/plan', { method: 'PUT' });
+    await flushAudit();
+
+    expect(recordEvent).not.toHaveBeenCalled();
+    expect(incidentRow()).toMatchObject({
+      status: 400,
+      orgId: OTRA_EMPRESA,
+      metadata: { antes: { cupoDeFichas: 15_000_000 } }
+    });
+  });
+});
+
+describe('secretos en la ruta', () => {
+  it('el token de una invitación no queda escrito: ni en la ruta, ni en la acción, ni como id', async () => {
+    await call('/invite/organization/tok-secreto-123/accept', { method: 'POST' });
+    await flushAudit();
+
+    expect(JSON.stringify(eventRow())).not.toContain('tok-secreto-123');
+    expect(eventRow()).toMatchObject({
+      action: 'ACEPTO_INVITACION',
+      route: '/invite/organization/:token/accept',
+      entityId: null
+    });
+  });
+
+  it('tampoco en la incidencia cuando la invitación falla', async () => {
+    await call('/invite/organization/tok-secreto-123/preview');
+    await flushAudit();
+
+    expect(JSON.stringify(incidentRow())).not.toContain('tok-secreto-123');
+    expect(incidentRow()).toMatchObject({ route: '/invite/organization/:token/preview', status: 410 });
   });
 });
 

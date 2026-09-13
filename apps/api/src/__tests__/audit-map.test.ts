@@ -15,7 +15,8 @@ import {
   genericAction,
   isExcluded,
   isWrite,
-  matchPattern
+  matchPattern,
+  redactRoute
 } from '@api/utils/audit-map';
 
 const url = (path: string) => new URL(path, 'https://learn.tensor.com.ar');
@@ -188,5 +189,34 @@ describe('consistencia del mapa', () => {
     for (const action of [...AUDITED_READS, ...WRITE_ACTION_NAMES].map((entry) => entry.action)) {
       expect(action, `"${action}" debería ser MAYUSCULAS_CON_GUION_BAJO`).toMatch(/^[A-Z][A-Z0-9_]*$/);
     }
+  });
+
+  it('toda ruta declarada con un :token en el path queda tapada', () => {
+    // Declarar una ruta con un secreto sin sumarla a SECRET_ROUTES compila y
+    // registra bien... con el token escrito en la tabla.
+    for (const pattern of allPatterns.filter((p) => p.includes(':token'))) {
+      const conToken = pattern.replace(':token', 'secreto-de-prueba');
+
+      expect(redactRoute(conToken), `"${pattern}" deja el token a la vista`).not.toContain('secreto-de-prueba');
+    }
+  });
+});
+
+describe('redactRoute', () => {
+  it('tapa el token y deja el resto de la ruta como vino', () => {
+    expect(redactRoute('/invite/organization/abc123/accept')).toBe('/invite/organization/:token/accept');
+    expect(redactRoute('/invite/student/abc123')).toBe('/invite/student/:token');
+  });
+
+  it('no toca una ruta sin secretos, aunque se parezca', () => {
+    expect(redactRoute('/invite/organization/pending')).toBe('/invite/organization/pending');
+    expect(redactRoute('/course/c1/lesson/l1')).toBe('/course/c1/lesson/l1');
+  });
+
+  it('un param secreto nunca termina como id de la entidad', () => {
+    const match = findInAuditMap('POST', url('/invite/organization/abc123/accept'));
+
+    expect(match?.action).toBe('ACEPTO_INVITACION');
+    expect(match?.entityId).toBeUndefined();
   });
 });

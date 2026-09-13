@@ -4,7 +4,9 @@ import * as schema from '@db/schema';
 import { admin, anonymous } from 'better-auth/plugins';
 import { sendChangeEmailConfirmation, sendVerificationEmail } from './auth/email-verification';
 
+import { avisarIngreso, errorDeLoDevuelto } from './auth/audit-bridge';
 import { betterAuth } from 'better-auth/minimal';
+import { createAuthMiddleware } from 'better-auth/api';
 import { createProfileHook } from './auth/hooks/create-profile';
 import { customSession } from 'better-auth/plugins/custom-session';
 import { db } from '@db/drizzle';
@@ -102,7 +104,18 @@ export const auth = betterAuth({
     },
     session: {
       create: {
-        after: async (session) => {
+        after: async (session, context) => {
+          avisarIngreso({
+            tipo: 'sesion-creada',
+            ruta: context?.path ?? null,
+            metodo: context?.request?.method ?? null,
+            headers: context?.headers ?? context?.request?.headers ?? null,
+            sesion: {
+              id: session.id,
+              userId: session.userId,
+              impersonatedBy: typeof session.impersonatedBy === 'string' ? session.impersonatedBy : null
+            }
+          });
           await trackLoginHook(session);
         }
       },
@@ -110,8 +123,49 @@ export const auth = betterAuth({
         after: async (session) => {
           await trackLoginHook(session);
         }
+      },
+      delete: {
+        after: async (session, context) => {
+          avisarIngreso({
+            tipo: 'sesion-borrada',
+            ruta: context?.path ?? null,
+            metodo: context?.request?.method ?? null,
+            headers: context?.headers ?? context?.request?.headers ?? null,
+            sesion: { id: session.id, userId: session.userId }
+          });
+        }
       }
     }
+  },
+  hooks: {
+    /**
+     * Cada endpoint de ingreso, cuenta y administración le avisa a la auditoría
+     * cómo terminó: sin esto, un intento fallido o un cambio de contraseña no
+     * dejaban rastro. Qué se guarda lo decide la API (ver `audit-bridge.ts`).
+     * El sondeo de sesión se corta acá: pasa en cada navegación.
+     */
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === '/get-session' || ctx.path === '/ok' || ctx.path === '/error') return;
+
+      // Un hook `after` que tira convierte la respuesta en un 500: la auditoría
+      // no puede costar un login.
+      try {
+        const sesion = ctx.context.session ?? ctx.context.newSession ?? null;
+
+        avisarIngreso({
+          tipo: 'endpoint',
+          ruta: ctx.path,
+          metodo: ctx.request?.method ?? null,
+          headers: ctx.headers ?? ctx.request?.headers ?? null,
+          cuerpo: ctx.body,
+          error: errorDeLoDevuelto(ctx.context.returned),
+          usuario: sesion?.user ? { id: sesion.user.id, email: sesion.user.email ?? null } : null,
+          sesionId: sesion?.session?.id ?? null
+        });
+      } catch (error) {
+        console.error('[auth-audit] no se pudo armar el aviso', ctx.path, error);
+      }
+    })
   },
   plugins: [
     // `platformAdmin` (PLATFORM_ROLE.ADMIN) is our SaaS-operator role, stored on

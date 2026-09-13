@@ -10,6 +10,7 @@ import { Hono } from '@api/utils/hono';
 import { accountRouter } from '@api/routes/account';
 import { agentRouter } from '@api/routes/agent';
 import { auditRequest } from '@api/middlewares/audit-request';
+import { escucharIngresosEnLaAuditoria } from '@api/services/audit-auth';
 import { auditRouter } from '@api/routes/audit';
 import { auth } from '@cio/db/auth';
 import { communityRouter } from '@api/routes/community';
@@ -41,6 +42,11 @@ import { signupGuard } from '@api/middlewares/signup-guard';
 import { ssoDiscoveryRouter } from '@api/routes/sso/discovery';
 import { unsplashRouter } from '@api/routes/unsplash/unsplash';
 import { v1Router } from '@api/routes/v1';
+
+// Los ingresos, cierres de sesión y cambios de cuenta pasan por Better Auth, que
+// el middleware de auditoría no ve (`/api/auth` está excluido). Este oyente los
+// registra igual; ver `services/audit-auth.ts`.
+escucharIngresosEnLaAuditoria();
 
 // Create Hono app with chaining for RPC support
 export const app = new Hono()

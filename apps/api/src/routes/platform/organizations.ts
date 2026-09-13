@@ -19,11 +19,36 @@ import {
   updateOrganization
 } from '@api/services/platform/platform';
 import { AppError, handleError } from '@api/utils/errors';
+import { anotarAuditoria } from '@api/utils/audit-detail';
+import { getActiveOrganizationPlan } from '@cio/db/queries/organization';
 
 import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { platformAdminMiddleware } from '@api/middlewares/platform-admin';
 import { zValidator } from '@hono/zod-validator';
+
+/**
+ * Lo que la auditoría guarda de un plan: el nombre y los tres números que
+ * deciden cuánta plata puede gastar una empresa. El resto del payload no.
+ */
+async function resumenDelPlan(orgId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const plan = await getActiveOrganizationPlan(orgId);
+    if (!plan) return null;
+
+    const payload = (plan.payload ?? {}) as Record<string, unknown>;
+
+    return {
+      plan: plan.planName ?? null,
+      cupoDeFichas: payload.aiTokenAllowance ?? null,
+      cupoDeImagenes: payload.aiImageAllowance ?? null,
+      modelo: payload.aiModel ?? null
+    };
+  } catch {
+    // La auditoría no puede tumbar el cambio de plan.
+    return null;
+  }
+}
 
 export const platformOrganizationsRouter = new Hono()
   .get('/', authMiddleware, platformAdminMiddleware, zValidator('query', ZPlatformOrgListQuery), async (c) => {
@@ -66,6 +91,7 @@ export const platformOrganizationsRouter = new Hono()
       try {
         const { orgId } = c.req.valid('param');
         const data = c.req.valid('json');
+        anotarAuditoria(c, { orgId, metadata: { campos: Object.keys(data) } });
         const updated = await updateOrganization(orgId, data);
 
         return c.json({ success: true as const, data: updated });
@@ -84,6 +110,7 @@ export const platformOrganizationsRouter = new Hono()
       try {
         const { orgId } = c.req.valid('param');
         const { suspend, readOnlyUntil } = c.req.valid('json');
+        anotarAuditoria(c, { orgId, metadata: { suspender: suspend, soloLecturaHasta: readOnlyUntil ?? null } });
         const updated = await suspendOrganization(orgId, suspend, readOnlyUntil);
 
         return c.json({ success: true as const, data: updated });
@@ -102,7 +129,12 @@ export const platformOrganizationsRouter = new Hono()
       try {
         const { orgId } = c.req.valid('param');
         const { planName, aiTokenAllowance, aiModel, aiImageAllowance } = c.req.valid('json');
+        // El antes y el después: «le cambió el plan» no dice si el cupo subió de 15
+        // a 90 millones, y eso es lo que alguien va a querer saber.
+        const antes = await resumenDelPlan(orgId);
+        anotarAuditoria(c, { orgId, metadata: { antes } });
         const result = await setOrganizationPlan(orgId, planName, aiTokenAllowance, aiModel, aiImageAllowance);
+        anotarAuditoria(c, { metadata: { despues: await resumenDelPlan(orgId) } });
 
         return c.json({ success: true as const, data: result });
       } catch (error) {
@@ -120,6 +152,7 @@ export const platformOrganizationsRouter = new Hono()
       try {
         const { orgId } = c.req.valid('param');
         const { action, domain } = c.req.valid('json');
+        anotarAuditoria(c, { orgId, metadata: { accion: action, dominio: domain ?? null } });
 
         switch (action) {
           case 'connect': {

@@ -2,7 +2,6 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
-import { authOrApiKeyMiddleware } from '@api/middlewares/auth-or-api-key';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
@@ -17,8 +16,6 @@ import {
 } from 'ai';
 import {
   ZAgentChatBody,
-  ZAgentCreditPurchase,
-  ZAgentCreditsBody,
   ZAgentGenerateCourseTitleBody,
   ZAgentGenerateTextBody,
   ZAgentResearchBody,
@@ -29,7 +26,6 @@ import {
   ZTutorUsageUserParam
 } from '@cio/utils/validation/agent';
 import {
-  addCredits,
   enforceTokenBalance,
   getDetailedUsage,
   getPurchasedSummary,
@@ -64,7 +60,7 @@ import { mencionesRotas } from '@api/services/agent/mention-check';
 import { runResearch } from '@api/services/agent/research';
 import { isWebSearchConfigured, WEB_SEARCH_UNCONFIGURED } from '@api/services/agent/web-search';
 import { indexDocument, isDocumentIndexed } from '@api/services/agent/embeddings';
-import { recordCreditPurchase } from '@api/services/agent/credit-purchase';
+import { agentCreditsRouter } from '@api/routes/agent/credits';
 import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
@@ -505,29 +501,6 @@ const agentCoreRouter = new Hono()
       }
     }
   )
-  .post('/credits', authMiddleware, orgAdminMiddleware, zValidator('json', ZAgentCreditsBody), async (c) => {
-    try {
-      const orgId = c.req.header('cio-org-id')!;
-      const { amount } = c.req.valid('json');
-
-      await addCredits(orgId, amount);
-      const balance = await getTokenBalance(orgId);
-
-      return c.json({ success: true, data: balance });
-    } catch (error) {
-      return handleError(c, error, 'Failed to purchase credits');
-    }
-  })
-  .post('/credits/purchase', authOrApiKeyMiddleware, zValidator('json', ZAgentCreditPurchase), async (c) => {
-    try {
-      const body = c.req.valid('json');
-      const purchase = await recordCreditPurchase(body);
-
-      return c.json({ success: true, data: purchase });
-    } catch (error) {
-      return handleError(c, error, 'Failed to record credit purchase');
-    }
-  })
   .post(
     '/generate-course-title',
     authMiddleware,
@@ -1969,6 +1942,7 @@ export const agentRouter = new Hono()
   .use('*', agentContentTypeRewrite)
   .route('/', agentCoreRouter)
   .route('/history', agentHistoryRouter)
+  .route('/credits', agentCreditsRouter)
   .route('/runs', agentRunsRouter)
   .route('/documents', agentDocumentsRouter)
   .route('/lessons', agentDiagramsRouter)
