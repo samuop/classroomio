@@ -13,6 +13,7 @@ import { AppError } from '@api/utils/errors';
 import { AgentEvent, trackAgentEvent } from '@api/utils/tinybird';
 import { verifyExerciseBelongsToCourse, verifyLessonBelongsToCourse } from './chat-context';
 import { semanticSearchCourse } from './embeddings';
+import { contenidoEnIdioma } from './lesson-content-locale';
 import {
   dedupeByLesson,
   mergeCourseSearchResults,
@@ -246,10 +247,8 @@ export function buildStudentAgentTools(
             note?: string | null;
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const content =
-            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale)?.content ??
-            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en')?.content ??
-            null;
+          // Si la lección no está en el idioma del pedido, sirve la que haya (ver contenidoEnIdioma).
+          const content = contenidoEnIdioma(lessonWithLangs.lessonLanguages, locale);
 
           return {
             id: lesson.id,

@@ -127,6 +127,8 @@ import {
 import { getStorageConfig } from '@api/config/storage';
 import { MAX_IMAGE_SIZE } from '@api/constants/upload';
 import { pideCambiosAlPlan } from '@api/services/agent/plan-revision';
+import { herramientasDelPaso } from '@api/services/agent/student-final-step';
+import { contenidoEnIdioma } from '@api/services/agent/lesson-content-locale';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
@@ -876,10 +878,15 @@ const agentCoreRouter = new Hono()
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
           const editorLocale = context?.locale ?? 'en';
-          const langContent =
-            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === editorLocale) ??
-            lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en');
-          lessonContent = langContent?.content || undefined;
+          // El estudiante lee: si la lección no está en su idioma, sirve la que haya. El
+          // docente edita un idioma concreto, y ahí que venga vacía es información.
+          lessonContent =
+            (role === AgentRole.STUDENT
+              ? contenidoEnIdioma(lessonWithLangs.lessonLanguages, editorLocale)
+              : (
+                  lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === editorLocale) ??
+                  lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en')
+                )?.content) || undefined;
         } catch {
           // Lesson not found or doesn't belong — continue without lesson context
         }
@@ -1599,8 +1606,16 @@ const agentCoreRouter = new Hono()
             return { toolChoice: { type: 'tool', toolName: 'generate_course_plan' } };
           }
 
-          if (stepNumber < 5) return {};
+          // El estudiante contesta sí o sí: el último paso va sin herramientas.
+          const eleccion = herramientasDelPaso({
+            esEstudiante: isStudentRound,
+            paso: stepNumber,
+            maximoDePasos: maxStepsForRound
+          });
+
+          if (stepNumber < 5) return eleccion;
           return {
+            ...eleccion,
             messages: pruneMessages({
               messages: stepMessages,
               toolCalls: 'before-last-4-messages',
