@@ -57,6 +57,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'search_web',
   'generate_image',
   'read_source',
+  'search_document',
   'delete_lesson',
   'delete_exercise',
   'delete_section',
@@ -339,7 +340,70 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
   }
 }
 
-export function getPendingToolLine(toolName: string, input?: unknown): ToolLineUi {
+/**
+ * Lo que el panel conoce por nombre y la herramienta sólo trae como id: el
+ * archivo de una fuente, el título de una lección. Sin esto la línea de «qué
+ * está haciendo» decía «Leyendo una fuente» mientras el agente leía un archivo
+ * concreto, que es justo lo que el docente quiere saber.
+ */
+export type NombrarPorId = (id: string) => string | undefined;
+
+/** Tools whose running line can name what they touch. */
+const LESSON_TOOLS_WITH_NAMED_COPY = new Set([
+  'write_lesson',
+  'get_lesson_content',
+  'edit_lesson_content',
+  'replace_lesson_block',
+  'update_lesson_content'
+]);
+
+function getNamedPendingLine(
+  toolName: string,
+  record: Record<string, unknown>,
+  nombrar?: NombrarPorId
+): ToolLineUi | null {
+  if (toolName === 'search_document') {
+    const query = readString(record, 'query');
+
+    return query ? { shape: 'i18n', key: 'ai_assistant.tool.pending.search_document_with_query', vars: { query } } : null;
+  }
+
+  if (toolName === 'read_source') {
+    const sourceId = readString(record, 'sourceId');
+    const name = sourceId ? nombrar?.(sourceId) : undefined;
+
+    return name
+      ? {
+          shape: 'i18n',
+          key: 'ai_assistant.tool.pending.read_source_named',
+          vars: { name, from: readPositiveInt(record, 'offset') || 1 }
+        }
+      : null;
+  }
+
+  if (toolName === 'create_lesson') {
+    const title = readString(record, 'title');
+
+    return title ? { shape: 'i18n', key: 'ai_assistant.tool.pending.create_lesson_named', vars: { title } } : null;
+  }
+
+  if (LESSON_TOOLS_WITH_NAMED_COPY.has(toolName)) {
+    const lessonId = readString(record, 'lessonId');
+    const title = readString(record, 'title') ?? (lessonId ? nombrar?.(lessonId) : undefined);
+
+    return title ? { shape: 'i18n', key: `ai_assistant.tool.pending.${toolName}_named`, vars: { title } } : null;
+  }
+
+  return null;
+}
+
+export function getPendingToolLine(toolName: string, input?: unknown, nombrar?: NombrarPorId): ToolLineUi {
+  if (typeof input === 'object' && input !== null) {
+    const named = getNamedPendingLine(toolName, input as Record<string, unknown>, nombrar);
+
+    if (named) return named;
+  }
+
   if (toolName === 'search_web') {
     const query =
       typeof input === 'object' && input !== null ? readString(input as Record<string, unknown>, 'query') : undefined;

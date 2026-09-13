@@ -1,10 +1,11 @@
 <script lang="ts">
-  import CheckIcon from '@lucide/svelte/icons/check';
   import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
+  import CheckIcon from '@lucide/svelte/icons/check';
   import CircleIcon from '@lucide/svelte/icons/circle';
-  import LoaderIcon from '@lucide/svelte/icons/loader';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
+  import ListChecksIcon from '@lucide/svelte/icons/list-checks';
+  import LoaderIcon from '@lucide/svelte/icons/loader';
   import { renderMarkdown } from '$features/ai-assistant/utils/markdown';
   import {
     getMentionRoute,
@@ -13,10 +14,9 @@
     type MentionTarget
   } from '$features/ai-assistant/utils/mentions';
   import { getWriterNotes } from '$features/ai-assistant/utils/writer-notes';
-  import PlanView from '$features/ai-assistant/plan-view.svelte';
-  import TodoChecklist from '$features/ai-assistant/todo-checklist.svelte';
-  import ThinkingBlock from '$features/ai-assistant/thinking-block.svelte';
-  import AgentSteps from '$features/ai-assistant/agent-steps.svelte';
+  import AgentWork from '$features/ai-assistant/agent-work.svelte';
+  import PlanCard from '$features/ai-assistant/plan-card.svelte';
+  import ChatImageViewer from '$features/ai-assistant/chat-image-viewer.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
   import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
   import { isTemplateFormResolved } from '$features/ai-assistant/utils/template-form-resolved';
@@ -27,16 +27,20 @@
     getCompletedToolLine,
     getPendingToolI18nKey,
     getPendingToolI18nVars,
-    getPendingToolLine
+    getPendingToolLine,
+    type NombrarPorId,
+    type ProgressStep
   } from '$features/ai-assistant/utils/tool-labels';
+  import { idDelPlan } from '$features/ai-assistant/utils/plan-summary';
   import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
+  import type { PlanMostrado } from '$features/ai-assistant/utils/plan-screen.svelte';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
   import {
     getAgentToolName,
     getAgentToolInput,
     getAgentToolResult,
     getAgentToolStatus,
-    getAgentStepsForMessage,
     isAgentToolPart
   } from '$features/ai-assistant/utils/tool-parts';
   import type { AiAssistantMessage, AiAssistantMessageMetadata } from '$features/ai-assistant/utils/types';
@@ -46,12 +50,16 @@
     message: AiAssistantMessage;
     messages: AiAssistantMessage[];
     courseId: string;
-    onImplementPlan: (editedPlan: unknown) => void;
-    onRequestPlanChanges: () => void;
     isStreaming: boolean;
     isLast?: boolean;
-    /** True when the live ProgressCard is rendered for this turn (last message) — suppress bubble steps to avoid duplication. */
-    liveProgressActive?: boolean;
+    /** Cuándo empezó la ronda en curso, para el contador de la línea viva. */
+    startedAt?: number | null;
+    nombrar?: NombrarPorId;
+    /** Id de la versión más nueva del plan en la conversación. */
+    latestPlanId: string | null;
+    onOpenPlan: (plan: PlanMostrado) => void;
+    /** Abre el plan vigente, desde la fila de avance de la construcción. */
+    onOpenLatestPlan?: () => void;
     onSubmitTemplateAnswers: (payload: {
       templateId: CourseTemplateId;
       answers: Record<string, string>;
@@ -64,6 +72,7 @@
       fields: TemplateFormField[];
     }) => void;
     onSkipDiscoveryForm: (payload: { formId: string }) => void;
+    onRetryStep?: (step: ProgressStep) => void;
     /**
      * Gets what the agent wrote along with the route, so the click can check it
      * against a fresher course than the one this render saw.
@@ -71,23 +80,36 @@
     onMentionClick: (route: string, mention?: MentionRef) => void;
     /** The course items the agent's links are checked against. See `resolveMention`. */
     mentionTargets?: MentionTarget[];
+    /** Pedirle al asistente que ponga una imagen adjunta en la lección abierta. */
+    onUseImageInLesson?: (url: string) => void;
+    /**
+     * Si el documento adjunto es una fuente del curso. El chat adjunta sola la
+     * última fuente en cada mensaje; mostrarla como si el docente la hubiera
+     * elegido repetía el mismo nombre debajo de cada pregunta.
+     */
+    esFuenteDelCurso?: (documentId: string) => boolean;
   }
 
   let {
     message,
     messages,
     courseId,
-    onImplementPlan,
-    onRequestPlanChanges,
+    isStreaming,
+    isLast = false,
+    startedAt = null,
+    nombrar,
+    latestPlanId,
+    onOpenPlan,
+    onOpenLatestPlan,
     onSubmitTemplateAnswers,
     onSkipTemplateForm,
     onSubmitDiscoveryAnswers,
     onSkipDiscoveryForm,
+    onRetryStep,
     onMentionClick,
     mentionTargets,
-    isStreaming,
-    isLast = false,
-    liveProgressActive = false
+    onUseImageInLesson,
+    esFuenteDelCurso
   }: Props = $props();
 
   function localizePendingTool(toolName: string): string {
@@ -117,10 +139,12 @@
   }
 
   const messageAttachment = $derived((message.metadata as AiAssistantMessageMetadata | undefined)?.attachment);
+  const mostrarAdjunto = $derived(!!messageAttachment && !esFuenteDelCurso?.(messageAttachment.documentId));
 
   // What the lesson writer could not cover, read from the tool results rather
   // than left to the agent to repeat. See `getWriterNotes`.
   const writerNotes = $derived(message.role === 'assistant' ? getWriterNotes(message.parts ?? []) : []);
+
   /** Tool parts rendered in a second pass so narrative text always appears above them (stream order often emits tools first). */
   function isDeferredPlanPart(part: Record<string, unknown>) {
     if (!isAgentToolPart(part)) {
@@ -150,13 +174,6 @@
     return (part as { errorText?: string }).errorText;
   }
 
-  // Persisted per-message agent steps (update_lesson_content, create_*, get_*, …).
-  // Shown collapsed in the bubble so any past turn can reveal what it did. While the
-  // live ProgressCard is showing this turn's steps (streaming, or stopped/step-limit),
-  // it owns the display — suppress the bubble steps then to avoid showing them twice.
-  const agentSteps = $derived(message.role === 'assistant' ? getAgentStepsForMessage(message) : []);
-  const showAgentSteps = $derived(agentSteps.length > 0 && !(isLast && liveProgressActive));
-
   /**
    * Split the assistant's prose into "narration while working" and "the reply".
    *
@@ -167,8 +184,8 @@
    *
    * Structural, not keyword-based: MiniMax emits this as plain `text` parts
    * (zero `reasoning` parts exist in the stored history), sometimes in English
-   * mid-Spanish conversation, so no phrase list would hold. Any real `reasoning`
-   * part is folded in too, for whenever extended thinking gets enabled.
+   * mid-Spanish conversation, so no phrase list would hold. Real `reasoning`
+   * parts —Gemini's thought summaries— are folded in too.
    */
   const partsSplit = $derived.by(() => {
     const parts = (message.parts ?? []) as Array<Record<string, unknown>>;
@@ -187,14 +204,10 @@
     /**
      * Where the working-out stops and the answer starts.
      *
-     * The last tool call when there is one. When there ISN'T, this used to stay
-     * at -1 and nothing was ever classified as narration, so a turn that never
-     * called a tool rendered its entire chain-of-thought as the reply — which is
-     * exactly what a teacher saw after a 5-minute turn that built nothing: the
-     * one case where the model rambles is the one case with no boundary to fold
-     * it behind. Falling back to the last text part restores the same rule with
-     * the only marker left. A single text part stays whole: with nothing to
-     * split on, guessing would be worse than showing it.
+     * The last tool call when there is one. When there isn't, falling back to
+     * the last text part keeps a turn that never called a tool from rendering
+     * its entire chain-of-thought as the reply. A single text part stays whole:
+     * with nothing to split on, guessing would be worse than showing it.
      */
     const narrationBoundary = lastToolIndex >= 0 ? lastToolIndex : lastTextIndex;
 
@@ -216,8 +229,8 @@
     });
 
     // A round cut short by the step limit can end on narration with no reply at
-    // all. Promote the last block so the bubble is never blank.
-    if (reply.length === 0 && thinking.length > 0) {
+    // all. Promote the last block so the message is never blank.
+    if (reply.length === 0 && thinking.length > 0 && lastTextIndex >= 0) {
       const promoted = thinking.pop() as string;
       return { thinking, reply: [{ type: 'text', text: promoted }] };
     }
@@ -231,24 +244,32 @@
   const inlineParts = $derived(
     message.role === 'assistant'
       ? partsSplit.reply
-      : (message.parts ?? []).filter((part) => (part as { type?: string }).type === 'text')
+      : (message.parts ?? []).filter((part) => {
+          const record = part as { type?: string; text?: string };
+          return record.type === 'text' && !!record.text?.trim();
+        })
   );
+
+  /** Plan and form cards, with their position in `parts` so a plan version keeps a stable id. */
   const deferredPlanParts = $derived(
-    (message.parts ?? []).filter((part) => isDeferredPlanPart(part as Record<string, unknown>))
+    (message.parts ?? []).flatMap((part, index) =>
+      isDeferredPlanPart(part as Record<string, unknown>) ? [{ part, index }] : []
+    )
   );
-  // Build progress measured by the server (plan reconciled against the live course
-  // once the round's writes landed), carried on the finish metadata. Previously the
-  // checklist was drawn from the model's own update_course_todo_list output, which
-  // drifted badly — it read 1/32 with ten lessons already written.
+
+  // Build progress measured by the server (plan reconciled against the live
+  // course once the round's writes landed), carried on the finish metadata.
   const planProgress = $derived(message.role === 'assistant' ? message.metadata?.planProgress : undefined);
   const showPlanProgress = $derived(!!planProgress && planProgress.total > 0);
+  const progressPercent = $derived(
+    planProgress && planProgress.total > 0 ? Math.round((planProgress.completed / planProgress.total) * 100) : 0
+  );
 
   /**
    * Lo que el servidor vio cambiar, debajo de lo que el asistente cuenta.
    *
    * Se lee a la defensiva —llega de la metadata, que es clave abierta— y sólo
-   * se dibuja si hay algo: una ronda de preguntas y respuestas no cambia nada
-   * y no tiene por qué mostrar una caja vacía.
+   * se dibuja si hay algo: una ronda de preguntas y respuestas no cambia nada.
    */
   const roundChanges = $derived(
     message.role === 'assistant' && Array.isArray(message.metadata?.roundChanges)
@@ -256,41 +277,28 @@
       : []
   );
 
-  const hasBubbleContent = $derived(
-    inlineParts.length > 0 ||
+  const isStreamingThisMessage = $derived(isStreaming && isLast && message.role === 'assistant');
+  const hasToolParts = $derived((message.parts ?? []).some((part) => isAgentToolPart(part)));
+
+  const hasAssistantContent = $derived(
+    isStreamingThisMessage ||
+      inlineParts.length > 0 ||
       deferredPlanParts.length > 0 ||
-      !!messageAttachment ||
-      showAgentSteps ||
-      showPlanProgress ||
+      thinkingBlocks.length > 0 ||
+      hasToolParts ||
+      writerNotes.length > 0 ||
       roundChanges.length > 0 ||
-      thinkingBlocks.length > 0
+      showPlanProgress
   );
-  const showStreamingSpinner = $derived(message.role === 'assistant' && !hasBubbleContent && isStreaming && isLast);
-  /**
-   * Cards (plan, forms) need the full panel width to breathe.
-   *
-   * Assistant bubbles are full width too, and that is a streaming fix, not a
-   * style choice: a bubble that hugs its content is re-measured on every token,
-   * so during generation it visibly grows and snaps sideways line after line.
-   * Pinning the width means only the height changes as text arrives. User
-   * messages still hug — they appear complete, in one go, and never resize.
-   */
-  const isWideBubble = $derived(deferredPlanParts.length > 0 || message.role === 'assistant');
 
   /**
-   * Markdown is re-parsed and its entire subtree replaced on every token. At
-   * MiniMax's rate that is dozens of full re-layouts a second, and each one can
-   * change the shape of the block: a list forms, a code fence opens, a heading
-   * appears and pushes everything down. That churn is what reads as the box
-   * "deforming" while the agent writes.
-   *
-   * So while THIS message is streaming, sample the parts on a fixed cadence
-   * instead of rendering every token. The same text arrives at the same speed;
-   * it just stops re-laying out between frames. Once streaming ends we render
+   * Markdown is re-parsed and its entire subtree replaced on every token. So
+   * while THIS message is streaming, sample the parts on a fixed cadence instead
+   * of rendering every token: the same text arrives at the same speed, it just
+   * stops re-laying out between frames. Once streaming ends we render
    * `inlineParts` directly, so the final content is never a stale sample.
    */
   const STREAM_RENDER_INTERVAL_MS = 90;
-  const isStreamingThisMessage = $derived(isStreaming && isLast);
 
   let sampledParts = $state<typeof inlineParts>([]);
   let lastSampleAt = 0;
@@ -302,8 +310,7 @@
 
     const waitMs = STREAM_RENDER_INTERVAL_MS - (Date.now() - lastSampleAt);
 
-    // First token of a turn commits immediately — otherwise the bubble would sit
-    // empty for the length of one interval before anything appears.
+    // First token of a turn commits immediately.
     if (waitMs <= 0) {
       lastSampleAt = Date.now();
       sampledParts = parts;
@@ -323,7 +330,7 @@
   const partsToRender = $derived(isStreamingThisMessage ? sampledParts : inlineParts);
 
   // A plan is "already implemented" once a later user message requested its
-  // implementation — hide the plan card's Implement/Request-changes buttons.
+  // implementation.
   const planAlreadyImplemented = $derived.by(() => {
     const selfIndex = messages.indexOf(message);
     if (selfIndex < 0) return false;
@@ -337,49 +344,111 @@
 
     return false;
   });
+
+  interface ImagenAdjunta {
+    url: string;
+    nombre: string;
+  }
+
+  const imagenes = $derived.by((): ImagenAdjunta[] => {
+    if (message.role !== 'user') return [];
+
+    return (message.parts ?? []).flatMap((part) => {
+      const archivo = part as { type?: string; mediaType?: string; url?: string; filename?: string };
+
+      return archivo.type === 'file' && archivo.mediaType?.startsWith('image/') && archivo.url
+        ? [{ url: archivo.url, nombre: archivo.filename || 'imagen' }]
+        : [];
+    });
+  });
+
+  let imagenEnGrande = $state<ImagenAdjunta | null>(null);
+  let visorAbierto = $state(false);
+
+  function verImagen(imagen: ImagenAdjunta) {
+    imagenEnGrande = imagen;
+    visorAbierto = true;
+  }
+
+  const textoDeLaRespuesta = $derived(
+    message.role === 'assistant'
+      ? inlineParts
+          .map((part) => (typeof part.text === 'string' ? part.text : ''))
+          .join('\n\n')
+          .trim()
+      : ''
+  );
+
+  async function copiarRespuesta() {
+    try {
+      await navigator.clipboard.writeText(textoDeLaRespuesta);
+      snackbar.success(t.get('ai_assistant.activity.copied'));
+    } catch {
+      // Sin permiso de portapapeles no hay nada que avisar.
+    }
+  }
 </script>
 
-<div data-role={message.role} class="flex flex-col gap-1 {message.role === 'user' ? 'items-end' : 'items-start'}">
-  {#if message.role === 'assistant' && !hasBubbleContent && !showStreamingSpinner}
-    <!-- Assistant message has no renderable parts yet and isn't streaming — skip the empty bubble -->
-  {:else}
+<div
+  data-role={message.role}
+  class="group/mensaje flex flex-col gap-2 {message.role === 'user' ? 'items-end' : 'items-stretch'}"
+>
+  {#if message.role === 'user'}
+    {#if imagenes.length > 0}
+      <div class="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+        {#each imagenes as imagen, indice (`${imagen.url}-${indice}`)}
+          <button
+            type="button"
+            class="block overflow-hidden rounded-xl border transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:outline-none"
+            onclick={() => verImagen(imagen)}
+            title={imagen.nombre}
+          >
+            <img
+              src={imagen.url}
+              alt={$t('ai_assistant.attachments.image_alt', { name: imagen.nombre })}
+              loading="lazy"
+              class="block object-cover {imagenes.length === 1 ? 'max-h-48 max-w-60' : 'size-24'}"
+            />
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    {#if mostrarAdjunto && messageAttachment}
+      <div class="ui:text-muted-foreground flex max-w-[85%] items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs">
+        <FileTextIcon size={12} class="shrink-0" />
+        <span class="min-w-0 truncate">{messageAttachment.name}</span>
+      </div>
+    {/if}
+
+    {#if inlineParts.length > 0}
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="ui:bg-muted max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm" onclick={handleBubbleClick}>
+        {#each inlineParts as part, partIndex (partIndex)}
+          <div class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-words">
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+            {@html renderMentions(renderMarkdown(part.text as string), courseId, mentionTargets)}
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {:else if hasAssistantContent}
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div
-      class="rounded-lg px-3 py-2 text-sm {isWideBubble ? 'w-full max-w-full' : 'max-w-[85%]'} {message.role === 'user'
-        ? 'ui:bg-primary ui:text-primary-foreground'
-        : 'ui:bg-muted'}"
-      onclick={handleBubbleClick}
-    >
-      {#if showStreamingSpinner}
-        <LoaderIcon size={16} class="ui:text-muted-foreground animate-spin" />
-      {/if}
-      {#if messageAttachment}
-        <div
-          class="mb-2 flex items-center gap-2 rounded-md px-2 py-1 text-xs {message.role === 'user'
-            ? 'bg-white/15 text-white/90'
-            : 'ui:bg-background/70 ui:text-muted-foreground'}"
-        >
-          <FileTextIcon size={12} class="shrink-0" />
-          <span class="min-w-0 truncate">{messageAttachment.name}</span>
-        </div>
-      {/if}
-
-      {#if showAgentSteps}
-        <div class="mb-2">
-          <AgentSteps steps={agentSteps} {courseId} onNavigate={onMentionClick} />
-        </div>
-      {/if}
-
-      {#if thinkingBlocks.length > 0}
-        <ThinkingBlock blocks={thinkingBlocks} isStreaming={isStreaming && isLast} />
-      {/if}
+    <div class="flex w-full min-w-0 flex-col gap-3 text-sm" onclick={handleBubbleClick}>
+      <AgentWork
+        {message}
+        isLive={isStreamingThisMessage}
+        startedAt={isLast ? startedAt : null}
+        thoughts={thinkingBlocks}
+        {courseId}
+        onNavigate={onMentionClick}
+        {nombrar}
+        {onRetryStep}
+      />
 
       {#each partsToRender as part, partIndex (partIndex)}
         {#if part.type === 'text'}
-          <div
-            class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-words {message.role === 'user' &&
-              'ui:text-primary-foreground!'}"
-          >
+          <div class="ai-chat-prose prose prose-sm dark:prose-invert max-w-none break-words">
             <!-- eslint-disable-next-line svelte/no-at-html-tags -->
             {@html renderMentions(renderMarkdown(part.text as string), courseId, mentionTargets)}
           </div>
@@ -387,7 +456,7 @@
       {/each}
 
       {#if writerNotes.length > 0}
-        <div class="mt-3 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs" data-writer-notes>
+        <div class="rounded-xl border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs" data-writer-notes>
           <p class="mb-1 font-medium">{$t('ai_assistant.writer_notes_title')}</p>
           <ul class="space-y-1">
             {#each writerNotes as item, noteIndex (noteIndex)}
@@ -408,21 +477,24 @@
         </div>
       {/if}
 
-      {#each deferredPlanParts as part, partIndex (partIndex)}
+      {#each deferredPlanParts as { part, index } (index)}
         {@const toolName = getAgentToolName(part)}
         {@const toolResult = getAgentToolResult(part)}
         {@const toolStatus = getAgentToolStatus(part)}
         {@const errorText = getPartErrorText(part)}
         {#if toolName === 'generate_course_plan' && toolStatus === 'completed'}
-          <div class="mt-3">
-            <PlanView
-              plan={toolResult as CoursePlan}
-              onImplement={onImplementPlan}
-              onRequestChanges={onRequestPlanChanges}
-              isBusy={isStreaming}
-              implemented={planAlreadyImplemented}
-            />
-          </div>
+          {@const planId = idDelPlan(message.id, part, index)}
+          <!--
+            Aprobar marca como aprobada sólo la versión vigente: con la marca por
+            mensaje, cualquier aprobación posterior encendía «Aprobado» también en
+            las versiones que el docente descartó al pedir cambios.
+          -->
+          <PlanCard
+            plan={toolResult as CoursePlan}
+            isLatest={planId === latestPlanId}
+            implemented={planAlreadyImplemented && planId === latestPlanId}
+            onOpen={() => onOpenPlan({ id: planId, plan: toolResult as CoursePlan })}
+          />
         {:else if toolName === 'ask_template_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
           {@const merged = (toolResult ?? getAgentToolInput(part)) as
             | { templateId?: CourseTemplateId; fields?: TemplateFormField[] }
@@ -430,17 +502,15 @@
           {#if merged?.templateId}
             {@const canonicalFields = mergeTemplateFieldsWithRegistry(merged.templateId, merged.fields)}
             {#if canonicalFields.length > 0}
-              <div class="mt-3">
-                <TemplateFormCard
-                  templateId={merged.templateId}
-                  fields={canonicalFields}
-                  allMessages={messages}
-                  submitted={isTemplateFormResolved(messages, merged.templateId)}
-                  disableFormInputs={toolStatus === 'in_progress'}
-                  onSubmit={onSubmitTemplateAnswers}
-                  onSkip={onSkipTemplateForm}
-                />
-              </div>
+              <TemplateFormCard
+                templateId={merged.templateId}
+                fields={canonicalFields}
+                allMessages={messages}
+                submitted={isTemplateFormResolved(messages, merged.templateId)}
+                disableFormInputs={toolStatus === 'in_progress'}
+                onSubmit={onSubmitTemplateAnswers}
+                onSkip={onSkipTemplateForm}
+              />
             {/if}
           {/if}
         {:else if toolName === 'ask_discovery_questions' && (toolStatus === 'completed' || toolStatus === 'in_progress')}
@@ -448,67 +518,63 @@
             | { formId?: string; title?: string; intro?: string; fields?: TemplateFormField[] }
             | undefined}
           {#if data?.formId && data?.fields?.length}
-            <div class="mt-3">
-              <DiscoveryFormCard
-                formId={data.formId}
-                fields={data.fields}
-                title={data.title}
-                intro={data.intro}
-                allMessages={messages}
-                submitted={isDiscoveryFormResolved(messages, data.formId)}
-                disableFormInputs={toolStatus === 'in_progress'}
-                onSubmit={onSubmitDiscoveryAnswers}
-                onSkip={onSkipDiscoveryForm}
-              />
-            </div>
+            <DiscoveryFormCard
+              formId={data.formId}
+              fields={data.fields}
+              title={data.title}
+              intro={data.intro}
+              allMessages={messages}
+              submitted={isDiscoveryFormResolved(messages, data.formId)}
+              disableFormInputs={toolStatus === 'in_progress'}
+              onSubmit={onSubmitDiscoveryAnswers}
+              onSkip={onSkipDiscoveryForm}
+            />
           {/if}
-        {:else}
-          <div class="ui:bg-background/70 mt-3 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs">
-            {#if toolStatus === 'completed' && toolName}
-              <CheckIcon size={12} class="ui:text-primary shrink-0" />
-              <ToolLine line={getCompletedToolLine(toolName, toolResult)} {courseId} onNavigate={onMentionClick} />
-            {:else if toolStatus === 'failed' && toolName}
-              <AlertCircleIcon size={12} class="shrink-0 text-red-500" />
-              <span class="min-w-0 flex-1 truncate text-red-600 dark:text-red-400">
-                {#if errorText}
-                  {truncateErrorText(errorText)}
-                {:else}
-                  {$t('ai_assistant.run_failed_after', { action: localizePendingTool(toolName) })}
-                {/if}
-              </span>
+        {:else if toolStatus === 'failed' && toolName}
+          <div class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs">
+            <AlertCircleIcon size={12} class="shrink-0 text-red-500" />
+            <span class="min-w-0 flex-1 truncate text-red-600 dark:text-red-400">
               {#if errorText}
-                <button
-                  type="button"
-                  class="ui:text-muted-foreground ml-1 shrink-0 cursor-pointer hover:text-red-500"
-                  title={$t('ai_assistant.copy_full_error')}
-                  onclick={() => copyToClipboard(errorText)}
-                >
-                  <CopyIcon size={11} />
-                </button>
-              {/if}
-            {:else if toolStatus === 'in_progress' && toolName}
-              <LoaderIcon size={12} class="ui:text-primary shrink-0 animate-spin" />
-              <ToolLine line={getPendingToolLine(toolName)} {courseId} onNavigate={onMentionClick} />
-            {:else}
-              <CircleIcon size={12} class="ui:text-muted-foreground shrink-0" />
-              {#if toolName}
-                <span class="ui:text-muted-foreground">
-                  <ToolLine line={getPendingToolLine(toolName)} {courseId} onNavigate={onMentionClick} />
-                </span>
+                {truncateErrorText(errorText)}
               {:else}
-                <span class="ui:text-muted-foreground">{$t('ai_assistant.generic_working')}</span>
+                {$t('ai_assistant.run_failed_after', { action: localizePendingTool(toolName) })}
               {/if}
+            </span>
+            {#if errorText}
+              <button
+                type="button"
+                class="ui:text-muted-foreground ml-1 shrink-0 cursor-pointer hover:text-red-500"
+                title={$t('ai_assistant.copy_full_error')}
+                onclick={() => copyToClipboard(errorText)}
+              >
+                <CopyIcon size={11} />
+              </button>
             {/if}
+          </div>
+        {:else if toolStatus === 'completed' && toolName && toolName !== 'generate_course_plan'}
+          <div class="flex items-center gap-2 text-xs">
+            <CheckIcon size={12} class="ui:text-primary shrink-0" />
+            <ToolLine line={getCompletedToolLine(toolName, toolResult)} {courseId} onNavigate={onMentionClick} />
+          </div>
+        {:else if toolStatus === 'pending' && toolName}
+          <div class="ui:text-muted-foreground flex items-center gap-2 text-xs">
+            <CircleIcon size={12} class="shrink-0" />
+            <ToolLine line={getPendingToolLine(toolName)} {courseId} onNavigate={onMentionClick} />
+          </div>
+        {:else if toolStatus === 'in_progress' && toolName === 'generate_course_plan' && !isStreamingThisMessage}
+          <div class="ui:text-muted-foreground flex items-center gap-2 text-xs">
+            <LoaderIcon size={12} class="shrink-0 animate-spin" />
+            <ToolLine line={getPendingToolLine(toolName)} {courseId} onNavigate={onMentionClick} />
           </div>
         {/if}
       {/each}
 
       {#if roundChanges.length > 0}
-        <div class="border-gray-200 dark:border-neutral-700 mt-3 rounded-md border px-3 py-2">
-          <p class="text-gray-500 dark:text-gray-400 text-xs font-semibold">
+        <div class="rounded-xl border px-3 py-2">
+          <p class="ui:text-muted-foreground text-xs font-medium">
             {$t('course.navItem.lessons.build_report.round_changes')}
           </p>
-          <ul class="text-gray-700 dark:text-gray-300 mt-1 space-y-0.5 text-xs">
+          <ul class="mt-1 space-y-0.5 text-xs">
             {#each roundChanges as cambio (cambio)}
               <li>{cambio}</li>
             {/each}
@@ -517,16 +583,69 @@
       {/if}
 
       {#if showPlanProgress && planProgress}
-        <TodoChecklist progress={planProgress} />
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-(--muted) disabled:pointer-events-none"
+          onclick={() => onOpenLatestPlan?.()}
+          disabled={!onOpenLatestPlan || !latestPlanId}
+        >
+          <ListChecksIcon size={16} class="ui:text-primary shrink-0" />
+          <span class="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span class="flex items-center justify-between gap-2 text-xs">
+              <span class="font-medium">{$t('ai_assistant.todo_checklist.title')}</span>
+              <span class="ui:text-muted-foreground tabular-nums">
+                {$t('ai_assistant.plan_screen.progress', {
+                  completed: planProgress.completed,
+                  total: planProgress.total
+                })}
+              </span>
+            </span>
+            <span class="block h-1 w-full overflow-hidden rounded-full bg-(--muted)">
+              <span class="block h-full rounded-full bg-(--primary) transition-all duration-300" style="width: {progressPercent}%"
+              ></span>
+            </span>
+          </span>
+          {#if onOpenLatestPlan && latestPlanId}
+            <span class="ui:text-primary shrink-0 text-xs font-medium">{$t('ai_assistant.plan_screen.open')}</span>
+          {/if}
+        </button>
+      {/if}
+
+      {#if !isStreamingThisMessage && textoDeLaRespuesta}
+        <div class="flex opacity-60 transition-opacity group-hover/mensaje:opacity-100 focus-within:opacity-100">
+          <button
+            type="button"
+            class="ui:text-muted-foreground inline-flex size-7 items-center justify-center rounded-md transition-colors hover:bg-(--muted) hover:text-(--foreground)"
+            title={$t('ai_assistant.activity.copy_reply')}
+            aria-label={$t('ai_assistant.activity.copy_reply')}
+            onclick={copiarRespuesta}
+          >
+            <CopyIcon size={14} />
+          </button>
+        </div>
       {/if}
     </div>
   {/if}
 </div>
 
+{#if imagenEnGrande}
+  <ChatImageViewer
+    bind:open={visorAbierto}
+    url={imagenEnGrande.url}
+    name={imagenEnGrande.nombre}
+    onUseInLesson={onUseImageInLesson}
+  />
+{/if}
+
 <style>
   /* Reset global `apps/dashboard/src/app.css` `.prose p { mb-4 }` for chat bubbles */
   :global(.ai-chat-prose.prose p) {
     margin-bottom: 0;
+  }
+
+  /* Sin el margen global los párrafos quedaban pegados: un respiro entre bloques. */
+  :global(.ai-chat-prose.prose > * + *) {
+    margin-top: 0.6em;
   }
 
   :global(.mention-link) {
@@ -538,16 +657,6 @@
     text-underline-offset: 2px;
     border-radius: 0.125rem;
     transition: opacity 0.15s;
-  }
-
-  :global([data-role='user'] a),
-  :global([data-role='user'] .prose a) {
-    color: var(--primary-foreground);
-  }
-
-  :global([data-role='user'] .prose code:not(pre code)) {
-    color: rgb(9 9 11);
-    background-color: rgb(255 255 255 / 0.95);
   }
 
   :global(.mention-link:hover) {

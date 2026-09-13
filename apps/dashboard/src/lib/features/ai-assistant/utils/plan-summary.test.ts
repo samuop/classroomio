@@ -1,0 +1,122 @@
+import { contarPlan, estadosSobreElPlan, planesDeLaConversacion } from './plan-summary';
+import type { CoursePlan } from './course-plan';
+import type { AiAssistantPlanProgress } from './types';
+
+/**
+ * El avance de la construcción, dibujado sobre el plan.
+ *
+ * Lo delicado es aparear: el servidor manda filas con título y tipo, no con la
+ * posición en el plan, y dos lecciones pueden llamarse igual.
+ */
+
+const item = (title: string, type: 'lesson' | 'exercise' = 'lesson', hasExercise = false) => ({
+  title,
+  type,
+  description: '',
+  order: 0,
+  hasExercise
+});
+
+const plan: CoursePlan = {
+  title: 'Curso',
+  sections: [
+    { title: 'Arranque', order: 1, items: [item('Bienvenida'), item('Repaso'), item('Control', 'exercise')] },
+    { title: 'Cierre', order: 2, items: [item('Repaso'), item('Síntesis', 'lesson', true)] }
+  ]
+};
+
+const progreso = (items: AiAssistantPlanProgress['items']): AiAssistantPlanProgress => ({
+  total: items.length,
+  completed: items.filter((i) => i.status === 'done').length,
+  pendingCount: 0,
+  emptyCount: 0,
+  items
+});
+
+describe('el avance sobre el plan', () => {
+  it('ubica cada fila en su sección, aunque dos lecciones se llamen igual', () => {
+    const estados = estadosSobreElPlan(
+      plan,
+      progreso([
+        { key: 's1', kind: 'section', title: 'Arranque', status: 'done' },
+        { key: 's1.1', kind: 'lesson', title: 'Bienvenida', status: 'done' },
+        { key: 's1.2', kind: 'lesson', title: 'Repaso', status: 'done' },
+        { key: 's1.3', kind: 'exercise', title: 'Control', status: 'empty' },
+        { key: 's2', kind: 'section', title: 'Cierre', status: 'done' },
+        { key: 's2.1', kind: 'lesson', title: 'Repaso', status: 'missing' },
+        { key: 's2.2', kind: 'lesson', title: 'Síntesis', status: 'empty' }
+      ])
+    );
+
+    expect(estados.get('0.1')).toBe('done');
+    expect(estados.get('1.0')).toBe('missing');
+    expect(estados.get('0.2')).toBe('empty');
+    expect(estados.get('1.1')).toBe('empty');
+  });
+
+  it('no le importan las tildes ni las mayúsculas del título', () => {
+    const estados = estadosSobreElPlan(plan, progreso([{ key: '', kind: 'lesson', title: 'SINTESIS', status: 'done' }]));
+
+    expect(estados.get('1.1')).toBe('done');
+  });
+
+  it('un ítem sin fila queda sin estado, en vez de heredar el de otro', () => {
+    const estados = estadosSobreElPlan(plan, progreso([{ key: 's1', kind: 'section', title: 'Arranque', status: 'done' }]));
+
+    expect(estados.get('0')).toBe('done');
+    expect(estados.has('0.0')).toBe(false);
+  });
+
+  it('un ejercicio no se aparea con una lección del mismo nombre', () => {
+    const estados = estadosSobreElPlan(plan, progreso([{ key: '', kind: 'lesson', title: 'Control', status: 'done' }]));
+
+    expect(estados.has('0.2')).toBe(false);
+  });
+
+  it('sin avance no hay estados', () => {
+    expect(estadosSobreElPlan(plan, null).size).toBe(0);
+  });
+});
+
+describe('las versiones del plan en la conversación', () => {
+  const llamada = (state: string, output: unknown, toolCallId?: string) => ({
+    type: 'tool-generate_course_plan',
+    state,
+    output,
+    ...(toolCallId ? { toolCallId } : {})
+  });
+
+  it('encuentra cada versión terminada, en orden, con el id de su llamada', () => {
+    const versiones = planesDeLaConversacion([
+      { id: 'm1', parts: [{ type: 'text', text: 'Acá va' }, llamada('output-available', plan, 'call-1')] },
+      { id: 'm2', parts: [{ type: 'text', text: 'pedido' }] },
+      { id: 'm3', parts: [llamada('output-available', { ...plan, title: 'Revisado' }, 'call-2')] }
+    ]);
+
+    expect(versiones.map((v) => [v.id, v.plan.title, v.messageId])).toEqual([
+      ['call-1', 'Curso', 'm1'],
+      ['call-2', 'Revisado', 'm3']
+    ]);
+  });
+
+  it('una llamada a medio escribir o fallida no es una versión', () => {
+    const versiones = planesDeLaConversacion([
+      { id: 'm1', parts: [llamada('input-streaming', undefined, 'a'), llamada('output-error', undefined, 'b')] },
+      { id: 'm2', parts: [llamada('output-available', { ok: false, error: 'x' }, 'c')] }
+    ]);
+
+    expect(versiones).toEqual([]);
+  });
+
+  it('sin id de llamada, se identifica por mensaje y posición', () => {
+    const [version] = planesDeLaConversacion([{ id: 'viejo', parts: [{ type: 'step-start' }, llamada('output-available', plan)] }]);
+
+    expect(version.id).toBe('viejo:1');
+  });
+});
+
+describe('contar un plan', () => {
+  it('una lección con ejercicio suma un ejercicio', () => {
+    expect(contarPlan(plan)).toEqual({ secciones: 2, lecciones: 4, ejercicios: 2 });
+  });
+});

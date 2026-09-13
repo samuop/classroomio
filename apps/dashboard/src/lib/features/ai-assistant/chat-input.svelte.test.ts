@@ -26,7 +26,7 @@ import { t } from '$lib/utils/functions/translations';
  * mirara que `onSend` corrió pasaba igual con el bug puesto.
  */
 describe('el botón de enviar del chat', () => {
-  function montar(onSend: (...args: unknown[]) => void, inputValue = 'hola') {
+  function montar(onSend: (...args: unknown[]) => void, inputValue = 'hola', canSend = true) {
     return render(ChatInput, {
       props: {
         inputValue,
@@ -36,6 +36,7 @@ describe('el botón de enviar del chat', () => {
         error: null,
         mentionItems: [],
         uploadedDocument: null,
+        canSend,
         onSend,
         onStop: () => {},
         onFileSelect: () => {},
@@ -67,9 +68,12 @@ describe('el botón de enviar del chat', () => {
     expect(onSend.mock.calls[0].length).toBe(0);
   });
 
-  it('está apagado cuando no hay nada escrito', () => {
+  // Qué cuenta como «algo para mandar» —texto, o una imagen que ya subió— lo
+  // decide `puedeEnviar` y se fija en `chat-attachments.test.ts`. Acá sólo que el
+  // botón obedece.
+  it('está apagado cuando no hay nada para mandar', () => {
     const onSend = vi.fn();
-    montar(onSend, '   ');
+    montar(onSend, '   ', false);
 
     expect(botonEnviar()).toBeDisabled();
   });

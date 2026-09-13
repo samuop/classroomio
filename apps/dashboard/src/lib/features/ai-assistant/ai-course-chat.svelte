@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ChatHeader from '$features/ai-assistant/chat-header.svelte';
   import ChatMessageList from '$features/ai-assistant/chat-message-list.svelte';
@@ -47,6 +47,20 @@
     type MentionTarget
   } from '$features/ai-assistant/utils/mentions';
   import { snackbar } from '$features/ui/snackbar/store';
+  import ImagePlusIcon from '@lucide/svelte/icons/image-plus';
+  import { isFreePlan } from '$lib/utils/store/org';
+  import { openUpgradeModal } from '$lib/utils/functions/org';
+  import {
+    MAXIMO_DE_IMAGENES_POR_MENSAJE,
+    partesDeArchivo,
+    puedeEnviar,
+    revisarImagenes,
+    type AdjuntoDeImagen
+  } from '$features/ai-assistant/utils/chat-attachments';
+  import { pantallaDelPlan, type PlanMostrado } from '$features/ai-assistant/utils/plan-screen.svelte';
+  import { planesDeLaConversacion } from '$features/ai-assistant/utils/plan-summary';
+  import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
+  import type { NombrarPorId } from '$features/ai-assistant/utils/tool-labels';
   import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
   import { getRequestBaseUrl, apiClient } from '$lib/utils/services/api';
   import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
@@ -99,6 +113,11 @@
   let inputValue = $state('');
   let uploadedDocument: UploadedDocument | null = $state(null);
   let isUploading = $state(false);
+
+  /** Imágenes del mensaje que se está escribiendo. Ver `chat-attachments.ts`. */
+  let adjuntos = $state<AdjuntoDeImagen[]>([]);
+  let arrastrandoImagen = $state(false);
+  let profundidadDeArrastre = 0;
 
   let pendingInitialTemplateId: CourseTemplateId | null = $state(null);
   let pendingInitialDocumentIds: string[] = $state([]);
@@ -441,7 +460,11 @@
      */
     const override = typeof textOverride === 'string' ? textOverride : undefined;
     const text = (override ?? inputValue).trim();
-    if (!text || chat.status === 'streaming') return;
+    // Las imágenes viajan con lo que el docente escribió, nunca con un reintento
+    // armado desde otra tarjeta. Una imagen sola alcanza para mandar.
+    const archivos = override === undefined ? partesDeArchivo(adjuntos) : [];
+    if (chat.status === 'streaming') return;
+    if (override === undefined ? !puedeEnviar(text, adjuntos) : !text) return;
     if (!courseId) return;
 
     const userMessageCount = chat.messages.filter((message) => message.role === 'user').length;
@@ -520,14 +543,18 @@
     // call where the text came in as an override).
     if (override === undefined) {
       inputValue = '';
+      limpiarAdjuntos();
     }
 
-    setLastSentText(text);
+    if (text) setLastSentText(text);
 
-    chat.sendMessage({
-      text,
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {})
-    });
+    const extra = Object.keys(metadata).length > 0 ? { metadata } : {};
+
+    chat.sendMessage(
+      text
+        ? { text, ...(archivos.length > 0 ? { files: archivos } : {}), ...extra }
+        : { files: archivos, ...extra }
+    );
   }
 
   /**
@@ -697,6 +724,119 @@
     uploadedDocument = null;
   }
 
+  function limpiarAdjuntos() {
+    for (const adjunto of adjuntos) URL.revokeObjectURL(adjunto.vistaPrevia);
+    adjuntos = [];
+  }
+
+  /**
+   * Adjunta imágenes al mensaje en curso. Se suben apenas se eligen, en paralelo,
+   * y el mensaje no sale hasta que terminan (`puedeEnviar`): así el envío no
+   * espera una subida, y una imagen que falla se ve antes de mandar.
+   */
+  function agregarImagenes(archivos: File[]) {
+    if (!courseId) return;
+
+    const { aceptadas, rechazos } = revisarImagenes(archivos, adjuntos.length);
+    let avisoDeCantidad = false;
+
+    for (const { archivo, motivo } of rechazos) {
+      if (motivo === 'cantidad') {
+        if (!avisoDeCantidad) {
+          snackbar.error(t.get('ai_assistant.attachments.rejected_count', { max: MAXIMO_DE_IMAGENES_POR_MENSAJE }));
+        }
+        avisoDeCantidad = true;
+      } else {
+        snackbar.error(
+          t.get(
+            motivo === 'tipo' ? 'ai_assistant.attachments.rejected_type' : 'ai_assistant.attachments.rejected_size',
+            { name: archivo.name }
+          )
+        );
+      }
+    }
+
+    for (const archivo of aceptadas) {
+      const adjunto: AdjuntoDeImagen = {
+        id: crypto.randomUUID(),
+        nombre: archivo.name,
+        tipo: archivo.type,
+        vistaPrevia: URL.createObjectURL(archivo),
+        estado: 'subiendo'
+      };
+
+      adjuntos = [...adjuntos, adjunto];
+      void subirAdjunto(adjunto.id, archivo, courseId);
+    }
+  }
+
+  async function subirAdjunto(id: string, archivo: File, paraCurso: string) {
+    const subida = await aiAssistantApi.attachImage(archivo, paraCurso);
+
+    // La quitaron mientras subía: no hay miniatura que actualizar.
+    if (!adjuntos.some((adjunto) => adjunto.id === id)) return;
+
+    if (!subida) {
+      snackbar.error(t.get('ai_assistant.attachments.upload_failed', { name: archivo.name }));
+    }
+
+    adjuntos = adjuntos.map((adjunto) =>
+      adjunto.id === id ? { ...adjunto, estado: subida ? 'lista' : 'error', url: subida?.url } : adjunto
+    );
+  }
+
+  function quitarAdjunto(id: string) {
+    const adjunto = adjuntos.find((item) => item.id === id);
+
+    if (adjunto) URL.revokeObjectURL(adjunto.vistaPrevia);
+
+    adjuntos = adjuntos.filter((item) => item.id !== id);
+  }
+
+  function traeArchivos(event: DragEvent) {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  // Arrastrar sobre el panel entra y sale de cada hijo: se cuenta la profundidad
+  // para que el aviso no parpadee al pasar por encima de un mensaje.
+  function handleDragEnter(event: DragEvent) {
+    if (!puedeAdjuntarImagenes || !traeArchivos(event)) return;
+
+    event.preventDefault();
+    profundidadDeArrastre += 1;
+    arrastrandoImagen = true;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!puedeAdjuntarImagenes || !traeArchivos(event)) return;
+
+    event.preventDefault();
+  }
+
+  function handleDragLeave() {
+    if (!arrastrandoImagen) return;
+
+    profundidadDeArrastre = Math.max(0, profundidadDeArrastre - 1);
+    if (profundidadDeArrastre === 0) arrastrandoImagen = false;
+  }
+
+  function handleDrop(event: DragEvent) {
+    if (!puedeAdjuntarImagenes || !traeArchivos(event)) return;
+
+    event.preventDefault();
+    profundidadDeArrastre = 0;
+    arrastrandoImagen = false;
+
+    if ($isFreePlan) {
+      openUpgradeModal();
+      return;
+    }
+
+    const archivos = Array.from(event.dataTransfer?.files ?? []);
+
+    if (archivos.length > 0) agregarImagenes(archivos);
+  }
+
   function handleQuickAction(action: string) {
     inputValue = action;
     void handleSend();
@@ -761,8 +901,23 @@
   // Bumped to focus the main chat input (from the plan card's "Request changes").
   let focusInputSignal = $state(0);
 
-  function handleRequestPlanChanges() {
-    focusInputSignal += 1;
+  /**
+   * «Pedir cambios» desde la pantalla del plan.
+   *
+   * Viaja marcado en la metadata: con esa marca el servidor obliga al agente a
+   * devolver un plan nuevo. Sin ella el pedido era un mensaje cualquiera, y el
+   * modelo a veces contestaba «acá está el plan ajustado» sin ningún plan.
+   */
+  async function handleRequestPlanChanges(texto: string) {
+    if (chat.status === 'streaming' || !courseId) return;
+
+    const conversationId = await ensureActiveConversation(courseId);
+    if (!conversationId) return;
+
+    chat.sendMessage({
+      text: texto,
+      metadata: { plan: { action: 'request_plan_changes' } }
+    });
   }
 
   function handleResume() {
@@ -854,6 +1009,11 @@
   const status = $derived(aiAssistantApi.status);
   const isStudent = $derived(status?.role === 'student');
   const tutorStatus = $derived(status?.tutor);
+
+  /** Sólo el equipo del curso, y sólo si el modelo ve imágenes: lo decide el servidor. */
+  const puedeAdjuntarImagenes = $derived(!!status?.imageInput && !isStudent);
+  /** «Usarla en esta lección» tiene sentido con una lección abierta al lado. */
+  const puedeUsarImagenEnLeccion = $derived(!!currentLessonId && !isStudent);
 
   // Context guard: measure the latest provider-reported request size against the
   // operational budget the server exposes (AGENT_CONTEXT_BUDGET). Teachers only —
@@ -969,6 +1129,126 @@
   }
 
   const mentionTargets = $derived(buildMentionTargets());
+
+  /**
+   * Nombres para la línea de «qué está haciendo»: las herramientas traen ids, y
+   * el docente quiere leer «Leyendo "Manual de seguridad.pdf"», no un id.
+   */
+  const nombrar: NombrarPorId = (id) =>
+    sourcesApi.sources.find((fuente) => fuente.id === id)?.fileName ??
+    mentionTargets.find((item) => item.id === id)?.title;
+
+  /**
+   * Las fuentes del curso no se muestran en el chat. El agente ya las tiene todas,
+   * y el chat adjunta sola la última a cada mensaje: mostrarla parecía una
+   * elección del docente y ocupaba lugar debajo de cada pregunta. Se administran
+   * en «Fuentes».
+   */
+  const esFuenteDelCurso = (documentId: string) => sourcesApi.sources.some((fuente) => fuente.id === documentId);
+
+  // ─── La pantalla del plan ──────────────────────────────────────────────────
+
+  const planes = $derived(planesDeLaConversacion(chat.messages as AiAssistantMessage[]));
+  const planVigente = $derived(planes.at(-1) ?? null);
+
+  /**
+   * El plan vigente tal como se aprobó, o null si todavía no se aprobó.
+   *
+   * El docente puede editar títulos y descripciones antes de aprobar, y lo que se
+   * construye es esa versión editada: es la que tiene que verse después, y la que
+   * el servidor usa para medir el avance.
+   */
+  const planAprobado = $derived.by((): CoursePlan | null => {
+    if (!planVigente) return null;
+
+    const mensajes = chat.messages as AiAssistantMessage[];
+    const desde = mensajes.findIndex((mensaje) => mensaje.id === planVigente.messageId);
+
+    for (let indice = mensajes.length - 1; indice > desde; indice -= 1) {
+      const plan = mensajes[indice]?.role === 'user' ? mensajes[indice].metadata?.plan : undefined;
+
+      if (plan?.action === 'implement_course_plan') {
+        const aprobado = plan.payload as CoursePlan | undefined;
+
+        return aprobado && Array.isArray(aprobado.sections) ? aprobado : planVigente.plan;
+      }
+    }
+
+    return null;
+  });
+
+  const ultimoProgreso = $derived.by(() => {
+    const mensajes = chat.messages as AiAssistantMessage[];
+
+    for (let indice = mensajes.length - 1; indice >= 0; indice -= 1) {
+      const progreso = mensajes[indice]?.role === 'assistant' ? mensajes[indice].metadata?.planProgress : undefined;
+
+      if (progreso && progreso.total > 0) return progreso;
+    }
+
+    return null;
+  });
+
+  $effect(() => {
+    pantallaDelPlan.sincronizar({
+      vigente: planVigente ? { id: planVigente.id, plan: planAprobado ?? planVigente.plan } : null,
+      aprobado: !!planAprobado,
+      ocupado: isStreaming,
+      progreso: ultimoProgreso
+    });
+  });
+
+  /**
+   * Un plan que llega en vivo se abre solo: es la respuesta a lo que el docente
+   * acaba de pedir. Uno que ya estaba en el historial al abrir la conversación,
+   * no — reabrir el chat no es pedir el plan otra vez.
+   */
+  let ultimoPlanVisto: string | null = null;
+
+  $effect(() => {
+    const id = planVigente?.id ?? null;
+
+    if (id === ultimoPlanVisto) return;
+
+    ultimoPlanVisto = id;
+
+    if (id && planVigente && untrack(() => isStreaming)) {
+      pantallaDelPlan.mostrar({ id, plan: planVigente.plan });
+    }
+  });
+
+  $effect(() =>
+    pantallaDelPlan.conectar({
+      aprobar: (plan) => void handleImplementPlan(plan),
+      pedirCambios: (texto) => void handleRequestPlanChanges(texto)
+    })
+  );
+
+  function handleOpenPlan(plan: PlanMostrado) {
+    // La versión vigente, si ya se aprobó, se muestra como se aprobó.
+    if (planVigente && plan.id === planVigente.id && planAprobado) {
+      pantallaDelPlan.mostrar({ id: plan.id, plan: planAprobado });
+      return;
+    }
+
+    pantallaDelPlan.mostrar(plan);
+  }
+
+  function handleOpenLatestPlan() {
+    if (planVigente) handleOpenPlan({ id: planVigente.id, plan: planVigente.plan });
+  }
+
+  /**
+   * Pedirle al asistente que ponga una imagen adjunta en la lección abierta.
+   *
+   * Es un mensaje, no una edición directa: dónde va la imagen lo decide el
+   * contenido de la lección, y eso lo lee el agente.
+   */
+  function handleUseImageInLesson(url: string) {
+    if (chat.status === 'streaming') return;
+
+    void handleSend(t.get('ai_assistant.attachments.use_in_lesson_prompt', { url }));
+  }
 
   // Show an activity card whenever the agent calls any tool.
   // Hides automatically once the agent finishes cleanly; stays visible if stopped mid-way.
@@ -1185,7 +1465,14 @@
   });
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="relative flex min-h-0 flex-1 flex-col"
+  ondragenter={handleDragEnter}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
   <ChatHeader
     {tokenUsage}
     {isStudent}
@@ -1211,11 +1498,15 @@
     {isStreaming}
     {isStudent}
     {courseId}
-    {planExecutionState}
+    resumeState={planExecutionState}
     {quickActions}
     onQuickAction={handleQuickAction}
-    onImplementPlan={handleImplementPlan}
-    onRequestPlanChanges={handleRequestPlanChanges}
+    latestPlanId={planVigente?.id ?? null}
+    onOpenPlan={handleOpenPlan}
+    onOpenLatestPlan={handleOpenLatestPlan}
+    {nombrar}
+    {esFuenteDelCurso}
+    onUseImageInLesson={puedeUsarImagenEnLeccion ? handleUseImageInLesson : undefined}
     onSubmitTemplateAnswers={handleSubmitTemplateAnswers}
     onSkipTemplateForm={handleSkipTemplateForm}
     onSubmitDiscoveryAnswers={handleSubmitDiscoveryAnswers}
@@ -1251,19 +1542,33 @@
       {isStreaming}
       {isExhausted}
       {isUploading}
-      {uploadedDocument}
+      uploadedDocument={uploadedDocument?.origin === 'one_off' ? uploadedDocument : null}
       {mentionItems}
       {isStudent}
       {tutorBlocked}
       focusSignal={focusInputSignal}
       error={chat.error}
       canRetry={!!lastSentText && !isStreaming}
-      courseSourcesCount={sourcesApi.sources.length}
       contextUsage={showContextIndicator ? contextUsage : undefined}
       onSend={handleSend}
       onRetry={handleRetry}
       onStop={handleStop}
       onFileSelect={handleFileSelect}
       onRemoveDocument={handleRemoveDocument}
+      attachments={adjuntos}
+      canAttachImages={puedeAdjuntarImagenes}
+      canSend={puedeEnviar(inputValue, adjuntos)}
+      onAddImages={agregarImagenes}
+      onRemoveAttachment={quitarAdjunto}
     />
+
+  {#if arrastrandoImagen}
+    <div
+      class="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-(--primary) bg-(--background)/90 text-center"
+    >
+      <ImagePlusIcon size={22} class="ui:text-primary" />
+      <p class="text-sm font-medium">{$t('ai_assistant.attachments.drop_here')}</p>
+      <p class="ui:text-muted-foreground text-xs">{$t('ai_assistant.attachments.drop_hint')}</p>
+    </div>
+  {/if}
 </div>

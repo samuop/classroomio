@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { MentionRef, MentionTarget } from '$features/ai-assistant/utils/mentions';
   import SparklesIcon from '@lucide/svelte/icons/sparkles';
-  import LoaderIcon from '@lucide/svelte/icons/loader';
+  import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
   import { Button } from '@cio/ui/base/button';
   import MessageBubble from '$features/ai-assistant/message-bubble.svelte';
-  import ProgressCard from '$features/ai-assistant/progress-card.svelte';
+  import AgentWork from '$features/ai-assistant/agent-work.svelte';
   import { t } from '$lib/utils/functions/translations';
-  import type { ProgressStep, ToolLineUi } from '$features/ai-assistant/utils/tool-labels';
+  import type { NombrarPorId, ProgressStep } from '$features/ai-assistant/utils/tool-labels';
+  import type { PlanMostrado } from '$features/ai-assistant/utils/plan-screen.svelte';
   import type { AiAssistantMessage, AiAssistantMessageMetadata } from '$features/ai-assistant/utils/types';
   import type { CourseTemplateId, TemplateFormField } from '@cio/ai-assistant';
 
@@ -15,14 +16,10 @@
     prompt: string;
   }
 
-  interface PlanExecutionState {
-    titleKey: string;
-    steps: ProgressStep[];
-    currentActionLine?: ToolLineUi;
+  /** Cuándo ofrecer «Continuar»: la ronda se cortó con trabajo pendiente. */
+  interface ResumeState {
     isStopped: boolean;
-    /** True while the assistant is invoking course-mutation tools (see `MUTATION_TOOLS`). */
-    hasMutations?: boolean;
-    /** Set when the server reported the plan is still incomplete → drives the Continue button copy. */
+    /** Set when the server reported the plan is still incomplete → drives the notice copy. */
     pendingSummary?: { pendingCount: number; emptyCount: number };
   }
 
@@ -31,11 +28,12 @@
     isStreaming: boolean;
     isStudent: boolean;
     courseId: string;
-    planExecutionState: PlanExecutionState | null;
+    resumeState: ResumeState | null;
     quickActions: QuickActionOption[];
     onQuickAction: (action: string) => void;
-    onImplementPlan: (editedPlan: unknown) => void;
-    onRequestPlanChanges: () => void;
+    latestPlanId: string | null;
+    onOpenPlan: (plan: PlanMostrado) => void;
+    onOpenLatestPlan: () => void;
     onSubmitTemplateAnswers: (payload: {
       templateId: CourseTemplateId;
       answers: Record<string, string>;
@@ -52,6 +50,9 @@
     onResume: () => void;
     onMentionClick: (route: string, mention?: MentionRef) => void;
     mentionTargets?: MentionTarget[];
+    nombrar?: NombrarPorId;
+    onUseImageInLesson?: (url: string) => void;
+    esFuenteDelCurso?: (documentId: string) => boolean;
   }
 
   let {
@@ -59,11 +60,12 @@
     isStreaming,
     isStudent,
     courseId,
-    planExecutionState,
+    resumeState,
     quickActions,
     onQuickAction,
-    onImplementPlan,
-    onRequestPlanChanges,
+    latestPlanId,
+    onOpenPlan,
+    onOpenLatestPlan,
     onSubmitTemplateAnswers,
     onSkipTemplateForm,
     onSubmitDiscoveryAnswers,
@@ -71,14 +73,15 @@
     onRetryStep,
     onResume,
     onMentionClick,
-    mentionTargets
+    mentionTargets,
+    nombrar,
+    onUseImageInLesson,
+    esFuenteDelCurso
   }: Props = $props();
 
   let messagesContainer: HTMLDivElement | undefined = $state();
   let lastMessageCount = $state(0);
-  let lastStepsCount = $state(0);
-  let lastCurrentActionSig = $state('');
-  let lastStreamingSig = $state(0);
+  let lastStreamingSig = $state('');
   // True when the user is at (or very near) the bottom. Streaming auto-scroll is gated on this
   // so scrolling up doesn't get clobbered by the next token.
   let isPinnedToBottom = $state(true);
@@ -95,24 +98,39 @@
 
   const isEmpty = $derived(messages.length === 0);
 
-  // Total text length of the most recent assistant message — grows as tokens stream in.
-  // Used to keep the view pinned to the latest text while the AI is typing.
-  const streamingContentSig = $derived.by(() => {
-    if (messages.length === 0) return 0;
+  /**
+   * Cuándo empezó la ronda en curso, para el contador de la línea viva. Se toma
+   * en el flanco: el momento en que el chat pasa a transmitir.
+   */
+  let startedAt = $state<number | null>(null);
+  let wasStreaming = false;
 
+  $effect(() => {
+    const streamingNow = isStreaming;
+
+    if (streamingNow && !wasStreaming) startedAt = Date.now();
+
+    wasStreaming = streamingNow;
+  });
+
+  /** El docente ya mandó y todavía no llegó ni una parte de la respuesta. */
+  const waitingForReply = $derived(isStreaming && messages[messages.length - 1]?.role !== 'assistant');
+
+  // Grows as the latest message streams in — text, reasoning and tool calls alike —
+  // so the view stays pinned to what the agent is doing right now.
+  const streamingContentSig = $derived.by(() => {
     const last = messages[messages.length - 1];
 
-    if (last.role !== 'assistant') return 0;
+    if (!last || last.role !== 'assistant') return '';
 
-    let total = 0;
+    let chars = 0;
 
     for (const part of last.parts ?? []) {
-      if ((part as { type?: string }).type === 'text') {
-        total += ((part as { text?: string }).text ?? '').length;
-      }
+      const text = (part as { text?: string }).text;
+      if (typeof text === 'string') chars += text.length;
     }
 
-    return total;
+    return `${last.parts?.length ?? 0}:${chars}`;
   });
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
@@ -144,57 +162,47 @@
     // Use 'auto' during streaming — smooth scrolls queue up per token and lag behind the cursor.
     scrollToBottom('auto');
   });
-
-  $effect(() => {
-    if (!messagesContainer || !planExecutionState) return;
-
-    const stepsCount = planExecutionState.steps.length;
-    if (stepsCount !== lastStepsCount) {
-      lastStepsCount = stepsCount;
-      if (isPinnedToBottom) scrollToBottom();
-      return;
-    }
-
-    const actionSig = planExecutionState.currentActionLine ? JSON.stringify(planExecutionState.currentActionLine) : '';
-
-    if (actionSig !== lastCurrentActionSig) {
-      lastCurrentActionSig = actionSig;
-      if (isPinnedToBottom) scrollToBottom();
-    }
-  });
 </script>
 
-<div class="flex-1 overflow-y-auto overscroll-contain p-4" bind:this={messagesContainer} onscroll={handleScroll}>
+<div class="flex-1 overflow-y-auto overscroll-contain px-5 py-5" bind:this={messagesContainer} onscroll={handleScroll}>
   {#if isEmpty}
-    <!-- Empty state with quick actions -->
-    <div class="flex h-full flex-col items-center justify-center gap-4">
-      <div class="flex flex-col items-center gap-2 text-center">
-        <SparklesIcon size={32} class="ui:text-muted-foreground" />
-        <p class="ui:text-muted-foreground text-sm">
+    <div class="flex min-h-full flex-col justify-end gap-5 pb-2 sm:justify-center">
+      <div class="flex flex-col gap-2 px-0.5">
+        <span class="flex size-9 items-center justify-center rounded-xl bg-(--primary)/10 text-(--primary)">
+          <SparklesIcon size={18} />
+        </span>
+        <h2 class="text-lg font-semibold text-balance">
+          {$t(isStudent ? 'ai_assistant.student_greeting' : 'ai_assistant.greeting')}
+        </h2>
+        <p class="ui:text-muted-foreground text-sm text-pretty">
           {$t(isStudent ? 'ai_assistant.student_empty_state' : 'ai_assistant.empty_state')}
         </p>
       </div>
 
-      <div class="flex flex-wrap justify-center gap-2">
+      <div class="flex flex-col gap-1.5">
         {#each quickActions as option (option.key)}
           <button
+            type="button"
             onclick={() => onQuickAction(option.prompt)}
-            class="ui:text-muted-foreground hover:ui:bg-muted cursor-pointer rounded-full border px-3 py-1.5 text-xs transition-colors"
+            class="group/sugerencia flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition-colors hover:bg-(--muted)"
           >
-            {$t(option.key)}
+            <span class="min-w-0">{$t(option.key)}</span>
+            <ArrowUpRightIcon
+              size={14}
+              class="ui:text-muted-foreground shrink-0 transition-transform group-hover/sugerencia:translate-x-0.5 group-hover/sugerencia:-translate-y-0.5"
+            />
           </button>
         {/each}
       </div>
     </div>
   {:else}
-    <!-- Message list -->
-    <div class="flex flex-col gap-3">
+    <div class="flex flex-col gap-6">
       {#each messages as message, messageIndex (message.id)}
         {@const compaction = (message.metadata as AiAssistantMessageMetadata | undefined)?.compaction}
         {@const isLast = messageIndex === messages.length - 1}
 
         {#if compaction}
-          <p class="ui:text-muted-foreground mx-1 px-2 text-[11px] leading-snug">
+          <p class="ui:text-muted-foreground px-1 text-center text-[11px] leading-snug">
             {$t('ai_assistant.context_compacted_badge', { count: compaction.originalMessageCount })}
           </p>
         {/if}
@@ -205,51 +213,42 @@
           {courseId}
           {isStreaming}
           {isLast}
-          liveProgressActive={isLast && !isStudent && planExecutionState !== null}
-          {onImplementPlan}
-          {onRequestPlanChanges}
+          {startedAt}
+          {nombrar}
+          {latestPlanId}
+          {onOpenPlan}
+          {onOpenLatestPlan}
           {onSubmitTemplateAnswers}
           {onSkipTemplateForm}
           {onSubmitDiscoveryAnswers}
           {onSkipDiscoveryForm}
+          onRetryStep={isStudent ? undefined : onRetryStep}
           {onMentionClick}
           {mentionTargets}
+          {onUseImageInLesson}
+          {esFuenteDelCurso}
         />
       {/each}
 
-      {#if isStreaming && (isStudent || !planExecutionState)}
-        <div class="flex items-start">
-          <div class="ui:bg-muted rounded-lg px-3 py-2">
-            <LoaderIcon size={16} class="ui:text-muted-foreground animate-spin" />
-          </div>
-        </div>
+      {#if waitingForReply}
+        <AgentWork message={null} isLive {startedAt} {courseId} onNavigate={onMentionClick} {nombrar} />
       {/if}
 
-      {#if planExecutionState && !isStudent}
-        <div class="mt-2">
-          <ProgressCard
-            titleKey={planExecutionState.titleKey}
-            steps={planExecutionState.steps}
-            currentActionLine={planExecutionState.currentActionLine}
-            {courseId}
-            onNavigate={onMentionClick}
-            isStopped={planExecutionState.isStopped}
-            {isStreaming}
-            {onRetryStep}
-          />
-          {#if planExecutionState.isStopped}
-            {#if planExecutionState.pendingSummary}
-              <p class="ui:text-muted-foreground mt-2 text-xs">
-                {$t('ai_assistant.plan_incomplete_notice', {
-                  pending: planExecutionState.pendingSummary.pendingCount,
-                  empty: planExecutionState.pendingSummary.emptyCount
-                })}
-              </p>
+      {#if resumeState?.isStopped && !isStudent && !isStreaming}
+        <div class="flex flex-col gap-2 rounded-xl border px-3 py-2.5">
+          <p class="ui:text-muted-foreground text-xs">
+            {#if resumeState.pendingSummary}
+              {$t('ai_assistant.plan_incomplete_notice', {
+                pending: resumeState.pendingSummary.pendingCount,
+                empty: resumeState.pendingSummary.emptyCount
+              })}
+            {:else}
+              {$t('ai_assistant.stopped_content_kept')}
             {/if}
-            <Button size="sm" variant="default" onclick={onResume} class="mt-2 w-full">
-              {$t('ai_assistant.resume')}
-            </Button>
-          {/if}
+          </p>
+          <Button size="sm" variant="default" onclick={onResume} class="w-full">
+            {$t('ai_assistant.resume')}
+          </Button>
         </div>
       {/if}
     </div>

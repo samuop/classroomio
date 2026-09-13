@@ -124,6 +124,39 @@ class AiAssistantApi extends BaseApiWithErrors {
     return meta;
   }
 
+  /**
+   * Sube una imagen adjunta a un mensaje del chat y devuelve su dirección pública.
+   *
+   * Null si falla: quien llama marca la miniatura con error y el docente decide si
+   * la quita o la vuelve a elegir.
+   */
+  async attachImage(
+    file: File,
+    courseId: string
+  ): Promise<{ url: string; mediaType: string; filename: string } | null> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await apiClient.request(
+        `${getRequestBaseUrl()}/agent/attachments/image?courseId=${encodeURIComponent(courseId)}`,
+        { method: 'POST', body: formData, credentials: 'include' }
+      );
+      const result = (await response.json()) as {
+        success: boolean;
+        data?: { url: string; mediaType: string; filename: string };
+      };
+
+      if (result.success && result.data) {
+        return result.data;
+      }
+    } catch (error) {
+      console.error('Error attaching image:', error);
+    }
+
+    return null;
+  }
+
   async uploadDocument(
     file: File,
     courseId: string,

@@ -119,12 +119,21 @@ import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
+import {
+  descargarComoDataUrl,
+  imagenesParaElModelo,
+  prepararImagenesAdjuntas
+} from '@api/services/agent/chat-images';
+import { getStorageConfig } from '@api/config/storage';
+import { MAX_IMAGE_SIZE } from '@api/constants/upload';
+import { pideCambiosAlPlan } from '@api/services/agent/plan-revision';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
 import { agentRunsRouter } from './runs';
 import { agentDocumentsRouter } from './documents';
 import { agentDiagramsRouter } from './diagrams';
 import { agentImagesRouter } from './images';
+import { agentAttachmentsRouter } from './attachments';
 
 /**
  * Read an extended-thinking budget from the environment.
@@ -154,7 +163,8 @@ const agentCoreRouter = new Hono()
           role: AgentRole.STUDENT,
           usage: { used: 0, allowance: 0, creditBalance: 0, remaining: 0 },
           tutor: { enabled: false, capRemaining: null, cap: null, enforced: false },
-          contextWindow: resolveAgentContextBudget()
+          contextWindow: resolveAgentContextBudget(),
+          imageInput: false
         };
 
         return c.json({ success: true, data: status });
@@ -175,7 +185,13 @@ const agentCoreRouter = new Hono()
         role,
         usage,
         tutor,
-        contextWindow: resolveAgentContextBudget()
+        contextWindow: resolveAgentContextBudget(),
+        // Sólo el equipo del curso adjunta imágenes, y sólo con un modelo que las ve.
+        imageInput:
+          role === AgentRole.TEACHER &&
+          (providerConfig.provider === AIProvider.GOOGLE ||
+            providerConfig.provider === AIProvider.ANTHROPIC ||
+            providerConfig.provider === AIProvider.OPENAI)
       };
 
       return c.json({ success: true, data: status });
@@ -1115,9 +1131,23 @@ const agentCoreRouter = new Hono()
       // re-read anything cheaply (get_course_structure/get_lesson_content).
       // Without this, one build round (40 steps folded into ONE assistant
       // message) kept 300K-1M chars of tool inputs inside the keep-window.
+      //
+      // Las imágenes adjuntas viajan sólo en las últimas vueltas del docente, y
+      // siempre con su dirección: ver `chat-images.ts`. El razonamiento de las
+      // respuestas viejas tampoco vuelve al modelo: con los pensamientos de Gemini
+      // encendidos cada respuesta guardada trae los suyos, y reenviarlos es pagar
+      // otra vez lo que el modelo ya pensó.
+      //
+      // Y las imágenes le llegan con sus bytes, bajadas acá y sólo del bucket
+      // propio: la dirección la manda el navegador (ver `imagenesParaElModelo`).
+      const mensajesConImagenes = await imagenesParaElModelo(prepararImagenesAdjuntas(contextManaged.messages), {
+        basesPermitidas: [getStorageConfig().mediaPublicBaseUrl],
+        descargar: (url, tipo) => descargarComoDataUrl(url, tipo, MAX_IMAGE_SIZE)
+      });
       const convertedMessages = pruneMessages({
-        messages: sanitizeDanglingToolCalls(await convertToModelMessages(contextManaged.messages as any)),
+        messages: sanitizeDanglingToolCalls(await convertToModelMessages(mensajesConImagenes as any)),
         toolCalls: 'before-last-2-messages',
+        reasoning: 'before-last-message',
         emptyMessages: 'remove'
       });
       let completedStepCount = 0;
@@ -1375,6 +1405,11 @@ const agentCoreRouter = new Hono()
               ) as Array<keyof typeof agentTools & string>)
             : undefined;
 
+      const forzarPlanRevisado =
+        role === AgentRole.TEACHER &&
+        pideCambiosAlPlan(messages) &&
+        (!activeToolNames || (activeToolNames as readonly string[]).includes('generate_course_plan'));
+
       // Capa 2b: reference the document's explicit cache (if one was created)
       // so its ~large text is billed at ~10% instead of re-sent inline.
       // Provider-agnostic: `documentCache.providerOptions` carries the
@@ -1426,7 +1461,7 @@ const agentCoreRouter = new Hono()
               : 0
           : 0;
 
-      const providerOptions: Parameters<typeof streamText>[0]['providerOptions'] =
+      const withThinking: Parameters<typeof streamText>[0]['providerOptions'] =
         thinkingBudget > 0
           ? {
               ...(cacheProviderOptions ?? {}),
@@ -1436,6 +1471,31 @@ const agentCoreRouter = new Hono()
               }
             }
           : cacheProviderOptions;
+
+      /**
+       * Los pensamientos de Gemini, para mostrar mientras trabaja.
+       *
+       * Gemini ya piensa en cada paso —se factura como `reasoningTokens`— pero sin
+       * `includeThoughts` no devuelve nada de eso, y el panel sólo podía decir
+       * «Pensando…» en los segundos en que no corre ninguna herramienta. Con esto
+       * llegan resúmenes de lo que está razonando. Sólo para el equipo del curso: al
+       * estudiante le alcanza con la respuesta. `AGENT_GOOGLE_THOUGHTS=false` lo
+       * apaga sin deploy.
+       */
+      const includeGoogleThoughts =
+        providerConfig.provider === AIProvider.GOOGLE &&
+        role === AgentRole.TEACHER &&
+        process.env.AGENT_GOOGLE_THOUGHTS?.trim().toLowerCase() !== 'false';
+
+      const providerOptions: Parameters<typeof streamText>[0]['providerOptions'] = includeGoogleThoughts
+        ? {
+            ...(withThinking ?? {}),
+            google: {
+              ...((withThinking?.google as Record<string, unknown>) ?? {}),
+              thinkingConfig: { includeThoughts: true }
+            }
+          }
+        : withThinking;
 
       if (thinkingBudget > 0) {
         console.log(`[agent.chat] extended thinking enabled phase=${teacherPromptMode} budget=${thinkingBudget}`);
@@ -1533,6 +1593,12 @@ const agentCoreRouter = new Hono()
           // herramientas que corran dentro de él leen el número correcto.
           presupuestoDePasos.paso = stepNumber + 1;
 
+          // Un pedido de cambios al plan empieza SIEMPRE por el plan nuevo: sin
+          // esto el modelo contestaba en prosa. Ver `plan-revision.ts`.
+          if (stepNumber === 0 && forzarPlanRevisado) {
+            return { toolChoice: { type: 'tool', toolName: 'generate_course_plan' } };
+          }
+
           if (stepNumber < 5) return {};
           return {
             messages: pruneMessages({
@@ -1544,7 +1610,7 @@ const agentCoreRouter = new Hono()
               // context diet this pruning exists for. Keeping only the latest is
               // also what Anthropic's tool-use protocol requires: the thinking
               // that precedes the tool_use being continued must survive.
-              ...(thinkingBudget > 0 ? { reasoning: 'before-last-message' as const } : {}),
+              ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
               emptyMessages: 'remove'
             })
           };
@@ -1772,6 +1838,8 @@ const agentCoreRouter = new Hono()
           }
 
           return {
+            // Cuánto trabajó la ronda, para el «Trabajó 59 s» del panel.
+            durationMs: Date.now() - startTime,
             tokenUsage: {
               // Reported verbatim by the provider (AI SDK v7) — never recomputed.
               promptTokens: part.totalUsage.inputTokens,
@@ -1881,4 +1949,5 @@ export const agentRouter = new Hono()
   .route('/runs', agentRunsRouter)
   .route('/documents', agentDocumentsRouter)
   .route('/lessons', agentDiagramsRouter)
-  .route('/lessons', agentImagesRouter);
+  .route('/lessons', agentImagesRouter)
+  .route('/attachments', agentAttachmentsRouter);

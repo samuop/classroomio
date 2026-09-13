@@ -244,6 +244,12 @@ export interface AgentStatus {
    * Overridable via AGENT_CONTEXT_BUDGET; see DEFAULT_AGENT_CONTEXT_BUDGET.
    */
   contextWindow: number;
+  /**
+   * Whether this user can attach images to a chat message: course team only, and
+   * only when the chat model can see them. The composer hides the control
+   * otherwise, instead of accepting an image the model would silently ignore.
+   */
+  imageInput: boolean;
 }
 
 /**

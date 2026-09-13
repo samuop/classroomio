@@ -20,6 +20,12 @@
     typeLabel?: (item: MentionItem) => string;
     /** Action buttons rendered inside the textarea container (e.g. send, attach). */
     actions?: Snippet;
+    /** Content rendered inside the frame, above the textarea (e.g. attachment previews). */
+    header?: Snippet;
+    /** Extra classes for the bordered frame around the textarea. */
+    frameClass?: string;
+    /** Extra classes for the row that holds `actions`. */
+    actionsClass?: string;
     /** Empty state text when no mention items match the query. */
     emptyMessage?: string;
     placeholder?: string;
@@ -37,6 +43,9 @@
     icon,
     typeLabel,
     actions,
+    header,
+    frameClass,
+    actionsClass,
     emptyMessage = 'No results',
     placeholder = '',
     disabled = false,
@@ -157,8 +166,15 @@
   {/if}
 
   <div
-    class="ui:border-input ui:focus-within:border-ring ui:focus-within:ring-ring/50 ui:rounded-lg ui:border ui:shadow-xs ui:transition-[color,box-shadow] ui:focus-within:ring-[3px]"
+    class={cn(
+      'ui:border-input ui:focus-within:border-ring ui:focus-within:ring-ring/50 ui:rounded-lg ui:border ui:shadow-xs ui:transition-[color,box-shadow] ui:focus-within:ring-[3px]',
+      frameClass
+    )}
   >
+    {#if header}
+      {@render header()}
+    {/if}
+
     <Textarea
       bind:ref
       bind:value
@@ -171,7 +187,7 @@
     />
 
     {#if actions}
-      <div class="ui:flex ui:items-center ui:gap-1 ui:px-2 ui:pb-2">
+      <div class={cn('ui:flex ui:items-center ui:gap-1 ui:px-2 ui:pb-2', actionsClass)}>
         {@render actions()}
       </div>
     {/if}

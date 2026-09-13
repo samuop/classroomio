@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Popover from '@cio/ui/base/popover';
   import { Input } from '@cio/ui/base/input';
+  import { Tooltip, Provider, Trigger, Content } from '@cio/ui/base/tooltip';
   import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
   import { tick } from 'svelte';
 
@@ -74,9 +75,9 @@
   let renameCommitInFlight = $state(false);
   let snapshotConversationIdForRename = $state<string | null>(null);
 
-  const canRenameConversation = $derived(
-    Boolean(activeConversationId && conversationTitle && conversationTitle !== 'New conversation')
-  );
+  const hasConversationTitle = $derived(!!conversationTitle && conversationTitle !== 'New conversation');
+
+  const canRenameConversation = $derived(Boolean(activeConversationId && hasConversationTitle));
 
   function handleLoadConversation(id: string) {
     onLoadConversation(id);
@@ -172,161 +173,147 @@
       cancelRenameConversation();
     }
   }
+
+  /**
+   * El cupo, en la misma línea que el título.
+   *
+   * Ocupaba una fila entera debajo del encabezado —rótulo, porcentaje y barra—
+   * para un número que se mira de vez en cuando. Queda una barra corta con el
+   * porcentaje, y el rótulo pasa al globo de ayuda. Barra y no anillo a
+   * propósito: el anillo de abajo, junto a Enviar, es la ventana de contexto, y
+   * dos anillos con dos porcentajes distintos se confunden.
+   *
+   * Las reglas de qué se ve no cambian:
+   * - el alumno ve sólo el porcentaje (hoy no se dibuja: no hay tope por alumno);
+   * - fuera del administrador de plataforma no se muestran fichas ni el total,
+   *   porque con el total y el porcentaje lo consumido se despeja con una división;
+   * - self-hosted no tiene cupo, así que no hay contador.
+   */
+  const cupo = $derived.by((): { porcentaje: number; detalle: string } | null => {
+    if (isStudent && studentMessageUsage && studentMessageUsage.cap > 0) {
+      const porcentaje = Math.min(100, Math.round((studentMessageUsage.used / studentMessageUsage.cap) * 100));
+
+      return {
+        porcentaje,
+        detalle: $isPlatformAdmin
+          ? `${studentMessageUsage.used.toLocaleString()} / ${studentMessageUsage.cap.toLocaleString()} ${t.get('ai_assistant.messages_used_label')}`
+          : `${t.get('ai_assistant.messages_percent_label')}: ${porcentaje}%`
+      };
+    }
+
+    if (!isStudent && !isSelfHosted && tokenUsage && tokenUsage.used + tokenUsage.remaining > 0) {
+      const total = tokenUsage.used + tokenUsage.remaining;
+      const porcentaje = Math.min(100, Math.round((tokenUsage.used / total) * 100));
+
+      return {
+        porcentaje,
+        detalle: $isPlatformAdmin
+          ? `${tokenUsage.used.toLocaleString()} / ${total.toLocaleString()} ${t.get('ai_assistant.tokens_label')}`
+          : `${t.get('settings.ai_credits.chart.total_percent')}: ${porcentaje}%`
+      };
+    }
+
+    return null;
+  });
+
+  const colorDelCupo = $derived(
+    !cupo ? '' : cupo.porcentaje > 90 ? 'bg-red-500' : cupo.porcentaje > 70 ? 'bg-amber-500' : 'bg-(--primary)'
+  );
 </script>
 
-<div class="border-b px-4 py-3">
-  <div class="flex items-center justify-between">
-    <div class="flex min-w-0 items-center gap-2">
-      <SparklesIcon size={18} class="ui:text-primary shrink-0" />
-      <div class="min-w-0">
-        <h3 class="text-sm font-semibold">{$t('course.navItems.nav_ai_assistant')}</h3>
-        {#if conversationTitle && conversationTitle !== 'New conversation'}
-          {#if editingConversationTitle}
-            <div class="min-w-0">
-              <Input
-                bind:ref={titleInputRef}
-                bind:value={draftConversationTitle}
-                class="ui:h-7 ui:min-h-0 ui:px-1.5 ui:py-0 text-xs"
-                placeholder={$t('ai_assistant.rename_chat_placeholder')}
-                aria-label={$t('ai_assistant.rename_chat_input_aria')}
-                onkeydown={handleTitleKeydown}
-                onblur={cancelRenameConversation}
-              />
-              {#if renameConversationError}
-                <p class="ui:text-destructive mt-0.5 text-[10px]">{renameConversationError}</p>
-              {/if}
-            </div>
-          {:else}
-            <button
-              type="button"
-              class="ui:text-muted-foreground ui:max-w-full ui:cursor-pointer ui:rounded-md ui:border ui:border-transparent ui:px-1.5 ui:py-0.5 hover:ui:bg-muted/40 hover:ui:border-border truncate text-left text-xs"
-              aria-label={$t('ai_assistant.rename_chat_aria')}
-              disabled={!canRenameConversation}
-              onclick={startRenameConversation}
-            >
-              {conversationTitle}
-            </button>
-          {/if}
-        {/if}
-      </div>
-    </div>
-    <div class="flex items-center gap-2">
-      <IconButton
-        onclick={onNewChat}
-        disabled={isNewChatDisabled}
-        variant="outline"
-        size="icon-xs"
-        tooltip={$t('ai_assistant.new_chat')}
+<div class="flex items-center gap-2 border-b px-4 py-2.5">
+  <SparklesIcon size={16} class="ui:text-primary shrink-0" />
+
+  <div class="min-w-0 flex-1">
+    {#if editingConversationTitle}
+      <Input
+        bind:ref={titleInputRef}
+        bind:value={draftConversationTitle}
+        class="ui:h-7 ui:min-h-0 ui:px-1.5 ui:py-0 text-sm"
+        placeholder={$t('ai_assistant.rename_chat_placeholder')}
+        aria-label={$t('ai_assistant.rename_chat_input_aria')}
+        onkeydown={handleTitleKeydown}
+        onblur={cancelRenameConversation}
+      />
+      {#if renameConversationError}
+        <p class="ui:text-destructive mt-0.5 text-[10px]">{renameConversationError}</p>
+      {/if}
+    {:else if hasConversationTitle}
+      <!-- El título de la conversación ES el encabezado: «Asistente» ya lo dice el panel. -->
+      <button
+        type="button"
+        class="block max-w-full cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-left text-sm font-medium transition-colors hover:border-(--border) hover:bg-(--muted)/40 disabled:cursor-default"
+        aria-label={$t('ai_assistant.rename_chat_aria')}
+        title={conversationTitle}
+        disabled={!canRenameConversation}
+        onclick={startRenameConversation}
       >
-        <PlusIcon size={16} />
-      </IconButton>
-
-      <Popover.Root bind:open={historyPopoverOpen}>
-        <Popover.Trigger>
-          {#snippet child({ props })}
-            <Button
-              variant="outline"
-              size="icon-xs"
-              {...props}
-              aria-label={$t('ai_assistant.chat_history')}
-              title={$t('ai_assistant.chat_history')}
-            >
-              <HistoryIcon size={16} />
-            </Button>
-          {/snippet}
-        </Popover.Trigger>
-        <Popover.Content class="ui:p-0! w-72" align="center">
-          <ChatHistoryPopover
-            {conversations}
-            {activeConversationId}
-            onLoad={handleLoadConversation}
-            onDelete={onDeleteConversation}
-          />
-        </Popover.Content>
-      </Popover.Root>
-
-      <IconButton onclick={closeAiAssistant} variant="outline" size="icon-xs">
-        <XIcon size={16} />
-      </IconButton>
-    </div>
+        {conversationTitle}
+      </button>
+    {:else}
+      <h3 class="px-1.5 text-sm font-semibold">{$t('course.navItems.nav_ai_assistant')}</h3>
+    {/if}
   </div>
-  <!--
-    HOY NO SE DIBUJA: no hay tope por alumno, asi que la API manda `cap: null` y
-    `studentMessageUsage` queda en null. Lo que gasta el alumno sale del cupo de
-    su empresa, que no es un dato suyo y no se le muestra.
 
-    Se deja armado —y no a medias— porque el tope vuelve mas adelante, y con el
-    la regla de visibilidad: el alumno ve el PORCENTAJE y nada mas. Escrito asi,
-    el dia que se prenda no puede colarse un numero por olvido.
-  -->
-  {#if isStudent && studentMessageUsage}
-    {@const usagePercent = Math.min(100, Math.round((studentMessageUsage.used / studentMessageUsage.cap) * 100))}
-    <div class="mt-2">
-      <!--
-        Mismo criterio que el contador del docente de abajo: se va el consumido
-        Y el tope — con el tope a la vista, lo consumido se despeja con una
-        division, asi que esconder solo una de las dos mitades no esconde nada.
-      -->
-      <div class="ui:text-muted-foreground flex justify-between text-[10px]">
-        {#if $isPlatformAdmin}
+  {#if cupo}
+    <Provider>
+      <Tooltip>
+        <Trigger>
           <span
-            >{studentMessageUsage.used.toLocaleString()} / {studentMessageUsage.cap.toLocaleString()}
-            {$t('ai_assistant.messages_used_label')}</span
+            class="ui:text-muted-foreground flex shrink-0 cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-xs tabular-nums"
+            aria-label={cupo.detalle}
           >
-        {:else}
-          <span>{$t('ai_assistant.messages_percent_label')}</span>
-        {/if}
-        <span>{usagePercent}%</span>
-      </div>
-      <div class="ui:bg-muted mt-0.5 h-1 w-full rounded-full">
-        <div
-          class="h-1 rounded-full transition-all {usagePercent > 90
-            ? 'bg-red-500'
-            : usagePercent > 70
-              ? 'bg-amber-500'
-              : 'ui:bg-primary'}"
-          style="width: {usagePercent}%"
-        ></div>
-      </div>
-    </div>
-    <!--
-      Self-hosted deliberately shows NO token counter here. The figure available
-      is the conversation's lifetime billing total, which runs to millions on a
-      normal build and is not a number the instructor can act on: it is not a
-      budget (self-hosted has none) and it is not occupancy (the context gauge in
-      the composer is). All it did was alarm. Hosted plans keep their counter
-      below, where the number really is a quota being spent.
-    -->
-  {:else if !isStudent && !isSelfHosted && tokenUsage && tokenUsage.used + tokenUsage.remaining > 0}
-    {@const totalBudget = tokenUsage.used + tokenUsage.remaining}
-    {@const usagePercent = Math.min(100, Math.round((tokenUsage.used / totalBudget) * 100))}
-    <div class="mt-2">
-      <!--
-        El porcentaje ya estaba a la derecha; lo que se va es el conteo de la
-        izquierda. Se va también el total, no sólo lo usado: con el porcentaje y
-        el cupo a la vista, lo consumido se despeja con una división.
-      -->
-      <div class="ui:text-muted-foreground flex justify-between text-[10px]">
-        {#if $isPlatformAdmin}
-          <span
-            >{tokenUsage.used.toLocaleString()} / {totalBudget.toLocaleString()}
-            {$t('ai_assistant.tokens_label')}</span
-          >
-        {:else}
-          <span>{$t('settings.ai_credits.chart.total_percent')}</span>
-        {/if}
-        <span>{usagePercent}%</span>
-      </div>
-      <div class="ui:bg-muted mt-0.5 h-1 w-full rounded-full">
-        <div
-          class="h-1 rounded-full transition-all {usagePercent > 90
-            ? 'bg-red-500'
-            : usagePercent > 70
-              ? 'bg-amber-500'
-              : 'ui:bg-primary'}"
-          style="width: {usagePercent}%"
-        ></div>
-      </div>
-    </div>
+            <span class="block h-1 w-8 overflow-hidden rounded-full bg-(--muted)" aria-hidden="true">
+              <span class="block h-full rounded-full {colorDelCupo}" style="width: {Math.max(cupo.porcentaje, 4)}%"
+              ></span>
+            </span>
+            {cupo.porcentaje}%
+          </span>
+        </Trigger>
+        <Content side="bottom">
+          <p class="text-xs">{cupo.detalle}</p>
+        </Content>
+      </Tooltip>
+    </Provider>
   {/if}
+
+  <div class="flex shrink-0 items-center gap-1.5">
+    <IconButton
+      onclick={onNewChat}
+      disabled={isNewChatDisabled}
+      variant="outline"
+      size="icon-xs"
+      tooltip={$t('ai_assistant.new_chat')}
+    >
+      <PlusIcon size={16} />
+    </IconButton>
+
+    <Popover.Root bind:open={historyPopoverOpen}>
+      <Popover.Trigger>
+        {#snippet child({ props })}
+          <Button
+            variant="outline"
+            size="icon-xs"
+            {...props}
+            aria-label={$t('ai_assistant.chat_history')}
+            title={$t('ai_assistant.chat_history')}
+          >
+            <HistoryIcon size={16} />
+          </Button>
+        {/snippet}
+      </Popover.Trigger>
+      <Popover.Content class="ui:p-0! w-72" align="center">
+        <ChatHistoryPopover
+          {conversations}
+          {activeConversationId}
+          onLoad={handleLoadConversation}
+          onDelete={onDeleteConversation}
+        />
+      </Popover.Content>
+    </Popover.Root>
+
+    <IconButton onclick={closeAiAssistant} variant="outline" size="icon-xs">
+      <XIcon size={16} />
+    </IconButton>
+  </div>
 </div>

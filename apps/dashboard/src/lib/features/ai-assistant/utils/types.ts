@@ -197,10 +197,13 @@ export interface AiAssistantCompactionMetadata {
   originalMessageCount: number;
 }
 
-export interface AiAssistantPlanMetadata {
-  action: 'implement_course_plan';
-  payload?: unknown;
-}
+/**
+ * `request_plan_changes` hace que el servidor obligue al agente a devolver un
+ * plan nuevo en vez de contestar en prosa (ver `plan-revision.ts` en la API).
+ */
+export type AiAssistantPlanMetadata =
+  | { action: 'implement_course_plan'; payload?: unknown }
+  | { action: 'request_plan_changes' };
 
 /**
  * Build progress as measured by the server: the approved plan reconciled against
@@ -230,6 +233,8 @@ export interface AiAssistantPlanProgress {
 
 export interface AiAssistantMessageMetadata {
   attachment?: AiAssistantMessageAttachment;
+  /** Cuánto trabajó la ronda, medido por el servidor. Ausente en mensajes viejos. */
+  durationMs?: number;
   tokenUsage?: AiAssistantMessageTokenUsage;
   planProgress?: AiAssistantPlanProgress;
   /**

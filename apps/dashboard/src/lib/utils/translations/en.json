@@ -2674,9 +2674,13 @@
               "insert_media_add_document": "Upload a document here…"
             },
             "slide": {
-              "title": "Slide",
-              "slide_link": "Slide Link",
-              "helper_message": "You can embed Google Slides or Canva Presentation"
+              "title": "Slides",
+              "slide_link": "Presentation link",
+              "helper_message": "Paste a Google Slides or Canva link, shared so anyone with the link can view it.",
+              "placeholder": "https://docs.google.com/presentation/d/…",
+              "unsupported": "This link isn't from Google Slides or Canva, so it may not show inside the lesson.",
+              "invalid": "That isn't a link. Copy the whole address, starting with https://",
+              "preview": "Preview"
             },
             "video": {
               "title": "Video",
@@ -5067,8 +5071,8 @@
     }
   },
   "ai_assistant": {
-    "empty_state": "Ask me to help with your course content — draft lessons, generate questions, or plan a course from a document.",
-    "student_empty_state": "Ask me anything about this course — get explanations, quiz yourself, or summarize what you're reading.",
+    "empty_state": "Ask me to help with your course: draft lessons, write questions, or plan it from a document.",
+    "student_empty_state": "Ask me anything about this course: explanations, practice, or a summary of what you are reading.",
     "messages_used_label": "messages this month",
     "messages_percent_label": "Used of your quota",
     "quick_action": {
@@ -5089,7 +5093,7 @@
     "todo_checklist": {
       "title": "Build progress"
     },
-    "plan_thinking": "Thinking through your request…",
+    "plan_thinking": "Thinking…",
     "plan_progress": "{completed} / {total} steps completed",
     "plan_steps_collapsed": "{count, plural, one {# step completed} other {# steps completed}}",
     "run_running": "Generating course",
@@ -5103,14 +5107,14 @@
     "plan_request_changes": "Request changes",
     "plan_estimated_cost": "Estimated cost: ~{count, number} tokens",
     "plan_estimated_cost_with_pct": "Estimated cost: ~{count, number} tokens ({pct}% of remaining)",
-    "plan_ask_changes_placeholder": "Tell me what to change about the plan…",
+    "plan_ask_changes_placeholder": "Tell me what to change in the plan…",
     "plan_ask_changes_send_aria": "Send change request",
     "stop": "Stop",
     "send": "Send",
     "copy_full_error": "Copy full error",
     "resize_panel_aria_label": "Resize AI assistant panel",
     "generic_working": "Working",
-    "input_placeholder": "Ask the AI assistant...",
+    "input_placeholder": "Message the assistant…",
     "quote_lesson_note": "Quote in assistant",
     "attach_document": "Attach a document (PDF, DOCX, PPTX)",
     "upgrade_to_upload": "Upgrade to upload documents",
@@ -5182,7 +5186,7 @@
       "paused": "Run paused. Resume to continue.",
       "paused_with_counts": "Run paused — created {counts} so far. Resume to continue."
     },
-    "stopped_content_kept": "Stopped. Created content has been kept.",
+    "stopped_content_kept": "Stopped. What was already created was kept.",
     "run_failed_after": "{action} did not finish successfully.",
     "tool": {
       "pending": {
@@ -5221,7 +5225,16 @@
         "delete_exercise": "Deleting an exercise",
         "delete_section": "Deleting a section",
         "write_lesson": "Writing the lesson from its material",
-        "read_lessons": "Reading the lessons"
+        "read_lessons": "Reading the lessons",
+        "search_document": "Searching the course sources",
+        "search_document_with_query": "Searching the sources for \"{query}\"",
+        "read_source_named": "Reading \"{name}\" from line {from}",
+        "create_lesson_named": "Creating the lesson \"{title}\"",
+        "write_lesson_named": "Writing \"{title}\"",
+        "get_lesson_content_named": "Reading \"{title}\"",
+        "edit_lesson_content_named": "Editing \"{title}\"",
+        "replace_lesson_block_named": "Editing \"{title}\"",
+        "update_lesson_content_named": "Updating \"{title}\""
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -5273,9 +5286,9 @@
     "uploading_document": "Uploading document...",
     "agent_running_warning": "The changes will appear in the course once the agent is done. Don't reload the page.",
     "agent_running_warning_dismiss": "Dismiss",
-    "error_rate_limit": "The AI service is temporarily busy. Please try again in a moment.",
-    "error_rate_limit_with_wait": "The AI service is temporarily busy. Please try again in {seconds} seconds.",
-    "error_context_too_long": "The conversation is too long. Try starting a new chat or shortening your message.",
+    "error_rate_limit": "The AI service is busy. Try again in a moment.",
+    "error_rate_limit_with_wait": "The AI service is busy. Try again in {seconds} seconds.",
+    "error_context_too_long": "The conversation is too long. Start a new chat or shorten your message.",
     "error_network": "Network error. Please check your connection and try again.",
     "error_retry": "Retry",
     "context_usage_tooltip": "Context window: {used} / {max} tokens",
@@ -5291,7 +5304,68 @@
     "plan_estimated_cost_pct": "Estimated cost: ~{pct}% of what's left",
     "context_usage_tooltip_pct": "Context window in use: {pct}%",
     "mention_not_found": "Could not find “{title}” in this course: it may have been deleted, or the link is wrong.",
-    "writer_notes_title": "To review in these lessons"
+    "writer_notes_title": "To review in these lessons",
+    "greeting": "How can I help with this course?",
+    "student_greeting": "What would you like to understand today?",
+    "activity": {
+      "thinking": "Thinking…",
+      "writing": "Writing the reply…",
+      "worked_seconds": "Worked for {seconds}s",
+      "worked_minutes": "Worked for {minutes}m {seconds}s",
+      "steps": "{count, plural, one {# step} other {# steps}}",
+      "failed_steps": "{count, plural, one {# failed} other {# failed}}",
+      "details": "See what it did",
+      "thoughts": "Reasoning",
+      "actions": "Actions",
+      "copy_reply": "Copy reply",
+      "copied": "Copied"
+    },
+    "attachments": {
+      "add_image": "Attach image",
+      "drop_here": "Drop the image to attach it",
+      "drop_hint": "PNG, JPG or WEBP, up to 5 MB",
+      "uploading": "Uploading…",
+      "failed": "Upload failed",
+      "remove": "Remove image",
+      "rejected_type": "\"{name}\" cannot be attached: only PNG, JPG or WEBP.",
+      "rejected_size": "\"{name}\" is larger than 5 MB.",
+      "rejected_count": "Up to {max} images per message.",
+      "upload_failed": "Could not upload \"{name}\". Try again.",
+      "image_alt": "Attached image: {name}",
+      "open_new_tab": "Open in a new tab",
+      "copy_link": "Copy link",
+      "link_copied": "Link copied",
+      "use_in_lesson": "Use it in this lesson",
+      "use_in_lesson_prompt": "Insert this image into the lesson I have open, where it best supports the content: {url}"
+    },
+    "plan_screen": {
+      "card_title": "Course plan",
+      "sections": "{count, plural, one {# section} other {# sections}}",
+      "lessons": "{count, plural, one {# lesson} other {# lessons}}",
+      "exercises": "{count, plural, one {# exercise} other {# exercises}}",
+      "open": "View plan",
+      "close": "Back to the course",
+      "eyebrow": "Proposed plan",
+      "approve": "Approve and build",
+      "request_changes": "Request changes",
+      "changes_placeholder": "What should change? For example: \"use 4 sections\" or \"add a lesson on safety\".",
+      "send_changes": "Send changes",
+      "cancel": "Cancel",
+      "approved": "Approved",
+      "proposed": "To review",
+      "previous_version": "Previous version",
+      "building": "Building",
+      "progress": "{completed} of {total} ready",
+      "status_done": "Ready",
+      "status_empty": "Created, no content yet",
+      "status_missing": "Pending",
+      "section": "Section {order}",
+      "exercise": "Exercise",
+      "with_exercise": "Includes an exercise",
+      "edit_hint": "You can edit any title or description before approving.",
+      "busy": "The assistant is working…",
+      "changes_sent": "Request sent. The new plan will show up here."
+    }
   },
   "side_panel": {
     "close_aria": "Close panel",

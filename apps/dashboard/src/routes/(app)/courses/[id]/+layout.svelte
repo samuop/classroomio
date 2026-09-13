@@ -18,6 +18,8 @@
   import ContentCreateModal from '$features/course/components/content/content-create-modal.svelte';
   import CourseCompletionModal from '$features/course/components/ceritficate/course-completion-modal.svelte';
   import { aiAssistantPanelDefinition } from '$features/ai-assistant';
+  import PlanScreen from '$features/ai-assistant/plan-screen.svelte';
+  import { pantallaDelPlan } from '$features/ai-assistant/utils/plan-screen.svelte';
   import { AI_ASSISTANT_PANEL_ID, initialChatPrompt, openAiAssistant } from '$features/ai-assistant/utils/store';
   import { isAssistantBlocked } from '$features/ai-assistant/utils/availability';
   import { isStudentExperience } from '$lib/utils/store/app';
@@ -226,7 +228,15 @@
         <Confetti />
       {/if}
 
-      {@render children?.()}
+      <!--
+        El plan del asistente se revisa acá, con el chat al costado. La página de
+        atrás se oculta en vez de desmontarse: un editor con cambios sin guardar
+        no puede perderlos por mirar el plan.
+      -->
+      <PlanScreen />
+      <div class={pantallaDelPlan.abierta && pantallaDelPlan.mostrado ? 'hidden' : 'contents'}>
+        {@render children?.()}
+      </div>
     {/if}
   </Sidebar.Inset>
 
