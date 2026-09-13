@@ -94,6 +94,27 @@ async function executeStudentTool<T>(
   }
 }
 
+/** Lo que ve el modelo cuando pide una lección o un ejercicio con un id que no es de este curso. */
+const ID_FUERA_DEL_CURSO =
+  'No lesson or exercise with that id exists in this course. Use only ids returned by list_course_outline or search_course.';
+
+/**
+ * true si el recurso es de este curso; false si no existe o es de otro.
+ *
+ * El error de la verificación está escrito para el docente («call
+ * get_course_structure»). Al estudiante le llegaba como error de la ronda y
+ * volvía a inventar otro id. Cualquier otro error sigue de largo.
+ */
+async function perteneceAlCurso(verificar: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await verificar();
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && (error.statusCode === 403 || error.statusCode === 404)) return false;
+    throw error;
+  }
+}
+
 function stripAnswerKeysFromQuestion(question: {
   id: number | string;
   title: string;
@@ -239,7 +260,11 @@ export function buildStudentAgentTools(
       inputSchema: readLessonParam,
       execute: async (args) => {
         return executeStudentTool('read_lesson', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          // Un id inventado llegaba al modelo como error de la ruta, que le sugería
+          // `get_course_structure`: una herramienta del docente que el estudiante no tiene.
+          if (!(await perteneceAlCurso(() => verifyLessonBelongsToCourse(args.lessonId, courseId)))) {
+            return { error: ID_FUERA_DEL_CURSO };
+          }
           const lesson = await getLesson(args.lessonId);
           const lessonWithLangs = lesson as {
             id: string;
@@ -262,11 +287,13 @@ export function buildStudentAgentTools(
 
     read_exercise: tool({
       description:
-        'Read an exercise prompt — the question text and options visible to a student. Answer keys, correct flags, and marking schemes are stripped before returning.',
+        'Read an exercise prompt — the question text and options visible to a student. Answer keys, correct flags, and marking schemes are stripped before returning. Options include wrong answers on purpose: they are not course content.',
       inputSchema: readExerciseParam,
       execute: async (args) => {
         return executeStudentTool('read_exercise', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          if (!(await perteneceAlCurso(() => verifyExerciseBelongsToCourse(args.exerciseId, courseId)))) {
+            return { error: ID_FUERA_DEL_CURSO };
+          }
           const exercise = await getExercise(args.exerciseId);
 
           const questions = (exercise.questions ?? []).map((q) =>
@@ -284,6 +311,8 @@ export function buildStudentAgentTools(
             id: exercise.id,
             title: exercise.title,
             description: exercise.description,
+            // Al lado de las opciones: el tutor llegó a dar como regla una opción incorrecta.
+            note: 'Options include wrong answers on purpose. Never present an option as something the course states; facts come from lessons.',
             questions
           };
         });

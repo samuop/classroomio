@@ -40,6 +40,11 @@ describe('prompt del tutor del estudiante', () => {
     }
   });
 
+  it('avisa que las opciones de un ejercicio no son contenido del curso', () => {
+    // Las opciones incorrectas de un examen se leían como reglas y el tutor las daba por válidas.
+    expect(conCitas).toContain('never present an option as something the course says');
+  });
+
   it('no manda a fundamentar todo en la lección abierta', () => {
     expect(conCitas).not.toContain('Use it to ground every answer');
     expect(conCitas).toContain('search the course instead of stretching the open lesson to fit');

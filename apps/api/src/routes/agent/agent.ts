@@ -127,7 +127,7 @@ import {
 import { getStorageConfig } from '@api/config/storage';
 import { MAX_IMAGE_SIZE } from '@api/constants/upload';
 import { pideCambiosAlPlan } from '@api/services/agent/plan-revision';
-import { herramientasDelPaso } from '@api/services/agent/student-final-step';
+import { cerrarConRespuesta, esUltimoPasoDelEstudiante } from '@api/services/agent/student-final-step';
 import { contenidoEnIdioma } from '@api/services/agent/lesson-content-locale';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
@@ -1606,29 +1606,30 @@ const agentCoreRouter = new Hono()
             return { toolChoice: { type: 'tool', toolName: 'generate_course_plan' } };
           }
 
-          // El estudiante contesta sí o sí: el último paso va sin herramientas.
-          const eleccion = herramientasDelPaso({
+          // El estudiante contesta sí o sí: el último paso va sin herramientas y con
+          // el pedido de responder. Ver `student-final-step.ts` para por qué las dos cosas.
+          const ultimoPasoDelEstudiante = esUltimoPasoDelEstudiante({
             esEstudiante: isStudentRound,
             paso: stepNumber,
             maximoDePasos: maxStepsForRound
           });
 
-          if (stepNumber < 5) return eleccion;
-          return {
-            ...eleccion,
-            messages: pruneMessages({
-              messages: stepMessages,
-              toolCalls: 'before-last-4-messages',
-              // With thinking on, every step adds a reasoning block that
-              // `pruneMessages` keeps by default (`reasoning: 'none'`), so a
-              // 40-step build would carry ~40 of them by the end and undo the
-              // context diet this pruning exists for. Keeping only the latest is
-              // also what Anthropic's tool-use protocol requires: the thinking
-              // that precedes the tool_use being continued must survive.
-              ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
-              emptyMessages: 'remove'
-            })
-          };
+          if (stepNumber < 5) return ultimoPasoDelEstudiante ? cerrarConRespuesta(stepMessages) : {};
+
+          const podados = pruneMessages({
+            messages: stepMessages,
+            toolCalls: 'before-last-4-messages',
+            // With thinking on, every step adds a reasoning block that
+            // `pruneMessages` keeps by default (`reasoning: 'none'`), so a
+            // 40-step build would carry ~40 of them by the end and undo the
+            // context diet this pruning exists for. Keeping only the latest is
+            // also what Anthropic's tool-use protocol requires: the thinking
+            // that precedes the tool_use being continued must survive.
+            ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
+            emptyMessages: 'remove'
+          });
+
+          return ultimoPasoDelEstudiante ? cerrarConRespuesta(podados) : { messages: podados };
         },
         onStepFinish: async (step) => {
           completedStepCount += 1;
