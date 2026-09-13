@@ -15,7 +15,7 @@
   import { globalStore } from '$lib/utils/store/app';
   import { currentOrg, mergeAccountOrgFromServer } from '$lib/utils/store/org';
   import { user } from '$lib/utils/store/user';
-  import { setTheme } from '$lib/utils/functions/theme';
+  import { leerTemaGuardado, setTheme, temaInicial } from '$lib/utils/functions/theme';
   import { authClient } from '$lib/utils/services/auth/client';
   import merge from 'lodash/merge';
   import { MetaTags } from 'svelte-meta-tags';
@@ -66,7 +66,14 @@
       $globalStore.orgSiteName = data.orgSiteName || '';
       $globalStore.isOrgSite = true;
       currentOrg.set(mergeAccountOrgFromServer(data.org));
-      setTheme(data.org.theme || 'blue');
+      // Con sesión, el último color visto: la empresa del usuario todavía no se conoce (ver temaInicial).
+      setTheme(
+        temaInicial({
+          temaDelDominio: data.org.theme,
+          temaGuardado: leerTemaGuardado(),
+          conSesion: Boolean(data?.locals?.user)
+        })
+      );
     }
   });
 

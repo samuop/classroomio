@@ -2,6 +2,45 @@ import { darken, lighten } from 'color2k';
 
 import { tc } from '$lib/utils/functions/trycatch';
 
+/** Un nombre de tema (`blue`, `purple`) o un color hexadecimal: lo único que `setTheme` sabe pintar. */
+const PARECE_UN_TEMA = /^(#[0-9a-f]{3,8}|[a-z][a-z-]*)$/i;
+
+/**
+ * El color con el que arranca la pantalla, antes de saber en qué empresa está el usuario.
+ *
+ * Al cargar sólo se conoce la empresa dueña del dominio; la del usuario llega con
+ * la lista de sus empresas (`init.svelte.ts`), medio segundo después. En el
+ * dominio de una consultora conviven la consultora y sus empresas cliente, así
+ * que pintar primero a la dueña hacía que un estudiante de una empresa cliente
+ * viera la marca de la consultora y enseguida la suya.
+ *
+ * Con sesión se arranca con el último color pintado en este dominio (`setTheme`
+ * lo guarda). localStorage es por origen, así que nunca trae la marca de otro
+ * dominio. Sin sesión —el login— la pantalla es de la dueña del dominio.
+ */
+export function temaInicial({
+  temaDelDominio,
+  temaGuardado,
+  conSesion
+}: {
+  temaDelDominio?: string | null;
+  temaGuardado?: string | null;
+  conSesion: boolean;
+}): string {
+  if (conSesion && temaGuardado && PARECE_UN_TEMA.test(temaGuardado)) return temaGuardado;
+
+  return temaDelDominio || 'blue';
+}
+
+/** El último color pintado en este dominio, o null si el almacenamiento no está disponible. */
+export function leerTemaGuardado(): string | null {
+  try {
+    return localStorage.getItem('theme');
+  } catch {
+    return null;
+  }
+}
+
 export function setTheme(theme: string = '') {
   localStorage.setItem('theme', theme);
 
