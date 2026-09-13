@@ -33,6 +33,22 @@ export function esUltimoPasoDelEstudiante({
   return esEstudiante && paso >= maximoDePasos - 1;
 }
 
+/**
+ * Si este paso recorta del contexto el contenido de las herramientas viejas.
+ *
+ * El recorte existe para las rondas de construcción del docente (hasta 40 pasos,
+ * con lecciones enteras y documentos que se reenviarían en cada paso). En la ronda
+ * del estudiante borraba justo lo que tenía que responder: leía la lección en el
+ * paso 2 y, al contestar en el 6, ya no estaba. Medido con la réplica local del
+ * tutor y el mismo recorte (2026-09-13): 4 de 6 respuestas inventaron una regla
+ * o dijeron que el curso no trata un tema que tiene lección propia; sin recorte,
+ * 0 de 9. La ronda del estudiante tiene 12 pasos como máximo, así que el
+ * contexto no crece sin techo.
+ */
+export function recortarContextoDelPaso({ esEstudiante, paso }: { esEstudiante: boolean; paso: number }): boolean {
+  return !esEstudiante && paso >= 5;
+}
+
 /** Lo que devuelve `prepareStep` en ese último paso: sin herramientas y con el pedido de contestar. */
 export function cerrarConRespuesta<M>(mensajes: M[]): {
   activeTools: [];

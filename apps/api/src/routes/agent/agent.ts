@@ -127,7 +127,11 @@ import {
 import { getStorageConfig } from '@api/config/storage';
 import { MAX_IMAGE_SIZE } from '@api/constants/upload';
 import { pideCambiosAlPlan } from '@api/services/agent/plan-revision';
-import { cerrarConRespuesta, esUltimoPasoDelEstudiante } from '@api/services/agent/student-final-step';
+import {
+  cerrarConRespuesta,
+  esUltimoPasoDelEstudiante,
+  recortarContextoDelPaso
+} from '@api/services/agent/student-final-step';
 import { contenidoEnIdioma } from '@api/services/agent/lesson-content-locale';
 import { summarizeConversation } from '@api/services/agent/summarize';
 import { agentHistoryRouter } from './history';
@@ -1614,7 +1618,10 @@ const agentCoreRouter = new Hono()
             maximoDePasos: maxStepsForRound
           });
 
-          if (stepNumber < 5) return ultimoPasoDelEstudiante ? cerrarConRespuesta(stepMessages) : {};
+          // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
+          if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: stepNumber })) {
+            return ultimoPasoDelEstudiante ? cerrarConRespuesta(stepMessages) : {};
+          }
 
           const podados = pruneMessages({
             messages: stepMessages,

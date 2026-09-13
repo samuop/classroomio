@@ -1,7 +1,8 @@
 import {
   AVISO_DE_ULTIMO_PASO,
   cerrarConRespuesta,
-  esUltimoPasoDelEstudiante
+  esUltimoPasoDelEstudiante,
+  recortarContextoDelPaso
 } from '@api/services/agent/student-final-step';
 import { describe, expect, it } from 'vitest';
 
@@ -27,6 +28,19 @@ describe('esUltimoPasoDelEstudiante', () => {
 
   it('no toca la ronda del docente, que se retoma con «Continuar»', () => {
     expect(esUltimoPasoDelEstudiante({ esEstudiante: false, paso: 39, maximoDePasos: 40 })).toBe(false);
+  });
+});
+
+describe('recortarContextoDelPaso', () => {
+  it('nunca le recorta el contexto al estudiante: lo que leyó tiene que seguir ahí al contestar', () => {
+    for (const paso of [0, 5, 11]) {
+      expect(recortarContextoDelPaso({ esEstudiante: true, paso })).toBe(false);
+    }
+  });
+
+  it('al docente le recorta desde el paso 5, como antes', () => {
+    expect(recortarContextoDelPaso({ esEstudiante: false, paso: 4 })).toBe(false);
+    expect(recortarContextoDelPaso({ esEstudiante: false, paso: 5 })).toBe(true);
   });
 });
 
