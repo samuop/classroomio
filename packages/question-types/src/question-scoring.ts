@@ -107,24 +107,80 @@ function scoreCheckbox(
   return clampPoints(Math.max(0, ratio) * maxPoints, maxPoints);
 }
 
+/**
+ * Etiquetas que valen por Verdadero y por Falso, en los idiomas en los que la
+ * gente escribe estas preguntas. Sin tildes: la comparación las saca antes.
+ */
+const ETIQUETAS_VERDADERAS = new Set(['true', 'verdadero', 'verdadera', 'cierto', 'si', 'yes', 'v', '1']);
+const ETIQUETAS_FALSAS = new Set(['false', 'falso', 'falsa', 'incorrecto', 'no', 'f', '0']);
+
+/**
+ * La primera palabra de la etiqueta, en minúscula y sin tildes.
+ *
+ * Se queda con la primera palabra a propósito: hay preguntas cuya opción dice
+ * «Falso: el sistema no lo hace solo, hay que confirmarlo a mano». Lo que decide
+ * es el «Falso», y el resto es la explicación.
+ */
+function primeraPalabraNormalizada(label: unknown): string {
+  return normalizeText(label)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)[0] ?? '';
+}
+
+function etiquetaABooleano(label: unknown): boolean | undefined {
+  const palabra = primeraPalabraNormalizada(label);
+  if (ETIQUETAS_VERDADERAS.has(palabra)) return true;
+  if (ETIQUETAS_FALSAS.has(palabra)) return false;
+  return undefined;
+}
+
+/**
+ * Cuál es la respuesta correcta de una V/F. `undefined` = no se puede saber.
+ *
+ * ── Lo que pasó (producción, 2026-09-16) ────────────────────────────────────
+ *
+ * Esto buscaba la opción cuya etiqueta fuera literalmente `'true'` o `'false'`.
+ * En un producto que escribe las preguntas en español las etiquetas son
+ * «Verdadero» y «Falso», así que no encontraba ninguna de las dos, `settings`
+ * venía vacío, y caía en un `else` que daba por correcto el Verdadero **sin
+ * mirar qué opción estaba marcada**.
+ *
+ * Medido en producción: de 61 preguntas V/F, 60 caían en ese `else`, y en 31 de
+ * ellas la respuesta correcta era «Falso» — o sea que se corregían al revés.
+ * Comprobado rindiendo un cuestionario: contestando «Verdadero» a una pregunta
+ * cuya respuesta es «Falso», el corrector daba el punto.
+ *
+ * Lo que decide ahora es `isCorrect`, que es donde el autor dejó la respuesta.
+ * La etiqueta sólo traduce esa opción a booleano.
+ */
+function respuestaCorrectaDeVerdaderoFalso(question: ExerciseQuestionModel): boolean | undefined {
+  const correctFromSettings = question.settings?.correctValue;
+  if (typeof correctFromSettings === 'boolean') return correctFromSettings;
+
+  // `isCorrect` es donde el autor dejó la respuesta; la etiqueta sólo la
+  // traduce a booleano. Si la opción marcada no se entiende, no hay otra fuente:
+  // mirar las etiquetas de las NO marcadas no puede decir nada distinto.
+  const marcada = (question.options ?? []).find((o) => o.isCorrect);
+
+  return marcada ? etiquetaABooleano(marcada.label) : undefined;
+}
+
 function scoreTrueFalse(
   question: ExerciseQuestionModel,
   answer: Extract<AnswerData, { type: 'TRUE_FALSE' }>,
   maxPoints: number
 ): number {
-  const opts = question.options ?? [];
-  const trueOpt = opts.find((o) => normalizeText(o.label) === 'true');
-  const falseOpt = opts.find((o) => normalizeText(o.label) === 'false');
-  const correctFromSettings = question.settings?.correctValue;
-  let correctIsTrue: boolean;
-  if (typeof correctFromSettings === 'boolean') {
-    correctIsTrue = correctFromSettings;
-  } else if (trueOpt?.isCorrect) {
-    correctIsTrue = true;
-  } else if (falseOpt?.isCorrect) {
-    correctIsTrue = false;
-  } else {
-    correctIsTrue = true;
+  const correctIsTrue = respuestaCorrectaDeVerdaderoFalso(question);
+
+  if (correctIsTrue === undefined) {
+    // La pregunta no dice cuál es su respuesta. Adivinar es lo que rompió esto
+    // antes, así que no se adivina: no se le cobra al alumno el error del autor.
+    console.warn(
+      `[correccion] la pregunta V/F ${question.id ?? '(sin id)'} no declara su respuesta correcta; se otorga el puntaje`
+    );
+    return maxPoints;
   }
 
   return answer.value === correctIsTrue ? maxPoints : 0;
