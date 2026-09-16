@@ -14,14 +14,13 @@
   import SearchIcon from '@lucide/svelte/icons/search';
   import XIcon from '@lucide/svelte/icons/x';
   import PlusIcon from '@lucide/svelte/icons/plus';
-  import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-  import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import { sourcesApi } from '$features/ai-assistant/api/sources.svelte';
   import { snackbar } from '$features/ui/snackbar/store';
   import { courseApi } from '$features/course/api';
   import { setInitialChatPrompt, setInitialChatDocumentIds } from '$features/ai-assistant/utils/store';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
+  import { armarMensajeInicial } from '$features/ai-assistant/utils/mensaje-inicial';
   import type { TCourseType } from '@cio/db/types';
 
   const EXAMPLE_PROMPT_KEYS = [
@@ -53,6 +52,10 @@
    * AND scope are all already stated. Asking them here means the handoff arrives
    * complete and the agent goes straight to proposing a plan, instead of
    * dropping the teacher into a chat that immediately asks four questions.
+   *
+   * Van en la MISMA pantalla que la descripción: separados en un segundo paso,
+   * el ejemplo de la descripción pedía público y objetivo, y la pantalla
+   * siguiente los volvía a pedir en campos propios.
    */
   const MODALITIES: { value: TCourseType; labelKey: string }[] = [
     { value: 'SELF_PACED' as TCourseType, labelKey: 'course.creator.guide.audience.modality_self_paced' },
@@ -64,8 +67,6 @@
     { value: 'intermediate', labelKey: 'course.creator.guide.audience.level_intermediate' },
     { value: 'advanced', labelKey: 'course.creator.guide.audience.level_advanced' }
   ];
-
-  let step = $state<1 | 2>(1);
 
   let description = $state('');
   let docUrls = $state<string[]>(['']);
@@ -99,7 +100,7 @@
    * restate the subject in search-engine words bought nothing and cost a field
    * most people would leave empty or fill with a copy of the line above. What the
    * search was genuinely missing is who the course is for — that goes with it
-   * now, from step 2.
+   * now, from the audience field.
    *
    * Researching something NARROWER than the whole course still has a home: the
    * Sources panel's Research tab takes a free topic. The wizard researches the
@@ -111,8 +112,18 @@
       .join('\n')
   );
 
-  const canContinue = $derived(description.trim().length > 0 && uploadingCount === 0);
-  const canBuild = $derived(canContinue && audience.trim().length > 0 && !creating && !researching);
+  /**
+   * Todo en una pantalla: antes esto eran dos pasos y el primero pedía, en su
+   * texto de ejemplo, las mismas dos cosas que el segundo preguntaba en campos
+   * propios. Se escribía el público y el objetivo dos veces.
+   */
+  const canBuild = $derived(
+    description.trim().length > 0 &&
+      audience.trim().length > 0 &&
+      uploadingCount === 0 &&
+      !creating &&
+      !researching
+  );
   const atDocLimit = $derived(uploadedDocs.length >= MAX_DOCS);
 
   function applyExample(text: string) {
@@ -189,40 +200,30 @@
 
   /** Natural-language handoff so the agent picks up the build directly. */
   function buildHandoffPrompt(): string {
-    const lines: string[] = [description.trim()];
-    const cleanUrls = docUrls.map((u) => u.trim()).filter(Boolean);
-
-    lines.push('');
-    lines.push(`${t.get('course.creator.guide.handoff.audience')}: ${audience.trim()}`);
-
-    if (outcome.trim()) {
-      lines.push(`${t.get('course.creator.guide.handoff.outcome')}: ${outcome.trim()}`);
-    }
-
-    lines.push(
-      `${t.get('course.creator.guide.handoff.modality')}: ` +
-        `${t.get(MODALITIES.find((m) => m.value === modality)?.labelKey ?? '')}, ` +
-        `${t.get(LEVELS.find((l) => l.value === level)?.labelKey ?? '')}`
-    );
-
-    if (cleanUrls.length > 0) {
-      lines.push('');
-      lines.push(`${t.get('course.creator.guide.handoff.sources')}: ${cleanUrls.join(', ')}`);
-      lines.push(t.get('course.creator.guide.handoff.research_hint'));
-    }
-
     const attached = [...uploadedDocs, ...researchedDocs];
 
-    if (attached.length > 0) {
-      lines.push('');
-      lines.push(`${t.get('course.creator.guide.handoff.documents')}: ${attached.map((d) => d.name).join(', ')}`);
-    }
-
-    if (researchedDocs.length > 0) {
-      lines.push(t.get('course.creator.guide.handoff.researched_hint', { count: researchedDocs.length }));
-    }
-
-    return lines.join('\n');
+    return armarMensajeInicial({
+      descripcion: description,
+      publico: audience,
+      objetivo: outcome,
+      modalidad: t.get(MODALITIES.find((m) => m.value === modality)?.labelKey ?? ''),
+      nivel: t.get(LEVELS.find((l) => l.value === level)?.labelKey ?? ''),
+      enlaces: docUrls,
+      documentos: attached.map((d) => d.name),
+      investigadas: researchedDocs.length,
+      textos: {
+        publico: t.get('course.creator.guide.handoff.audience'),
+        objetivo: t.get('course.creator.guide.handoff.outcome'),
+        modalidad: t.get('course.creator.guide.handoff.modality'),
+        nivel: t.get('course.creator.guide.handoff.level'),
+        fuentes: t.get('course.creator.guide.handoff.sources'),
+        pistaDeFuentes: t.get('course.creator.guide.handoff.research_hint'),
+        documentos: t.get('course.creator.guide.handoff.documents'),
+        pistaDeInvestigadas: t.get('course.creator.guide.handoff.researched_hint', {
+          count: researchedDocs.length
+        })
+      }
+    });
   }
 
   /**
@@ -373,205 +374,183 @@
   <div class="mx-auto flex w-full max-w-3xl flex-col px-4 py-6">
     <div class="mb-4 text-center">
       <h1 class="text-xl font-semibold">{$t('course.creator.guide.title')}</h1>
-      <p class="ui:text-muted-foreground text-xs">
-        {$t('course.creator.guide.step_of', { current: step, total: 2 })} ·
-        {step === 1 ? $t('course.creator.guide.step_1_name') : $t('course.creator.guide.step_2_name')}
-      </p>
+      <p class="ui:text-muted-foreground text-xs">{$t('course.creator.guide.subtitle')}</p>
     </div>
 
     <input bind:this={fileInputEl} type="file" accept={ACCEPT} multiple class="hidden" onchange={handleFileChange} />
 
-    {#if step === 1}
-      <div class="flex flex-col gap-4">
-        <div class="flex flex-col gap-2">
-          <Textarea
-            bind:value={description}
-            placeholder={$t('course.creator.guide.describe_placeholder')}
-            rows={3}
-          />
-          <div class="flex flex-wrap gap-1.5">
-            {#each EXAMPLE_PROMPT_KEYS as exampleKey (exampleKey)}
-              <button
-                type="button"
-                class="ui:border ui:bg-card ui:text-muted-foreground hover:ui:text-foreground hover:ui:border-primary rounded-full px-2.5 py-0.5 text-xs transition-colors"
-                onclick={() => applyExample(t.get(exampleKey))}
-              >
-                {$t(exampleKey)}
-              </button>
+    <div class="flex flex-col gap-4">
+      <!-- Qué se enseña -->
+      <div class="flex flex-col gap-2">
+        <span class="text-sm font-medium">{$t('course.creator.guide.describe_label')}</span>
+        <Textarea bind:value={description} placeholder={$t('course.creator.guide.describe_placeholder')} rows={3} />
+        <div class="flex flex-wrap gap-1.5">
+          {#each EXAMPLE_PROMPT_KEYS as exampleKey (exampleKey)}
+            <button
+              type="button"
+              class="ui:border ui:bg-card ui:text-muted-foreground hover:ui:text-foreground hover:ui:border-primary rounded-full px-2.5 py-0.5 text-xs transition-colors"
+              onclick={() => applyExample(t.get(exampleKey))}
+            >
+              {$t(exampleKey)}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Para quién y para qué: lo que el asistente pregunta si no se lo dicen -->
+      <div class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium">{$t('course.creator.guide.audience.who_label')}</span>
+        <Input type="text" bind:value={audience} placeholder={$t('course.creator.guide.audience.who_placeholder')} />
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium">{$t('course.creator.guide.audience.outcome_label')}</span>
+        <Textarea bind:value={outcome} rows={2} placeholder={$t('course.creator.guide.audience.outcome_placeholder')} />
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium">{$t('course.creator.guide.audience.modality_label')}</span>
+          <div class="flex flex-wrap gap-2">
+            {#each MODALITIES as option (option.value)}
+              {@render chip($t(option.labelKey), modality === option.value, () => (modality = option.value))}
             {/each}
           </div>
         </div>
 
-        <!-- Research -->
-        <div class="flex flex-col gap-2 rounded-xl border p-3">
-          <div class="flex items-start gap-2">
-            <SearchIcon class="ui:text-primary mt-0.5 size-4 shrink-0" />
-            <div class="min-w-0 flex-1">
-              <span class="text-sm font-medium">{$t('course.creator.guide.research.label')}</span>
-              <p class="ui:text-muted-foreground text-xs">{$t('course.creator.guide.research.hint')}</p>
-            </div>
-            <Switch bind:checked={researchEnabled} aria-label={$t('course.creator.guide.research.label')} />
+        <div class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium">{$t('course.creator.guide.audience.level_label')}</span>
+          <div class="flex flex-wrap gap-2">
+            {#each LEVELS as option (option.value)}
+              {@render chip($t(option.labelKey), level === option.value, () => (level = option.value))}
+            {/each}
           </div>
-
-          {#if researchEnabled}
-            <div class="flex flex-col gap-2 pl-6">
-              <div class="flex flex-wrap gap-2">
-                {#each RESEARCH_DEPTHS as option (option.value)}
-                  {@render chip($t(option.labelKey), researchDepth === option.value, () => (researchDepth = option.value))}
-                {/each}
-              </div>
-              {#if researchedDocs.length > 0}
-                <p class="ui:text-muted-foreground text-xs">
-                  {$t('course.creator.guide.research.found', { count: researchedDocs.length })}
-                </p>
-              {/if}
-              {#if researchError}
-                <p class="text-xs text-red-500">{researchError}</p>
-              {/if}
-            </div>
-          {/if}
         </div>
+      </div>
 
-        <!-- Material: files and links side by side so the step fits one screen -->
-        <div class="grid gap-3 md:grid-cols-2">
-          <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-medium">{$t('course.creator.guide.source.document_label')}</span>
-            <div
-              role="button"
-              tabindex="0"
-              class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors {isDragging
-                ? 'ui:border-primary ui:bg-primary/5'
-                : 'ui:border-border hover:ui:border-primary/60'} {atDocLimit ? 'pointer-events-none opacity-50' : ''}"
-              ondragover={handleDragOver}
-              ondragleave={handleDragLeave}
-              ondrop={handleDrop}
-              onclick={handlePickFiles}
-              onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && handlePickFiles()}
-            >
-              <UploadCloudIcon class="ui:text-muted-foreground size-5" />
-              <span class="text-xs font-medium">{$t('course.creator.guide.source.dropzone')}</span>
-              <span class="ui:text-muted-foreground text-[11px]">
-                {$t('course.creator.guide.source.document_hint')}
-              </span>
-            </div>
-
-            {#if uploadedDocs.length > 0 || uploadingCount > 0}
-              <div class="flex flex-col gap-1">
-                {#each uploadedDocs as doc (doc.id)}
-                  <div class="flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
-                    <FileTextIcon class="ui:text-primary size-3.5 shrink-0" />
-                    <span class="min-w-0 flex-1 truncate">{doc.name}</span>
-                    <button
-                      type="button"
-                      onclick={() => removeDoc(doc.id)}
-                      aria-label="remove"
-                      class="ui:text-muted-foreground hover:ui:text-foreground"
-                    >
-                      <XIcon class="size-3.5" />
-                    </button>
-                  </div>
-                {/each}
-                {#each Array(uploadingCount) as _, i (i)}
-                  <div class="ui:text-muted-foreground flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
-                    <LoaderCircleIcon class="size-3.5 shrink-0 animate-spin" />
-                    <span>{$t('course.creator.guide.source.uploading')}</span>
-                  </div>
-                {/each}
-              </div>
-            {/if}
-
-            {#if uploadError}
-              <p class="text-xs text-red-500">{uploadError}</p>
-            {/if}
+      <!-- Material: archivos y enlaces, uno al lado del otro -->
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class="flex flex-col gap-1.5">
+          <span class="text-xs font-medium">{$t('course.creator.guide.source.document_label')}</span>
+          <div
+            role="button"
+            tabindex="0"
+            class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-3 py-4 text-center transition-colors {isDragging
+              ? 'ui:border-primary ui:bg-primary/5'
+              : 'ui:border-border hover:ui:border-primary/60'} {atDocLimit ? 'pointer-events-none opacity-50' : ''}"
+            ondragover={handleDragOver}
+            ondragleave={handleDragLeave}
+            ondrop={handleDrop}
+            onclick={handlePickFiles}
+            onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && handlePickFiles()}
+          >
+            <UploadCloudIcon class="ui:text-muted-foreground size-5" />
+            <span class="text-xs font-medium">{$t('course.creator.guide.source.dropzone')}</span>
+            <span class="ui:text-muted-foreground text-[11px]">
+              {$t('course.creator.guide.source.document_hint')}
+            </span>
           </div>
 
-          <div class="flex flex-col gap-1.5">
-            <span class="text-xs font-medium">{$t('course.creator.guide.source.url_label')}</span>
-            {#each docUrls as _, index (index)}
-              <div class="flex items-center gap-1.5">
-                <GlobeIcon class="ui:text-muted-foreground size-3.5 shrink-0" />
-                <Input
-                  bind:value={docUrls[index]}
-                  type="url"
-                  placeholder={$t('course.creator.guide.source.url_placeholder')}
-                />
-                {#if docUrls.length > 1}
+          {#if uploadedDocs.length > 0 || uploadingCount > 0}
+            <div class="flex flex-col gap-1">
+              {#each uploadedDocs as doc (doc.id)}
+                <div class="flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
+                  <FileTextIcon class="ui:text-primary size-3.5 shrink-0" />
+                  <span class="min-w-0 flex-1 truncate">{doc.name}</span>
                   <button
                     type="button"
-                    onclick={() => removeUrlField(index)}
-                    aria-label="remove url"
+                    onclick={() => removeDoc(doc.id)}
+                    aria-label="remove"
                     class="ui:text-muted-foreground hover:ui:text-foreground"
                   >
                     <XIcon class="size-3.5" />
                   </button>
-                {/if}
-              </div>
-            {/each}
-            <button
-              type="button"
-              class="ui:text-primary flex w-fit items-center gap-1 text-xs hover:underline"
-              onclick={addUrlField}
-            >
-              <PlusIcon class="size-3" />
-              {$t('course.creator.guide.source.add_url')}
-            </button>
-          </div>
-        </div>
-      </div>
+                </div>
+              {/each}
+              {#each Array(uploadingCount) as _, i (i)}
+                <div class="ui:text-muted-foreground flex items-center gap-2 rounded-lg border px-2 py-1 text-xs">
+                  <LoaderCircleIcon class="size-3.5 shrink-0 animate-spin" />
+                  <span>{$t('course.creator.guide.source.uploading')}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
 
-      <div class="mt-5 flex justify-end">
-        <Button onclick={() => (step = 2)} disabled={!canContinue} class="gap-2">
-          {$t('course.creator.guide.continue_button')}
-          <ArrowRightIcon class="size-4" />
-        </Button>
-      </div>
-    {:else}
-      <div class="flex flex-col gap-4">
-        <div class="flex flex-col gap-1.5">
-          <span class="text-sm font-medium">{$t('course.creator.guide.audience.who_label')}</span>
-          <Input type="text" bind:value={audience} placeholder={$t('course.creator.guide.audience.who_placeholder')} />
+          {#if uploadError}
+            <p class="text-xs text-red-500">{uploadError}</p>
+          {/if}
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <span class="text-sm font-medium">{$t('course.creator.guide.audience.outcome_label')}</span>
-          <Textarea bind:value={outcome} rows={3} placeholder={$t('course.creator.guide.audience.outcome_placeholder')} />
+          <span class="text-xs font-medium">{$t('course.creator.guide.source.url_label')}</span>
+          {#each docUrls as _, index (index)}
+            <div class="flex items-center gap-1.5">
+              <GlobeIcon class="ui:text-muted-foreground size-3.5 shrink-0" />
+              <Input
+                bind:value={docUrls[index]}
+                type="url"
+                placeholder={$t('course.creator.guide.source.url_placeholder')}
+              />
+              {#if docUrls.length > 1}
+                <button
+                  type="button"
+                  onclick={() => removeUrlField(index)}
+                  aria-label="remove url"
+                  class="ui:text-muted-foreground hover:ui:text-foreground"
+                >
+                  <XIcon class="size-3.5" />
+                </button>
+              {/if}
+            </div>
+          {/each}
+          <button
+            type="button"
+            class="ui:text-primary flex w-fit items-center gap-1 text-xs hover:underline"
+            onclick={addUrlField}
+          >
+            <PlusIcon class="size-3" />
+            {$t('course.creator.guide.source.add_url')}
+          </button>
+        </div>
+      </div>
+
+      <!-- Investigar en internet -->
+      <div class="flex flex-col gap-2 rounded-xl border p-3">
+        <div class="flex items-start gap-2">
+          <SearchIcon class="ui:text-primary mt-0.5 size-4 shrink-0" />
+          <div class="min-w-0 flex-1">
+            <span class="text-sm font-medium">{$t('course.creator.guide.research.label')}</span>
+            <p class="ui:text-muted-foreground text-xs">{$t('course.creator.guide.research.hint')}</p>
+          </div>
+          <Switch bind:checked={researchEnabled} aria-label={$t('course.creator.guide.research.label')} />
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <div class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium">{$t('course.creator.guide.audience.modality_label')}</span>
+        {#if researchEnabled}
+          <div class="flex flex-col gap-2 pl-6">
             <div class="flex flex-wrap gap-2">
-              {#each MODALITIES as option (option.value)}
-                {@render chip($t(option.labelKey), modality === option.value, () => (modality = option.value))}
+              {#each RESEARCH_DEPTHS as option (option.value)}
+                {@render chip($t(option.labelKey), researchDepth === option.value, () => (researchDepth = option.value))}
               {/each}
             </div>
+            {#if researchedDocs.length > 0}
+              <p class="ui:text-muted-foreground text-xs">
+                {$t('course.creator.guide.research.found', { count: researchedDocs.length })}
+              </p>
+            {/if}
           </div>
-
-          <div class="flex flex-col gap-1.5">
-            <span class="text-sm font-medium">{$t('course.creator.guide.audience.level_label')}</span>
-            <div class="flex flex-wrap gap-2">
-              {#each LEVELS as option (option.value)}
-                {@render chip($t(option.labelKey), level === option.value, () => (level = option.value))}
-              {/each}
-            </div>
-          </div>
-        </div>
-
-        {#if researchError}
-          <p class="text-xs text-red-500">{researchError}</p>
         {/if}
       </div>
 
-      <div class="mt-5 flex items-center justify-between">
-        <Button variant="ghost" onclick={() => (step = 1)} class="gap-2">
-          <ArrowLeftIcon class="size-4" />
-          {$t('course.creator.guide.back_button')}
-        </Button>
-        <Button onclick={handleBuild} disabled={!canBuild} class="gap-2">
-          <SparklesIcon class="size-4" />
-          {$t('course.creator.guide.build_button')}
-        </Button>
-      </div>
-    {/if}
+      {#if researchError}
+        <p class="text-xs text-red-500">{researchError}</p>
+      {/if}
+    </div>
+
+    <div class="mt-5 flex justify-end">
+      <Button onclick={handleBuild} disabled={!canBuild} class="gap-2">
+        <SparklesIcon class="size-4" />
+        {$t('course.creator.guide.build_button')}
+      </Button>
+    </div>
   </div>
 {/if}

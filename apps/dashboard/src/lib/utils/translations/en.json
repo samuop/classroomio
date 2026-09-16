@@ -2248,7 +2248,8 @@
       "guide": {
         "title": "Let's build your course",
         "subtitle": "Describe what you want, drop in your material, and we'll design it with you.",
-        "describe_placeholder": "Describe the course — the topic, who it's for, and what learners should be able to do afterward. e.g. \"A course for new finance hires on our expense policy and reimbursement workflow, so they can submit a report without help.\"",
+        "describe_label": "What do you want to teach?",
+        "describe_placeholder": "Describe what you want to teach, and from what material. e.g. \"How the till is handled across our branches, following the internal procedure I am about to upload.\"",
         "build_button": "Build course",
         "source": {
           "document_label": "Reference material (optional)",
@@ -2267,11 +2268,6 @@
           "url_failed": "Could not read {count} page(s). You can add them from Sources.",
           "add_url": "Add another link"
         },
-        "step_of": "Step {current} of {total}",
-        "step_1_name": "What you want to teach",
-        "step_2_name": "Who it is for and why",
-        "continue_button": "Continue",
-        "back_button": "Back",
         "audience": {
           "who_label": "Who is it for?",
           "who_placeholder": "E.g. paint shop sales staff with no prior colour training",
@@ -2280,10 +2276,10 @@
           "modality_label": "Format",
           "modality_self_paced": "Self-paced",
           "modality_live": "Live classes",
-          "level_label": "Level",
-          "level_intro": "Introductory",
-          "level_intermediate": "Intermediate",
-          "level_advanced": "Advanced"
+          "level_label": "How much do they already know?",
+          "level_intro": "Nothing",
+          "level_intermediate": "Some",
+          "level_advanced": "Quite a lot"
         },
         "research": {
           "label": "Research on the web",
@@ -2303,7 +2299,8 @@
           "documents": "Attached documents",
           "audience": "Target audience",
           "outcome": "By the end, learners must be able to",
-          "modality": "Format and level",
+          "modality": "Format",
+          "level": "How much they already know",
           "researched_hint": "The last {count} are pages we already researched and saved: use them as material, no need to search for them again."
         }
       },

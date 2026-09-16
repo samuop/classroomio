@@ -2799,7 +2799,8 @@
       "guide": {
         "title": "Construyamos tu curso",
         "subtitle": "Describí lo que querés, soltá tu material y lo diseñamos con vos.",
-        "describe_placeholder": "Describí el curso: el tema, para quién es y qué deberían poder hacer al terminar. Ej: \"Un curso para nuevos empleados de finanzas sobre nuestra política de gastos y el flujo de reembolsos, para que puedan enviar un informe sin ayuda.\"",
+        "describe_label": "¿Qué querés enseñar?",
+        "describe_placeholder": "Describí qué querés enseñar y con qué material. Ej: \"Cómo se maneja la caja en nuestras sucursales, según el instructivo interno que voy a subir.\"",
         "build_button": "Construir curso",
         "source": {
           "document_label": "Material de referencia (opcional)",
@@ -2818,11 +2819,6 @@
           "url_failed": "No se pudieron leer {count} página(s). Podés agregarlas desde Fuentes.",
           "add_url": "Agregar otro enlace"
         },
-        "step_of": "Paso {current} de {total}",
-        "step_1_name": "Qué querés enseñar",
-        "step_2_name": "Para quién y para qué",
-        "continue_button": "Continuar",
-        "back_button": "Volver",
         "audience": {
           "who_label": "¿A quién va dirigido?",
           "who_placeholder": "Ej: vendedores de pinturería sin formación previa en color",
@@ -2831,10 +2827,10 @@
           "modality_label": "Modalidad",
           "modality_self_paced": "A ritmo propio",
           "modality_live": "Clases en vivo",
-          "level_label": "Nivel",
-          "level_intro": "Introductorio",
-          "level_intermediate": "Intermedio",
-          "level_advanced": "Avanzado"
+          "level_label": "¿Cuánto saben del tema hoy?",
+          "level_intro": "Nada",
+          "level_intermediate": "Algo",
+          "level_advanced": "Bastante"
         },
         "research": {
           "label": "Investigar en internet",
@@ -2854,7 +2850,8 @@
           "documents": "Documentos adjuntos",
           "audience": "Público destinatario",
           "outcome": "Al terminar, los alumnos tienen que poder",
-          "modality": "Modalidad y nivel",
+          "modality": "Modalidad",
+          "level": "Cuánto saben del tema hoy",
           "researched_hint": "Las últimas {count} son páginas que ya investigamos y guardamos: usalas como material, no hace falta volver a buscarlas."
         }
       },
