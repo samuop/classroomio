@@ -32,11 +32,29 @@ export const ZExerciseQuestionTypeId = z.union(EXERCISE_QUESTION_TYPE_ID_LITERAL
 export type TExerciseQuestionTypeId = z.infer<typeof ZExerciseQuestionTypeId>;
 
 type QuestionRuleInput = {
-  options?: Array<{ isCorrect: boolean }>;
+  /** En una actualización, las que se están BORRANDO vienen con `deletedAt`. */
+  options?: Array<{ isCorrect: boolean; deletedAt?: string }>;
   settings?: Record<string, unknown>;
 };
 
-const QUESTION_VALIDATION_RULES: Record<number, Array<(question: QuestionRuleInput) => string | null>> = {
+/**
+ * Un alta define la pregunta entera; una edición manda sólo lo que cambia.
+ *
+ * Por eso hay reglas que sólo pueden exigirse al crear: `settings` se mezcla con
+ * lo que ya estaba guardado, así que en una edición que sólo toca el enunciado
+ * el campo no viaja, y exigirlo ahí rechazaría un pedido perfectamente válido.
+ */
+type ContextoDeLaRegla = { esAlta: boolean };
+
+/** Las que siguen vivas: una opción marcada `deletedAt` se está yendo. */
+function opcionesVigentes(question: QuestionRuleInput) {
+  return (question.options ?? []).filter((option) => !option.deletedAt);
+}
+
+const QUESTION_VALIDATION_RULES: Record<
+  number,
+  Array<(question: QuestionRuleInput, contexto: ContextoDeLaRegla) => string | null>
+> = {
   [QUESTION_TYPE.RADIO]: [
     (question) => {
       const options = question.options || [];
@@ -86,6 +104,42 @@ const QUESTION_VALIDATION_RULES: Record<number, Array<(question: QuestionRuleInp
     }
   ],
   [QUESTION_TYPE.TEXTAREA]: [],
+  /**
+   * NUMERIC: la respuesta va en `settings.correctValue` y en ningún otro lado.
+   *
+   * El tipo entero no tenía ni una regla. El prompt del agente lo pide en
+   * negrita —«If you omit it… the scoring engine awards 0 points to every
+   * submission»—, pero pedirlo no es lo mismo que impedirlo. Medido en
+   * producción: de 27 preguntas numéricas, 3 quedaron SIN `correctValue`, y dos
+   * de ellas con la respuesta guardada como si fuera una opción de multiple
+   * choice. El alumno escribe el número correcto y el corrector le pone cero,
+   * sin que nada avise.
+   */
+  [QUESTION_TYPE.NUMERIC]: [
+    (question, contexto) => {
+      // Sólo al crear: ver `ContextoDeLaRegla`.
+      if (!contexto.esAlta) return null;
+
+      const raw = question.settings?.correctValue;
+      const correcto = typeof raw === 'number' ? raw : raw != null ? Number(raw) : Number.NaN;
+
+      if (!Number.isFinite(correcto)) {
+        return 'Numeric questions need the correct answer in settings.correctValue, as a number';
+      }
+
+      return null;
+    },
+    (question) => {
+      // Ésta sí corre siempre: la respuesta metida como opción es justo la forma
+      // rota que se midió. Mira las vigentes, para no bloquear la edición que
+      // viene precisamente a borrar la opción de más.
+      if (opcionesVigentes(question).length > 0) {
+        return 'Numeric questions take no options: the answer goes in settings.correctValue';
+      }
+
+      return null;
+    }
+  ],
   [QUESTION_TYPE.WORD_BANK]: [
     (question) => {
       const settings = question.settings;
@@ -161,13 +215,17 @@ const ZExerciseUpdateQuestionBase = z.object({
     .optional()
 });
 
-function validateQuestionOptions(question: z.infer<typeof ZExerciseUpdateQuestionBase>, ctx: z.core.$RefinementCtx) {
+function validateQuestionOptions(
+  question: z.infer<typeof ZExerciseUpdateQuestionBase>,
+  ctx: z.core.$RefinementCtx,
+  contexto: ContextoDeLaRegla = { esAlta: false }
+) {
   // Skip validation for deleted questions
   if (question.deletedAt) return;
 
   const rules = QUESTION_VALIDATION_RULES[question.questionTypeId ?? -1] ?? [];
   for (const rule of rules) {
-    const message = rule(question);
+    const message = rule(question, contexto);
     if (!message) continue;
     ctx.addIssue({
       code: 'custom',
@@ -197,7 +255,9 @@ const ZExerciseCreateQuestionBase = z.object({
     .optional()
 });
 
-const ZExerciseCreateQuestion = ZExerciseCreateQuestionBase.superRefine(validateQuestionOptions);
+const ZExerciseCreateQuestion = ZExerciseCreateQuestionBase.superRefine((question, ctx) =>
+  validateQuestionOptions(question, ctx, { esAlta: true })
+);
 
 export const ZExerciseCreate = z.object({
   title: z.string().min(1),

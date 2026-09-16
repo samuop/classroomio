@@ -1644,6 +1644,25 @@ export function buildAgentTools(
             };
           }
 
+          /**
+           * Un ejercicio sin preguntas no es un ejercicio: es una cáscara.
+           *
+           * Se aceptaba en silencio y se contestaba `questionCount: 0` sin
+           * objetar nada. Así quedó el examen final de un curso real: en su
+           * último paso la ronda creó el contenedor vacío y nunca volvió. El
+           * contenedor existe, así que ningún chequeo lo extraña como faltante,
+           * y el alumno abre un examen sin nada que responder.
+           *
+           * Se rechaza en vez de avisar porque acá el modelo TIENE la salida a
+           * mano: si no le entran las preguntas en lo que le queda de ronda, lo
+           * correcto es no crearlo y decirlo.
+           */
+          if (args.questions.length === 0) {
+            throw new Error(
+              'An exercise needs at least one question. Do not create an empty shell to fill in later: it counts as built and nothing will flag it as missing. If the questions will not fit in what is left of this round, skip it and say so in your reply.'
+            );
+          }
+
           // Leer antes de preguntar: ver `exercise-reading.ts`.
           if (args.questions.length > 0) {
             const sinLeer = leccionesSinLeer(
@@ -1666,7 +1685,9 @@ export function buildAgentTools(
               questionTypeId: q.questionTypeId,
               points: q.points,
               order: q.order ?? i,
-              options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect }))
+              options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect })),
+              // Donde vive la respuesta de los tipos que no usan opciones.
+              settings: q.settings
             }))
           });
           await recordBinding(args.planKey, exercise.id);
@@ -1803,7 +1824,9 @@ export function buildAgentTools(
             points: q.points,
             order: q.order ?? nextOrder + i,
             ...(args.exerciseSectionId !== undefined ? { exerciseSectionId: args.exerciseSectionId } : {}),
-            options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect }))
+            options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect })),
+            // Donde vive la respuesta de los tipos que no usan opciones.
+            settings: q.settings
           }));
 
           const allQuestions = [

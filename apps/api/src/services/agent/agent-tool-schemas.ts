@@ -5,7 +5,7 @@ import {
   LANDING_PAGE_METADATA_DESCRIPTION_SECTION_HINT,
   LANDING_PAGE_SECTION_HTML_AGENT_HINT
 } from '@cio/ai-assistant/tools';
-import { QUESTION_TYPE_REGISTRY } from '@cio/question-types';
+import { QUESTION_TYPE_IDS as QUESTION_TYPE, QUESTION_TYPE_REGISTRY } from '@cio/question-types';
 import { ZExerciseSectionAfterBehavior } from '@cio/utils/validation/exercise';
 import { ZCourseLandingPageUpdate, ZCourseLandingPageMetadataUpdate } from '@cio/utils/validation/course';
 
@@ -262,20 +262,68 @@ export const replaceBlockParam = z.object({
     )
 });
 
-export const questionSchema = z.object({
-  question: z.string().min(1),
-  questionTypeId: z
-    .number()
-    .int()
-    .min(1)
-    .max(QUESTION_TYPE_REGISTRY.length)
-    .describe(
-      'Required. Use the numeric question type IDs from the teacher system prompt (Question Types). Omitting this field is invalid — set an explicit type on every question and vary types within each exercise.'
-    ),
-  points: z.number().min(0).default(1),
-  order: z.number().int().min(0),
-  options: z.array(z.object({ label: z.string().min(1), isCorrect: z.boolean() }))
-});
+/**
+ * Una pregunta tal como la crea el agente.
+ *
+ * `settings` existe porque sin él había tipos IMPOSIBLES de crear bien. Una
+ * pregunta numérica guarda su respuesta en `settings.correctValue`, y este
+ * esquema no tenía el campo: la única forma de escribir un número era meterlo
+ * en `options`, que para este tipo no se lee. El modelo no estaba siendo
+ * descuidado, estaba usando el único campo que existía, y el resultado es una
+ * pregunta que le pone cero a todo el mundo. Medido en producción: 3 de 27
+ * numéricas quedaron así.
+ *
+ * Con el campo, además, se crea de UNA llamada: antes hacían falta dos
+ * (`create_exercise` y después `update_questions` para el ajuste), y la segunda
+ * es justo la que se pierde cuando la ronda se queda sin pasos.
+ */
+export const questionSchema = z
+  .object({
+    question: z.string().min(1),
+    questionTypeId: z
+      .number()
+      .int()
+      .min(1)
+      .max(QUESTION_TYPE_REGISTRY.length)
+      .describe(
+        'Required. Use the numeric question type IDs from the teacher system prompt (Question Types). Omitting this field is invalid — set an explicit type on every question and vary types within each exercise.'
+      ),
+    points: z.number().min(0).default(1),
+    order: z.number().int().min(0),
+    options: z
+      .array(z.object({ label: z.string().min(1), isCorrect: z.boolean() }))
+      .default([])
+      .describe('Answer options. Leave empty for types whose answer lives in `settings`, such as NUMERIC.'),
+    settings: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'Per-type answer storage. NUMERIC: { correctValue: number, tolerance?: number } — REQUIRED, and the question takes no options. STAR: { correctValue: number }. WORD_BANK: { correctAnswers: string[], template: string }.'
+      )
+  })
+  .superRefine((question, ctx) => {
+    if (question.questionTypeId !== QUESTION_TYPE.NUMERIC) return;
+
+    const raw = question.settings?.correctValue;
+    const correcto = typeof raw === 'number' ? raw : raw != null ? Number(raw) : Number.NaN;
+
+    if (!Number.isFinite(correcto)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['settings'],
+        message:
+          'A NUMERIC question needs its answer in settings.correctValue, as a number (add settings.tolerance too unless the answer is exact). Without it the grader awards 0 points to every submission.'
+      });
+    }
+
+    if (question.options.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['options'],
+        message: 'A NUMERIC question takes no options: the answer goes in settings.correctValue, not in an option.'
+      });
+    }
+  });
 
 export const createExerciseParam = z.object({
   lessonId: z.string().optional(),
