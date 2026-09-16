@@ -39,6 +39,12 @@ import {
 import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
 import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
+import {
+  anotarChequeo,
+  crearRegistroDeAvisos,
+  revisarTrasEditar,
+  type RegistroDeAvisos
+} from '@api/services/agent/revision-tras-editar';
 import { fuentesParaContrastar } from '@api/services/agent/fuentes-para-contrastar';
 import { buscarEnFuentes, type FuenteParaBuscar } from '@api/services/agent/source-search';
 import { claveDeLectura, notaDeRelectura, type LecturaRegistrada } from '@api/services/agent/relecturas';
@@ -188,6 +194,8 @@ async function writeLessonBody(params: {
   notaDelEscritor?: string;
   /** Dónde anotar que esta lección cambió. Ver `round-ledger.ts`. */
   registro?: RegistroDeRonda;
+  /** Dónde queda anotado que esta lección quedó con avisos. Ver `revision-tras-editar.ts`. */
+  avisosDeFundamento?: RegistroDeAvisos;
 }): Promise<{
   normalizedContent: string;
   svgWarnings: string[];
@@ -276,6 +284,19 @@ async function writeLessonBody(params: {
   const pasajesSinFuente = extraerPasajesSinFuente(normalizedContent);
 
   const groundingWarnings = await fundamento;
+
+  /**
+   * Queda anotado para que una edición posterior pueda volver a mirar.
+   *
+   * Se anota SIEMPRE, con avisos o sin ellos: una lección reescrita limpia se
+   * desmarca, y la próxima edición no paga un rechequeo que no hace falta.
+   */
+  if (params.avisosDeFundamento) {
+    anotarChequeo(params.avisosDeFundamento, params.lessonId, {
+      avisos: groundingWarnings,
+      soloFuentes: params.fuentesDeLaLeccion
+    });
+  }
 
   /**
    * Queda escrito de qué está hecha la lección.
@@ -525,6 +546,9 @@ export function buildAgentTools(
   // Sin registro provisto, se anota en uno propio que nadie lee: asi las
   // llamadas a `anotarCambio` no tienen que preguntar si existe.
   const registro = _options?.registro ?? registroVacio();
+  // Por ronda, igual que `registro` y por el mismo motivo: dos rondas
+  // simultáneas se pisarían el contador. Ver `revision-tras-editar.ts`.
+  const avisosDeFundamento = crearRegistroDeAvisos();
 
   /**
    * El texto de las fuentes del curso, leído una sola vez por ronda y sólo si
@@ -1161,6 +1185,7 @@ export function buildAgentTools(
                   content: args.content,
                   isBuilding,
                   verificarFundamento,
+                  avisosDeFundamento,
                   cargarFuentesDelCurso
                 })
               : null;
@@ -1198,6 +1223,7 @@ export function buildAgentTools(
             content: args.content,
             isBuilding,
             verificarFundamento,
+            avisosDeFundamento,
             cargarFuentesDelCurso
           });
           leccionesConocidas.add(leccion.id);
@@ -1314,6 +1340,7 @@ export function buildAgentTools(
             // fundamento incluido — contra lo que el escritor tuvo delante.
             isBuilding: true,
             verificarFundamento,
+            avisosDeFundamento,
             fuentesDeLaLeccion: escrito.material,
             notaDelEscritor: escrito.nota
           });
@@ -1381,6 +1408,7 @@ export function buildAgentTools(
             content: args.content,
             isBuilding,
             verificarFundamento,
+            avisosDeFundamento,
             // Nadie dice con qué fuentes se escribió este cuerpo: se contrasta
             // contra las del curso en vez de no contrastar.
             cargarFuentesDelCurso
@@ -1456,6 +1484,17 @@ export function buildAgentTools(
           // Anotado despues de guardar: el registro dice lo que paso.
           anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
 
+          // Si esta lección quedó marcada, se la vuelve a mirar ENTERA: la
+          // afirmación que el aviso señalaba suele vivir también fuera del
+          // bloque que se acaba de cambiar. Ver `revision-tras-editar.ts`.
+          const revision = await revisarTrasEditar({
+            registro: avisosDeFundamento,
+            lessonId: args.lessonId,
+            lessonTitle: lesson.title,
+            contenido: updated,
+            verificarFundamento
+          });
+
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
@@ -1464,12 +1503,15 @@ export function buildAgentTools(
             deleted: replacement === '',
             contentLength: updated.length,
             updated: true,
+            ...(revision?.resuelto ? { groundingResolved: true } : {}),
             // Only inspect what this edit wrote — see the note in
             // edit_lesson_content about not sending the model after untouched
-            // parts of the lesson.
+            // parts of the lesson. El fundamento es la excepción: ahí el recorte
+            // era el defecto, y por eso `revision` mira la lección entera.
             ...contentWarningFields({
               svgWarnings: replacement.includes('<svg') ? validateSvgDiagram(replacement) : [],
-              mathWarnings: validateLessonMath(replacement)
+              mathWarnings: validateLessonMath(replacement),
+              groundingWarnings: revision?.groundingWarnings
             })
           };
         });
@@ -1541,6 +1583,18 @@ export function buildAgentTools(
           // Anotado despues de guardar: el registro dice lo que paso.
           anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
 
+          // Si esta lección quedó marcada, se la vuelve a mirar ENTERA. Es el
+          // caso que dejó pasar una afirmación sin respaldo: el agente arregló
+          // la frase citada y la misma afirmación siguió en otros cinco lugares.
+          // Ver `revision-tras-editar.ts`.
+          const revision = await revisarTrasEditar({
+            registro: avisosDeFundamento,
+            lessonId: args.lessonId,
+            lessonTitle: lesson.title,
+            contenido: updated,
+            verificarFundamento
+          });
+
           return {
             lessonId: args.lessonId,
             lessonTitle: lesson.title,
@@ -1548,12 +1602,15 @@ export function buildAgentTools(
             replacements: args.replaceAll ? occurrences : 1,
             contentLength: updated.length,
             updated: true,
+            ...(revision?.resuelto ? { groundingResolved: true } : {}),
             // Only inspect what this edit wrote — warning about a pre-existing
             // diagram elsewhere in the lesson would send the model chasing
-            // something the teacher didn't ask it to touch.
+            // something the teacher didn't ask it to touch. El fundamento es la
+            // excepción: ahí el recorte era el defecto.
             ...contentWarningFields({
               svgWarnings: newString.includes('<svg') ? validateSvgDiagram(newString) : [],
-              mathWarnings: validateLessonMath(newString)
+              mathWarnings: validateLessonMath(newString),
+              groundingWarnings: revision?.groundingWarnings
             })
           };
         });
