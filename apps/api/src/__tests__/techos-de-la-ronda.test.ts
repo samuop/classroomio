@@ -105,21 +105,43 @@ describe('el presupuesto de pasos, visible para quien lo gasta', () => {
     const aviso = avisoDePresupuesto({ paso: 30, maxPasos: 40 });
 
     expect(aviso).toContain('30 of 40');
-    expect(aviso).toContain('10 left');
+    // Nueve, no diez: el paso 40 es la respuesta y no ejecuta herramientas.
+    expect(aviso).toContain('9 tool calls left');
   });
 
   it('dice cuántos quedan, no sólo dónde está', () => {
-    // El número que decide qué hacer es el que queda, no el consumido.
-    expect(avisoDePresupuesto({ paso: 38, maxPasos: 40 })).toContain('2 left');
+    // El número que decide qué hacer es el que queda, no el consumido. Y lo que
+    // queda se cuenta en LLAMADAS, que son una menos que los pasos: el último
+    // paso es la respuesta y este aviso se lee recién en el paso siguiente.
+    expect(avisoDePresupuesto({ paso: 37, maxPasos: 40 })).toContain('2 tool calls left');
   });
 
-  it('en el último paso pide cerrar, en vez de sugerir aprovechar lo que queda', () => {
-    // No queda ninguno: decirle que "gaste los que quedan en cambios" seria
-    // mentirle, y lo unico util ahi es que diga qué hizo y qué falta.
-    const aviso = avisoDePresupuesto({ paso: 40, maxPasos: 40 });
+  /**
+   * El aviso tiene que llegar A TIEMPO de cambiar la última llamada.
+   *
+   * Un resultado se lee en el paso siguiente, y el paso 40 ya no tiene
+   * herramientas: avisar en el 39 es avisarle cuando ya no puede hacer nada. El
+   * que decide es el resultado del 38, que el modelo lee al generar el 39 — su
+   * última llamada de verdad.
+   */
+  it('avisa de la última llamada a tiempo de usarla', () => {
+    const aviso = avisoDePresupuesto({ paso: 38, maxPasos: 40 });
 
-    expect(aviso).toContain('LAST step');
-    expect(aviso).not.toContain('left in this round');
+    expect(aviso).toContain('ONE tool call left');
+    expect(aviso).toMatch(/not on reading/);
+  });
+
+  it('en el paso que sólo puede responder, le pide el cierre y no una llamada', () => {
+    const aviso = avisoDePresupuesto({ paso: 39, maxPasos: 40 });
+
+    expect(aviso).toContain('No tool calls left');
+    expect(aviso).toMatch(/missing or created-but-empty/);
+  });
+
+  it('nunca ofrece gastar una llamada que ya no existe', () => {
+    for (const paso of [38, 39, 40]) {
+      expect(avisoDePresupuesto({ paso, maxPasos: 40 })).not.toContain('tool calls left in this round');
+    }
   });
 
   it('empuja hacia los cambios y en contra de releer', () => {

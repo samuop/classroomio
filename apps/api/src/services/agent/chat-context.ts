@@ -219,8 +219,47 @@ type CourseItemState = {
   title: string | null;
   sectionId: string | null;
   hasNoteContent?: boolean | null;
+  /** Una lección puede estar escrita sin `note`: diapositivas o video. */
+  hasSlideContent?: boolean | null;
+  videosCount?: number | null;
   questionCount?: number | null;
 };
+
+/**
+ * El tipo de un ítem llega en DOS vocabularios y hay que aceptar los dos.
+ *
+ * Las filas de `getCourseContentItems` vienen estampadas con `ContentType`
+ * (`'LESSON'`, `'EXERCISE'`, `'SECTION'`); el plan y los arneses los escriben en
+ * minúsculas. Como `type` es `string`, comparar contra una sola de las dos
+ * formas no da ningún error: deja la comprobación MUERTA. Así estuvieron las dos
+ * de vacío, y por eso un ejercicio sin preguntas se contaba como hecho
+ * (producción, 2026-09-15: un plan declarado 38/38 con el examen final en 0
+ * preguntas). Comparar `it.type` a pelo dentro de este módulo es el bug;
+ * normalizar acá es el arreglo.
+ */
+type TipoDeItem = 'section' | 'lesson' | 'exercise' | 'otro';
+
+function tipoDeItem(type: string | null | undefined): TipoDeItem {
+  switch ((type ?? '').toLowerCase()) {
+    case 'section':
+      return 'section';
+    case 'lesson':
+      return 'lesson';
+    case 'exercise':
+      return 'exercise';
+    default:
+      return 'otro';
+  }
+}
+
+/**
+ * Vacía = creada y sin nada que leer. Las diapositivas y los videos cuentan como
+ * contenido: marcarlas vacías dejaría un Continuar que no se apaga y le pediría
+ * al modelo reescribir una lección que ya está hecha.
+ */
+function leccionSinContenido(item: CourseItemState): boolean {
+  return item.hasNoteContent === false && !item.hasSlideContent && (item.videosCount ?? 0) === 0;
+}
 
 /**
  * `order` is read explicitly rather than trusting array position:
@@ -320,7 +359,7 @@ export function buildPlanProgressAnchor(
 
   const sectionById = new Map(sections.map((s) => [s.id, s] as const));
   const itemById = new Map(
-    items.filter((it) => it.type !== 'section' && it.id).map((it) => [it.id as string, it] as const)
+    items.filter((it) => tipoDeItem(it.type) !== 'section' && it.id).map((it) => [it.id as string, it] as const)
   );
 
   const sectionIdByTitle = new Map<string, string>();
@@ -332,7 +371,7 @@ export function buildPlanProgressAnchor(
   // only when a plan item has no registry binding yet.
   const itemsBySectionAndTitle = new Map<string, CourseItemState>();
   for (const it of items) {
-    if (it.type === 'section') continue;
+    if (tipoDeItem(it.type) === 'section') continue;
     itemsBySectionAndTitle.set(`${it.sectionId ?? ''}::${normalizeTitle(it.title)}`, it);
   }
 
@@ -401,14 +440,16 @@ export function buildPlanProgressAnchor(
         continue;
       }
       // Lesson present but no written content, or exercise with no questions → not done.
-      if (real.type === 'lesson' && real.hasNoteContent === false) {
+      const tipoReal = tipoDeItem(real.type);
+
+      if (tipoReal === 'lesson' && leccionSinContenido(real)) {
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(
           `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (id ${real.id ?? '?'}) BUT EMPTY — write its content, do NOT create it again`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
-      } else if (real.type === 'exercise' && (real.questionCount ?? 0) === 0) {
+      } else if (tipoReal === 'exercise' && (real.questionCount ?? 0) === 0) {
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(

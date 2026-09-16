@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ContentType } from '@cio/utils/constants';
 import { buildPlanProgressAnchor } from '../services/agent/chat-context';
 import type { PlanRegistryEntry } from '@cio/db/queries/agent';
 
@@ -299,5 +300,159 @@ describe('buildPlanProgressAnchor — completed plan', () => {
     const progress = buildPlanProgressAnchor(plan, sections, [], registry());
 
     expect(progress?.anchorText).toContain('YOU ARE NOT DONE');
+  });
+});
+
+/**
+ * El arnés tiene que armar el MISMO contexto que la aplicación.
+ *
+ * Los bloques de arriba describen los ítems reales en minúsculas
+ * (`type: 'lesson'`), pero `getCourseContentItems` los estampa con
+ * `ContentType`: `'LESSON'`, `'EXERCISE'`, `'SECTION'`. `CourseItemState.type`
+ * está declarado `string`, así que TypeScript nunca vio la diferencia y las dos
+ * comprobaciones de vacío quedaron MUERTAS en producción: `'EXERCISE'` nunca es
+ * `'exercise'`, de modo que todo ítem que existiera caía en la rama final y se
+ * marcaba ✅. `emptyCount` no podía pasar de 0.
+ *
+ * Medido en producción el 2026-09-15 sobre un curso real de 22 lecciones y 8
+ * ejercicios: el plan se declaró **38/38 completo** con el examen final en 0
+ * preguntas, el
+ * ancla nunca le dijo al modelo «EXISTS BUT HAS NO QUESTIONS», y la única razón
+ * por la que el docente igual vio un botón Continuar fue que esa ronda además
+ * había chocado contra el tope de pasos.
+ *
+ * Por eso estos casos usan `ContentType` y no una copia a mano: si alguien
+ * cambia el vocabulario de la consulta, acá se rompe.
+ */
+describe('buildPlanProgressAnchor — ítems con el tipo que devuelve la base', () => {
+  const registryBound = registry([
+    { key: 's1.1', entityId: 'lesson-uuid' },
+    { key: 's1.2', entityId: 'ex-uuid' }
+  ]);
+
+  it('cuenta como vacío un ejercicio sin preguntas', () => {
+    const progress = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        {
+          id: 'lesson-uuid',
+          type: ContentType.Lesson,
+          title: 'Introducción',
+          sectionId: 'sec-uuid',
+          hasNoteContent: true
+        },
+        { id: 'ex-uuid', type: ContentType.Exercise, title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 0 }
+      ],
+      registryBound
+    );
+
+    expect(progress?.items.find((entry) => entry.key === 's1.2')?.status).toBe('empty');
+    expect(progress?.emptyCount).toBe(1);
+    expect(progress?.anchorText).toContain('HAS NO QUESTIONS');
+  });
+
+  it('cuenta como vacía una lección sin contenido escrito', () => {
+    const progress = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        {
+          id: 'lesson-uuid',
+          type: ContentType.Lesson,
+          title: 'Introducción',
+          sectionId: 'sec-uuid',
+          hasNoteContent: false
+        },
+        { id: 'ex-uuid', type: ContentType.Exercise, title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 4 }
+      ],
+      registryBound
+    );
+
+    expect(progress?.items.find((entry) => entry.key === 's1.1')?.status).toBe('empty');
+    expect(progress?.emptyCount).toBe(1);
+  });
+
+  it('no declara completo un plan al que le falta llenar el examen', () => {
+    const progress = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        {
+          id: 'lesson-uuid',
+          type: ContentType.Lesson,
+          title: 'Introducción',
+          sectionId: 'sec-uuid',
+          hasNoteContent: true
+        },
+        { id: 'ex-uuid', type: ContentType.Exercise, title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 0 }
+      ],
+      registryBound
+    );
+
+    // Lo que mueve el botón Continuar y lo que el docente lee como "terminado".
+    expect(progress?.completed).not.toBe(progress?.total);
+    expect(progress?.items.find((entry) => entry.key === 's1')?.status).toBe('empty');
+  });
+
+  /**
+   * Una lección puede estar escrita sin `note`: el docente le pone diapositivas
+   * o un video. Ahora que la comprobación vive de verdad, tratarla como vacía
+   * dejaría un Continuar que no se apaga nunca y un modelo al que se le pide
+   * reescribir algo que ya está.
+   */
+  it('no marca vacía una lección que trae diapositivas o video en vez de texto', () => {
+    const conDiapositivas = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        {
+          id: 'lesson-uuid',
+          type: ContentType.Lesson,
+          title: 'Introducción',
+          sectionId: 'sec-uuid',
+          hasNoteContent: false,
+          hasSlideContent: true
+        },
+        { id: 'ex-uuid', type: ContentType.Exercise, title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 4 }
+      ],
+      registryBound
+    );
+
+    expect(conDiapositivas?.items.find((entry) => entry.key === 's1.1')?.status).toBe('done');
+    expect(conDiapositivas?.emptyCount).toBe(0);
+
+    const conVideo = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        {
+          id: 'lesson-uuid',
+          type: ContentType.Lesson,
+          title: 'Introducción',
+          sectionId: 'sec-uuid',
+          hasNoteContent: false,
+          videosCount: 2
+        },
+        { id: 'ex-uuid', type: ContentType.Exercise, title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 4 }
+      ],
+      registryBound
+    );
+
+    expect(conVideo?.items.find((entry) => entry.key === 's1.1')?.status).toBe('done');
+  });
+
+  it('sigue entendiendo las minúsculas, que es como las escribe el plan', () => {
+    const progress = buildPlanProgressAnchor(
+      plan,
+      sections,
+      [
+        { id: 'lesson-uuid', type: 'lesson', title: 'Introducción', sectionId: 'sec-uuid', hasNoteContent: false },
+        { id: 'ex-uuid', type: 'exercise', title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 0 }
+      ],
+      registryBound
+    );
+
+    expect(progress?.emptyCount).toBe(2);
   });
 });

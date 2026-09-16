@@ -62,16 +62,38 @@ export function avisoDePresupuesto(params: { paso: number; maxPasos: number }): 
   if (!Number.isFinite(paso) || !Number.isFinite(maxPasos) || maxPasos < 1 || paso < 1) return undefined;
   if (paso < Math.ceil(maxPasos * AVISO_DESDE_FRACCION)) return undefined;
 
-  const restantes = Math.max(0, maxPasos - paso);
+  // Lo que se cuenta son LLAMADAS A HERRAMIENTA, no pasos, y son una menos que
+  // los pasos por dos motivos que se suman:
+  //
+  // 1. El último paso de la ronda está reservado para la respuesta
+  //    (`cerrarConRespuesta`): existe, pero no ejecuta nada.
+  // 2. Este aviso viaja en el RESULTADO del paso `paso`, y un resultado se lee
+  //    en el paso SIGUIENTE. Contar pasos en bruto llegaba siempre tarde: el
+  //    aviso de "no queda ninguno" salía pegado al resultado del último paso,
+  //    que nadie lee nunca —`stopWhen` corta ahí y no hay paso siguiente—, así
+  //    que le pedía «reply now with what you did» a un lector inexistente.
+  //
+  // Con la resta, el número que el modelo lee es el que de verdad le queda por
+  // gastar cuando lo lee. El pedido de cerrar ya no vive acá: entra por
+  // `prepareStep`, como mensaje y antes de generar.
+  const herramientasRestantes = Math.max(0, maxPasos - 1 - paso);
 
-  // El último paso útil: pedirle que "aproveche los que quedan" cuando no queda
-  // ninguno sería mentirle, y lo unico que sirve ahi es que cierre.
-  if (restantes === 0) {
-    return `Step ${paso} of ${maxPasos}. This is the LAST step of the round: no further tool call will run. Reply now with what you did and what is still missing.`;
+  if (herramientasRestantes === 0) {
+    return (
+      `Step ${paso} of ${maxPasos}. No tool calls left: your next turn is the reply that closes the round. ` +
+      `Say what you built and what is still missing or created-but-empty.`
+    );
+  }
+
+  if (herramientasRestantes === 1) {
+    return (
+      `Step ${paso} of ${maxPasos} — ONE tool call left, and then you only get to reply. ` +
+      `Spend it on a CHANGE that finishes something, not on reading.`
+    );
   }
 
   return (
-    `Step ${paso} of ${maxPasos} — ${restantes} left in this round. ` +
+    `Step ${paso} of ${maxPasos} — ${herramientasRestantes} tool calls left in this round. ` +
     `Spend them on CHANGES, not on reading: re-reading a source or the course structure returns what it already returned. ` +
     `If the work will not fit, do the most important part and say plainly what is left.`
   );

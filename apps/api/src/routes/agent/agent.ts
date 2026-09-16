@@ -124,8 +124,9 @@ import { getStorageConfig } from '@api/config/storage';
 import { MAX_IMAGE_SIZE } from '@api/constants/upload';
 import { pideCambiosAlPlan } from '@api/services/agent/plan-revision';
 import {
+  avisoDeCierre,
   cerrarConRespuesta,
-  esUltimoPasoDelEstudiante,
+  esUltimoPasoDeLaRonda,
   recortarContextoDelPaso
 } from '@api/services/agent/student-final-step';
 import { contenidoEnIdioma } from '@api/services/agent/lesson-content-locale';
@@ -1583,17 +1584,18 @@ const agentCoreRouter = new Hono()
             return { toolChoice: { type: 'tool', toolName: 'generate_course_plan' } };
           }
 
-          // El estudiante contesta sí o sí: el último paso va sin herramientas y con
-          // el pedido de responder. Ver `student-final-step.ts` para por qué las dos cosas.
-          const ultimoPasoDelEstudiante = esUltimoPasoDelEstudiante({
-            esEstudiante: isStudentRound,
+          // Ninguna ronda cierra muda: el último paso va sin herramientas y con el
+          // pedido de responder. Ver `student-final-step.ts` para por qué las dos
+          // cosas, y por qué el aviso del docente no es el del estudiante.
+          const ultimoPaso = esUltimoPasoDeLaRonda({
             paso: stepNumber,
             maximoDePasos: maxStepsForRound
           });
+          const cierre = avisoDeCierre(isStudentRound);
 
           // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
           if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: stepNumber })) {
-            return ultimoPasoDelEstudiante ? cerrarConRespuesta(stepMessages) : {};
+            return ultimoPaso ? cerrarConRespuesta(stepMessages, cierre) : {};
           }
 
           const podados = pruneMessages({
@@ -1609,7 +1611,7 @@ const agentCoreRouter = new Hono()
             emptyMessages: 'remove'
           });
 
-          return ultimoPasoDelEstudiante ? cerrarConRespuesta(podados) : { messages: podados };
+          return ultimoPaso ? cerrarConRespuesta(podados, cierre) : { messages: podados };
         },
         onStepFinish: async (step) => {
           completedStepCount += 1;
