@@ -46,6 +46,7 @@ import {
   type RegistroDeAvisos
 } from '@api/services/agent/revision-tras-editar';
 import { fuentesParaContrastar } from '@api/services/agent/fuentes-para-contrastar';
+import { piezaConContenido, piezaEquivalente, seccionEquivalente } from '@api/services/agent/pieza-existente';
 import { buscarEnFuentes, type FuenteParaBuscar } from '@api/services/agent/source-search';
 import { claveDeLectura, notaDeRelectura, type LecturaRegistrada } from '@api/services/agent/relecturas';
 import { extraerPasajesSinFuente } from '@api/services/agent/unsupported-passages';
@@ -657,6 +658,18 @@ export function buildAgentTools(
     }
   }
 
+  /** Lo que se le contesta al modelo cuando la lección ya existía, escrita, y no se tocó. */
+  function leccionYaEscrita(leccion: { id: string; title: string; order: number }) {
+    return {
+      id: leccion.id,
+      title: leccion.title,
+      order: leccion.order,
+      reused: true,
+      contentWritten: false,
+      note: 'This section already has this lesson, with content, so nothing was created and it was NOT overwritten. Treat it as built. If the teacher explicitly asked to rewrite it, call write_lesson with this lessonId.'
+    };
+  }
+
   /**
    * La lección de un ítem del plan: la que ya se construyó para él, o una nueva.
    *
@@ -669,7 +682,19 @@ export function buildAgentTools(
     title: string;
     order: number;
     planKey?: string;
-  }): Promise<{ id: string; title: string; order: number; reused: boolean }> {
+  }): Promise<{
+    id: string;
+    title: string;
+    order: number;
+    reused: boolean;
+    /**
+     * Sólo para una lección hallada por título: ya tenía contenido. Quien llama
+     * NO la escribe. Una atadura del registro la construyó esta conversación y
+     * reescribirla es un reintento; una hallada por título la escribió otra, y
+     * pisarla borraría el trabajo de alguien.
+     */
+    yaEscritaPorOtro?: boolean;
+  }> {
     await verifySectionBelongsToCourse(args.sectionId, courseId);
 
     const boundId = await findBoundEntity(args.planKey, 'lesson');
@@ -684,6 +709,25 @@ export function buildAgentTools(
         title: existing?.title ?? args.title,
         order: existing?.order ?? args.order,
         reused: true
+      };
+    }
+
+    // Sin atadura: mirar si esta sección ya tiene esta lección. Ver pieza-existente.ts.
+    const equivalente = piezaEquivalente(await getCourseContentItems(courseId), {
+      tipo: 'lesson',
+      sectionId: args.sectionId,
+      titulo: args.title
+    });
+
+    if (equivalente?.id) {
+      await recordBinding(args.planKey, equivalente.id);
+
+      return {
+        id: equivalente.id,
+        title: equivalente.title ?? args.title,
+        order: equivalente.order ?? args.order,
+        reused: true,
+        yaEscritaPorOtro: piezaConContenido(equivalente)
       };
     }
 
@@ -1125,6 +1169,21 @@ export function buildAgentTools(
             };
           }
 
+          // Sin atadura —una conversación nueva sobre un curso ya construido—,
+          // lo único que evita duplicar es mirar el curso. Ver pieza-existente.ts.
+          const equivalente = seccionEquivalente(await listCourseSections(courseId), args.title);
+
+          if (equivalente) {
+            await recordBinding(args.planKey, equivalente.id);
+            return {
+              id: equivalente.id,
+              title: equivalente.title,
+              order: equivalente.order,
+              reused: true,
+              note: `This course already has this section ("${equivalente.title}"). Reusing it instead of creating a duplicate: build this plan section's lessons and exercises inside it.`
+            };
+          }
+
           const section = await createCourseSection(courseId, { title: args.title, courseId, order: args.order });
           await recordBinding(args.planKey, section.id);
           return { id: section.id, title: section.title, order: section.order };
@@ -1171,6 +1230,8 @@ export function buildAgentTools(
           }
 
           const leccion = await crearOReusarLeccion(args);
+
+          if (leccion.yaEscritaPorOtro) return leccionYaEscrita(leccion);
 
           if (leccion.reused) {
             // A retry after an interrupted round lands here. It still carries the
@@ -1260,12 +1321,17 @@ export function buildAgentTools(
             const existente = await getLesson(args.lessonId);
             leccion = { id: args.lessonId, title: existente.title, order: existente.order, reused: false };
           } else if (args.sectionId && args.title && args.order !== undefined) {
-            leccion = await crearOReusarLeccion({
+            const encontrada = await crearOReusarLeccion({
               sectionId: args.sectionId,
               title: args.title,
               order: args.order,
               planKey: args.planKey
             });
+
+            // Sin esto, el escritor reescribiría una lección que otro ya escribió.
+            if (encontrada.yaEscritaPorOtro) return leccionYaEscrita(encontrada);
+
+            leccion = encontrada;
           } else {
             throw new Error('Pass lessonId to rewrite a lesson, or sectionId + title + order to create one.');
           }
@@ -1642,6 +1708,31 @@ export function buildAgentTools(
               reused: true,
               note: 'This plan item was already built. Reusing the existing exercise — add questions with add_questions instead of creating a duplicate.'
             };
+          }
+
+          // Sin atadura: mirar si esta sección ya tiene este ejercicio. Ver pieza-existente.ts.
+          if (args.sectionId) {
+            const equivalente = piezaEquivalente(await getCourseContentItems(courseId), {
+              tipo: 'exercise',
+              sectionId: args.sectionId,
+              titulo: args.title
+            });
+
+            if (equivalente?.id) {
+              await recordBinding(args.planKey, equivalente.id);
+              const preguntas = equivalente.questionCount ?? 0;
+
+              return {
+                id: equivalente.id,
+                title: equivalente.title ?? args.title,
+                questionCount: preguntas,
+                reused: true,
+                note:
+                  preguntas > 0
+                    ? `This section already has this exercise, with ${preguntas} questions, so nothing was created. Treat it as built.`
+                    : 'This section already has this exercise, but with no questions. Nothing was created: add the questions to it with add_questions.'
+              };
+            }
           }
 
           /**

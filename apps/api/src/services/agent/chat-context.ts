@@ -1,5 +1,6 @@
 import { AppError } from '@api/utils/errors';
 import { getDocumentText, getDocumentSummary } from '@api/services/agent/document';
+import { claveDeTitulo } from '@api/services/agent/pieza-existente';
 import { redis } from '@api/utils/redis/redis';
 import {
   getCourseSectionBinding,
@@ -362,17 +363,25 @@ export function buildPlanProgressAnchor(
     items.filter((it) => tipoDeItem(it.type) !== 'section' && it.id).map((it) => [it.id as string, it] as const)
   );
 
+  // El camino de respaldo compara el plan contra el curso REAL, y ahí el título
+  // exacto no alcanza: en una conversación nueva no hay registro, y un plan que
+  // dice «Historia de la Empresa» donde el curso dice «Sección 1: Historia de la
+  // Empresa» ordenaba construir de nuevo la sección entera. Ver
+  // `pieza-existente.ts`. Ante dos iguales gana la primera: cualquiera sirve
+  // para no sumar una tercera.
   const sectionIdByTitle = new Map<string, string>();
   for (const s of sections) {
-    sectionIdByTitle.set(normalizeTitle(s.title), s.id);
+    const clave = claveDeTitulo(s.title);
+    if (!sectionIdByTitle.has(clave)) sectionIdByTitle.set(clave, s.id);
   }
 
-  // Index real items by sectionId + normalized title — the fallback path, used
-  // only when a plan item has no registry binding yet.
+  // Index real items by sectionId + title key — the fallback path, used only
+  // when a plan item has no registry binding yet.
   const itemsBySectionAndTitle = new Map<string, CourseItemState>();
   for (const it of items) {
     if (tipoDeItem(it.type) === 'section') continue;
-    itemsBySectionAndTitle.set(`${it.sectionId ?? ''}::${normalizeTitle(it.title)}`, it);
+    const clave = `${it.sectionId ?? ''}::${claveDeTitulo(it.title)}`;
+    if (!itemsBySectionAndTitle.has(clave)) itemsBySectionAndTitle.set(clave, it);
   }
 
   // Registry lookups mirror how syncPlanRegistry assigned the keys: sections by
@@ -404,7 +413,7 @@ export function buildPlanProgressAnchor(
     // Bound id first; title only as a fallback for pre-registry plans.
     const boundSectionId =
       regSection?.entityId && sectionById.has(regSection.entityId) ? regSection.entityId : undefined;
-    const realSectionId = boundSectionId ?? sectionIdByTitle.get(normalizeTitle(planSection.title));
+    const realSectionId = boundSectionId ?? sectionIdByTitle.get(claveDeTitulo(planSection.title));
 
     if (!realSectionId) {
       lines.push(`${tag(sectionKey)}Section "${planSection.title}" ⬜ NOT CREATED — create it and everything below.`);
@@ -430,7 +439,7 @@ export function buildPlanProgressAnchor(
       const regItem = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`);
       const itemKey = regItem?.key ?? '';
       const boundItem = regItem?.entityId ? itemById.get(regItem.entityId) : undefined;
-      const real = boundItem ?? itemsBySectionAndTitle.get(`${realSectionId}::${normalizeTitle(item.title)}`);
+      const real = boundItem ?? itemsBySectionAndTitle.get(`${realSectionId}::${claveDeTitulo(item.title)}`);
 
       if (!real) {
         pendingCount += 1;
