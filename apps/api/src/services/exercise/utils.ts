@@ -187,7 +187,9 @@ function diffQuestion(
     changes.exerciseSectionId = incoming.exerciseSectionId;
     hasChanges = true;
   }
-  if (!areSettingsEqual(current.settings, incoming.settings)) {
+  // Omitted settings mean "unchanged", like every field above. A NUMERIC keeps its
+  // answer in settings.correctValue: treating omission as "clear" erased it.
+  if (incoming.settings !== undefined && !areSettingsEqual(current.settings, incoming.settings)) {
     changes.settings = normalizeSettings(incoming.settings);
     hasChanges = true;
   }
@@ -213,7 +215,7 @@ function diffOption(
     changes.isCorrect = incoming.isCorrect;
     hasChanges = true;
   }
-  if (!areSettingsEqual(current.settings, incoming.settings)) {
+  if (incoming.settings !== undefined && !areSettingsEqual(current.settings, incoming.settings)) {
     changes.settings = normalizeSettings(incoming.settings);
     hasChanges = true;
   }

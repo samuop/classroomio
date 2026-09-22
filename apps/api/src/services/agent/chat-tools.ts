@@ -1920,24 +1920,14 @@ export function buildAgentTools(
             settings: q.settings
           }));
 
-          const allQuestions = [
-            ...existingQuestions.map((eq) => ({
-              id: Number(eq.id),
-              question: eq.title,
-              questionTypeId: eq.questionTypeId,
-              points: eq.points,
-              order: eq.order,
-              options: eq.options.map((o) => ({ id: Number(o.id), label: o.label || '', isCorrect: o.isCorrect }))
-            })),
-            ...newQuestions
-          ];
-
-          await updateExerciseService(args.exerciseId, { questions: allQuestions });
+          // Sólo las nuevas: el servicio no toca las preguntas que no recibe. Reenviar
+          // las viejas era reescribirlas, y así se perdía la respuesta de las numéricas.
+          await updateExerciseService(args.exerciseId, { questions: newQuestions });
           return {
             exerciseId: args.exerciseId,
             exerciseTitle: existingExercise.title,
             addedCount: args.questions.length,
-            totalCount: allQuestions.length
+            totalCount: existingQuestions.length + newQuestions.length
           };
         });
       }
