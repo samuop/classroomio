@@ -61,7 +61,34 @@ export function estadosSobreElPlan(
   plan: CoursePlan,
   progreso: AiAssistantPlanProgress | null | undefined
 ): Map<string, EstadoDelItem> {
-  const estados = new Map<string, EstadoDelItem>();
+  return new Map([...filasSobreElPlan(plan, progreso)].map(([posicion, fila]) => [posicion, fila.status] as const));
+}
+
+/**
+ * Los ítems que el asistente DECLARÓ hechos, con su motivo, por posición.
+ *
+ * Un ✅ que sale de «el 4400 ya no está» y uno que sale de «lo que queda es de
+ * otra regla» no valen lo mismo, y el docente tiene que poder distinguirlos. Ver
+ * `confirm_change_applied` en la API.
+ */
+export function confirmacionesSobreElPlan(
+  plan: CoursePlan,
+  progreso: AiAssistantPlanProgress | null | undefined
+): Map<string, string> {
+  const confirmadas = new Map<string, string>();
+
+  for (const [posicion, fila] of filasSobreElPlan(plan, progreso)) {
+    if (fila.confirmed) confirmadas.set(posicion, fila.confirmed);
+  }
+
+  return confirmadas;
+}
+
+function filasSobreElPlan(
+  plan: CoursePlan,
+  progreso: AiAssistantPlanProgress | null | undefined
+): Map<string, AiAssistantPlanProgressItem> {
+  const estados = new Map<string, AiAssistantPlanProgressItem>();
   const filas = progreso?.items ?? [];
 
   if (filas.length === 0) return estados;
@@ -85,7 +112,7 @@ export function estadosSobreElPlan(
 
     usadas.add(indice);
     cursor = indice + 1;
-    estados.set(posicion, filas[indice].status);
+    estados.set(posicion, filas[indice]);
   };
 
   (plan.sections ?? []).forEach((seccion, s) => {

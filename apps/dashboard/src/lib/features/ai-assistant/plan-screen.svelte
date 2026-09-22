@@ -9,7 +9,12 @@
   import { Button } from '@cio/ui/base/button';
   import { t } from '$lib/utils/functions/translations';
   import { pantallaDelPlan } from '$features/ai-assistant/utils/plan-screen.svelte';
-  import { contarPlan, estadosSobreElPlan, type EstadoDelItem } from '$features/ai-assistant/utils/plan-summary';
+  import {
+    confirmacionesSobreElPlan,
+    contarPlan,
+    estadosSobreElPlan,
+    type EstadoDelItem
+  } from '$features/ai-assistant/utils/plan-summary';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import type { CoursePlan, CoursePlanSection } from '$features/ai-assistant/utils/course-plan';
 
@@ -54,6 +59,16 @@
   const plan = $derived(editable ? borrador : (mostrado?.plan ?? null));
   const cuenta = $derived(plan ? contarPlan(plan) : null);
   const estados = $derived(aprobado && plan ? estadosSobreElPlan(plan, pantallaDelPlan.progreso) : new Map());
+  /**
+   * Los ítems que el asistente dio por hechos DECLARÁNDOLO, con su motivo.
+   *
+   * Van a la vista con todas las letras: un ✅ medido («el 4400 ya no está») y
+   * uno declarado («lo que queda es de otra regla») no valen lo mismo, y el
+   * docente es quien decide si le cree.
+   */
+  const confirmaciones = $derived(
+    aprobado && plan ? confirmacionesSobreElPlan(plan, pantallaDelPlan.progreso) : new Map<string, string>()
+  );
   const progreso = $derived(aprobado ? pantallaDelPlan.progreso : null);
   const porcentaje = $derived(
     progreso && progreso.total > 0 ? Math.round((progreso.completed / progreso.total) * 100) : 0
@@ -403,6 +418,14 @@
                         {#if item.changes}
                           <p class="text-sm text-pretty text-(--primary)">{item.changes}</p>
                         {/if}
+                      {/if}
+
+                      {#if confirmaciones.get(`${s}.${i}`)}
+                        <p class="ui:text-muted-foreground text-xs text-pretty italic">
+                          {$t('ai_assistant.plan_screen.confirmed_by_assistant', {
+                            reason: confirmaciones.get(`${s}.${i}`)
+                          })}
+                        </p>
                       {/if}
 
                       {#if item.type === 'exercise' || item.hasExercise}

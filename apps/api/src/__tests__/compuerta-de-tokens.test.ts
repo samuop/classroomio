@@ -247,6 +247,25 @@ describe('el rebote al escritor', () => {
     expect(resultado.unsupportedTokens).toBeUndefined();
   });
 
+  /**
+   * `writerRetried: true` decía que hubo rebote y nada más. Con cinco lecciones
+   * rebotando de cinco (medido el 2026-09-22) no se podía saber si el arreglo de
+   * los falsos positivos del chequeo de tokens había servido: falta el hallazgo.
+   */
+  it('el resultado dice POR QUÉ rebotó', async () => {
+    const escritor = vi
+      .fn()
+      .mockResolvedValueOnce(leccionEscrita(SIN_MARCAR))
+      .mockResolvedValueOnce(leccionEscrita(MARCADA));
+
+    const resultado = await escribir(escritor);
+
+    expect(resultado.writerRetried).toBe(true);
+    expect(String(resultado.writerRetryReason)).toContain('4471');
+    // Recortado: el informe de la ronda no es el lugar de una lista de veinte.
+    expect(String(resultado.writerRetryReason).length).toBeLessThanOrEqual(301);
+  });
+
   it('si el rebote se cae, queda la primera versión y sus avisos', async () => {
     // Falla abierto, como el resto de los chequeos: perder la lección por no
     // poder pulirla sería cambiar un defecto chico por uno grande.

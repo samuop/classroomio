@@ -104,6 +104,7 @@ import {
   isChecklistWorthShowing,
   type PlanProgress,
   collectDocumentIds,
+  esRondaDeAprobacionDelPlan,
   getActiveCourseTemplateId,
   getLatestImplementationPlan,
   loadDocumentsContext,
@@ -114,6 +115,9 @@ import {
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
+import { lecturasAConservar, podarHerramientas } from '@api/services/agent/poda-de-lecturas';
+import { transformarEnlacesDelChat } from '@api/services/agent/enlaces-del-chat';
+import { mapaDelCurso } from '@api/services/agent/manijas';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
 import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
@@ -1022,54 +1026,92 @@ const agentCoreRouter = new Hono()
            * medirse sobre el curso como está AHORA, antes de que esta ronda
            * escriba nada. Medida después, sería igual al contenido nuevo y
            * ningún ítem se podría dar por hecho nunca. Ver `plan-de-cambios.ts`.
+           *
+           * En las rondas de continuación ya no se ata (ver abajo), pero esto se
+           * mide igual: es lo que el ancla necesita para decir si el valor viejo
+           * TODAVÍA está.
            */
           const estadoInicial = planTieneOrdenesDeCambio
             ? await estadoDelContenido(courseId, agentContext.locale)
             : undefined;
 
-          let formaDelPlan: PlanShape = approvedPlan;
-
-          if (estadoInicial) {
-            const analisis = await leerAnalisisDeFuente({
-              orgId,
-              courseId,
-              conversationId,
-              userId: user.id
-            }).catch((err: unknown) => {
-              console.error('[agent.chat] no se pudo leer el análisis de la fuente:', err);
-              return [];
-            });
-
-            const atado = atarPlanDeCambios({
-              plan: approvedPlan,
-              secciones: progressSections,
-              items: progressItems,
-              lecciones: [...estadoInicial.textoPorLeccion].map(([id, content]) => ({ id, content })),
-              preguntasPorEjercicio: estadoInicial.preguntasPorEjercicio,
-              analisis
-            });
-
-            formaDelPlan = atado.registro;
-
-            // Un target que no resuelve no frena nada: el ítem queda sin atar y
-            // el ancla lo muestra sin manija. El lugar donde eso se corrige es
-            // `generate_course_plan`, antes de que el docente apruebe.
-            for (const error of atado.errores) console.warn('[agent.chat] plan de cambios:', error);
-          }
-
-          // Reconcile the plan into the registry: it assigns each item a stable
-          // key and preserves the binding of everything already built, so a
-          // re-planned or teacher-edited plan doesn't orphan existing rows.
-          const registry = await syncPlanRegistry({
+          /**
+           * Atar y sincronizar se hacen UNA vez: en la ronda en que el docente
+           * aprueba el plan.
+           *
+           * Antes corrían también en cada ronda de continuación, y eso rehacía
+           * el atado —tres consultas y un barrido— para nada: `syncPlanRegistry`
+           * conserva el `baseline` viejo pero toma los `replacements` del atado
+           * NUEVO, así que apenas un valor desaparecía del texto el ítem perdía
+           * sus reemplazos en el registro. Hoy sale inocuo porque entonces se
+           * mide por hash, pero no es lo diseñado: la línea de base se mide una
+           * vez y el registro es lo que se lee después.
+           *
+           * El registro vacío es la excepción y no un caso raro: si la
+           * sincronización falló, o el plan se aprobó y la fila nunca se
+           * escribió, leer no devuelve nada y sin registro no hay ni claves ni
+           * línea de base. Ahí se sincroniza igual — es la PRIMERA vez, que es
+           * justamente cuando corresponde.
+           */
+          const registroGuardado = await readPlanRegistry({
             orgId,
             courseId,
             conversationId,
-            userId: user.id,
-            plan: formaDelPlan
+            userId: user.id
           }).catch((err: unknown) => {
-            console.error('[agent.chat] failed to sync plan registry:', err);
+            console.error('[agent.chat] no se pudo leer el registro del plan:', err);
             return [];
           });
+
+          const hayQueSincronizar = esRondaDeAprobacionDelPlan(messages) || registroGuardado.length === 0;
+
+          let registry = registroGuardado;
+
+          if (hayQueSincronizar) {
+            let formaDelPlan: PlanShape = approvedPlan;
+
+            if (estadoInicial) {
+              const analisis = await leerAnalisisDeFuente({
+                orgId,
+                courseId,
+                conversationId,
+                userId: user.id
+              }).catch((err: unknown) => {
+                console.error('[agent.chat] no se pudo leer el análisis de la fuente:', err);
+                return [];
+              });
+
+              const atado = atarPlanDeCambios({
+                plan: approvedPlan,
+                secciones: progressSections,
+                items: progressItems,
+                lecciones: [...estadoInicial.textoPorLeccion].map(([id, content]) => ({ id, content })),
+                preguntasPorEjercicio: estadoInicial.preguntasPorEjercicio,
+                analisis
+              });
+
+              formaDelPlan = atado.registro;
+
+              // Un target que no resuelve no frena nada: el ítem queda sin atar y
+              // el ancla lo muestra sin manija. El lugar donde eso se corrige es
+              // `generate_course_plan`, antes de que el docente apruebe.
+              for (const error of atado.errores) console.warn('[agent.chat] plan de cambios:', error);
+            }
+
+            // Reconcile the plan into the registry: it assigns each item a stable
+            // key and preserves the binding of everything already built, so a
+            // re-planned or teacher-edited plan doesn't orphan existing rows.
+            registry = await syncPlanRegistry({
+              orgId,
+              courseId,
+              conversationId,
+              userId: user.id,
+              plan: formaDelPlan
+            }).catch((err: unknown) => {
+              console.error('[agent.chat] failed to sync plan registry:', err);
+              return registroGuardado;
+            });
+          }
 
           const progress = buildPlanProgressAnchor(
             approvedPlan,
@@ -1718,6 +1760,41 @@ const agentCoreRouter = new Hono()
         ...(activeToolNames ? { activeTools: activeToolNames as any } : {}),
         ...(providerOptions ? { providerOptions } : {}),
         stopWhen: stepCountIs(maxStepsForRound),
+        /**
+         * Los enlaces del chat, resueltos antes de que el texto salga.
+         *
+         * Desde que las herramientas devuelven manijas y ya casi no devuelven
+         * UUIDs, el modelo no tiene de dónde copiar uno — y el formato del
+         * enlace le pedía uno igual. Medido el 2026-09-22: tres ids inventados
+         * en los enlaces de un solo resumen. Ahora el enlace acepta la manija y
+         * el servidor la traduce; un id que no es de nada se repara por título
+         * o se degrada a texto plano. Ver `enlaces-del-chat.ts`.
+         *
+         * Sólo el docente: el tutor del alumno no escribe enlaces al curso y no
+         * tiene por qué pagar el buffer.
+         */
+        ...(role === AgentRole.TEACHER
+          ? {
+              experimental_transform: transformarEnlacesDelChat(
+                async () => {
+                  const [secciones, items] = await Promise.all([
+                    listCourseSections(courseId),
+                    getCourseContentItems(courseId)
+                  ]);
+
+                  return { mapa: mapaDelCurso(secciones, items), items };
+                },
+                (cambios) => {
+                  for (const cambio of cambios) {
+                    console.log(
+                      `[agent.chat] enlace ${cambio.como === 'handle' ? 'por manija' : cambio.como === 'title' ? 'reparado por título' : 'sin destino, queda como texto'}: ` +
+                        `@[${cambio.titulo}](${cambio.tipo}:${cambio.escrito})`
+                    );
+                  }
+                }
+              )
+            }
+          : {}),
         // Paso 2 (context diet, intra-round): a build round runs up to 40 steps in
         // one loop, and by default every step re-sends ALL prior steps' tool calls
         // verbatim — including full lesson-HTML inputs and 150KB fetched docs. From
@@ -1750,9 +1827,25 @@ const agentCoreRouter = new Hono()
             return ultimoPaso ? cerrarConRespuesta(stepMessages, cierre) : {};
           }
 
-          const podados = pruneMessages({
+          /**
+           * La poda con una excepción: la última lectura de cada pieza se queda.
+           *
+           * Antes acá iba `toolCalls: 'before-last-4-messages'` a secas, y eso
+           * borraba el resultado de `get_lesson_content` antes de que el modelo
+           * llegara a editar esa lección. Medido el 2026-09-22: 35 de 40 pasos
+           * gastados releyendo las mismas cinco piezas. Ver `poda-de-lecturas.ts`.
+           */
+          const sinLecturasViejas = podarHerramientas({
             messages: stepMessages,
-            toolCalls: 'before-last-4-messages',
+            ultimos: 4,
+            conservar: lecturasAConservar(stepMessages)
+          });
+
+          const podados = pruneMessages({
+            messages: sinLecturasViejas,
+            // Las herramientas ya las podó la función de arriba: acá queda sólo
+            // el manejo del razonamiento, que `pruneMessages` sigue haciendo.
+            toolCalls: 'none',
             // With thinking on, every step adds a reasoning block that
             // `pruneMessages` keeps by default (`reasoning: 'none'`), so a
             // 40-step build would carry ~40 of them by the end and undo the

@@ -213,6 +213,29 @@ export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof
 }
 
 /**
+ * Si ESTA ronda es la de aprobación del plan, y no una continuación.
+ *
+ * `getLatestImplementationPlan` busca hacia atrás el último plan aprobado, que
+ * sigue vigente ronda tras ronda. Esto es otra pregunta: ¿el docente acaba de
+ * apretar «Aprobar»? Lo dice el ÚLTIMO mensaje del docente, porque el de una
+ * continuación («Continue implementing the plan…») no lleva la metadata.
+ *
+ * De esto cuelga que el plan se ate y se sincronice una sola vez. Ver el bloque
+ * `if (approvedPlan)` de `agent.ts`.
+ */
+export function esRondaDeAprobacionDelPlan(messages: unknown[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index] as PlanMetadataMessage;
+
+    if (message?.role !== 'user') continue;
+
+    return message?.metadata?.plan?.action === 'implement_course_plan';
+  }
+
+  return false;
+}
+
+/**
  * Real course item as returned by getCourseContentItems — only the fields this
  * module needs. Kept structural (not imported) so the DB row type can evolve
  * without coupling the anchor to it.
@@ -327,10 +350,42 @@ function medirCambio(params: {
   estado: EstadoDelContenido | undefined;
   baseline: { contentHash: string } | undefined;
   replacements: PlanItemReplacement[] | undefined;
-}): { hecho: boolean; pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }> } {
-  const { tipo, entityId, estado, baseline, replacements } = params;
+  /** Lo que el modelo declaró con `confirm_change_applied`, si lo hizo. */
+  confirmed: { reason: string; at: string } | undefined;
+}): {
+  hecho: boolean;
+  pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }>;
+  /**
+   * Si el target YA cambió respecto de la línea de base.
+   *
+   * No es lo mismo que «hecho»: el hash puede haber cambiado y el valor viejo
+   * seguir apareciendo. Es la condición que habilita `confirm_change_applied`,
+   * porque declarar que lo que queda es legítimo sólo tiene sentido después de
+   * haber editado algo.
+   */
+  editado: boolean;
+  /** El motivo de la declaración, para mostrarlo al lado del ✅. */
+  confirmado?: string;
+} {
+  const { tipo, entityId, estado, baseline, replacements, confirmed } = params;
 
-  if (!entityId || !estado) return { hecho: false, pendientes: [] };
+  if (!entityId || !estado) return { hecho: false, pendientes: [], editado: false };
+
+  const hashActual = tipo === 'lesson' ? estado.hashPorLeccion.get(entityId) : estado.hashPorEjercicio.get(entityId);
+  const editado = !!baseline && hashActual !== undefined && hashActual !== baseline.contentHash;
+
+  /**
+   * Una declaración del modelo le gana al barrido.
+   *
+   * El servidor ya comprobó, al aceptarla, que el target había cambiado (ver
+   * `confirm_change_applied`). Lo que no puede comprobar —y ninguna regla
+   * determinista pudo, probada sobre el texto real— es si la «2 horas» que
+   * queda es la del P1 o la del P2. Sin esta salida el ítem se reclama para
+   * siempre y el modelo termina deformando una frase correcta para callarlo.
+   */
+  if (confirmed) {
+    return { hecho: true, pendientes: [], editado, confirmado: confirmed.reason };
+  }
 
   if (replacements && replacements.length > 0) {
     // El barrido se rehace contra el contenido de AHORA, en cada ronda: los
@@ -369,14 +424,12 @@ function medirCambio(params: {
       })
       .filter((p) => p.cuantas > 0);
 
-    return { hecho: pendientes.length === 0, pendientes };
+    return { hecho: pendientes.length === 0, pendientes, editado };
   }
 
-  if (!baseline) return { hecho: false, pendientes: [] };
+  if (!baseline) return { hecho: false, pendientes: [], editado: false };
 
-  const actual = tipo === 'lesson' ? estado.hashPorLeccion.get(entityId) : estado.hashPorEjercicio.get(entityId);
-
-  return { hecho: actual !== undefined && actual !== baseline.contentHash, pendientes: [] };
+  return { hecho: editado, pendientes: [], editado };
 }
 
 /** La orden de trabajo de un ítem pendiente, tal como la lee el modelo. */
@@ -386,8 +439,26 @@ function describirPendiente(params: {
   manija: string;
   changes: string | undefined;
   pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }>;
+  /** La clave del ítem: hace falta para ofrecer `confirm_change_applied`. */
+  clave: string;
+  /** Si el target ya cambió respecto de la línea de base. Ver `medirCambio`. */
+  editado: boolean;
 }): string {
-  const { tipo, accion, manija, changes, pendientes } = params;
+  const { tipo, accion, manija, changes, pendientes, clave, editado } = params;
+
+  /**
+   * La salida declarada, ofrecida SÓLO cuando corresponde.
+   *
+   * Dos condiciones: que el ítem siga pendiente por un valor que el barrido
+   * encuentra, y que el target YA haya cambiado. Sin lo segundo, ofrecerla
+   * sería enseñarle a saltarse la edición diciendo que ya estaba bien. Con lo
+   * segundo, es la única forma de cerrar un ítem cuyo «todavía está» es un
+   * falso positivo que ninguna regla determinista puede distinguir.
+   */
+  const salidaDeclarada =
+    editado && clave && pendientes.length > 0
+      ? ` If the remaining «${pendientes[0].old}» belong to a different rule than the one the source changed, say so with confirm_change_applied (planKey ${clave}, with the reason) — the server cannot tell them apart. Never rewrite a correct sentence to dodge this check.`
+      : '';
 
   if (accion === 'rewrite') {
     const como =
@@ -416,7 +487,7 @@ function describirPendiente(params: {
       })
       .join('; ');
 
-    return `✏️ TO EDIT — ${lista}: update_questions`;
+    return `✏️ TO EDIT — ${lista}: update_questions${salidaDeclarada}`;
   }
 
   const lista = pendientes
@@ -431,7 +502,7 @@ function describirPendiente(params: {
     .join(', ');
   const conBloques = pendientes.some((p) => p.donde.length > 0);
 
-  return `✏️ TO EDIT — ${lista}${conBloques ? ' — use replace_lesson_block on those blocks' : ''}`;
+  return `✏️ TO EDIT — ${lista}${conBloques ? ' — use replace_lesson_block on those blocks' : ''}${salidaDeclarada}`;
 }
 
 /**
@@ -470,6 +541,14 @@ export interface PlanProgressItem {
   kind: 'section' | 'lesson' | 'exercise';
   title: string;
   status: PlanProgressStatus;
+  /**
+   * El ítem se da por hecho porque el asistente lo declaró, con este motivo.
+   *
+   * Viaja al panel para que el docente vea la diferencia entre lo medido y lo
+   * declarado: un ✅ que sale de «el 4400 ya no está» y uno que sale de «lo que
+   * queda es de otra regla» no valen lo mismo. Ver `confirm_change_applied`.
+   */
+  confirmed?: string;
 }
 
 export interface PlanProgress {
@@ -667,13 +746,25 @@ export function buildPlanProgressAnchor(
           entityId,
           estado,
           baseline: regItem?.baseline,
-          replacements: regItem?.replacements
+          replacements: regItem?.replacements,
+          confirmed: regItem?.confirmed
         });
         const donde = `"${realDelCambio?.title ?? item.title}" (${manijaOInterrogante(mapa, entityId)})`;
 
         if (medida.hecho) {
-          itemStatuses.push(`  - ${tag(itemKey)}${item.type} ${donde} ✅`);
-          progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'done' });
+          // Un ítem dado por hecho POR DECLARACIÓN se ve distinto de uno medido:
+          // el docente tiene que poder distinguir «el 4400 ya no está» de «el
+          // asistente dice que lo que queda es de otra regla».
+          const porDeclaracion = medida.confirmado ? ` (confirmed by the assistant: ${medida.confirmado})` : '';
+
+          itemStatuses.push(`  - ${tag(itemKey)}${item.type} ${donde} ✅${porDeclaracion}`);
+          progressItems.push({
+            key: itemKey,
+            kind: item.type,
+            title: item.title,
+            status: 'done',
+            ...(medida.confirmado ? { confirmed: medida.confirmado } : {})
+          });
           continue;
         }
 
@@ -685,7 +776,9 @@ export function buildPlanProgressAnchor(
             accion,
             manija: manijaOInterrogante(mapa, entityId),
             changes: item.changes,
-            pendientes: medida.pendientes
+            pendientes: medida.pendientes,
+            clave: itemKey,
+            editado: medida.editado
           })}`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });

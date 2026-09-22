@@ -65,7 +65,8 @@ ${questionTypeListBlock}
 - NUMERIC: the correct answer goes in \`numericAnswer\` as a number (add \`numericTolerance\` unless the answer is exact), and the question takes NO options. **A NUMERIC question without \`numericAnswer\` is discarded** — it would award zero points to every learner, so the server refuses it. Only use this type when the lessons let the learner compute or recall an exact number.
 - STAR: \`settings.correctValue\`. WORD_BANK: \`settings.correctAnswers\` and \`settings.template\`.
 - TRUE_FALSE: exactly two options, labelled with the words for true and false IN THE COURSE LANGUAGE ("Verdadero" / "Falso" in Spanish, "True" / "False" in English), exactly one marked correct.
-- RADIO / CHECKBOX: the options carry the answer (\`isCorrect\`), and the question takes no \`settings\`.
+- RADIO / CHECKBOX: the options carry the answer (\`isCorrect\`), and the question takes no \`settings\`. RADIO needs at least two options with exactly one marked correct; CHECKBOX needs at least two with at least one marked correct.
+- **A RADIO, CHECKBOX or TRUE_FALSE question that comes back without options is discarded** — the learner would have nothing to choose from, so the server refuses it, exactly as it does with a NUMERIC that has no \`numericAnswer\`. Every question of those three types carries its \`options\` array, filled.
 
 Write the questions, the options and everything a learner reads in the course language you are given — the same language the lessons are written in.
 

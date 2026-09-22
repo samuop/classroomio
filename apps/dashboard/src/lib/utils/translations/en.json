@@ -5205,6 +5205,7 @@
         "add_questions": "Adding questions",
         "write_questions": "Writing the questions from the lessons",
         "analyze_source_changes": "Comparing the new source with the course",
+        "confirm_change_applied": "Recording a change it already made",
         "update_questions": "Updating questions",
         "reorder_content": "Reordering content",
         "update_course_landing_page": "Updating landing page",
@@ -5244,6 +5245,7 @@
       "done": {
         "generic": "Done",
         "analyze_source_changes": "{count, plural, =0 {Nothing the course already says changes} one {Found # fact that changes} other {Found # facts that change}}",
+        "confirm_change_applied": "Marked “{title}” as done, with its reason",
         "create_section": "Created section: {title}",
         "update_section": "Updated section: {title}",
         "create_lesson": "Created lesson: {title}",
@@ -5358,6 +5360,7 @@
       "building": "Building",
       "progress": "{completed} of {total} ready",
       "status_done": "Ready",
+      "confirmed_by_assistant": "The assistant marked this done: {reason}",
       "status_empty": "Created, no content yet",
       "status_missing": "Pending",
       "section": "Section {order}",

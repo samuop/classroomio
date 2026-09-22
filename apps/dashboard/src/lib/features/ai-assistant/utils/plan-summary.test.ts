@@ -1,4 +1,4 @@
-import { contarPlan, estadosSobreElPlan, planesDeLaConversacion } from './plan-summary';
+import { confirmacionesSobreElPlan, contarPlan, estadosSobreElPlan, planesDeLaConversacion } from './plan-summary';
 import type { CoursePlan } from './course-plan';
 import type { AiAssistantPlanProgress } from './types';
 
@@ -75,6 +75,41 @@ describe('el avance sobre el plan', () => {
 
   it('sin avance no hay estados', () => {
     expect(estadosSobreElPlan(plan, null).size).toBe(0);
+  });
+});
+
+/**
+ * Un ✅ medido («el 4400 ya no está») y uno declarado por el asistente («lo que
+ * queda es de otra regla») no valen lo mismo, y el docente es quien decide si le
+ * cree. Ver `confirm_change_applied` en la API.
+ */
+describe('los ítems que el asistente dio por hechos declarándolo', () => {
+  it('llegan con su motivo, ubicados en la misma posición que su estado', () => {
+    const avance = progreso([
+      { key: 's1', kind: 'section', title: 'Arranque', status: 'done' },
+      { key: 's1.1', kind: 'lesson', title: 'Bienvenida', status: 'done' },
+      {
+        key: 's1.2',
+        kind: 'lesson',
+        title: 'Repaso',
+        status: 'done',
+        confirmed: 'Las 2 horas que quedan son del P1.'
+      }
+    ]);
+
+    const confirmaciones = confirmacionesSobreElPlan(plan, avance);
+
+    expect(confirmaciones.get('0.1')).toBe('Las 2 horas que quedan son del P1.');
+    // Y no se contagia a los que sí se midieron.
+    expect(confirmaciones.has('0.0')).toBe(false);
+    // El estado sigue saliendo igual que siempre.
+    expect(estadosSobreElPlan(plan, avance).get('0.1')).toBe('done');
+  });
+
+  it('un plan sin declaraciones no devuelve ninguna', () => {
+    const avance = progreso([{ key: 's1.1', kind: 'lesson', title: 'Bienvenida', status: 'done' }]);
+
+    expect(confirmacionesSobreElPlan(plan, avance).size).toBe(0);
   });
 });
 

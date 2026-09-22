@@ -221,6 +221,14 @@ export interface AiAssistantPlanProgressItem {
   title: string;
   /** `empty` = the row exists but has no content / no questions yet. */
   status: 'done' | 'empty' | 'missing';
+  /**
+   * El ítem se da por hecho porque el asistente lo declaró, con este motivo.
+   *
+   * Sólo aparece en un plan de cambios, cuando el barrido del servidor sigue
+   * encontrando el valor viejo y el asistente explicó que lo que queda es de
+   * otra regla. Ver `confirm_change_applied` en la API.
+   */
+  confirmed?: string;
 }
 
 export interface AiAssistantPlanProgress {

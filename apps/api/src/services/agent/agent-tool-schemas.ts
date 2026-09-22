@@ -115,6 +115,27 @@ export const analyzeSourceChangesParam = z.object({
     )
 });
 
+/**
+ * Declarar que una orden de cambio ya está cumplida aunque el barrido siga
+ * encontrando el valor viejo.
+ *
+ * `reason` no es opcional a propósito: lo que se guarda al lado del ✅ es lo que
+ * el docente lee para decidir si le cree. Una confirmación sin motivo sería un
+ * botón de «dar por hecho», que es exactamente lo que esto NO es.
+ */
+export const confirmChangeAppliedParam = z.object({
+  planKey: z
+    .string()
+    .min(1)
+    .describe('The [key] shown beside the item in the Plan Progress block (for example "s1.2"). Copy it, never guess.'),
+  reason: z
+    .string()
+    .min(12)
+    .describe(
+      'Why the remaining occurrences of the old value are legitimate: which other rule or context they belong to. The teacher reads this next to the item, so write it in the course language and name the distinction (for example: the remaining "2 horas" is the P1 deadline, which the new circular does not change).'
+    )
+});
+
 export const exerciseReadParam = z.object({
   exerciseId: z.string().describe(piezaPorManija('exercise to read'))
 });
@@ -366,7 +387,60 @@ export const questionFields = z.object({
     )
 });
 
+/**
+ * Cuántas opciones y cuántas correctas pide cada tipo de opción.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-22: la práctica de una sección se creó con cinco
+ * preguntas —dos RADIO, una CHECKBOX, una TRUE_FALSE y otra RADIO— SIN NINGUNA
+ * opción, y el servidor las guardó las cinco. El log decía «6 pregunta(s) de 6
+ * pedidas» y el resultado `added: 6`. Causa: `options` tiene `.default([])`, o
+ * sea que omitirlo es válido, y la única regla de tipo que había miraba NUMERIC.
+ *
+ * Una pregunta de opción sin opciones es una pregunta que el alumno no puede
+ * contestar, y encima es invisible para todo lo demás: el barrido de datos
+ * viejos busca en las etiquetas de las opciones, y ahí no había ninguna.
+ *
+ * Esto vive en `questionSchema` —el esquema de CREACIÓN— y NO en
+ * `updateQuestionPatchSchema`: una actualización parcial `{ id, question }`
+ * tiene que seguir valiendo, porque ahí las opciones que no viajan son las que
+ * ya están guardadas.
+ */
+const REGLA_POR_TIPO: Readonly<Record<number, { minimo: number; exacto?: number; correctas: 'una' | 'al-menos-una'; nombre: string }>> =
+  {
+    [QUESTION_TYPE.RADIO]: { minimo: 2, correctas: 'una', nombre: 'RADIO' },
+    [QUESTION_TYPE.CHECKBOX]: { minimo: 2, correctas: 'al-menos-una', nombre: 'CHECKBOX' },
+    [QUESTION_TYPE.TRUE_FALSE]: { minimo: 2, exacto: 2, correctas: 'una', nombre: 'TRUE_FALSE' }
+  };
+
 export const questionSchema = questionFields.superRefine((question, ctx) => {
+    const regla = REGLA_POR_TIPO[question.questionTypeId];
+
+    if (regla) {
+      const opciones = question.options.length;
+      const correctas = question.options.filter((opcion) => opcion.isCorrect).length;
+      const cuantas =
+        regla.exacto !== undefined ? `exactly ${regla.exacto} options` : `at least ${regla.minimo} options`;
+      const cualCorrecta =
+        regla.correctas === 'una' ? 'exactly one marked correct' : 'at least one marked correct';
+      const mal =
+        (regla.exacto !== undefined && opciones !== regla.exacto) ||
+        opciones < regla.minimo ||
+        (regla.correctas === 'una' ? correctas !== 1 : correctas < 1);
+
+      if (mal) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['options'],
+          message:
+            `A ${regla.nombre} question needs ${cuantas} with ${cualCorrecta}; this one came with ` +
+            `${opciones} option(s) and ${correctas} marked correct. A question with no options is one the ` +
+            `learner cannot answer.`
+        });
+      }
+    }
+
     if (question.questionTypeId !== QUESTION_TYPE.NUMERIC) return;
 
     const raw = question.settings?.correctValue;

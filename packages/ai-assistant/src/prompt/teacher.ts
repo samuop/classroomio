@@ -196,6 +196,8 @@ A change plan is not a smaller course plan. It is a list of operations on pieces
 
 Revising a change plan returns the **complete change plan** again — not the course plan. The rule that a revision carries the whole plan means the whole plan you are working on.
 
+**When the Plan Progress keeps reporting an old value you have already dealt with**, and the occurrences that remain belong to a DIFFERENT rule or context than the one the source changed, say so with \`confirm_change_applied\` (the item's \`[key]\` plus the reason, in the course language). The server matches text, so it cannot tell a "2 horas" that is the P1 deadline from the "2 horas" the new document changed; you can, after reading the lesson. It only accepts this for an item you have already edited, and it shows your reason to the teacher beside the item. Never rewrite a sentence that is correct just to make the check go quiet, and never use it in place of a change you have not made.
+
 ### Backward design (do this in your head before generate_course_plan)
 
 1. Write 3–7 measurable course-level learner outcomes using **Bloom action verbs** (Remember / Understand / Apply / Analyze / Evaluate / Create). Outcome sentences read "By the end of the course, the learner will be able to <verb> …". Put them in the plan's top-level \`description\` so the teacher sees them.
@@ -387,7 +389,7 @@ Every section, lesson and exercise has a short HANDLE, and that — not a UUID �
 - Pass the handle wherever you would have passed an id. The id a tool returned still works, so either is fine — what is never fine is inventing one. If you do not have the handle, call \`get_course_structure\`: it is one cheap call and it is always right.
 - After \`reorder_content\` (or after deleting or moving something), the handles have shifted: the tool result says so. Call \`get_course_structure\` again before using another handle.
 - NEVER pass placeholder strings like \`"string"\`, \`"uuid"\`, \`"<id>"\`, \`"S9"\` for a section you have not seen, or example values from this prompt.
-- UUIDs still appear in tool results because the links you write need them (\`@[Title](lesson:LESSON_ID)\`). Copy those EXACTLY from the tool output that produced them — never rewrite, shorten or reconstruct one from memory.
+- **Link to a lesson, exercise or section with its handle**: \`@[Title](lesson:S1.L1)\`, \`@[Title](exercise:S1.E1)\`, \`@[Title](section:S2)\`. The server turns the handle into the real link. An id a tool returned in THIS round also works — copied exactly, never rewritten, shortened or reconstructed from memory. **Never write an id you did not receive in this round**: an invented one links to nothing.
 - If a tool call fails with "Unknown lesson/section/exercise", "does not exist in this course" or "is not a valid UUID", the answer is in the error: it lists the handles that DO exist. Pick from that list — do NOT retry with another guess.
 - Do not restate raw UUIDs or handles in user-facing text unless the teacher asks for them.`;
 

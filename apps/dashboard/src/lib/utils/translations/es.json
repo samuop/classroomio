@@ -264,6 +264,7 @@
         "add_questions": "Agregando preguntas",
         "write_questions": "Escribiendo las preguntas desde las lecciones",
         "analyze_source_changes": "Comparando la fuente nueva con el curso",
+        "confirm_change_applied": "Dejando constancia de un cambio ya hecho",
         "update_questions": "Actualizando preguntas",
         "reorder_content": "Reordenando contenido",
         "update_course_landing_page": "Actualizando la página de inicio",
@@ -303,6 +304,7 @@
       "done": {
         "generic": "Listo",
         "analyze_source_changes": "{count, plural, =0 {No cambia nada de lo que el curso ya dice} one {Encontró # dato que cambia} other {Encontró # datos que cambian}}",
+        "confirm_change_applied": "Dio por hecho «{title}» y dejó dicho por qué",
         "create_section": "Sección creada: {title}",
         "update_section": "Sección actualizada: {title}",
         "create_lesson": "Lección creada: {title}",
@@ -487,6 +489,7 @@
       "building": "Construyendo",
       "progress": "{completed} de {total} listos",
       "status_done": "Listo",
+      "confirmed_by_assistant": "El asistente lo dio por hecho: {reason}",
       "status_empty": "Creado, sin contenido",
       "status_missing": "Pendiente",
       "section": "Sección {order}",

@@ -62,6 +62,34 @@ export interface PlanItemReplacement {
   context?: string[];
 }
 
+/**
+ * La salida declarada para un «todavía está» que el servidor no puede resolver.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-22. Un cambio pedía reemplazar «2 horas» con el contexto
+ * `["P2", "primera respuesta"]`. La lección de escalamiento dice, legítimamente,
+ * «Incidente P1 (Crítica) … Sin resolver a las 2 horas … Incidente P2 (Alta)»:
+ * un diagrama, todo en un bloque, sin puntos. El `P2` queda a menos de 160
+ * caracteres de esa «2 horas» que es del P1, así que el barrido dice «todavía
+ * está» y el ítem NUNCA se puede dar por hecho. Costó dos rondas extra (260 s),
+ * dos `replace_lesson_block` «sin cambio», y el modelo terminó escribiendo «2 h»
+ * en vez de «2 horas» para conformar al riel: deformó una frase correcta para
+ * salir de un bucle.
+ *
+ * Se probaron sobre el texto real las heurísticas deterministas (distancia,
+ * oración) y ninguna distingue «la 2 horas del P1» de «la 2 horas del P2» ahí:
+ * en el diagrama el P2 está MÁS cerca. Sólo el modelo puede decirlo, y no tenía
+ * cómo. Esto es ese cómo, y queda guardado con su motivo para que el docente vea
+ * que fue una decisión y no una medición.
+ */
+export interface PlanItemConfirmed {
+  /** Por qué las apariciones que quedan son legítimas, en palabras del modelo. */
+  reason: string;
+  /** Cuándo se declaró, ISO. */
+  at: string;
+}
+
 export interface PlanRegistryEntry {
   /** Stable short key the model echoes back in create_* calls (e.g. `s1`, `s1.2`). */
   key: string;
@@ -79,6 +107,8 @@ export interface PlanRegistryEntry {
   baseline?: PlanItemBaseline;
   /** Sólo en `edit`: los datos que el análisis de la fuente encontró dentro de este target. */
   replacements?: PlanItemReplacement[];
+  /** El modelo declaró que lo que queda del valor viejo es legítimo. Ver {@link PlanItemConfirmed}. */
+  confirmed?: PlanItemConfirmed;
 }
 
 /**
@@ -118,6 +148,7 @@ type RegistryStepInput = {
   action?: PlanItemAction;
   baseline?: PlanItemBaseline;
   replacements?: PlanItemReplacement[];
+  confirmed?: PlanItemConfirmed;
 };
 
 type RegistryStepOutput = {
@@ -162,7 +193,8 @@ async function readAllEntries(runId: string) {
       entityId: output.entityId ?? null,
       action: input.action,
       baseline: input.baseline,
-      replacements: input.replacements
+      replacements: input.replacements,
+      confirmed: input.confirmed
     };
   });
 }
@@ -200,6 +232,15 @@ export async function syncPlanRegistry(
    */
   const baselineByKey = new Map(
     existing.filter((e) => e.baseline).map((e) => [e.key, e.baseline as PlanItemBaseline] as const)
+  );
+  /**
+   * Y la confirmación del modelo también se conserva: no sale del plan, sale de
+   * una declaración que ya hizo. Una sincronización que la borrara volvería a
+   * reclamar un ítem que el asistente ya explicó, o sea el bucle que la
+   * confirmación existe para cortar.
+   */
+  const confirmedByKey = new Map(
+    existing.filter((e) => e.confirmed).map((e) => [e.key, e.confirmed as PlanItemConfirmed] as const)
   );
 
   // Existing keys indexed the way we look them up: sections by title, items by
@@ -267,7 +308,8 @@ export async function syncPlanRegistry(
         entityId: bindingByKey.get(itemKey) ?? item.entityId ?? null,
         ...(item.action ? { action: item.action } : {}),
         ...(baseline ? { baseline } : {}),
-        ...(item.replacements ? { replacements: item.replacements } : {})
+        ...(item.replacements ? { replacements: item.replacements } : {}),
+        ...(confirmedByKey.has(itemKey) ? { confirmed: confirmedByKey.get(itemKey) as PlanItemConfirmed } : {})
       });
     }
   }
@@ -280,7 +322,8 @@ export async function syncPlanRegistry(
       position: entry.position,
       ...(entry.action ? { action: entry.action } : {}),
       ...(entry.baseline ? { baseline: entry.baseline } : {}),
-      ...(entry.replacements ? { replacements: entry.replacements } : {})
+      ...(entry.replacements ? { replacements: entry.replacements } : {}),
+      ...(entry.confirmed ? { confirmed: entry.confirmed } : {})
     };
     // A bound item is 'completed', an unbound one 'queued'. `output` is left out
     // of the update set on purpose: re-syncing a plan must never drop a binding.
@@ -351,7 +394,7 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
 
   return entries
     .filter((entry) => entry.status !== 'canceled')
-    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements }) => ({
+    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements, confirmed }) => ({
       key,
       kind,
       title,
@@ -360,7 +403,8 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
       entityId,
       ...(action ? { action } : {}),
       ...(baseline ? { baseline } : {}),
-      ...(replacements ? { replacements } : {})
+      ...(replacements ? { replacements } : {}),
+      ...(confirmed ? { confirmed } : {})
     }))
     .sort((a, b) => a.position - b.position);
 }
@@ -391,6 +435,56 @@ export async function bindPlanItem(
         eq(schema.aiAgentRunStep.stepType, PLAN_ITEM_STEP_TYPE)
       )
     );
+}
+
+/**
+ * Guarda la declaración del modelo sobre un ítem: lo que queda del valor viejo
+ * es legítimo, y por qué.
+ *
+ * Escribe sólo `confirmed` dentro de `input`, releyendo la fila primero: el
+ * resto de `input` (la acción, la línea de base, los reemplazos) es lo que el
+ * ancla mide en cada ronda, y pisarlo con un objeto armado acá lo perdería.
+ *
+ * Devuelve `false` cuando no hay ninguna fila con esa clave: quien llama tiene
+ * que poder decirle al modelo que la clave no existe, en vez de tragárselo.
+ */
+export async function confirmarItemDelPlan(
+  params: RunScope & { planKey: string; reason: string; at?: string }
+): Promise<boolean> {
+  const run = await ensureChatRun(params);
+  const now = new Date().toISOString();
+
+  const [fila] = await db
+    .select()
+    .from(schema.aiAgentRunStep)
+    .where(
+      and(
+        eq(schema.aiAgentRunStep.runId, run.id),
+        eq(schema.aiAgentRunStep.stepKey, params.planKey),
+        eq(schema.aiAgentRunStep.stepType, PLAN_ITEM_STEP_TYPE)
+      )
+    )
+    .limit(1);
+
+  if (!fila) return false;
+
+  const input: RegistryStepInput = {
+    ...((fila.input ?? {}) as RegistryStepInput),
+    confirmed: { reason: params.reason, at: params.at ?? now }
+  };
+
+  await db
+    .update(schema.aiAgentRunStep)
+    .set({ input, updatedAt: now })
+    .where(
+      and(
+        eq(schema.aiAgentRunStep.runId, run.id),
+        eq(schema.aiAgentRunStep.stepKey, params.planKey),
+        eq(schema.aiAgentRunStep.stepType, PLAN_ITEM_STEP_TYPE)
+      )
+    );
+
+  return true;
 }
 
 /**

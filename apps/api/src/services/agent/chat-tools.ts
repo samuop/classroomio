@@ -7,7 +7,7 @@ import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { QUESTION_TYPE_IDS as QUESTION_TYPE } from '@cio/question-types';
-import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
+import { bindPlanItem, confirmarItemDelPlan, readPlanRegistry, resolvePlanBinding } from '@cio/db/queries/agent';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TLocale } from '@cio/db/types';
@@ -93,6 +93,7 @@ import {
   analyzeSourceChangesParam,
   askTemplateQuestionsParam,
   askDiscoveryQuestionsParam,
+  confirmChangeAppliedParam,
   coursePlanParam,
   createExerciseParam,
   createExerciseSectionParam,
@@ -481,6 +482,119 @@ function briefDelRebote(written: { unsupportedTokens: string[]; groundingWarning
   );
 
   return partes.join('\n\n');
+}
+
+/** Hasta dónde se recorta el motivo de un rebote: entra en una línea de log y en el informe. */
+const MAX_MOTIVO_DE_REBOTE = 300;
+
+function recortarMotivo(texto: string): string {
+  const limpio = texto.replace(/\s+/g, ' ').trim();
+
+  return limpio.length > MAX_MOTIVO_DE_REBOTE ? `${limpio.slice(0, MAX_MOTIVO_DE_REBOTE)}…` : limpio;
+}
+
+/**
+ * Una edición no puede llevarse puestos los ejemplos marcados.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-22. El bloque de una lección era un `<ul>` con tres
+ * `<li data-ejemplo>` («Caso 1/2/3»); la orden de trabajo decía «todavía está»
+ * por un número que vivía dentro del Caso 2, y el modelo reemplazó el `<ul>`
+ * ENTERO por un `<p>`. En la otra lección, un `<ul>` con cuatro casos marcados
+ * terminó siendo un `<svg>`. Ocho marcas quedaron en una.
+ *
+ * El mecanismo es siempre el mismo: la orden pide cambiar UN dato, y la forma
+ * más corta de hacer desaparecer ese dato es tirar el elemento que lo contiene.
+ * Nadie miente y nadie desobedece — el riel medía «¿sigue el 4400?» y no
+ * «¿sigue estando lo demás?».
+ *
+ * ── Por qué es una negativa y no un aviso ────────────────────────────────────
+ *
+ * Un aviso después de guardar llega tarde: el contenido ya no está y nadie
+ * tiene el texto viejo para reponerlo. Y una marca `data-ejemplo` no es
+ * decoración: es contenido que el docente conserva a propósito (ver
+ * `unsupported-passages.ts`). Un reemplazo VACÍO sí se permite: borrar un
+ * bloque es una decisión, no un accidente.
+ */
+function describirEjemplo(ejemplo: { texto: string; porque: string }): string {
+  const descripcion = ejemplo.porque.trim() || ejemplo.texto.trim();
+
+  return descripcion.length > 60 ? `${descripcion.slice(0, 60)}…` : descripcion;
+}
+
+function avisoDePerdidaDeEjemplos(params: {
+  /** «This block» / «This lesson»: qué se estaba por pisar. */
+  alcance: 'block' | 'lesson';
+  antes: ReturnType<typeof extraerEjemplos>;
+  faltan: number;
+}): string {
+  const donde = params.alcance === 'block' ? 'This block' : 'This lesson';
+  const comoCambiar =
+    params.alcance === 'block'
+      ? 'change the value inside them (edit_lesson_content with the exact old fragment, or replace_lesson_block keeping every element marked data-ejemplo) — do not replace the list.'
+      : 'change the value inside them (a smaller edit_lesson_content whose newString keeps every element marked data-ejemplo) — do not replace the list.';
+
+  return (
+    `${donde} holds ${params.antes.length} marked example(s) (${params.antes.map(describirEjemplo).join('; ')}) ` +
+    `and your replacement drops ${params.faltan} of them. Marked examples are content the teacher keeps: ` +
+    `${comoCambiar} To delete one example because it is wrong, replace only that element.`
+  );
+}
+
+/** Nada se guarda si el reemplazo pierde marcas: se tira antes de tocar la base. */
+function negarPerdidaDeEjemplos(params: {
+  alcance: 'block' | 'lesson';
+  antes: string;
+  despues: string;
+  /** Un reemplazo vacío: el modelo pidió BORRAR, y eso es una decisión, no un accidente. */
+  esBorrado: boolean;
+}): void {
+  if (params.esBorrado) return;
+
+  const antes = extraerEjemplos(params.antes);
+  const despues = extraerEjemplos(params.despues);
+
+  if (despues.length >= antes.length) return;
+
+  throw new Error(avisoDePerdidaDeEjemplos({ alcance: params.alcance, antes, faltan: antes.length - despues.length }));
+}
+
+/**
+ * Elementos que no pueden ser el envoltorio de un bloque suelto.
+ *
+ * Medido en la misma ronda: el modelo reemplazó un `<ul>` por un `<li>` suelto
+ * y el servidor lo guardó. HTML inválido que el editor del dashboard no puede
+ * volver a abrir — y no da ningún error en ningún lado.
+ */
+const NO_SON_BLOQUES = new Set(['li', 'td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'option']);
+
+function negarBloqueSuelto(html: string): void {
+  const externo = html.trim().match(/^<([a-z][a-z0-9]*)\b/i)?.[1]?.toLowerCase();
+
+  if (!externo || !NO_SON_BLOQUES.has(externo)) return;
+
+  throw new Error(
+    `The replacement must be a standalone block: wrap the <${externo}> in <ul> or <ol> (a table row in <table>).`
+  );
+}
+
+/** Dos preguntas son la misma cuando dicen lo mismo: es lo único comparable entre dos tandas. */
+function claveDePregunta(pregunta: { question: string }): string {
+  return pregunta.question.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Lo que se le devuelve al escritor de preguntas cuando omitió las opciones. */
+function notaDeOpciones(sinOpciones: ReadonlyArray<{ question: string }>): string {
+  return (
+    `IMPORTANT — the server refused ${sinOpciones.length} of the questions you just wrote: they came back ` +
+    `without options, and a question with no options is one the learner cannot answer.\n` +
+    sinOpciones.map((pregunta) => `- ${pregunta.question}`).join('\n') +
+    '\n\nWrite those questions again, WITH their options. A RADIO question needs at least two options with ' +
+    'exactly one marked correct; a CHECKBOX needs at least two with at least one marked correct; a TRUE_FALSE ' +
+    'needs exactly two options (the course language\'s words for True and False) with exactly one marked ' +
+    'correct. Every question still quotes, in `evidence`, a sentence of the lessons copied verbatim.'
+  );
 }
 
 /**
@@ -1939,8 +2053,21 @@ export function buildAgentTools(
            */
           const hallazgos = [...written.unsupportedTokens, ...written.groundingWarnings];
           let writerRetried = false;
+          /**
+           * Por QUÉ rebotó, escrito una sola vez y contado en dos lados.
+           *
+           * `writerRetried: true` decía que hubo rebote y nada más, así que no
+           * había forma de medir si los falsos positivos del chequeo de tokens
+           * (F1) se habían arreglado: en la corrida del 2026-09-22 rebotaron 5
+           * de 5 lecciones y el registro no dice por cuál hallazgo. Va al log
+           * —para poder contarlo sobre una corrida entera— y al resultado, que
+           * es lo que queda guardado en el informe de la ronda.
+           */
+          const motivoDelRebote = recortarMotivo(hallazgos.join(' | '));
 
           if (hallazgos.length > 0) {
+            console.log(`[write_lesson] rebote «${leccion.title}»: ${motivoDelRebote}`);
+
             const reintento = await escribirLeccion({
               lessonTitle: leccion.title,
               brief: `${args.brief}\n\n${briefDelRebote(written)}`,
@@ -1981,7 +2108,7 @@ export function buildAgentTools(
             ...(escrito.fuentesNoEncontradas.length > 0 ? { sourcesNotFound: escrito.fuentesNoEncontradas } : {}),
             ...(escrito.recortadas.length > 0 ? { sourcesTruncated: escrito.recortadas } : {}),
             ...(escrito.nota ? { writerNote: escrito.nota } : {}),
-            ...(writerRetried ? { writerRetried: true } : {}),
+            ...(writerRetried ? { writerRetried: true, writerRetryReason: motivoDelRebote } : {}),
             ...contentWarningFields(written)
           };
         });
@@ -2104,6 +2231,16 @@ export function buildAgentTools(
             );
           }
 
+          // Los dos rieles de la edición por bloques, ANTES de tocar nada. Ver
+          // `negarPerdidaDeEjemplos` y `negarBloqueSuelto`.
+          negarBloqueSuelto(args.html);
+          negarPerdidaDeEjemplos({
+            alcance: 'block',
+            antes: block.html,
+            despues: args.html,
+            esBorrado: !args.html.trim()
+          });
+
           const repaired = convertMarkdownMathToKatex(
             args.html.includes('<svg') ? repararDiagrama(args.html) : args.html
           );
@@ -2219,6 +2356,17 @@ export function buildAgentTools(
           if (reemplazado === current) {
             throw new Error('The replacement produced no change (oldString and newString are equivalent).');
           }
+
+          // Acá el riel se mide sobre la lección ENTERA y no sobre el fragmento:
+          // `oldString` puede ser un pedacito de un `<ul>` y llevarse el cierre,
+          // y lo único que dice si se perdió un ejemplo es cuántas marcas
+          // quedaron en el resultado. Ver `negarPerdidaDeEjemplos`.
+          negarPerdidaDeEjemplos({
+            alcance: 'lesson',
+            antes: current,
+            despues: reemplazado,
+            esBorrado: !args.newString.trim()
+          });
 
           // Un bloque entero pegado por acá nace sin id y no se podría volver a
           // editar por bloque; y una lección vieja, anterior a los ids, se vuelve
@@ -2705,43 +2853,138 @@ export function buildAgentTools(
             );
           }
 
-          // La evidencia, contra el texto de ESTAS lecciones y no el del curso:
-          // el escritor no vio ninguna otra, así que una frase que aparece en
-          // otra lección no salió de lo que él leyó.
-          const { validas, rechazadas } = verificarEvidencias(
-            escrito.preguntas,
-            lecciones.map((leccion) => leccion.text)
-          );
-          const descartadas = rechazadas.map((rechazada) => ({
-            question: rechazada.question,
-            evidence: rechazada.evidence,
-            reason: 'its evidence is not in the lessons this exercise covers'
-          }));
-          const aceptadas: Array<z.infer<typeof questionSchema>> = [];
+          const textosDeLasLecciones = lecciones.map((leccion) => leccion.text);
 
-          // Y la regla de cada tipo, que el esquema de salida del escritor no
-          // lleva a propósito: una numérica sin respuesta la rechaza después el
-          // servicio, y ahí se cae la llamada entera en vez de esa pregunta.
-          for (const pregunta of validas) {
-            const revisada = questionSchema.safeParse(conRespuestaNumerica(pregunta));
+          /**
+           * Una tanda del escritor, revisada: la evidencia primero y la regla
+           * del tipo después.
+           *
+           * La evidencia se contrasta contra el texto de ESTAS lecciones y no
+           * el del curso: el escritor no vio ninguna otra, así que una frase
+           * que aparece en otra lección no salió de lo que él leyó.
+           */
+          const revisarTanda = (preguntas: typeof escrito.preguntas) => {
+            const { validas, rechazadas } = verificarEvidencias(preguntas, textosDeLasLecciones);
+            const descartadas = rechazadas.map((rechazada) => ({
+              question: rechazada.question,
+              evidence: rechazada.evidence,
+              reason: 'its evidence is not in the lessons this exercise covers',
+              porOpciones: false
+            }));
+            const aceptadas: Array<z.infer<typeof questionSchema>> = [];
+            const sinOpciones: Array<{ question: string; questionTypeId: number }> = [];
 
-            if (revisada.success) {
-              aceptadas.push(revisada.data);
-              continue;
+            // Y la regla de cada tipo, que el esquema de salida del escritor no
+            // lleva a propósito: una numérica sin respuesta la rechaza después
+            // el servicio, y ahí se cae la llamada entera en vez de esa pregunta.
+            for (const pregunta of validas) {
+              const revisada = questionSchema.safeParse(conRespuestaNumerica(pregunta));
+
+              if (revisada.success) {
+                aceptadas.push(revisada.data);
+                continue;
+              }
+
+              const porOpciones = revisada.error.issues.some((issue) => issue.path[0] === 'options');
+
+              if (porOpciones) sinOpciones.push({ question: pregunta.question, questionTypeId: pregunta.questionTypeId });
+
+              descartadas.push({
+                question: pregunta.question,
+                evidence: pregunta.evidence,
+                reason: revisada.error.issues.map((issue) => issue.message).join(' '),
+                porOpciones
+              });
             }
 
-            descartadas.push({
-              question: pregunta.question,
-              evidence: pregunta.evidence,
-              reason: revisada.error.issues.map((issue) => issue.message).join(' ')
+            return { aceptadas, descartadas, sinOpciones };
+          };
+
+          const primeraTanda = revisarTanda(escrito.preguntas);
+          const aceptadas = [...primeraTanda.aceptadas];
+          let descartadas = primeraTanda.descartadas;
+          const vistas = new Set(aceptadas.map(claveDePregunta));
+
+          /**
+           * El rebote por opciones: se le vuelve a pedir UNA vez.
+           *
+           * Mismo patrón que el rebote de `write_lesson`, y por el mismo motivo:
+           * quien tiene las lecciones delante es el escritor, no el constructor,
+           * y devolverle el hueco al constructor lo pone a escribir preguntas
+           * sobre un texto que no leyó. Medido el 2026-09-22: cinco preguntas de
+           * opción creadas sin una sola opción, imposibles de contestar.
+           *
+           * Una vez y no hasta que quede limpio: lo que falta acá es un campo
+           * que el escritor omitió, no un juicio difícil, y un tercer intento es
+           * pagar otra llamada entera por lo mismo.
+           */
+          if (primeraTanda.sinOpciones.length > 0) {
+            console.log(
+              `[question-writer] "${exerciseTitle || args.title}": ${primeraTanda.sinOpciones.length} sin opciones, rebote`
+            );
+
+            const reintento = await escribirPreguntas({
+              exerciseTitle: exerciseTitle || args.title || 'Exercise',
+              brief: [args.brief, notaDeOpciones(primeraTanda.sinOpciones)].filter(Boolean).join('\n\n'),
+              count: primeraTanda.sinOpciones.length,
+              lecciones: lecciones.map(({ title, text }) => ({ title, text })),
+              locale
+            }).catch((error: unknown) => {
+              // Falla abierto: lo que la primera tanda aceptó ya está bien, y
+              // perderlo porque el rebote no salió sería peor que quedarse con
+              // menos preguntas.
+              console.error('[question-writer] el rebote por opciones falló:', error);
+              return null;
             });
+
+            if (reintento) {
+              const segundaTanda = revisarTanda(reintento.preguntas);
+
+              for (const pregunta of segundaTanda.aceptadas) {
+                const clave = claveDePregunta(pregunta);
+
+                // Sin repetir por texto: el escritor puede devolver de nuevo una
+                // que ya había salido bien en la primera tanda.
+                if (vistas.has(clave)) continue;
+
+                vistas.add(clave);
+                aceptadas.push(pregunta);
+              }
+
+              // Las que el rebote arregló dejan de estar rechazadas; las que
+              // siguen faltando quedan, con el motivo de la segunda vuelta.
+              descartadas = [
+                ...primeraTanda.descartadas.filter(
+                  (descartada) => !descartada.porOpciones || !vistas.has(claveDePregunta(descartada))
+                ),
+                ...segundaTanda.descartadas
+              ];
+            }
           }
+
+          /**
+           * Lo rechazado, como lo lee el modelo.
+           *
+           * `porOpciones` es contabilidad interna del rebote y no sale. Y se
+           * deduplica por texto: el escritor puede devolver la misma pregunta
+           * mal dos veces, y listarla dos veces sólo haría más larga la lista
+           * sin decir nada nuevo.
+           */
+          const rechazadasParaElModelo = () => {
+            const porTexto = new Map<string, { question: string; evidence: string; reason: string }>();
+
+            for (const { question, evidence, reason } of descartadas) {
+              porTexto.set(claveDePregunta({ question }), { question, evidence, reason });
+            }
+
+            return [...porTexto.values()];
+          };
 
           if (aceptadas.length === 0) {
             return {
               ...(exerciseId ? { exerciseId } : {}),
               added: 0,
-              rejected: descartadas,
+              rejected: rechazadasParaElModelo(),
               ...(escrito.nota ? { writerNote: escrito.nota } : {}),
               note: 'Nothing was created: not one question came back with a sentence that is actually in those lessons. Do NOT write the questions yourself to fill the gap — check you passed the right lessons, and tell the teacher if those lessons have nothing to assess.'
             };
@@ -2814,7 +3057,7 @@ export function buildAgentTools(
             added: aceptadas.length,
             ...(creado ? { created: true } : {}),
             ...(exerciseSectionId ? { exerciseSectionId, blockTitle: args.blockTitle } : {}),
-            ...(descartadas.length > 0 ? { rejected: descartadas } : {}),
+            ...(descartadas.length > 0 ? { rejected: rechazadasParaElModelo() } : {}),
             ...(sinContenido.length > 0 ? { lessonsWithoutContent: sinContenido } : {}),
             ...(escrito.nota ? { writerNote: escrito.nota } : {}),
             note:
@@ -3377,6 +3620,91 @@ export function buildAgentTools(
               conLugar.length === 0
                 ? 'This document changes nothing the course already says. Tell the teacher that, and do not propose a plan.'
                 : 'Propose a change plan (generate_course_plan with scope "changes"): one edit item per lesson AND one per exercise listed here, with target = its handle and `changes` saying what replaces what. An occurrence with a questionId is a question that still teaches the old value — the exercise needs its own edit item, or the course will teach the new value and test the old one. The server will attach these replacements to the plan and check they are really gone.'
+          };
+        });
+      }
+    }),
+
+    /**
+     * La salida declarada para un «todavía está» que el servidor no puede
+     * resolver.
+     *
+     * ── Qué se midió ────────────────────────────────────────────────────────
+     *
+     * 2026-09-22. Un cambio pedía reemplazar «2 horas» con el contexto `["P2",
+     * "primera respuesta"]`. La lección de escalamiento dice, legítimamente,
+     * «Incidente P1 (Crítica) … Sin resolver a las 2 horas … Incidente P2
+     * (Alta)»: un diagrama, todo en un bloque y sin puntos. El `P2` queda a
+     * menos de 160 caracteres de esa «2 horas» que es del P1, así que el
+     * barrido dice «todavía está» y el ítem no se puede dar por hecho NUNCA.
+     * Costó dos rondas (260 s), dos `replace_lesson_block` que no cambiaron
+     * nada, y al final el modelo escribió «2 h» en lugar de «2 horas» para que
+     * el riel se callara: deformó una frase correcta para salir del bucle.
+     *
+     * Se probaron sobre el texto real la heurística de distancia y la de
+     * oración: en ese diagrama el P2 está MÁS cerca que el P1. Ninguna regla
+     * determinista los distingue ahí; sólo el modelo puede, y no tenía cómo
+     * decirlo.
+     *
+     * ── Qué comprueba el servidor antes de aceptarla ────────────────────────
+     *
+     * Que el ítem exista en el registro, que sea una orden de cambio y que su
+     * contenido YA haya cambiado respecto de la línea de base. Sin lo último
+     * esto sería un botón de «dar por hecho» sin editar nada, que es peor que
+     * el bucle: primero hay que haber hecho el cambio.
+     */
+    confirm_change_applied: tool({
+      description:
+        'Declare that a change-plan item is done even though the Plan Progress still finds the old value, because the remaining occurrences belong to a DIFFERENT rule or context than the one the source changed (for example a "2 horas" that is the P1 deadline, not the P2 one the new document changed). The server cannot tell those apart; you can. It accepts this only for an item you have already edited in this conversation, and records your reason next to the item so the teacher sees it was a judgement, not a measurement. Never rewrite a correct sentence just to make the check go quiet, and never use this instead of making a change you have not made.',
+      inputSchema: confirmChangeAppliedParam,
+      execute: async (args) => {
+        return executeAgentTool('confirm_change_applied', { orgId, userId, courseId, args }, async () => {
+          const registroDelPlan = await readPlanRegistry(runScope);
+          const entrada = registroDelPlan.find((fila) => fila.key === args.planKey);
+
+          if (!entrada) {
+            throw new Error(
+              `No plan item with key "${args.planKey}". Copy the [key] the Plan Progress block shows beside the item — do not invent one.`
+            );
+          }
+
+          if (!entrada.action || entrada.action === 'create') {
+            throw new Error(
+              `Plan item "${args.planKey}" is not a change order (it is a ${entrada.action ?? 'create'} item), so there is nothing to confirm. Build it instead.`
+            );
+          }
+
+          if (!entrada.entityId || !entrada.baseline) {
+            throw new Error(
+              `Plan item "${args.planKey}" has no baseline recorded, so the server cannot tell whether you changed anything. Make the edit the Plan Progress asks for.`
+            );
+          }
+
+          const estado = await estadoDelContenido(courseId, locale);
+          const hashActual =
+            entrada.kind === 'lesson'
+              ? estado.hashPorLeccion.get(entrada.entityId)
+              : estado.hashPorEjercicio.get(entrada.entityId);
+
+          if (hashActual === undefined || hashActual === entrada.baseline.contentHash) {
+            throw new Error(
+              `Nothing was recorded: "${entrada.title}" is byte-for-byte what it was when the plan was approved, so there is no change to confirm. Make the edit the Plan Progress asks for first; this tool is only for the occurrences that legitimately stay behind afterwards.`
+            );
+          }
+
+          const guardado = await confirmarItemDelPlan({ ...runScope, planKey: args.planKey, reason: args.reason });
+
+          if (!guardado) {
+            throw new Error(
+              `No plan item with key "${args.planKey}" in this conversation's registry. Copy the [key] from the Plan Progress block.`
+            );
+          }
+
+          return {
+            ok: true as const,
+            planKey: args.planKey,
+            title: entrada.title,
+            note: 'Recorded. The Plan Progress will show this item as done, with your reason beside it so the teacher can see it was your judgement.'
           };
         });
       }

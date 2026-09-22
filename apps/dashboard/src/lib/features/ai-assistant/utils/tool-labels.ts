@@ -64,7 +64,8 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'delete_section',
   'write_lesson',
   'read_lessons',
-  'analyze_source_changes'
+  'analyze_source_changes',
+  'confirm_change_applied'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */
@@ -152,6 +153,15 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         shape: 'i18n',
         key: 'ai_assistant.tool.done.analyze_source_changes',
         vars: { count: Array.isArray(r.changes) ? r.changes.length : 0 }
+      };
+    // Dar por hecho un ítem porque el asistente lo declaró no es lo mismo que
+    // medirlo: el registro lo dice con todas las letras, para que el docente
+    // pueda ir a mirar.
+    case 'confirm_change_applied':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.confirm_change_applied',
+        vars: { title: readString(r, 'title') ?? '' }
       };
     case 'read_source':
       return {
