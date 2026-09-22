@@ -29,13 +29,26 @@
  *
  * ── A dónde van los hallazgos ────────────────────────────────────────────────
  *
- * Al informe de la lección, que lo lee el docente — NO al bucle de avisos del
- * modelo. Es deliberado y es la misma regla que `grounding.ts` se puso a sí
- * mismo: un falso positivo en el informe cuesta una mirada, y en el bucle
- * enseña al modelo a desconfiar del canal, que es el daño que no se puede
- * deshacer. Este chequeo es más recto pero también más literal, y va a marcar
- * alguna cosa que estaba bien dicha de otro modo; ese costo lo paga una
- * persona mirando, no el agente reintentando.
+ * Al informe del docente Y, desde el 2026-09-22, de vuelta al modelo como
+ * compuerta. Esto cambió a propósito y el motivo por el que NO iba al bucle
+ * sigue siendo cierto: un falso positivo en el bucle enseña al modelo a
+ * desconfiar del canal, que es el daño que no se puede deshacer.
+ *
+ * Lo que cambió es que ahora hay una salida correcta que antes no existía.
+ * Medido sobre cinco lecciones: cero marcas `data-sin-fuente` y hallazgos de
+ * tokens en todas, casi todos dentro de los EJEMPLOS —el nombre y el legajo de
+ * un empleado, un «Error 404», un «24/7»—. Con una sola marca disponible, la
+ * única respuesta a «este número no está en la fuente» era borrar el ejemplo, y
+ * devolver eso habría sido pedirle al escritor que enseñara peor. Con
+ * `data-ejemplo` la respuesta es de una palabra: declararlo. Y lo declarado se
+ * saca del texto ANTES de contar (`quitarPasajesMarcados`), así que un ejemplo
+ * marcado no vuelve a aparecer — el aviso se apaga solo cuando se lo atiende,
+ * que es la condición para que un canal así no se vuelva ruido.
+ *
+ * El informe se queda con la lista larga (hasta `MAX_HALLAZGOS`), que la lee
+ * una persona de una sentada; al modelo van pocos y formateados
+ * (`redactarTokens`), porque ahí cada aviso compite por su atención en el medio
+ * de una construcción.
  */
 
 /** Una fuente tal como la vio quien escribió la lección. */
@@ -102,6 +115,17 @@ export interface HallazgoDeToken {
  * lección con veinte tokens sin respaldo no es una lección con un error.
  */
 export const MAX_HALLAZGOS = 20;
+
+/**
+ * Cuántos hallazgos vuelven al MODELO.
+ *
+ * Cinco, igual que el verificador con modelo, y por el mismo motivo: alcanzan
+ * para que entienda que el problema es sistemático sin convertir el resultado de
+ * la herramienta en un informe. Con más, el aviso pesa más que la lección que
+ * está escribiendo y lo que hace es reescribirla entera — que es exactamente la
+ * salida que no queremos.
+ */
+export const MAX_TOKENS_AL_MODELO = 5;
 
 /** Caracteres a cada lado del token que se guardan como contexto. */
 const CONTEXTO_CHARS = 45;
@@ -649,4 +673,16 @@ export function verificarTokens(params: {
   }
 
   return Number.isFinite(tope) ? hallazgos.slice(0, tope) : hallazgos;
+}
+
+/**
+ * Los hallazgos tal como los lee el modelo: «valor» — contexto.
+ *
+ * Con el contexto y no pelados. Un aviso que dice sólo «4471» lo manda a buscar
+ * el número por toda la lección; con el tramo que lo rodea sabe cuál de los tres
+ * párrafos tiene que tocar, y puede decidir en el acto si es un ejemplo suyo o
+ * un dato que creyó copiar.
+ */
+export function redactarTokens(hallazgos: HallazgoDeToken[], tope = MAX_TOKENS_AL_MODELO): string[] {
+  return hallazgos.slice(0, tope).map((hallazgo) => `«${hallazgo.valor}» — ${hallazgo.contexto}`);
 }

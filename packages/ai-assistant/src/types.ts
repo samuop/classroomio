@@ -110,12 +110,54 @@ export const CoursePlanItemSchema = z.object({
     .optional()
     .describe(
       'REQUIRED on every lesson when the course has attached sources. The file name(s) from the "## Course Sources" list whose material actually carries this lesson. Send an EMPTY ARRAY when no attached source covers it — that is a truthful answer and the server surfaces it to the teacher. Never name a source that is not in that list.'
+    ),
+  /**
+   * Qué se le hace a esta pieza. Ausente = `create`, que es lo que todo plan
+   * anterior a los planes de cambios quería decir.
+   *
+   * Medido el 2026-09-21: «agregá una sección» devolvía el plan del curso
+   * ENTERO, porque el esquema exigía examen final y el prompt pedía el plan
+   * completo. El docente veía treinta ítems para revisar y aprobar cuando había
+   * pedido uno. Con `action`, un plan puede hablar de lo que ya existe sin
+   * fingir que se construye de nuevo.
+   */
+  action: z
+    .enum(['create', 'rewrite', 'edit'])
+    .optional()
+    .describe(
+      'What happens to this item. "create" (the default) builds it from scratch. "rewrite" writes an EXISTING lesson again from the material. "edit" changes specific facts inside an existing lesson or exercise, leaving the rest untouched. Only used in a change plan (scope "changes").'
+    ),
+  target: z
+    .string()
+    .optional()
+    .describe(
+      'The handle (e.g. S2.L3) or id of the EXISTING lesson/exercise this item acts on. Required for "rewrite" and "edit"; leave it out for "create".'
+    ),
+  changes: z
+    .string()
+    .optional()
+    .describe(
+      'What changes, in one or two sentences — the teacher reads this to decide. Required for "rewrite" and "edit".'
     )
 });
 
 export const CoursePlanSectionSchema = z.object({
   title: z.string().min(1),
   order: z.number().int().min(0),
+  /**
+   * La sección del curso a la que pertenece este bloque del plan.
+   *
+   * Sin esto, un plan de cambios sobre una sección que ya existe sólo podía
+   * nombrarla por el título, y el título es justamente lo que el modelo
+   * «mejora» mientras trabaja: es de donde salieron las secciones duplicadas
+   * (ver `pieza-existente.ts`).
+   */
+  sectionId: z
+    .string()
+    .optional()
+    .describe(
+      'The handle (e.g. S2) or id of the EXISTING course section this block of the plan belongs to. Omit it only when the section itself is new.'
+    ),
   items: z
     .array(CoursePlanItemSchema)
     .min(1)
@@ -126,6 +168,21 @@ export const CoursePlanSectionSchema = z.object({
 
 export const CoursePlanFieldsSchema = z.object({
   title: z.string().min(1),
+  /**
+   * De qué se trata el plan: del curso entero, o de un cambio sobre uno que ya
+   * tiene contenido.
+   *
+   * Opcional y ausente = `course`, porque los planes ya aprobados que viven en
+   * las conversaciones guardadas tienen que seguir parseando: si
+   * `getLatestImplementationPlan` deja de reconocerlos, el ancla de progreso
+   * desaparece a mitad de una construcción.
+   */
+  scope: z
+    .enum(['course', 'changes'])
+    .optional()
+    .describe(
+      'Leave it out (or "course") for a plan that builds a whole course. Use "changes" when the course already has content and the teacher asked to add, update or rewrite PART of it: then list only the sections you touch, and give every item its action/target/changes. A change plan has no mandatory final exam.'
+    ),
   sections: z
     .array(CoursePlanSectionSchema)
     .min(1)
@@ -134,8 +191,44 @@ export const CoursePlanFieldsSchema = z.object({
     )
 });
 
-/** Validated when calling `generate_course_plan` — enforces a final examination section. */
+/**
+ * Validated when calling `generate_course_plan`.
+ *
+ * Dos reglas, y cuál corre depende del alcance. El examen final obligatorio es
+ * de un plan de CURSO: exigirlo en un plan de cambios es lo que convertía
+ * «agregá una sección» en el temario entero otra vez. Un plan de cambios tiene
+ * su propia regla: un ítem que dice tocar algo existente tiene que decir QUÉ
+ * toca y QUÉ le cambia, o no hay nada que el servidor pueda atar ni medir.
+ */
 export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine((plan, ctx) => {
+  if (plan.scope === 'changes') {
+    plan.sections.forEach((section, sectionIndex) => {
+      section.items.forEach((item, itemIndex) => {
+        const action = item.action ?? 'create';
+
+        if (action === 'create') return;
+
+        if (!item.target?.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `A "${action}" item needs \`target\`: the handle (e.g. S2.L3) or id of the existing lesson/exercise it acts on.`,
+            path: ['sections', sectionIndex, 'items', itemIndex, 'target']
+          });
+        }
+
+        if (!item.changes?.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `A "${action}" item needs \`changes\`: one or two sentences saying what changes, so the teacher can approve it.`,
+            path: ['sections', sectionIndex, 'items', itemIndex, 'changes']
+          });
+        }
+      });
+    });
+
+    return;
+  }
+
   const lastIndex = plan.sections.length - 1;
   const lastSection = plan.sections[lastIndex];
   if (!lastSection) return;
@@ -154,6 +247,8 @@ export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine((plan, ctx) =
 export type CoursePlanItem = z.infer<typeof CoursePlanItemSchema>;
 export type CoursePlanSection = z.infer<typeof CoursePlanSectionSchema>;
 export type CoursePlan = z.infer<typeof CoursePlanFieldsSchema>;
+/** Qué se le hace a un ítem del plan. Ausente en el plan = `create`. */
+export type CoursePlanItemAction = NonNullable<CoursePlanItem['action']>;
 
 // ─── Tool Names ──────────────────────────────────────────────────────────────
 

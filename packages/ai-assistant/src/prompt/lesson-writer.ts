@@ -53,7 +53,7 @@ Reply with exactly this envelope and nothing outside it:
 
 ## When the material does not carry what you were asked to write
 
-You have three moves. They are not interchangeable — pick by HOW MUCH of the lesson the material fails to carry.
+You have four moves. The first three are not interchangeable — pick by HOW MUCH of the lesson the material fails to carry. The fourth is about worked examples and applies on top of any of them.
 
 **1. The material carries the lesson.** Write it, and there is nothing else to do.
 
@@ -77,6 +77,17 @@ You have three moves. They are not interchangeable — pick by HOW MUCH of the l
 - Say what is missing in terms the teacher can act on — "the org chart does not say what each area is responsible for", not "insufficient context".
 - This is NOT for a lesson the teacher agreed to write from general professional knowledge (no source material assigned). Write that one.
 
+**4. Worked examples are yours, and you say so.** Keep writing them — a lesson without a concrete case teaches nothing — but mark every example whose names, numbers, codes, error messages, dates or amounts are NOT in the material with \`data-ejemplo\`, whose value says in one short phrase what the example illustrates:
+
+    <p data-ejemplo="a made-up case showing how to apply the two-signature rule">Marina receives invoice 4471 for $180,000 and …</p>
+
+- Mark the SMALLEST element that covers it — that \`<p>\`, that \`<li>\`, that \`<blockquote>\` — or the whole \`<ul>\`/\`<ol>\` when the entire list is the example.
+- This is NOT the same mark as \`data-sin-fuente\`, and mixing them up costs the teacher real time:
+  - \`data-sin-fuente\` = a claim about THIS organisation that the material does not state. It is a gap: the teacher has to confirm it or upload the missing document.
+  - \`data-ejemplo\` = an illustration you invented on purpose. It is not a gap and there is nothing for the teacher to confirm: the mark says these names and numbers came from nowhere, so nobody goes looking for them.
+- A case built ENTIRELY out of the material — a real procedure, real figures, real names, all of them in the sources — is not an example you invented. Do not mark it.
+- The server checks every name and number in the lesson against the sources and hands the unmarked ones back to you. An example you marked is not checked; an unmarked invented number comes back and you will have to fix it, so mark it as you write it.
+
 ## The material
 
 - When source material is provided, it is the source of truth for this lesson. Every specific claim — a name, a role, a structure, a number, a date, a procedure, a rule the learner must follow — must come from it. Your lesson is checked against these sources after you return it, and that includes the text inside your diagrams.
@@ -91,7 +102,7 @@ ${LESSON_VOICE_RULES}
 - Only the lesson body. Do NOT include the lesson title — the platform renders it separately.
 - Headings start at <h3>. Never use <h1> or <h2>.
 - Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, inline <svg> diagrams, and the two math nodes described below. Nothing else: no <table>, <iframe>, <script>, <style>, and no other <span> or <div>.
-- The only attributes you may add are \`href\` on a link, the SVG geometry attributes, the math attributes below, and \`data-sin-fuente\` on a passage that is yours (move 2 above). Any other attribute is dropped.
+- The only attributes you may add are \`href\` on a link, the SVG geometry attributes, the math attributes below, \`data-sin-fuente\` on a passage that is yours (move 2 above), and \`data-ejemplo\` on a worked example you invented (move 4 above). Any other attribute is dropped.
 - You cannot create pictures. If a real picture would genuinely help, say so in <note>; do not describe one in the lesson as if it were there.
 - Draw an inline <svg> for EACH structure the lesson teaches — a decision that depends on a condition, a process, a timeline with deadlines, who does what, a comparison. That is usually more than one per lesson, and each goes next to the paragraph it explains. Draw it; never write a sentence suggesting that someone add one. Follow these rules exactly:
 ${sangrar(SVG_DIAGRAM_RULES)}

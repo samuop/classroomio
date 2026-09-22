@@ -45,6 +45,12 @@ export const FORBID_ATTR = [
  * exists: the mark is the only difference between a paragraph that came out of
  * a document and one the model supplied itself, and a stripped mark turns the
  * second into the first silently.
+ *
+ * `data-ejemplo` marks a worked example the writer made up on purpose — the
+ * names, numbers and error codes in it come from nowhere and nobody should go
+ * looking for them. The server checks unmarked names and numbers against the
+ * sources and hands them back as a gate, so a stripped mark would turn a
+ * declared example back into an unexplained invention on the next check.
  */
 export const ADD_ATTR = [
   'data-type',
@@ -53,7 +59,8 @@ export const ADD_ATTR = [
   'data-cio-media',
   'data-cio-media-id',
   'data-block-id',
-  'data-sin-fuente'
+  'data-sin-fuente',
+  'data-ejemplo'
 ] as const;
 
 export const ALLOWED_URI_REGEXP =

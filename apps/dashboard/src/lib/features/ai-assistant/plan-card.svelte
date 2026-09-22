@@ -52,13 +52,35 @@
       {:else}
         {$t('ai_assistant.plan_screen.proposed')}
       {/if}
+      <!--
+        Un plan de cambios se dice: abrir esperando el temario del curso y
+        encontrarse con dos ediciones es lo que hace dudar de si el asistente
+        entendió el pedido.
+      -->
+      {#if cuenta.esDeCambios}
+        · {$t('ai_assistant.plan_screen.changes_title')}
+      {/if}
     </p>
     <p class="truncate text-sm font-medium" title={plan.title}>{plan.title}</p>
-    <p class="ui:text-muted-foreground truncate text-xs">
-      {$t('ai_assistant.plan_screen.sections', { count: cuenta.secciones })} ·
-      {$t('ai_assistant.plan_screen.lessons', { count: cuenta.lecciones })}{#if cuenta.ejercicios > 0}
-        · {$t('ai_assistant.plan_screen.exercises', { count: cuenta.ejercicios })}{/if}
-    </p>
+    <!--
+      Los mismos contadores que la pantalla, y por el mismo motivo: la fila del
+      chat es lo primero que el docente ve, y «5 lecciones» suena igual si las
+      cinco son nuevas que si se le van a reescribir cinco que ya estaban.
+    -->
+    {#if cuenta.esDeCambios}
+      <p class="ui:text-muted-foreground truncate text-xs">
+        {$t('ai_assistant.plan_screen.affected_sections', { count: cuenta.secciones })}{#if cuenta.nuevas > 0}
+          · {$t('ai_assistant.plan_screen.new_lessons', { count: cuenta.nuevas })}{/if}{#if cuenta.reescribir > 0}
+          · {$t('ai_assistant.plan_screen.rewrites', { count: cuenta.reescribir })}{/if}{#if cuenta.retocar > 0}
+          · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}
+      </p>
+    {:else}
+      <p class="ui:text-muted-foreground truncate text-xs">
+        {$t('ai_assistant.plan_screen.sections', { count: cuenta.secciones })} ·
+        {$t('ai_assistant.plan_screen.lessons', { count: cuenta.lecciones })}{#if cuenta.ejercicios > 0}
+          · {$t('ai_assistant.plan_screen.exercises', { count: cuenta.ejercicios })}{/if}
+      </p>
+    {/if}
   </div>
 
   <Button size="sm" variant={paraRevisar ? 'default' : 'outline'} onclick={onOpen} class="shrink-0">

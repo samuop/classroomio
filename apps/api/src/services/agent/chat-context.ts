@@ -10,6 +10,9 @@ import {
 } from '@cio/db/queries/agent';
 import { z } from 'zod';
 import { CoursePlanFieldsSchema, type CourseTemplateId } from '@cio/ai-assistant';
+import { manijaDe, mapaDelCurso, type MapaDelCurso } from '@api/services/agent/manijas';
+import { barrerValores } from '@api/services/agent/cambios-de-fuente';
+import type { EstadoDelContenido } from '@api/services/agent/plan-de-cambios';
 
 type ResourceOwnershipRow = {
   courseId: string | null;
@@ -218,6 +221,9 @@ type CourseItemState = {
   id?: string;
   type: string;
   title: string | null;
+  /** Lo que ubica la pieza dentro de su sección: de ahí sale la manija. */
+  order?: number | null;
+  createdAt?: string | null;
   sectionId: string | null;
   hasNoteContent?: boolean | null;
   /** Una lección puede estar escrita sin `note`: diapositivas o video. */
@@ -267,10 +273,154 @@ function leccionSinContenido(item: CourseItemState): boolean {
  * `getCourseSectionsByCourseId` has no ORDER BY, so the rows arrive in whatever
  * order Postgres happens to return.
  */
-type CourseSectionState = { id: string; title: string | null; order?: number | null };
+type CourseSectionState = { id: string; title: string | null; order?: number | null; createdAt?: string | null };
 
 function normalizeTitle(title: string | null | undefined): string {
   return (title ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * La manija de una pieza del ancla.
+ *
+ * Una fila sin `id` (arneses viejos) queda en `?`, que es lo que ya se mostraba:
+ * sin id no hay manija, y decirle al modelo «usá ?» es mejor que darle un
+ * nombre falso para copiar.
+ */
+function manijaOInterrogante(mapa: MapaDelCurso, id: string | undefined): string {
+  return id ? manijaDe(mapa, id) : '?';
+}
+
+/** Lo que el plan manda hacerle a un ítem. Ausente = `create`, como todo plan anterior. */
+type AccionDelItem = 'create' | 'rewrite' | 'edit';
+
+/**
+ * Si una orden de cambio ya se cumplió, y —cuando no— qué falta exactamente.
+ *
+ * ── Por qué se mide y no se pregunta ─────────────────────────────────────────
+ *
+ * Es el mismo principio que el resto del ancla: el modelo no lleva la cuenta de
+ * lo que hizo, el servidor la lee del curso. Con una diferencia de grado: en una
+ * construcción «hecho» es «la fila existe», que es barato de comprobar y difícil
+ * de falsear. En una edición la fila siempre existe, así que hubo que elegir qué
+ * significa hecho.
+ *
+ * Hay dos medidas, y la primera es mucho mejor que la segunda:
+ *
+ * - **Con reemplazos** (la orden salió de una fuente nueva): hecho es que
+ *   NINGUNO de los valores viejos aparezca ya en el target. No dice «cambió
+ *   algo», dice «el 4400 ya no está», que es literalmente lo que se pidió. Y
+ *   mientras siga estando, el ancla puede decir en qué bloque — así la edición
+ *   siguiente es quirúrgica en vez de una reescritura entera.
+ * - **Sin reemplazos** (el docente lo pidió con palabras): hecho es que el
+ *   contenido difiera de la línea de base. Es débil —cualquier cambio cuenta—
+ *   pero es lo único verificable que hay, y es infinitamente mejor que creerle
+ *   al relato: medido, el relato dijo cinco ediciones donde hubo cuatro.
+ *
+ * Sin nada con qué comparar se devuelve PENDIENTE. Es la respuesta segura: un
+ * ítem que se reclama de más cuesta una vuelta, y uno que se da por hecho de
+ * menos deja al curso con el dato viejo y a nadie avisando.
+ */
+function medirCambio(params: {
+  tipo: 'lesson' | 'exercise';
+  entityId: string | undefined;
+  estado: EstadoDelContenido | undefined;
+  baseline: { contentHash: string } | undefined;
+  replacements: Array<{ old: string; new: string }> | undefined;
+}): { hecho: boolean; pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }> } {
+  const { tipo, entityId, estado, baseline, replacements } = params;
+
+  if (!entityId || !estado) return { hecho: false, pendientes: [] };
+
+  if (replacements && replacements.length > 0) {
+    // El barrido se rehace contra el contenido de AHORA, en cada ronda: los
+    // bloques se mueven cuando se edita, y un `blockId` de cuando se aprobó el
+    // plan mandaría al modelo a reemplazar un bloque que ya no existe.
+    const ocurrencias = barrerValores({
+      valores: replacements,
+      lecciones:
+        tipo === 'lesson'
+          ? [{ id: entityId, title: '', content: estado.textoPorLeccion.get(entityId) ?? '' }]
+          : [],
+      preguntas: tipo === 'exercise' ? (estado.preguntasPorEjercicio.get(entityId) ?? []) : []
+    });
+
+    const pendientes = replacements
+      .map((reemplazo) => {
+        const suyas = ocurrencias.filter((o) => o.valorViejo === reemplazo.old.trim());
+
+        return {
+          old: reemplazo.old,
+          new: reemplazo.new,
+          donde: [...new Set(suyas.map((o) => o.blockId).filter((b): b is string => !!b))],
+          preguntas: [...new Set(suyas.map((o) => o.questionId).filter((q): q is number => typeof q === 'number'))],
+          cuantas: suyas.length
+        };
+      })
+      .filter((p) => p.cuantas > 0);
+
+    return { hecho: pendientes.length === 0, pendientes };
+  }
+
+  if (!baseline) return { hecho: false, pendientes: [] };
+
+  const actual = tipo === 'lesson' ? estado.hashPorLeccion.get(entityId) : estado.hashPorEjercicio.get(entityId);
+
+  return { hecho: actual !== undefined && actual !== baseline.contentHash, pendientes: [] };
+}
+
+/** La orden de trabajo de un ítem pendiente, tal como la lee el modelo. */
+function describirPendiente(params: {
+  tipo: 'lesson' | 'exercise';
+  accion: Exclude<AccionDelItem, 'create'>;
+  manija: string;
+  changes: string | undefined;
+  pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }>;
+}): string {
+  const { tipo, accion, manija, changes, pendientes } = params;
+
+  if (accion === 'rewrite') {
+    const como =
+      tipo === 'lesson'
+        ? `write_lesson with lessonId ${manija}`
+        : `write_questions with exerciseId ${manija}`;
+
+    return `♻️ TO REWRITE — ${como}${changes ? `: ${changes}` : ''}`;
+  }
+
+  if (pendientes.length === 0) {
+    const como =
+      tipo === 'lesson'
+        ? 'edit the block that carries it with replace_lesson_block — do NOT rewrite the lesson'
+        : 'update_questions';
+
+    return `✏️ TO EDIT — ${changes ?? 'change what the plan asked for'}: ${como}`;
+  }
+
+  if (tipo === 'exercise') {
+    const lista = pendientes
+      .map((p) => {
+        const cuales = p.preguntas.length > 0 ? `question ${p.preguntas.join(', ')}` : 'a question';
+
+        return `${cuales} still says «${p.old}» (should be «${p.new}»)`;
+      })
+      .join('; ');
+
+    return `✏️ TO EDIT — ${lista}: update_questions`;
+  }
+
+  const lista = pendientes
+    .map((p) => {
+      const donde =
+        p.donde.length > 0
+          ? ` (still present: ${p.donde.length === 1 ? 'block' : 'blocks'} ${p.donde.join(', ')})`
+          : ' (still present, with no block id: use edit_lesson_content)';
+
+      return `replace «${p.old}» → «${p.new}»${donde}`;
+    })
+    .join(', ');
+  const conBloques = pendientes.some((p) => p.donde.length > 0);
+
+  return `✏️ TO EDIT — ${lista}${conBloques ? ' — use replace_lesson_block on those blocks' : ''}`;
 }
 
 /**
@@ -354,9 +504,34 @@ export function buildPlanProgressAnchor(
   plan: z.infer<typeof CoursePlanFieldsSchema> | undefined,
   sections: CourseSectionState[],
   items: CourseItemState[],
-  registry: PlanRegistryEntry[] = []
+  registry: PlanRegistryEntry[] = [],
+  /**
+   * El contenido del curso ahora mismo, para los ítems que MODIFICAN algo.
+   *
+   * Sólo hace falta cuando el plan trae órdenes de cambio, así que lo pasa quien
+   * ya sabe que las hay (ver `agent.ts`): para una construcción normal medirlo
+   * sería tres consultas por ronda para no usarlas.
+   */
+  estado?: EstadoDelContenido
 ): PlanProgress | undefined {
   if (!plan || plan.sections.length === 0) return undefined;
+
+  /**
+   * El ancla nombra las piezas con su manija, no con su UUID.
+   *
+   * Es el único lugar del prompt que le pasa ids al modelo en cada ronda, y era
+   * de donde salían los que después inventaba a medias: un `(id 3f2a…)` de
+   * treinta y seis caracteres se copia mal. `(S1.L2)` se deriva de la estructura
+   * y toda herramienta lo acepta. Ver `manijas.ts`.
+   *
+   * Se calcula acá adentro y no se recibe: el ancla ya tiene delante las mismas
+   * secciones e ítems con que se arma el mapa, así que pedirlo por parámetro
+   * sería dejar que un llamador se olvide de pasarlo.
+   */
+  const mapa = mapaDelCurso(
+    sections,
+    items.filter((it): it is CourseItemState & { id: string } => typeof it.id === 'string')
+  );
 
   const sectionById = new Map(sections.map((s) => [s.id, s] as const));
   const itemById = new Map(
@@ -396,10 +571,31 @@ export function buildPlanProgressAnchor(
     }
   }
 
+  /**
+   * El target de una orden de cambio: manija o id, sin pasar por el registro.
+   *
+   * El registro es lo primero que se mira, pero puede no estar (la
+   * sincronización falló, o el plan se aprobó en otra conversación). Que el
+   * ancla sepa resolver una manija por su cuenta es lo que evita que un fallo de
+   * la base convierta una orden de edición en un ítem sin dirección.
+   */
+  const resolverTarget = (valor: string | undefined, tipo: 'lesson' | 'exercise'): string | undefined => {
+    const limpio = valor?.trim();
+
+    if (!limpio) return undefined;
+    if (itemById.has(limpio)) return limpio;
+
+    const enMapa = mapa.idPorManija.get(limpio.toUpperCase());
+
+    return enMapa?.tipo === tipo ? enMapa.id : undefined;
+  };
+
   const lines: string[] = [];
   const progressItems: PlanProgressItem[] = [];
   let pendingCount = 0;
   let emptyCount = 0;
+  /** Si esta ronda lleva órdenes de cambio, para decirlo al pie del ancla. */
+  let hayOrdenesDeCambio = false;
   /** Plan position → live section, for the order check after the loop. */
   const placedSections: Array<{ planIndex: number; title: string; liveOrder: number }> = [];
 
@@ -438,6 +634,53 @@ export function buildPlanProgressAnchor(
     for (const item of planSection.items) {
       const regItem = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`);
       const itemKey = regItem?.key ?? '';
+      const accion = (item.action ?? 'create') as AccionDelItem;
+
+      /**
+       * Un ítem que MODIFICA algo no se mide por existencia.
+       *
+       * Es la línea que separa las dos clases de ancla. Si esto cayera en el
+       * camino de abajo, una lección que el plan manda reescribir aparecería ✅
+       * apenas existe —que es siempre— y la orden se perdería en silencio: el
+       * modelo leería «ya está» sobre lo único que le pidieron hacer.
+       */
+      if (accion !== 'create') {
+        hayOrdenesDeCambio = true;
+
+        const entityId =
+          (regItem?.entityId && itemById.has(regItem.entityId) ? regItem.entityId : undefined) ??
+          resolverTarget(item.target, item.type);
+        const realDelCambio = entityId ? itemById.get(entityId) : undefined;
+        const medida = medirCambio({
+          tipo: item.type,
+          entityId,
+          estado,
+          baseline: regItem?.baseline,
+          replacements: regItem?.replacements
+        });
+        const donde = `"${realDelCambio?.title ?? item.title}" (${manijaOInterrogante(mapa, entityId)})`;
+
+        if (medida.hecho) {
+          itemStatuses.push(`  - ${tag(itemKey)}${item.type} ${donde} ✅`);
+          progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'done' });
+          continue;
+        }
+
+        pendingCount += 1;
+        sectionComplete = false;
+        itemStatuses.push(
+          `  - ${tag(itemKey)}${item.type} ${donde} ${describirPendiente({
+            tipo: item.type,
+            accion,
+            manija: manijaOInterrogante(mapa, entityId),
+            changes: item.changes,
+            pendientes: medida.pendientes
+          })}`
+        );
+        progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });
+        continue;
+      }
+
       const boundItem = regItem?.entityId ? itemById.get(regItem.entityId) : undefined;
       const real = boundItem ?? itemsBySectionAndTitle.get(`${realSectionId}::${claveDeTitulo(item.title)}`);
 
@@ -455,14 +698,14 @@ export function buildPlanProgressAnchor(
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(
-          `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (id ${real.id ?? '?'}) BUT EMPTY — write its content, do NOT create it again`
+          `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT EMPTY — write its content, do NOT create it again`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else if (tipoReal === 'exercise' && (real.questionCount ?? 0) === 0) {
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(
-          `  - ${tag(itemKey)}exercise "${real.title ?? item.title}" ⚠️ EXISTS (id ${real.id ?? '?'}) BUT HAS NO QUESTIONS — add questions, do NOT create it again`
+          `  - ${tag(itemKey)}exercise "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT HAS NO QUESTIONS — add questions, do NOT create it again`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else {
@@ -529,6 +772,19 @@ export function buildPlanProgressAnchor(
     };
   }
 
+  /**
+   * La orden de trabajo, dicha una sola vez al pie.
+   *
+   * Sin esto, el pie del ancla decía «creá lo que falta» sobre una lista donde
+   * lo que falta es CAMBIAR algo que ya existe — y la instrucción más fuerte del
+   * prompt entero mandaba justo lo contrario de lo que el plan pedía. Es la
+   * misma forma del defecto que producía las lecciones duplicadas: el servidor
+   * ordenando mal, no el modelo perdiéndose.
+   */
+  const changeSection = hayOrdenesDeCambio
+    ? `\n\nItems marked ✏️ TO EDIT or ♻️ TO REWRITE ALREADY EXIST — never create them. Do exactly the change written beside each one and nothing else. An ✏️ line names the blocks that still carry the old value: replace those blocks with \`replace_lesson_block\` (or \`update_questions\` for a question), leaving the rest of the lesson byte-for-byte untouched. These lines are re-measured against the live course on every round, so an item stays listed until the old value is really gone — reporting it done does not remove it.`
+    : '';
+
   const orderSection =
     misorderedCount > 0
       ? `\n\n### Section order does NOT match the plan\n${orderLines.join('\n')}\n\nThis is the course's REAL order, read from the database just now. Do not describe the order you intend — call \`reorder_content\` and fix it. Never report a reordering you have not performed.`
@@ -545,11 +801,11 @@ export function buildPlanProgressAnchor(
 
 This is the REAL state of the course right now (from the live structure), compared against the approved plan. Trust THIS, not your memory of what you did — the chat history may be trimmed.
 
-${lines.join('\n')}${orderSection}
+${lines.join('\n')}${changeSection}${orderSection}
 
 ${pendingCount} item(s) still missing and ${emptyCount} item(s) exist but are empty. You are NOT finished until every ⬜ and ⚠️ above is resolved. Continue implementing now — create the missing items and fill the empty ones, in plan order, without pausing to ask the teacher. Never claim the course is complete while any ⬜ or ⚠️ remains.
 
-When you create an item, pass the \`[key]\` shown beside it as \`planKey\` (e.g. planKey: "s1.2"). Items marked ⚠️ already exist — fill them in by id, never create them again.`
+When you create an item, pass the \`[key]\` shown beside it as \`planKey\` (e.g. planKey: "s1.2"). Items marked ⚠️ already exist — fill them in with the handle shown beside them (e.g. S1.L2), never create them again.`
   };
 }
 

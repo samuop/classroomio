@@ -573,3 +573,29 @@ input[type='checkbox'] {
   line-height: 1.4;
   color: var(--sin-fuente);
 }
+
+/*
+ * Un ejemplo que el escritor inventó a propósito.
+ *
+ * Deliberadamente más discreto que `data-sin-fuente`: ése es un PENDIENTE del
+ * docente —material que tiene que confirmar o subir— y éste no es un pendiente,
+ * es una declaración de que ese nombre y ese número no salieron de ningún lado.
+ * Un riel punteado del color del texto apagado alcanza para distinguirlo de un
+ * párrafo sacado del manual, sin pedir atención que no hace falta.
+ *
+ * Sólo en el editor, igual que la otra marca: en `.prose` no, porque esa vista
+ * la lee también el alumno y una marca es información para quien arma el curso.
+ */
+.tiptap [data-ejemplo] {
+  position: relative;
+  padding-left: 0.75rem;
+}
+
+.tiptap [data-ejemplo]::before {
+  content: ' ';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 2px dotted var(--muted-foreground);
+}

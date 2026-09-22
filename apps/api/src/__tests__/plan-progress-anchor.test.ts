@@ -155,6 +155,35 @@ describe('buildPlanProgressAnchor — resolution by registry binding', () => {
   it('returns undefined when there is no plan to anchor against', () => {
     expect(buildPlanProgressAnchor(undefined, sections, [], [])).toBeUndefined();
   });
+
+  /**
+   * El ancla nombra lo que existe con su MANIJA, no con su UUID.
+   *
+   * Es el único bloque del prompt que le pasa ids al modelo en cada ronda, y de
+   * ahí salían los que después inventaba a medias: un UUID de treinta y seis
+   * caracteres hay que copiarlo, `S1.L1` se deriva. Ver `manijas.ts`.
+   */
+  it('names an existing item by its handle instead of its uuid', () => {
+    const items = [
+      { id: 'lesson-uuid', type: 'lesson', title: 'Introducción', sectionId: 'sec-uuid', hasNoteContent: false },
+      { id: 'ex-uuid', type: 'exercise', title: 'Autoevaluación', sectionId: 'sec-uuid', questionCount: 0 }
+    ];
+
+    const progress = buildPlanProgressAnchor(
+      plan,
+      sections,
+      items,
+      registry([
+        { key: 's1.1', entityId: 'lesson-uuid' },
+        { key: 's1.2', entityId: 'ex-uuid' }
+      ])
+    );
+
+    expect(progress?.anchorText).toContain('(S1.L1)');
+    expect(progress?.anchorText).toContain('(S1.E1)');
+    expect(progress?.anchorText).not.toContain('lesson-uuid');
+    expect(progress?.anchorText).not.toContain('ex-uuid');
+  });
 });
 
 /**

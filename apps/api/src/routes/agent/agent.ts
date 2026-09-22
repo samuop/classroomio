@@ -67,8 +67,10 @@ import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import {
   getChatConversation,
   getChatDocumentCacheKey,
+  leerAnalisisDeFuente,
   readPlanRegistry,
-  syncPlanRegistry
+  syncPlanRegistry,
+  type PlanShape
 } from '@cio/db/queries/agent';
 import {
   AgentRole,
@@ -114,6 +116,9 @@ import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledg
 import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
+import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
+import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
+import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
 import {
   descargarComoDataUrl,
@@ -967,31 +972,120 @@ const agentCoreRouter = new Hono()
       // the UI quieter can never blind the agent to its own progress.
       let checklistProgress: PlanProgress | undefined;
 
+      /**
+       * Si este plan manda CAMBIAR algo que ya existe, y no sólo construir.
+       *
+       * De esto cuelgan tres consultas por ronda (`estadoDelContenido`), así que
+       * se mide una vez y no se paga en una construcción normal, que es la
+       * enorme mayoría de las rondas.
+       */
+      const planTieneOrdenesDeCambio =
+        !!approvedPlan &&
+        (approvedPlan.scope === 'changes' ||
+          approvedPlan.sections.some((seccion) =>
+            seccion.items.some((item) => (item.action ?? 'create') !== 'create')
+          ));
+
+      /**
+       * Las lecciones que la orden de trabajo manda tocar.
+       *
+       * Viaja a `buildAgentTools`: una edición sobre una de ellas se rechequea
+       * entera aunque nadie la haya marcado antes. Ver la nota de
+       * `leccionesBajoOrdenDeTrabajo` en `chat-tools.ts`.
+       */
+      let leccionesBajoOrdenDeTrabajo: Set<string> | undefined;
+
       // Coherence anchor: when a plan is being implemented, inject the REAL course
       // state (plan vs live structure — done/empty/missing per item) so the agent
       // can't lose track of progress when history is trimmed or falsely believe it
       // finished. Only when there's an approved plan (skip the extra query otherwise).
       if (approvedPlan) {
         try {
-          // Reconcile the plan into the registry FIRST: it assigns each item a
-          // stable key and preserves the binding of everything already built, so
-          // a re-planned or teacher-edited plan doesn't orphan existing rows.
+          const [progressItems, progressSections] = await Promise.all([
+            getCourseContentItems(courseId),
+            listCourseSections(courseId)
+          ]);
+
+          /**
+           * Un plan de cambios se ata ANTES de sincronizarlo.
+           *
+           * El orden importa y no es intercambiable: la línea de base tiene que
+           * medirse sobre el curso como está AHORA, antes de que esta ronda
+           * escriba nada. Medida después, sería igual al contenido nuevo y
+           * ningún ítem se podría dar por hecho nunca. Ver `plan-de-cambios.ts`.
+           */
+          const estadoInicial = planTieneOrdenesDeCambio
+            ? await estadoDelContenido(courseId, agentContext.locale)
+            : undefined;
+
+          let formaDelPlan: PlanShape = approvedPlan;
+
+          if (estadoInicial) {
+            const analisis = await leerAnalisisDeFuente({
+              orgId,
+              courseId,
+              conversationId,
+              userId: user.id
+            }).catch((err: unknown) => {
+              console.error('[agent.chat] no se pudo leer el análisis de la fuente:', err);
+              return [];
+            });
+
+            const atado = atarPlanDeCambios({
+              plan: approvedPlan,
+              secciones: progressSections,
+              items: progressItems,
+              lecciones: [...estadoInicial.textoPorLeccion].map(([id, content]) => ({ id, content })),
+              preguntasPorEjercicio: estadoInicial.preguntasPorEjercicio,
+              analisis
+            });
+
+            formaDelPlan = atado.registro;
+
+            // Un target que no resuelve no frena nada: el ítem queda sin atar y
+            // el ancla lo muestra sin manija. El lugar donde eso se corrige es
+            // `generate_course_plan`, antes de que el docente apruebe.
+            for (const error of atado.errores) console.warn('[agent.chat] plan de cambios:', error);
+          }
+
+          // Reconcile the plan into the registry: it assigns each item a stable
+          // key and preserves the binding of everything already built, so a
+          // re-planned or teacher-edited plan doesn't orphan existing rows.
           const registry = await syncPlanRegistry({
             orgId,
             courseId,
             conversationId,
             userId: user.id,
-            plan: approvedPlan
+            plan: formaDelPlan
           }).catch((err: unknown) => {
             console.error('[agent.chat] failed to sync plan registry:', err);
             return [];
           });
 
-          const [progressItems, progressSections] = await Promise.all([
-            getCourseContentItems(courseId),
-            listCourseSections(courseId)
-          ]);
-          const progress = buildPlanProgressAnchor(approvedPlan, progressSections, progressItems, registry);
+          const progress = buildPlanProgressAnchor(
+            approvedPlan,
+            progressSections,
+            progressItems,
+            registry,
+            estadoInicial
+          );
+
+          if (progress) {
+            const pendientes = new Set(progress.items.filter((item) => item.status !== 'done').map((item) => item.key));
+            const bajoOrden = registry
+              .filter(
+                (entrada) =>
+                  entrada.kind === 'lesson' &&
+                  entrada.action !== undefined &&
+                  entrada.action !== 'create' &&
+                  !!entrada.entityId &&
+                  pendientes.has(entrada.key)
+              )
+              .map((entrada) => entrada.entityId as string);
+
+            if (bajoOrden.length > 0) leccionesBajoOrdenDeTrabajo = new Set(bajoOrden);
+          }
+
           if (progress) {
             // The checklist still gets the counts even when there is no anchor
             // text: the UI shows "15/15 built", which is information, while the
@@ -1057,10 +1151,14 @@ const agentCoreRouter = new Hono()
           : buildAgentTools(orgId, user.id, courseId, messages, {
               presupuesto: presupuestoDePasos,
               registro: registroDeRonda,
-              // El idioma del curso, resuelto acá y no adivinado por el modelo:
-              // `search_lessons` busca en el contenido de ESE locale, y buscar
-              // un curso en español bajo `en` devuelve vacío, que se lee como
-              // "eso no está en el curso".
+              // El idioma del curso, resuelto acá y no elegido por el modelo.
+              // Ahora gobierna TODAS las herramientas de contenido, no sólo la
+              // búsqueda: ninguna tiene ya un parámetro `locale`.
+              //
+              // Los dos daños medidos: `search_lessons` bajo `en` no encuentra
+              // un curso en español y el vacío se lee como "eso no está en el
+              // curso"; y dos lecciones de un curso en español se guardaron en
+              // inglés, donde el editor no las muestra.
               locale: agentContext.locale,
               isOrgOnPaidPlan: isOrgPaid,
               conversationId,
@@ -1099,7 +1197,30 @@ const agentCoreRouter = new Hono()
                 providerConfig,
                 courseTitle: courseRow.title,
                 temario: temarioDelPlan(approvedPlan)
-              })
+              }),
+              // El sub-agente que escribe las preguntas de un ejercicio con el
+              // texto de las lecciones delante. El constructor no lo tiene —las
+              // lecciones las escribió otro— y por eso preguntaba sobre lo que
+              // suponía que decían. Ver `question-writer.ts`.
+              escribirPreguntas: crearEscritorDePreguntas({
+                orgId,
+                userId: user.id,
+                courseId,
+                providerConfig,
+                isOrgOnPaidPlan: isOrgPaid
+              }),
+              // El sub-agente que compara una fuente nueva contra el curso ya
+              // escrito. Ver `cambios-de-fuente.ts`: el modelo dice qué dato
+              // quedó viejo, el servidor dice dónde está.
+              analizarCambios: crearAnalistaDeCambios({
+                orgId,
+                userId: user.id,
+                courseId,
+                providerConfig
+              }),
+              // Las lecciones que el plan de cambios manda tocar: una edición
+              // sobre cualquiera de ellas se rechequea entera.
+              leccionesBajoOrdenDeTrabajo
             });
 
       const contextManaged = await buildModelContextMessages({
@@ -1182,12 +1303,24 @@ const agentCoreRouter = new Hono()
         if (!approvedPlan) return;
 
         try {
-          const [itemsActuales, seccionesActuales, registroActual] = await Promise.all([
+          const [itemsActuales, seccionesActuales, registroActual, estadoActual] = await Promise.all([
             getCourseContentItems(courseId),
             listCourseSections(courseId),
-            readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => [])
+            readPlanRegistry({ orgId, courseId, conversationId, userId: user.id }).catch(() => []),
+            // Vuelto a medir, no reusado: el punto de una orden de cambio es
+            // saber si el valor viejo TODAVÍA está, y el paso que acaba de
+            // terminar puede ser justamente el que lo sacó.
+            planTieneOrdenesDeCambio
+              ? estadoDelContenido(courseId, agentContext.locale).catch(() => undefined)
+              : Promise.resolve(undefined)
           ]);
-          const progreso = buildPlanProgressAnchor(approvedPlan, seccionesActuales, itemsActuales, registroActual);
+          const progreso = buildPlanProgressAnchor(
+            approvedPlan,
+            seccionesActuales,
+            itemsActuales,
+            registroActual,
+            estadoActual
+          );
           if (!progreso) return;
 
           // Lo que el checklist del panel dibuja sale de ACÁ: reconciliado
@@ -1378,6 +1511,10 @@ const agentCoreRouter = new Hono()
               // Planning is exactly when missing material hurts: without search
               // here, the agent can only read URLs it was handed.
               'search_web',
+              // Planificar sobre un curso que ya existe empieza por saber qué
+              // del curso cambia la fuente nueva. Sin esto acá, el plan de
+              // cambios sólo se podría proponer a ojo.
+              'analyze_source_changes',
               'update_course_landing_page',
               'check_course_go_live_readiness'
             ] as const)

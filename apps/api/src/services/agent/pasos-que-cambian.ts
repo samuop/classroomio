@@ -26,6 +26,9 @@
  * sí cambia el plan.
  */
 export const HERRAMIENTAS_DE_LECTURA: ReadonlySet<string> = new Set([
+  // Compara una fuente nueva contra el curso y guarda el resultado, pero no
+  // toca una sola lección: lo que deja escrito es la propuesta, no el cambio.
+  'analyze_source_changes',
   'ask_discovery_questions',
   'ask_template_questions',
   'check_course_go_live_readiness',

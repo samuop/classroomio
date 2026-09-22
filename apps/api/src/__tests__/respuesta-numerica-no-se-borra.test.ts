@@ -41,12 +41,23 @@ vi.mock('@api/services/agent/chat-context', async (original) => ({
   verifyExerciseBelongsToCourse: vi.fn()
 }));
 
+// Desde que cada pregunta trae su evidencia, `add_questions` lee el texto de
+// las lecciones para buscarla. Ver `evidencia-de-preguntas.ts`.
+vi.mock('@cio/db/queries/lesson/language', () => ({
+  getCourseLessonContents: vi.fn()
+}));
+
 import { computeExerciseDiff } from '@api/services/exercise/utils';
 import { getExercise, updateExerciseService } from '@api/services/exercise/exercise';
+import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 
 const NUMERICA = 6;
 const OPCION_UNICA = 1;
+// Un id de verdad tiene forma de UUID, y desde que las herramientas aceptan
+// manijas (`S2.E1`) eso importa: un «examen» a secas no es ninguna de las dos
+// cosas y se rechaza antes de tocar nada.
+const ID_EXAMEN = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 function numericaGuardada() {
   return {
@@ -140,26 +151,35 @@ describe('add_questions: agrega sin reescribir lo que ya estaba', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Un examen final: sin lección ni sección de lecciones, así que no hay nada que leer antes.
+    // Un examen final: sin lección ni sección propias, así que la evidencia se
+    // busca contra TODAS las lecciones del curso.
     vi.mocked(getExercise).mockResolvedValue({
-      id: 'examen',
+      id: ID_EXAMEN,
       title: 'Examen final',
       lessonId: null,
       sectionId: null,
       questions: [numericaGuardada(), opcionUnicaGuardada()]
     } as never);
+    vi.mocked(getCourseLessonContents).mockResolvedValue([
+      {
+        id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        title: 'Manejo de caja',
+        content: '<p>El retiro de caja se hace cada vez que se acumulan 5.000 pesos en el cajón.</p>'
+      }
+    ] as never);
   });
 
   it('manda al servicio sólo las preguntas nuevas', async () => {
     const resultado = await herramientas().add_questions.execute(
       {
-        exerciseId: 'examen',
+        exerciseId: ID_EXAMEN,
         questions: [
           {
             question: '¿Cada cuánto se hace un retiro?',
             questionTypeId: NUMERICA,
             points: 1,
             options: [],
+            evidence: 'se hace cada vez que se acumulan 5.000 pesos',
             settings: { correctValue: 5000 }
           }
         ]
@@ -176,7 +196,9 @@ describe('add_questions: agrega sin reescribir lo que ya estaba', () => {
     expect(enviadas[0]).toMatchObject({
       question: '¿Cada cuánto se hace un retiro?',
       order: 2,
-      settings: { correctValue: 5000 }
+      // La evidencia viaja con la pregunta: sin guardarla, el control sólo
+      // existiría en el instante de la creación y nadie podría revisarlo.
+      settings: { correctValue: 5000, evidence: 'se hace cada vez que se acumulan 5.000 pesos' }
     });
     expect(enviadas.some((pregunta) => pregunta.id !== undefined)).toBe(false);
   });

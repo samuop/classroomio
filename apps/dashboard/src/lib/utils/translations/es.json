@@ -262,6 +262,8 @@
         "update_exercise": "Actualizando ejercicio",
         "update_exercise_section": "Actualizando sección del ejercicio",
         "add_questions": "Agregando preguntas",
+        "write_questions": "Escribiendo las preguntas desde las lecciones",
+        "analyze_source_changes": "Comparando la fuente nueva con el curso",
         "update_questions": "Actualizando preguntas",
         "reorder_content": "Reordenando contenido",
         "update_course_landing_page": "Actualizando la página de inicio",
@@ -300,6 +302,7 @@
       },
       "done": {
         "generic": "Listo",
+        "analyze_source_changes": "{count, plural, =0 {No cambia nada de lo que el curso ya dice} one {Encontró # dato que cambia} other {Encontró # datos que cambian}}",
         "create_section": "Sección creada: {title}",
         "update_section": "Sección actualizada: {title}",
         "create_lesson": "Lección creada: {title}",
@@ -310,6 +313,7 @@
         "update_exercise": "Ejercicio actualizado: {title}",
         "update_exercise_section": "Sección del ejercicio actualizada: {title}",
         "add_questions_fallback": "{count, plural, one {Se agregó # pregunta} other {Se agregaron # preguntas}}",
+        "write_questions_fallback": "{count, plural, one {Se escribió # pregunta} other {Se escribieron # preguntas}}",
         "update_questions_fallback": "{count, plural, one {Se actualizó # pregunta} other {Se actualizaron # preguntas}}",
         "create_exercise_section": "Sección del ejercicio creada: {title}",
         "get_course_structure": "Estructura del curso cargada",
@@ -490,7 +494,16 @@
       "with_exercise": "Incluye ejercicio",
       "edit_hint": "Podés editar cualquier título o descripción antes de aprobar.",
       "busy": "El asistente está trabajando…",
-      "changes_sent": "Pedido enviado. El plan nuevo va a aparecer acá."
+      "changes_sent": "Pedido enviado. El plan nuevo va a aparecer acá.",
+      "changes_title": "Plan de cambios",
+      "section_new": "Sección nueva",
+      "action_create": "Nueva",
+      "action_rewrite": "Se reescribe",
+      "action_edit": "Se retoca",
+      "affected_sections": "{count, plural, one {# sección afectada} other {# secciones afectadas}}",
+      "new_lessons": "{count, plural, one {# lección nueva} other {# lecciones nuevas}}",
+      "rewrites": "{count, plural, one {# se reescribe} other {# se reescriben}}",
+      "edits": "{count, plural, one {# se retoca} other {# se retocan}}"
     }
   },
   "analytics": {

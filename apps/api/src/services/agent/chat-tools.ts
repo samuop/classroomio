@@ -1,4 +1,5 @@
 import { tool, type ToolSet } from 'ai';
+import type { z } from 'zod';
 import { CoursePlanSchema } from '@cio/ai-assistant';
 import { AppError } from '@api/utils/errors';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
@@ -38,26 +39,31 @@ import {
 } from '@api/services/agent/lesson-content';
 import type { RedisClient } from '@api/utils/redis/redis';
 import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
-import { textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
+import { redactarTokens, textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
 import {
   anotarChequeo,
   crearRegistroDeAvisos,
   revisarTrasEditar,
+  tieneAvisosAbiertos,
   type RegistroDeAvisos
 } from '@api/services/agent/revision-tras-editar';
 import { fuentesParaContrastar } from '@api/services/agent/fuentes-para-contrastar';
 import { piezaConContenido, piezaEquivalente, seccionEquivalente } from '@api/services/agent/pieza-existente';
 import { buscarEnFuentes, type FuenteParaBuscar } from '@api/services/agent/source-search';
 import { claveDeLectura, notaDeRelectura, type LecturaRegistrada } from '@api/services/agent/relecturas';
-import { extraerPasajesSinFuente } from '@api/services/agent/unsupported-passages';
 import {
-  avisoLeerAntes,
-  leccionesSinLeer,
-  MAX_LECTURA_LECCIONES_CHARS,
+  extraerEjemplos,
+  extraerPasajesSinFuente,
+  quitarPasajesMarcados
+} from '@api/services/agent/unsupported-passages';
+import {
+  avisoDeEvidencia,
+  verificarEvidencias,
   type LeccionObjetivo
-} from '@api/services/agent/exercise-reading';
+} from '@api/services/agent/evidencia-de-preguntas';
 import type { EscritorDeLecciones } from '@api/services/agent/lesson-writer';
-import { avisoDeCobertura, medirCobertura } from '@api/services/agent/plan-coverage';
+import { cuantasPreguntas, type EscritorDePreguntas } from '@api/services/agent/question-writer';
+import { avisoDeCobertura, buscarFuente, medirCobertura } from '@api/services/agent/plan-coverage';
 import { avisoDeConfirmacion, confirmacionCoincide } from '@api/services/agent/deletion';
 import { leerFuente, LINEAS_POR_LECTURA } from '@api/services/agent/source-index';
 import {
@@ -83,6 +89,7 @@ import {
 } from '@api/services/agent/chat-context';
 import {
   addQuestionsParam,
+  analyzeSourceChangesParam,
   askTemplateQuestionsParam,
   askDiscoveryQuestionsParam,
   coursePlanParam,
@@ -90,6 +97,8 @@ import {
   createExerciseSectionParam,
   createLessonParam,
   createSectionParam,
+  questionSchema,
+  writeQuestionsParam,
   deleteExerciseParam,
   deleteLessonParam,
   deleteSectionParam,
@@ -119,11 +128,25 @@ import {
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 import { searchWeb } from '@api/services/agent/web-search';
 import {
+  asignarIdsDeBloque,
   findLessonBlock,
   preserveBlockId,
   replaceLessonBlock,
   summarizeLessonBlocks
 } from '@api/services/agent/lesson-blocks';
+import {
+  crearResolutorDeManijas,
+  describirCurso,
+  esUuid,
+  manijaDe,
+  ManijaDesconocida,
+  mapaDelCurso,
+  resolverBloque,
+  resolverEnMapa
+} from '@api/services/agent/manijas';
+import { barrerValores, type AnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
+import { estadoDelContenido } from '@api/services/agent/plan-de-cambios';
+import { guardarAnalisisDeFuente } from '@cio/db/queries/agent';
 
 function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
   if (value == null) return value;
@@ -162,6 +185,16 @@ function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
 
   return String(value);
 }
+
+/**
+ * Tope de texto que devuelve una sola lectura de lecciones (`read_lessons`).
+ *
+ * Vivía en `exercise-reading.ts`, que se borró con la compuerta de «leer antes
+ * de preguntar»: leer ya no es lo que habilita a preguntar —eso lo decide la
+ * evidencia de cada pregunta, ver `evidencia-de-preguntas.ts`— pero leer varias
+ * lecciones de una sigue siendo útil y sigue necesitando un techo.
+ */
+const MAX_LECTURA_LECCIONES_CHARS = 60_000;
 
 /** Attribute-safe text for the one element the agent is handed pre-built. */
 function escapeHtmlAttribute(value: string): string {
@@ -203,8 +236,20 @@ async function writeLessonBody(params: {
   mathWarnings: string[];
   visualWarnings: string[];
   groundingWarnings: string[];
+  /** Nombres y números que no están en las fuentes y que nadie marcó. Ver B2. */
+  unsupportedTokens: string[];
 }> {
-  const normalizedContent = normalizeAgentLessonContent(params.content, params.lessonTitle);
+  /**
+   * Los ids de bloque los pone el servidor, no el editor.
+   *
+   * Se estampan ACÁ, sobre el contenido ya normalizado y antes de guardar, así
+   * que toda lección que el asistente escribe nace direccionable. Antes los
+   * ponía sólo TipTap cuando el docente abría y guardaba, y hasta que eso
+   * pasara `replace_lesson_block` —el único camino que cambia un dato sin
+   * reescribir la lección entera— no existía para esa lección. Ver
+   * `lesson-blocks.ts`.
+   */
+  const normalizedContent = asignarIdsDeBloque(normalizeAgentLessonContent(params.content, params.lessonTitle));
 
   await upsertLessonLanguageService(params.lessonId, {
     locale: params.locale as 'en',
@@ -253,9 +298,13 @@ async function writeLessonBody(params: {
   /**
    * La mitad determinista del fundamento: los datos que se buscan, no se opinan.
    *
-   * No sale a la red y no puede fallar la escritura. Va sólo al informe del
-   * docente y NO a los avisos que vuelven al modelo — el porqué está en
-   * `grounding-tokens.ts`.
+   * No sale a la red y no puede fallar la escritura. Va al informe del docente
+   * y, desde que el escritor puede declarar un ejemplo, también de vuelta al
+   * modelo como compuerta — el porqué del cambio está en `grounding-tokens.ts`.
+   *
+   * Lo que el escritor marcó se saca ANTES de contar: un ejemplo declarado como
+   * inventado ya no es un dato sin respaldo, y seguir contándolo convertiría la
+   * marca en un gesto sin efecto.
    *
    * Corre también cuando nadie declaró con qué fuentes se escribió. Antes no:
    * sólo `write_lesson` las pasaba, así que una lección reescrita desde el chat
@@ -268,21 +317,26 @@ async function writeLessonBody(params: {
   });
   const tokenWarnings =
     contraste.fuentes.length > 0
-      ? verificarTokens({ texto: textoParaTokens(normalizedContent), fuentes: contraste.fuentes })
+      ? verificarTokens({
+          texto: textoParaTokens(quitarPasajesMarcados(normalizedContent)),
+          fuentes: contraste.fuentes
+        })
       : [];
 
   /**
-   * Lo que el escritor marcó como propio.
+   * Lo que el escritor marcó como propio: pasajes que el material no sostiene y
+   * ejemplos que inventó a propósito.
    *
-   * No es un chequeo: es su declaración, y se guarda tal cual. Corre siempre
-   * —haya fuentes o no— porque el marcador también sirve en una lección escrita
-   * desde conocimiento general, donde lo que hay que marcar es cualquier cosa
-   * que suene a política de ESTA empresa.
+   * No es un chequeo: es su declaración, y se guarda tal cual, cada una en su
+   * lista. Corre siempre —haya fuentes o no— porque el marcador también sirve en
+   * una lección escrita desde conocimiento general, donde lo que hay que marcar
+   * es cualquier cosa que suene a política de ESTA empresa.
    *
    * Y no vuelve al modelo como aviso: contarle lo que él mismo acaba de
    * declarar es ruido, y encima lo entrenaría a marcar menos.
    */
   const pasajesSinFuente = extraerPasajesSinFuente(normalizedContent);
+  const ejemplos = extraerEjemplos(normalizedContent);
 
   const groundingWarnings = await fundamento;
 
@@ -322,6 +376,7 @@ async function writeLessonBody(params: {
       diagramWarnings: svgWarnings,
       tokenWarnings,
       unsupportedPassages: pasajesSinFuente,
+      examples: ejemplos,
       ...(params.notaDelEscritor ? { writerNote: params.notaDelEscritor } : {})
     }
   }).catch((error) => console.error('[lesson] no se pudo guardar el informe de la lección:', error));
@@ -333,7 +388,10 @@ async function writeLessonBody(params: {
     // Sólo durante una construcción: un docente que edita una lección a mano
     // puede querer exactamente el párrafo que pidió y nada más.
     visualWarnings: params.isBuilding ? validateLessonVisuals(normalizedContent) : [],
-    groundingWarnings
+    groundingWarnings,
+    // Sólo cuando hubo contra qué contrastar. Sin fuentes el chequeo no corrió,
+    // y devolver una lista vacía se leería como «limpia», que es otra cosa.
+    unsupportedTokens: contraste.alcance !== 'none' ? redactarTokens(tokenWarnings) : []
   };
 }
 
@@ -343,14 +401,17 @@ function contentWarningFields(warnings: {
   mathWarnings: string[];
   visualWarnings?: string[];
   groundingWarnings?: string[];
+  unsupportedTokens?: string[];
 }) {
   const visualWarnings = warnings.visualWarnings ?? [];
   const groundingWarnings = warnings.groundingWarnings ?? [];
+  const unsupportedTokens = warnings.unsupportedTokens ?? [];
   const notes: string[] = [];
   // El fundamento va primero a propósito. Los otros tres avisos son sobre cómo
   // se ve la lección; éste es sobre si lo que dice es cierto, y si hay que
   // elegir uno solo para atender, es ése.
   if (groundingWarnings.length > 0) notes.push('parts of it are not supported by the sources');
+  if (unsupportedTokens.length > 0) notes.push('some names or numbers in it are neither in the sources nor marked');
   if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
   if (visualWarnings.length > 0) notes.push('it has no diagram and no picture');
@@ -359,11 +420,59 @@ function contentWarningFields(warnings: {
 
   return {
     ...(groundingWarnings.length > 0 ? { groundingWarnings } : {}),
+    ...(unsupportedTokens.length > 0 ? { unsupportedTokens } : {}),
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
     ...(visualWarnings.length > 0 ? { visualWarnings } : {}),
-    note: `The lesson was saved, but ${notes.join(', and ')}. Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.`
+    note:
+      `The lesson was saved, but ${notes.join(', and ')}. Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.` +
+      // La salida correcta para un token no es la misma que para lo demás: casi
+      // siempre es un ejemplo que el escritor inventó y no declaró, y borrarlo
+      // empeoraría la lección. Se dice cuál es, porque un aviso sin salida es un
+      // aviso que se aprende a ignorar.
+      (unsupportedTokens.length > 0
+        ? ' For the names/numbers: they are not in the sources and are not marked. Mark each one as an example you made up (data-ejemplo on the smallest element that carries it) or as an unsupported claim (data-sin-fuente), or remove it. Do not invent a source for it.'
+        : '')
   };
+}
+
+/**
+ * Lo que se le agrega al brief para que el escritor arregle lo que el servidor
+ * encontró, sin rehacer la lección.
+ *
+ * «Keep everything else identical» es la frase que hace la diferencia: sin ella
+ * el escritor entiende el pedido como una reescritura, devuelve otra lección
+ * entera y el arreglo cuesta una tirada nueva de invenciones. Con ella, el
+ * cambio típico es agregar un atributo.
+ */
+function briefDelRebote(written: { unsupportedTokens: string[]; groundingWarnings: string[] }): string {
+  const partes = ['IMPORTANT — the server checked what you just wrote and found problems. Fix ONLY these.'];
+
+  if (written.unsupportedTokens.length > 0) {
+    partes.push(
+      'These names/numbers are not in the source material and are not marked:\n' +
+        written.unsupportedTokens.map((token) => `- ${token}`).join('\n') +
+        '\nFor each one: if it belongs to an example you made up, mark the smallest element that carries it with ' +
+        'data-ejemplo; if it is a claim about the organisation the material does not state, mark it with ' +
+        'data-sin-fuente; if it is neither, remove it or replace it with what the material actually says. ' +
+        'Never invent a source for it.'
+    );
+  }
+
+  if (written.groundingWarnings.length > 0) {
+    partes.push(
+      'The grounding check reported:\n' +
+        written.groundingWarnings.map((aviso) => `- ${aviso}`).join('\n') +
+        '\nRewrite those passages so they say only what the material supports, mark them, or delete them.'
+    );
+  }
+
+  partes.push(
+    'Return the WHOLE lesson again, with everything else identical to what you just wrote — same structure, ' +
+      'same wording, same diagrams, same images. This is a correction, not a rewrite.'
+  );
+
+  return partes.join('\n\n');
 }
 
 function logAgentToolDebug(
@@ -520,6 +629,25 @@ export function buildAgentTools(
     /** El sub-agente que escribe una lección con contexto limpio. Ver `lesson-writer.ts`. */
     escribirLeccion?: EscritorDeLecciones;
     /**
+     * El sub-agente que escribe las preguntas de un ejercicio a partir del
+     * texto de las lecciones. Ver `question-writer.ts`.
+     *
+     * Ausente, `write_questions` se niega y dice cómo seguir: el constructor
+     * puede escribirlas él con `create_exercise`, que ahora exige la evidencia
+     * de cada pregunta igual que acá.
+     */
+    escribirPreguntas?: EscritorDePreguntas;
+    /**
+     * El sub-agente que compara una fuente nueva contra el curso ya escrito.
+     * Ver `cambios-de-fuente.ts`.
+     *
+     * Ausente, `analyze_source_changes` se niega: sin él la alternativa es que
+     * el agente lea el documento y las lecciones y decida solo, que es
+     * exactamente lo que costó 153 segundos y cuatro reescrituras por tres
+     * datos.
+     */
+    analizarCambios?: AnalistaDeCambios;
+    /**
      * En qué paso de la ronda va. Ausente, las herramientas no avisan nada —
      * que es lo que corresponde donde no hay un techo de pasos que gastar.
      */
@@ -535,6 +663,20 @@ export function buildAgentTools(
      * como "eso no está en el curso".
      */
     locale?: string;
+    /**
+     * Las lecciones que la orden de trabajo de esta ronda manda editar.
+     *
+     * Una edición sobre una lección que el plan mandó cambiar se rechequea
+     * entera aunque nadie la haya marcado antes. El motivo es el mismo que el
+     * de `revision-tras-editar.ts` y está medido: cambiar un dato por bloques
+     * es lo correcto, pero un bloque nuevo es texto nuevo, y el único momento
+     * en que se puede ver si trajo una afirmación que el material no sostiene
+     * es justo después de escribirlo.
+     *
+     * Ausente fuera de un plan de cambios: entonces sólo se rechequea lo que
+     * esta misma ronda dejó marcado, como hasta ahora.
+     */
+    leccionesBajoOrdenDeTrabajo?: ReadonlySet<string>;
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -543,6 +685,8 @@ export function buildAgentTools(
   const verificarFundamento = _options?.verificarFundamento;
   const redisParaFuentes = _options?.redis;
   const escribirLeccion = _options?.escribirLeccion;
+  const escribirPreguntas = _options?.escribirPreguntas;
+  const analizarCambios = _options?.analizarCambios;
   const locale = _options?.locale ?? 'en';
   // Sin registro provisto, se anota en uno propio que nadie lee: asi las
   // llamadas a `anotarCambio` no tienen que preguntar si existe.
@@ -550,6 +694,17 @@ export function buildAgentTools(
   // Por ronda, igual que `registro` y por el mismo motivo: dos rondas
   // simultáneas se pisarían el contador. Ver `revision-tras-editar.ts`.
   const avisosDeFundamento = crearRegistroDeAvisos();
+  const leccionesBajoOrdenDeTrabajo = _options?.leccionesBajoOrdenDeTrabajo;
+  /**
+   * Lecciones que ya se rechequearon por orden de trabajo en esta ronda.
+   *
+   * Tope de uno por lección, y sólo para las que NO están marcadas: editar una
+   * lección larga son diez o quince llamadas a `replace_lesson_block`, y salir
+   * a la red en cada coma costaría quince verificaciones del mismo texto casi
+   * idéntico. Una lección marcada no cuenta contra este tope: ahí el lazo está
+   * abierto y el rechequeo es justamente lo que lo cierra.
+   */
+  const rechequeadasPorOrden = new Set<string>();
 
   /**
    * El texto de las fuentes del curso, leído una sola vez por ronda y sólo si
@@ -567,14 +722,82 @@ export function buildAgentTools(
   const cargarFuentesDelCurso = (): Promise<FuenteVista[]> =>
     documentosDelCurso().then((documentos) => documentos.map(({ fileName, text }) => ({ fileName, text })));
 
+  /**
+   * Lo que se vuelve a mirar después de una edición quirúrgica.
+   *
+   * Los dos tools que editan sin reescribir —`replace_lesson_block` y
+   * `edit_lesson_content`— no pasan por `writeLessonBody`, así que los chequeos
+   * de una lección entera no corren solos ahí. Rechequean en dos casos:
+   *
+   * - La lección quedó MARCADA en esta ronda: el lazo está abierto y cerrarlo
+   *   es el motivo de `revision-tras-editar.ts` (arreglar la frase citada no es
+   *   arreglar la afirmación: seguía en otros cinco lugares).
+   * - La lección está en la ORDEN DE TRABAJO de la ronda: el plan mandó
+   *   cambiarla, o sea que lo que se acaba de escribir es texto nuevo. Acá el
+   *   tope es uno por lección y por ronda, porque una edición por bloques son
+   *   diez o quince llamadas y no se sale a la red por cada coma.
+   *
+   * Los dos chequeos van juntos y sobre la lección ENTERA, porque el recorte al
+   * fragmento es justamente el defecto que se está tapando.
+   */
+  async function revisarLeccionEditada(params: {
+    lessonId: string;
+    lessonTitle: string;
+    /** La lección completa YA guardada. */
+    contenido: string;
+  }): Promise<{ groundingWarnings?: string[]; unsupportedTokens?: string[]; groundingResolved?: boolean }> {
+    const marcada = tieneAvisosAbiertos(avisosDeFundamento, params.lessonId);
+    const porOrden =
+      !marcada &&
+      (leccionesBajoOrdenDeTrabajo?.has(params.lessonId) ?? false) &&
+      !rechequeadasPorOrden.has(params.lessonId);
+
+    if (!marcada && !porOrden) return {};
+
+    // Se anota antes de salir a la red: si la llamada falla, el tope igual se
+    // gastó. Lo contrario —anotar después— haría que una caída del proveedor
+    // habilitara un reintento por cada bloque que quede por editar.
+    if (porOrden) rechequeadasPorOrden.add(params.lessonId);
+
+    const revision = await revisarTrasEditar({
+      registro: avisosDeFundamento,
+      lessonId: params.lessonId,
+      lessonTitle: params.lessonTitle,
+      contenido: params.contenido,
+      verificarFundamento,
+      bajoOrdenDeTrabajo: porOrden
+    });
+
+    if (!revision) return {};
+
+    /**
+     * Y la mitad determinista, que es la que caza lo otro.
+     *
+     * El verificador con modelo mira afirmaciones; un bloque nuevo que trae un
+     * teléfono o un nombre que no está en ninguna fuente pasa por debajo de él.
+     * Contra las fuentes del CURSO —no las de la lección, que acá no se saben— y
+     * sin lo que el escritor marcó.
+     */
+    const contraste = await fuentesParaContrastar({ cargarDelCurso: cargarFuentesDelCurso });
+    const unsupportedTokens =
+      contraste.alcance !== 'none'
+        ? redactarTokens(
+            verificarTokens({
+              texto: textoParaTokens(quitarPasajesMarcados(params.contenido)),
+              fuentes: contraste.fuentes
+            })
+          )
+        : [];
+
+    return {
+      groundingWarnings: revision.groundingWarnings,
+      unsupportedTokens,
+      ...(revision.resuelto ? { groundingResolved: true } : {})
+    };
+  }
+
   /** Lo que `read_source` ya devolvió en esta ronda. Ver `relecturas.ts`. */
   const lecturasDeLaRonda = new Map<string, LecturaRegistrada>();
-
-  // Lecciones cuyo TEXTO pasó por el contexto del modelo en esta ronda: las que
-  // leyó o escribió enteras él mismo. Las de write_lesson no — ésas las escribió
-  // otro. Es lo que controla que las preguntas salgan de lo que la lección dice.
-  // Ver `exercise-reading.ts`.
-  const leccionesConocidas = new Set<string>();
 
   // Images are the only tool here that spends money per call rather than per
   // token, so the guard has to live where the calls are counted. The tool set is
@@ -610,6 +833,43 @@ export function buildAgentTools(
   /** Dos son un pedido suelto; a la tercera ya es un curso, y eso va por el plan. */
   const MAX_LECCIONES_SIN_PLAN = 2;
   const runScope = { orgId, courseId, conversationId, userId };
+
+  /**
+   * Manijas cortas: toda herramienta acepta `S2.L3` donde acepta un id.
+   *
+   * El mapa se carga una vez por ronda y se tira cuando algo se crea, se borra
+   * o se mueve — las manijas son POSICIONALES, así que una sección nueva corre
+   * las de todo lo que venía después. Ver `manijas.ts`.
+   */
+  const manijas = crearResolutorDeManijas(() =>
+    Promise.all([listCourseSections(courseId), getCourseContentItems(courseId)]).then(([secciones, items]) =>
+      mapaDelCurso(secciones, items)
+    )
+  );
+
+  /**
+   * El bloque de preguntas de un ejercicio: `S1.E1.B2`, `B2`, o su id.
+   *
+   * Los bloques no están en el mapa del curso —viven colgados de un ejercicio—
+   * así que se resuelven contra la lista de ese ejercicio, y sólo cuando hace
+   * falta: un id se contesta sin salir a buscar nada.
+   */
+  async function resolverBloqueDeEjercicio(exerciseId: string, valor: string): Promise<string> {
+    if (esUuid(valor)) return valor.trim();
+
+    const bloques = await getExerciseSectionsByExerciseId(exerciseId);
+
+    return resolverBloque(
+      valor,
+      bloques.map((bloque) => ({
+        id: bloque.id,
+        title: bloque.title,
+        order: bloque.order,
+        createdAt: bloque.createdAt
+      })),
+      manijaDe(await manijas.mapa(), exerciseId)
+    );
+  }
 
   /**
    * Idempotency guard for the create_* tools.
@@ -659,9 +919,10 @@ export function buildAgentTools(
   }
 
   /** Lo que se le contesta al modelo cuando la lección ya existía, escrita, y no se tocó. */
-  function leccionYaEscrita(leccion: { id: string; title: string; order: number }) {
+  async function leccionYaEscrita(leccion: { id: string; title: string; order: number }) {
     return {
       id: leccion.id,
+      handle: await manijas.manijaDe(leccion.id),
       title: leccion.title,
       order: leccion.order,
       reused: true,
@@ -695,7 +956,12 @@ export function buildAgentTools(
      */
     yaEscritaPorOtro?: boolean;
   }> {
-    await verifySectionBelongsToCourse(args.sectionId, courseId);
+    // La manija se resuelve ACÁ y no en cada herramienta: `create_lesson` y
+    // `write_lesson` comparten este camino, y una manija que funcionara en una
+    // sola de las dos sería peor que no tenerla.
+    const sectionId = await manijas.seccion(args.sectionId);
+
+    await verifySectionBelongsToCourse(sectionId, courseId);
 
     const boundId = await findBoundEntity(args.planKey, 'lesson');
 
@@ -715,7 +981,7 @@ export function buildAgentTools(
     // Sin atadura: mirar si esta sección ya tiene esta lección. Ver pieza-existente.ts.
     const equivalente = piezaEquivalente(await getCourseContentItems(courseId), {
       tipo: 'lesson',
-      sectionId: args.sectionId,
+      sectionId,
       titulo: args.title
     });
 
@@ -734,9 +1000,12 @@ export function buildAgentTools(
     const lesson = await createLesson(courseId, {
       title: args.title,
       courseId,
-      sectionId: args.sectionId,
+      sectionId,
       order: args.order
     });
+    // El curso cambió de forma: la lección nueva todavía no tiene manija, y las
+    // de sus hermanas pueden haberse corrido.
+    manijas.invalidar();
     // Bind before writing the body: if the content write fails, the retry has to
     // find this lesson and fill it, not create a second one.
     await recordBinding(args.planKey, lesson.id);
@@ -764,6 +1033,67 @@ export function buildAgentTools(
     return items
       .filter((item) => item.sectionId === params.sectionId && String(item.type).toLowerCase() === 'lesson')
       .map((item) => ({ id: item.id, title: item.title }));
+  }
+
+  /**
+   * El texto plano contra el que se comprueba la evidencia de cada pregunta.
+   *
+   * Cuando el ejercicio no cuelga de ninguna lección se miran TODAS las del
+   * curso, y no ninguna: ese es el examen final, que vive en una sección sin
+   * lecciones y evalúa el curso entero. Dejarlo sin nada contra qué comparar era
+   * dejar justo al examen más largo sin ningún control.
+   */
+  async function textosParaEvidencia(
+    objetivo: readonly LeccionObjetivo[]
+  ): Promise<{ textos: string[]; lecciones: LeccionObjetivo[] }> {
+    const contenidos = await getCourseLessonContents(courseId, locale as TLocale);
+    const ids = new Set(objetivo.map((leccion) => leccion.id));
+    const elegidas = ids.size > 0 ? contenidos.filter((fila) => ids.has(fila.id)) : contenidos;
+
+    return {
+      textos: elegidas.map((fila) => textoDeLeccion(fila.content ?? '')).filter((texto) => texto.length > 0),
+      lecciones: elegidas.map((fila) => ({ id: fila.id, title: fila.title }))
+    };
+  }
+
+  /**
+   * La compuerta: ninguna pregunta se crea si su evidencia no está en el curso.
+   *
+   * Rechaza la llamada ENTERA y no las preguntas malas, a diferencia de
+   * `write_questions`. Acá las escribió el modelo que está conversando, tiene
+   * las lecciones a un `read_lessons` de distancia y puede rehacer la llamada
+   * con las frases bien copiadas; crear ocho de diez en silencio le escondería
+   * que dos se perdieron.
+   */
+  async function exigirEvidencias(
+    preguntas: ReadonlyArray<{ question: string; evidence?: string | null }>,
+    objetivo: readonly LeccionObjetivo[]
+  ): Promise<void> {
+    if (preguntas.length === 0) return;
+
+    const { textos, lecciones } = await textosParaEvidencia(objetivo);
+    const { rechazadas } = verificarEvidencias(preguntas, textos);
+
+    if (rechazadas.length > 0) throw new Error(avisoDeEvidencia(rechazadas, lecciones));
+  }
+
+  /**
+   * La evidencia viaja con la pregunta, en `settings`.
+   *
+   * No es decoración: es lo que permite auditar después de qué frase salió cada
+   * pregunta, igual que el informe de construcción de una lección dice de qué
+   * fuente salió. Sin guardarla, el control sólo existiría en el instante de la
+   * creación y nadie podría revisarlo.
+   */
+  function settingsConEvidencia(pregunta: {
+    evidence?: string | null;
+    settings?: Record<string, unknown>;
+  }): Record<string, unknown> | undefined {
+    const evidence = pregunta.evidence?.trim();
+
+    if (!evidence) return pregunta.settings;
+
+    return { ...(pregunta.settings ?? {}), evidence };
   }
 
   const herramientas: ToolSet = {
@@ -887,10 +1217,14 @@ export function buildAgentTools(
       inputSchema: generateImageParam,
       execute: async (args) => {
         return executeAgentTool('generate_image', { orgId, userId, courseId, args }, async () => {
+          // La manija se resuelve ANTES de decidir: el tope es por LECCIÓN, y si
+          // la misma lección llegara una vez como `S2.L3` y otra como id, el
+          // contador las contaría como dos y pagaría dos imágenes.
+          const lessonId = args.lessonId ? await manijas.leccion(args.lessonId) : undefined;
           // Refused rather than thrown: an error would push the model to retry,
           // which is precisely what must not happen when the reason is spend.
           const decision = decidirSiGenerarImagen({
-            lessonId: args.lessonId,
+            lessonId,
             yaIlustradas: leccionesConImagen,
             generadasEnLaRonda: imagesGenerated
           });
@@ -909,8 +1243,8 @@ export function buildAgentTools(
             };
           }
 
-          if (args.lessonId) {
-            await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          if (lessonId) {
+            await verifyLessonBelongsToCourse(lessonId, courseId);
           }
 
           // The organisation's look, read per call rather than per round: an
@@ -921,8 +1255,8 @@ export function buildAgentTools(
           const image = await generateLessonImage({
             subject: args.subject,
             courseId,
-            lessonId: args.lessonId,
-            locale: args.locale,
+            lessonId,
+            locale,
             aspectRatio: args.aspectRatio,
             styleReferenceUrl: style?.styleReferenceUrl,
             styleNote: style?.styleNote,
@@ -931,7 +1265,7 @@ export function buildAgentTools(
           });
 
           imagesGenerated += 1;
-          if (args.lessonId) leccionesConImagen.add(args.lessonId);
+          if (lessonId) leccionesConImagen.add(lessonId);
           anotarCambio(registro, 'ilustro', args.subject.slice(0, 60));
 
           return {
@@ -1034,12 +1368,16 @@ export function buildAgentTools(
 
     get_course_structure: tool({
       description:
-        'Get the full course structure including sections, lessons, and exercises as a tree. The courseId is automatically set — do not pass it.',
+        'Get the full course structure as a tree: every section, lesson and exercise with its HANDLE (S2, S2.L3, S2.E1) and its id. Pass the handle to any tool that asks for a sectionId, lessonId or exerciseId. The courseId is automatically set — do not pass it.',
       inputSchema: emptyParam,
       execute: async () => {
         return executeAgentTool('get_course_structure', { orgId, userId, courseId }, async () => {
-          const [items, sections] = await Promise.all([getCourseContentItems(courseId), listCourseSections(courseId)]);
-          return { sections, items };
+          // Se relee siempre: esto es lo que el modelo va a usar para nombrar
+          // piezas durante el resto de la ronda, así que no puede salir de un
+          // mapa cacheado antes de las últimas creaciones.
+          manijas.invalidar();
+
+          return describirCurso(await manijas.mapa());
         });
       }
     }),
@@ -1050,16 +1388,16 @@ export function buildAgentTools(
       inputSchema: lessonReadParam,
       execute: async (args) => {
         return executeAgentTool('get_lesson_content', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await getLesson(args.lessonId);
+          const lessonId = await manijas.leccion(args.lessonId);
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await getLesson(lessonId);
           const lessonWithLangs = lesson as {
             id: string;
             title: string;
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale);
+          const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale);
           const content = langContent?.content || null;
-          leccionesConocidas.add(args.lessonId);
           // The ids are already in the HTML above; listing them separately saves
           // the model from parsing them out, and is cheap — id plus a short
           // preview, not the block bodies again.
@@ -1069,7 +1407,7 @@ export function buildAgentTools(
             id: lesson.id,
             title: lesson.title,
             content,
-            locale: args.locale,
+            locale,
             ...(blocks.length > 0 ? { blocks } : {})
           };
         });
@@ -1078,7 +1416,7 @@ export function buildAgentTools(
 
     read_lessons: tool({
       description:
-        'Read the text of up to 12 lessons of this course at once, as plain text: no HTML, diagram labels kept as [diagram: …]. Use it before writing exercise questions — they must test what the lessons actually say — and to check what other lessons already cover. To EDIT a lesson use get_lesson_content instead: it returns the HTML and the block ids.',
+        'Read the text of up to 12 lessons of this course at once, as plain text: no HTML, diagram labels kept as [diagram: …]. Use it to check what other lessons already cover, and to copy the `evidence` sentence when the teacher dictates questions for create_exercise / add_questions. You do NOT need it before write_questions: that writer reads the lessons itself. To EDIT a lesson use get_lesson_content instead: it returns the HTML and the block ids.',
       inputSchema: readLessonsParam,
       execute: async (args) => {
         return executeAgentTool('read_lessons', { orgId, userId, courseId, args }, async () => {
@@ -1088,18 +1426,29 @@ export function buildAgentTools(
           const recortadas: string[] = [];
           let usados = 0;
 
-          for (const id of [...new Set(args.lessonIds)]) {
-            const item = items.find((i) => i.id === id && String(i.type).toLowerCase() === 'lesson');
+          for (const valor of [...new Set(args.lessonIds)]) {
+            // Una manija que no existe no corta la lectura entera: se anota como
+            // no encontrada, igual que un id que no es de este curso. Cortar por
+            // una sola haría que el modelo repitiera las once que sí estaban.
+            //
+            // Sólo ESA falla se traga: si lo que se cayó fue la base, la lectura
+            // tiene que fallar fuerte y no informar que el curso no las tiene.
+            const id = await manijas.leccion(valor).catch((error: unknown) => {
+              if (error instanceof ManijaDesconocida) return null;
 
-            if (!item) {
-              noEncontradas.push(id);
+              throw error;
+            });
+            const item = id ? items.find((i) => i.id === id && String(i.type).toLowerCase() === 'lesson') : undefined;
+
+            if (!id || !item) {
+              noEncontradas.push(valor);
               continue;
             }
 
             const lesson = (await getLesson(id)) as {
               lessonLanguages?: Array<{ locale: string; content: string | null }>;
             };
-            const html = lesson.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+            const html = lesson.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
             let texto = html ? textoDeLeccion(html) : '';
             const lugar = MAX_LECTURA_LECCIONES_CHARS - usados;
             const recortada = texto.length > lugar;
@@ -1111,11 +1460,6 @@ export function buildAgentTools(
 
             usados += texto.length;
 
-            // Una lección cortada no cuenta como leída: el modelo no vio el
-            // resto, y el control de preguntas le va a pedir que la lea entera
-            // en otra llamada, donde sí entra.
-            if (!recortada) leccionesConocidas.add(id);
-
             lessons.push({ id, title: item.title, text: texto || '(This lesson has no content in this locale yet.)' });
           }
 
@@ -1125,7 +1469,7 @@ export function buildAgentTools(
             ...(noEncontradas.length > 0
               ? {
                   notFound: noEncontradas,
-                  note: 'These ids are not lessons of this course. Copy lesson ids from get_course_structure — never invent them.'
+                  note: 'These are not lessons of this course. Use the handles from get_course_structure (for example S2.L3) — never invent a handle or an id.'
                 }
               : {}),
             ...(recortadas.length > 0
@@ -1145,8 +1489,9 @@ export function buildAgentTools(
       inputSchema: exerciseReadParam,
       execute: async (args) => {
         return executeAgentTool('get_exercise_details', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
-          return getExercise(args.exerciseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+          return getExercise(exerciseId);
         });
       }
     }),
@@ -1162,6 +1507,7 @@ export function buildAgentTools(
             const existing = (await listCourseSections(courseId)).find((s) => s.id === boundId);
             return {
               id: boundId,
+              handle: await manijas.manijaDe(boundId),
               title: existing?.title ?? args.title,
               order: existing?.order ?? args.order,
               reused: true,
@@ -1177,6 +1523,7 @@ export function buildAgentTools(
             await recordBinding(args.planKey, equivalente.id);
             return {
               id: equivalente.id,
+              handle: await manijas.manijaDe(equivalente.id),
               title: equivalente.title,
               order: equivalente.order,
               reused: true,
@@ -1185,8 +1532,16 @@ export function buildAgentTools(
           }
 
           const section = await createCourseSection(courseId, { title: args.title, courseId, order: args.order });
+          // Una sección más cambia el mapa: la nueva no tiene manija todavía y
+          // las que van detrás pueden haberse corrido.
+          manijas.invalidar();
           await recordBinding(args.planKey, section.id);
-          return { id: section.id, title: section.title, order: section.order };
+          return {
+            id: section.id,
+            handle: await manijas.manijaDe(section.id),
+            title: section.title,
+            order: section.order
+          };
         });
       }
     }),
@@ -1197,13 +1552,25 @@ export function buildAgentTools(
       inputSchema: updateSectionParam,
       execute: async (args) => {
         return executeAgentTool('update_section', { orgId, userId, courseId, args }, async () => {
-          await verifySectionBelongsToCourse(args.sectionId, courseId);
-          const section = await updateCourseSectionService(args.sectionId, {
+          const sectionId = await manijas.seccion(args.sectionId);
+          await verifySectionBelongsToCourse(sectionId, courseId);
+          const section = await updateCourseSectionService(sectionId, {
             ...(args.title !== undefined ? { title: args.title } : {}),
             ...(args.order !== undefined ? { order: args.order } : {})
           });
 
-          return { id: section.id, title: section.title, updated: true };
+          // Cambiarle el `order` a una sección reordena el curso, y las manijas
+          // son posicionales. Renombrarla no mueve a nadie.
+          if (args.order !== undefined) manijas.invalidar();
+
+          return {
+            id: section.id,
+            title: section.title,
+            updated: true,
+            ...(args.order !== undefined
+              ? { note: 'Handles changed: call get_course_structure before using one.' }
+              : {})
+          };
         });
       }
     }),
@@ -1233,6 +1600,8 @@ export function buildAgentTools(
 
           if (leccion.yaEscritaPorOtro) return leccionYaEscrita(leccion);
 
+          const handle = await manijas.manijaDe(leccion.id);
+
           if (leccion.reused) {
             // A retry after an interrupted round lands here. It still carries the
             // body, and the lesson it belongs to may well be empty — so write it
@@ -1242,7 +1611,7 @@ export function buildAgentTools(
                   registro,
                   lessonId: leccion.id,
                   lessonTitle: leccion.title,
-                  locale: args.locale,
+                  locale,
                   content: args.content,
                   isBuilding,
                   verificarFundamento,
@@ -1251,10 +1620,9 @@ export function buildAgentTools(
                 })
               : null;
 
-            if (written) leccionesConocidas.add(leccion.id);
-
             return {
               id: leccion.id,
+              handle,
               title: leccion.title,
               order: leccion.order,
               reused: true,
@@ -1271,7 +1639,7 @@ export function buildAgentTools(
           }
 
           if (!args.content) {
-            return { id: leccion.id, title: leccion.title, order: leccion.order };
+            return { id: leccion.id, handle, title: leccion.title, order: leccion.order };
           }
 
           if (!isBuilding) leccionesEscritasSinPlan += 1;
@@ -1280,20 +1648,20 @@ export function buildAgentTools(
             registro,
             lessonId: leccion.id,
             lessonTitle: leccion.title,
-            locale: args.locale,
+            locale,
             content: args.content,
             isBuilding,
             verificarFundamento,
             avisosDeFundamento,
             cargarFuentesDelCurso
           });
-          leccionesConocidas.add(leccion.id);
 
           return {
             id: leccion.id,
+            handle,
             title: leccion.title,
             order: leccion.order,
-            locale: args.locale,
+            locale,
             contentWritten: true,
             contentLength: written.normalizedContent.length,
             ...contentWarningFields(written)
@@ -1317,9 +1685,10 @@ export function buildAgentTools(
           let leccion: { id: string; title: string; order: number | null | undefined; reused: boolean };
 
           if (args.lessonId) {
-            await verifyLessonBelongsToCourse(args.lessonId, courseId);
-            const existente = await getLesson(args.lessonId);
-            leccion = { id: args.lessonId, title: existente.title, order: existente.order, reused: false };
+            const lessonId = await manijas.leccion(args.lessonId);
+            await verifyLessonBelongsToCourse(lessonId, courseId);
+            const existente = await getLesson(lessonId);
+            leccion = { id: lessonId, title: existente.title, order: existente.order, reused: false };
           } else if (args.sectionId && args.title && args.order !== undefined) {
             const encontrada = await crearOReusarLeccion({
               sectionId: args.sectionId,
@@ -1342,8 +1711,7 @@ export function buildAgentTools(
           const actual = (await getLesson(leccion.id).catch(() => null)) as {
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           } | null;
-          const contenidoActual =
-            actual?.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content || undefined;
+          const contenidoActual = actual?.lessonLanguages?.find((ll) => ll.locale === locale)?.content || undefined;
 
           let escrito;
 
@@ -1351,7 +1719,7 @@ export function buildAgentTools(
             escrito = await escribirLeccion({
               lessonTitle: leccion.title,
               brief: args.brief,
-              locale: args.locale,
+              locale,
               sources: args.sources,
               contenidoActual
             });
@@ -1380,10 +1748,11 @@ export function buildAgentTools(
           if ('faltaMaterial' in escrito) {
             return {
               id: leccion.id,
+              handle: await manijas.manijaDe(leccion.id),
               lessonId: leccion.id,
               title: leccion.title,
               order: leccion.order,
-              locale: args.locale,
+              locale,
               contentWritten: false,
               pendingForLackOfMaterial: escrito.faltaMaterial,
               sourcesUsed: escrito.fuentesUsadas,
@@ -1394,30 +1763,79 @@ export function buildAgentTools(
             };
           }
 
-          const written = await writeLessonBody({
-            registro,
-            lessonId: leccion.id,
-            lessonTitle: leccion.title,
-            locale: args.locale,
-            content: escrito.html,
-            // El escritor es un paso de construcción por naturaleza, en cualquier
-            // fase: el texto no lo dictó el docente, lo redactó un modelo a
-            // partir de fuentes. Así que corren los chequeos de construcción,
-            // fundamento incluido — contra lo que el escritor tuvo delante.
-            isBuilding: true,
-            verificarFundamento,
-            avisosDeFundamento,
-            fuentesDeLaLeccion: escrito.material,
-            notaDelEscritor: escrito.nota
-          });
+          const guardar = (contenido: string, material: FuenteVista[], nota?: string) =>
+            writeLessonBody({
+              registro,
+              lessonId: leccion.id,
+              lessonTitle: leccion.title,
+              locale,
+              content: contenido,
+              // El escritor es un paso de construcción por naturaleza, en cualquier
+              // fase: el texto no lo dictó el docente, lo redactó un modelo a
+              // partir de fuentes. Así que corren los chequeos de construcción,
+              // fundamento incluido — contra lo que el escritor tuvo delante.
+              isBuilding: true,
+              verificarFundamento,
+              avisosDeFundamento,
+              fuentesDeLaLeccion: material,
+              notaDelEscritor: nota
+            });
+
+          let written = await guardar(escrito.html, escrito.material, escrito.nota);
+
+          /**
+           * El rebote: si el servidor encontró algo, vuelve el escritor. UNA vez.
+           *
+           * Quien tiene el material delante es él, no el constructor. Devolverle
+           * los hallazgos al constructor lo pone a arreglar una lección que nunca
+           * leyó, con las fuentes fuera de su contexto: lo medido es que en ese
+           * caso reescribe la lección entera «por las dudas», y cada reescritura
+           * es una oportunidad nueva de inventar.
+           *
+           * Una vez y no hasta que quede limpio: el segundo intento es barato y
+           * suele alcanzar —casi siempre la respuesta correcta es marcar un
+           * ejemplo, que no cambia el texto—, y un tercero ya es gastar una
+           * llamada de escritor entera por un aviso que el docente puede ver en
+           * el informe. Si sigue habiendo hallazgos, la lección se guarda igual y
+           * vuelven como avisos.
+           */
+          const hallazgos = [...written.unsupportedTokens, ...written.groundingWarnings];
+          let writerRetried = false;
+
+          if (hallazgos.length > 0) {
+            const reintento = await escribirLeccion({
+              lessonTitle: leccion.title,
+              brief: `${args.brief}\n\n${briefDelRebote(written)}`,
+              locale,
+              sources: args.sources,
+              // Lo recién escrito, para que corrija en vez de empezar de nuevo.
+              contenidoActual: written.normalizedContent
+            }).catch((error) => {
+              // Falla abierto: la primera versión ya está guardada y sus avisos
+              // vuelven igual. Perder la lección por no poder pulirla sería
+              // cambiar un defecto chico por uno grande.
+              console.error('[write_lesson] el rebote al escritor falló:', error);
+              return null;
+            });
+
+            // Una negativa acá no deja la lección vacía: ya hay una versión
+            // guardada, y borrarla porque el segundo intento se arrepintió
+            // sería peor que quedarse con la que tiene avisos.
+            if (reintento && !('faltaMaterial' in reintento)) {
+              escrito = reintento;
+              written = await guardar(reintento.html, reintento.material, reintento.nota);
+              writerRetried = true;
+            }
+          }
 
           return {
             id: leccion.id,
+            handle: await manijas.manijaDe(leccion.id),
             lessonId: leccion.id,
             title: leccion.title,
             lessonTitle: leccion.title,
             order: leccion.order,
-            locale: args.locale,
+            locale,
             ...(leccion.reused ? { reused: true } : {}),
             contentWritten: true,
             contentLength: written.normalizedContent.length,
@@ -1425,6 +1843,7 @@ export function buildAgentTools(
             ...(escrito.fuentesNoEncontradas.length > 0 ? { sourcesNotFound: escrito.fuentesNoEncontradas } : {}),
             ...(escrito.recortadas.length > 0 ? { sourcesTruncated: escrito.recortadas } : {}),
             ...(escrito.nota ? { writerNote: escrito.nota } : {}),
+            ...(writerRetried ? { writerRetried: true } : {}),
             ...contentWarningFields(written)
           };
         });
@@ -1437,14 +1856,17 @@ export function buildAgentTools(
       inputSchema: updateLessonParam,
       execute: async (args) => {
         return executeAgentTool('update_lesson', { orgId, userId, courseId, args }, async () => {
-          if (args.sectionId) {
-            await verifySectionBelongsToCourse(args.sectionId, courseId);
+          const sectionId = args.sectionId ? await manijas.seccion(args.sectionId) : undefined;
+          const lessonId = await manijas.leccion(args.lessonId);
+
+          if (sectionId) {
+            await verifySectionBelongsToCourse(sectionId, courseId);
           }
 
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await updateLessonService(args.lessonId, {
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await updateLessonService(lessonId, {
             ...(args.title !== undefined ? { title: args.title } : {}),
-            ...(args.sectionId !== undefined ? { sectionId: args.sectionId } : {}),
+            ...(sectionId !== undefined ? { sectionId } : {}),
             ...(args.order !== undefined ? { order: args.order } : {}),
             ...(args.lessonAt !== undefined ? { lessonAt: args.lessonAt } : {}),
             ...(args.callUrl !== undefined ? { callUrl: args.callUrl } : {}),
@@ -1452,7 +1874,18 @@ export function buildAgentTools(
             ...(args.public !== undefined ? { public: args.public } : {})
           });
 
-          return { id: lesson.id, title: lesson.title, updated: true };
+          // Mover una lección de sección o cambiarle el orden la corre de lugar,
+          // y con ella las manijas de sus hermanas.
+          const movida = sectionId !== undefined || args.order !== undefined;
+
+          if (movida) manijas.invalidar();
+
+          return {
+            id: lesson.id,
+            title: lesson.title,
+            updated: true,
+            ...(movida ? { note: 'Handles changed: call get_course_structure before using one.' } : {})
+          };
         });
       }
     }),
@@ -1463,14 +1896,15 @@ export function buildAgentTools(
       inputSchema: updateContentParam,
       execute: async (args) => {
         return executeAgentTool('update_lesson_content', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await getLesson(args.lessonId);
+          const lessonId = await manijas.leccion(args.lessonId);
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await getLesson(lessonId);
 
           const written = await writeLessonBody({
             registro,
-            lessonId: args.lessonId,
+            lessonId,
             lessonTitle: lesson.title,
-            locale: args.locale,
+            locale,
             content: args.content,
             isBuilding,
             verificarFundamento,
@@ -1479,12 +1913,11 @@ export function buildAgentTools(
             // contra las del curso en vez de no contrastar.
             cargarFuentesDelCurso
           });
-          leccionesConocidas.add(args.lessonId);
 
           return {
-            lessonId: args.lessonId,
+            lessonId,
             lessonTitle: lesson.title,
-            locale: args.locale,
+            locale,
             contentLength: written.normalizedContent.length,
             updated: true,
             ...contentWarningFields(written)
@@ -1499,18 +1932,19 @@ export function buildAgentTools(
       inputSchema: replaceBlockParam,
       execute: async (args) => {
         return executeAgentTool('replace_lesson_block', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await getLesson(args.lessonId);
+          const lessonId = await manijas.leccion(args.lessonId);
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await getLesson(lessonId);
           const lessonWithLangs = lesson as {
             id: string;
             title: string;
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
 
           if (!current) {
             throw new Error(
-              `This lesson has no content in locale "${args.locale}" yet. Use write_lesson to write the initial content.`
+              `This lesson has no content in locale "${locale}" yet. Use write_lesson to write the initial content.`
             );
           }
 
@@ -1536,40 +1970,44 @@ export function buildAgentTools(
           );
           // An empty replacement deletes the block; there is no id left to keep.
           const replacement = repaired.trim() ? preserveBlockId(repaired, args.blockId) : '';
-          const updated = replaceLessonBlock(current, block, replacement);
+          const empalmado = replaceLessonBlock(current, block, replacement);
 
-          if (updated === current) {
+          if (empalmado === current) {
             throw new Error('The replacement produced no change (the new block is identical to the old one).');
           }
 
-          await upsertLessonLanguageService(args.lessonId, {
-            locale: args.locale as 'en',
+          // El reemplazo puede traer bloques NUEVOS al lado del que se pisó (un
+          // párrafo partido en dos, una lista que se agrega): sin esto, nacen sin
+          // id y no se pueden volver a editar por bloque. Ver `lesson-blocks.ts`.
+          const updated = asignarIdsDeBloque(empalmado);
+
+          await upsertLessonLanguageService(lessonId, {
+            locale: locale as 'en',
             content: updated
           });
 
           // Anotado despues de guardar: el registro dice lo que paso.
-          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
 
-          // Si esta lección quedó marcada, se la vuelve a mirar ENTERA: la
-          // afirmación que el aviso señalaba suele vivir también fuera del
-          // bloque que se acaba de cambiar. Ver `revision-tras-editar.ts`.
-          const revision = await revisarTrasEditar({
-            registro: avisosDeFundamento,
-            lessonId: args.lessonId,
+          // Si esta lección quedó marcada —o el plan mandó cambiarla— se la
+          // vuelve a mirar ENTERA: la afirmación que el aviso señalaba suele
+          // vivir también fuera del bloque que se acaba de cambiar, y un bloque
+          // nuevo es texto que nadie miró. Ver `revisarLeccionEditada`.
+          const revision = await revisarLeccionEditada({
+            lessonId,
             lessonTitle: lesson.title,
-            contenido: updated,
-            verificarFundamento
+            contenido: updated
           });
 
           return {
-            lessonId: args.lessonId,
+            lessonId,
             lessonTitle: lesson.title,
-            locale: args.locale,
+            locale,
             blockId: args.blockId,
             deleted: replacement === '',
             contentLength: updated.length,
             updated: true,
-            ...(revision?.resuelto ? { groundingResolved: true } : {}),
+            ...(revision.groundingResolved ? { groundingResolved: true } : {}),
             // Only inspect what this edit wrote — see the note in
             // edit_lesson_content about not sending the model after untouched
             // parts of the lesson. El fundamento es la excepción: ahí el recorte
@@ -1577,7 +2015,8 @@ export function buildAgentTools(
             ...contentWarningFields({
               svgWarnings: replacement.includes('<svg') ? validateSvgDiagram(replacement) : [],
               mathWarnings: validateLessonMath(replacement),
-              groundingWarnings: revision?.groundingWarnings
+              groundingWarnings: revision.groundingWarnings,
+              unsupportedTokens: revision.unsupportedTokens
             })
           };
         });
@@ -1590,18 +2029,19 @@ export function buildAgentTools(
       inputSchema: editContentParam,
       execute: async (args) => {
         return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await getLesson(args.lessonId);
+          const lessonId = await manijas.leccion(args.lessonId);
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await getLesson(lessonId);
           const lessonWithLangs = lesson as {
             id: string;
             title: string;
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
-          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === args.locale)?.content ?? '';
+          const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
 
           if (!current) {
             throw new Error(
-              `This lesson has no content in locale "${args.locale}" yet. Use write_lesson to write the initial content instead of edit_lesson_content.`
+              `This lesson has no content in locale "${locale}" yet. Use write_lesson to write the initial content instead of edit_lesson_content.`
             );
           }
 
@@ -1633,42 +2073,45 @@ export function buildAgentTools(
           );
 
           // String replace (no regex) so $&, $1, $$ etc. in newString are not interpreted.
-          const updated = args.replaceAll
+          const reemplazado = args.replaceAll
             ? current.split(args.oldString).join(newString)
             : current.replace(args.oldString, () => newString);
 
-          if (updated === current) {
+          if (reemplazado === current) {
             throw new Error('The replacement produced no change (oldString and newString are equivalent).');
           }
 
-          await upsertLessonLanguageService(args.lessonId, {
-            locale: args.locale as 'en',
+          // Un bloque entero pegado por acá nace sin id y no se podría volver a
+          // editar por bloque; y una lección vieja, anterior a los ids, se vuelve
+          // direccionable en su primera edición. Ver `lesson-blocks.ts`.
+          const updated = asignarIdsDeBloque(reemplazado);
+
+          await upsertLessonLanguageService(lessonId, {
+            locale: locale as 'en',
             content: updated
           });
 
           // Anotado despues de guardar: el registro dice lo que paso.
-          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? args.lessonId);
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
 
-          // Si esta lección quedó marcada, se la vuelve a mirar ENTERA. Es el
-          // caso que dejó pasar una afirmación sin respaldo: el agente arregló
-          // la frase citada y la misma afirmación siguió en otros cinco lugares.
-          // Ver `revision-tras-editar.ts`.
-          const revision = await revisarTrasEditar({
-            registro: avisosDeFundamento,
-            lessonId: args.lessonId,
+          // Si esta lección quedó marcada —o el plan mandó cambiarla— se la
+          // vuelve a mirar ENTERA. Es el caso que dejó pasar una afirmación sin
+          // respaldo: el agente arregló la frase citada y la misma afirmación
+          // siguió en otros cinco lugares. Ver `revisarLeccionEditada`.
+          const revision = await revisarLeccionEditada({
+            lessonId,
             lessonTitle: lesson.title,
-            contenido: updated,
-            verificarFundamento
+            contenido: updated
           });
 
           return {
-            lessonId: args.lessonId,
+            lessonId,
             lessonTitle: lesson.title,
-            locale: args.locale,
+            locale,
             replacements: args.replaceAll ? occurrences : 1,
             contentLength: updated.length,
             updated: true,
-            ...(revision?.resuelto ? { groundingResolved: true } : {}),
+            ...(revision.groundingResolved ? { groundingResolved: true } : {}),
             // Only inspect what this edit wrote — warning about a pre-existing
             // diagram elsewhere in the lesson would send the model chasing
             // something the teacher didn't ask it to touch. El fundamento es la
@@ -1676,7 +2119,8 @@ export function buildAgentTools(
             ...contentWarningFields({
               svgWarnings: newString.includes('<svg') ? validateSvgDiagram(newString) : [],
               mathWarnings: validateLessonMath(newString),
-              groundingWarnings: revision?.groundingWarnings
+              groundingWarnings: revision.groundingWarnings,
+              unsupportedTokens: revision.unsupportedTokens
             })
           };
         });
@@ -1685,16 +2129,19 @@ export function buildAgentTools(
 
     create_exercise: tool({
       description:
-        'Create a new exercise with questions and answer options in this course. Its questions must test what the lessons it covers actually say: read those lessons first with read_lessons. The tool refuses questions for a lesson whose text you have not read in this round, and tells you which ids to read.',
+        'Create a new exercise with questions and answer options in this course — for questions the TEACHER dictated. To build an exercise from the lessons, use write_questions instead: a writer that sees the lessons in full writes them. Every question needs its `evidence`: the sentence of the lesson it tests, copied verbatim (read the lessons with read_lessons and copy from there). The server checks each evidence against the lessons this exercise covers and creates nothing if one of them is not there.',
       inputSchema: createExerciseParam,
       execute: async (args) => {
         return executeAgentTool('create_exercise', { orgId, userId, courseId, args }, async () => {
-          if (args.lessonId) {
-            await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          const lessonId = args.lessonId ? await manijas.leccion(args.lessonId) : undefined;
+          const sectionId = args.sectionId ? await manijas.seccion(args.sectionId) : undefined;
+
+          if (lessonId) {
+            await verifyLessonBelongsToCourse(lessonId, courseId);
           }
 
-          if (args.sectionId) {
-            await verifySectionBelongsToCourse(args.sectionId, courseId);
+          if (sectionId) {
+            await verifySectionBelongsToCourse(sectionId, courseId);
           }
 
           const boundId = await findBoundEntity(args.planKey, 'exercise');
@@ -1703,18 +2150,19 @@ export function buildAgentTools(
             const existing = await getExercise(boundId).catch(() => null);
             return {
               id: boundId,
+              handle: await manijas.manijaDe(boundId),
               title: existing?.title ?? args.title,
               questionCount: existing?.questions?.length ?? 0,
               reused: true,
-              note: 'This plan item was already built. Reusing the existing exercise — add questions with add_questions instead of creating a duplicate.'
+              note: 'This plan item was already built. Reusing the existing exercise — add questions with write_questions (passing this exerciseId) instead of creating a duplicate.'
             };
           }
 
           // Sin atadura: mirar si esta sección ya tiene este ejercicio. Ver pieza-existente.ts.
-          if (args.sectionId) {
+          if (sectionId) {
             const equivalente = piezaEquivalente(await getCourseContentItems(courseId), {
               tipo: 'exercise',
-              sectionId: args.sectionId,
+              sectionId,
               titulo: args.title
             });
 
@@ -1724,13 +2172,14 @@ export function buildAgentTools(
 
               return {
                 id: equivalente.id,
+                handle: await manijas.manijaDe(equivalente.id),
                 title: equivalente.title ?? args.title,
                 questionCount: preguntas,
                 reused: true,
                 note:
                   preguntas > 0
                     ? `This section already has this exercise, with ${preguntas} questions, so nothing was created. Treat it as built.`
-                    : 'This section already has this exercise, but with no questions. Nothing was created: add the questions to it with add_questions.'
+                    : 'This section already has this exercise, but with no questions. Nothing was created: fill it with write_questions, passing this exerciseId and the lessons it covers.'
               };
             }
           }
@@ -1754,22 +2203,16 @@ export function buildAgentTools(
             );
           }
 
-          // Leer antes de preguntar: ver `exercise-reading.ts`.
-          if (args.questions.length > 0) {
-            const sinLeer = leccionesSinLeer(
-              await leccionesQueCubre({ lessonId: args.lessonId, sectionId: args.sectionId }),
-              leccionesConocidas
-            );
-
-            if (sinLeer.length > 0) throw new Error(avisoLeerAntes(sinLeer));
-          }
+          // Cada pregunta tiene que salir de una frase que la lección dice, y
+          // esa frase se busca. Ver `evidencia-de-preguntas.ts`.
+          await exigirEvidencias(args.questions, await leccionesQueCubre({ lessonId, sectionId }));
 
           const exercise = await createExercise({
             title: args.title,
             description: args.description,
             courseId,
-            lessonId: args.lessonId,
-            sectionId: args.sectionId,
+            lessonId,
+            sectionId,
             order: args.order,
             questions: args.questions.map((q, i) => ({
               question: q.question,
@@ -1777,12 +2220,20 @@ export function buildAgentTools(
               points: q.points,
               order: q.order ?? i,
               options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect })),
-              // Donde vive la respuesta de los tipos que no usan opciones.
-              settings: q.settings
+              // Donde vive la respuesta de los tipos que no usan opciones, y
+              // desde ahora también la evidencia de la pregunta.
+              settings: settingsConEvidencia(q)
             }))
           });
+          // Un ejercicio más en una sección: su manija no existía hasta recién.
+          manijas.invalidar();
           await recordBinding(args.planKey, exercise.id);
-          return { id: exercise.id, title: exercise.title, questionCount: args.questions.length };
+          return {
+            id: exercise.id,
+            handle: await manijas.manijaDe(exercise.id),
+            title: exercise.title,
+            questionCount: args.questions.length
+          };
         });
       }
     }),
@@ -1793,33 +2244,44 @@ export function buildAgentTools(
       inputSchema: updateExerciseParam,
       execute: async (args) => {
         return executeAgentTool('update_exercise', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          const lessonId = args.lessonId ? await manijas.leccion(args.lessonId) : undefined;
+          const sectionId = args.sectionId ? await manijas.seccion(args.sectionId) : undefined;
 
-          if (args.lessonId) {
-            await verifyLessonBelongsToCourse(args.lessonId, courseId);
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+
+          if (lessonId) {
+            await verifyLessonBelongsToCourse(lessonId, courseId);
           }
 
-          if (args.sectionId) {
-            await verifySectionBelongsToCourse(args.sectionId, courseId);
+          if (sectionId) {
+            await verifySectionBelongsToCourse(sectionId, courseId);
           }
 
-          const updated = await updateExerciseService(args.exerciseId, {
+          const updated = await updateExerciseService(exerciseId, {
             title: args.title,
             description: args.description,
-            lessonId: args.lessonId,
-            sectionId: args.sectionId,
+            lessonId,
+            sectionId,
             order: args.order,
             dueBy: args.dueBy,
             isUnlocked: args.isUnlocked,
             allowMultipleAttempts: args.allowMultipleAttempts
           });
 
+          // Mudarlo de sección o reordenarlo cambia su lugar, y la manija es el
+          // lugar.
+          const movido = sectionId !== undefined || args.order !== undefined;
+
+          if (movido) manijas.invalidar();
+
           return {
             id: updated.id,
             title: updated.title,
             description: updated.description ?? null,
             dueBy: updated.dueBy ?? null,
-            updated: true
+            updated: true,
+            ...(movido ? { note: 'Handles changed: call get_course_structure before using one.' } : {})
           };
         });
       }
@@ -1831,12 +2293,15 @@ export function buildAgentTools(
       inputSchema: updateExerciseSectionParam,
       execute: async (args) => {
         return executeAgentTool('update_exercise_section', { orgId, userId, courseId, args }, async () => {
-          assertValidUuid('Exercise', args.exerciseId);
-          assertValidUuid('ExerciseSection', args.exerciseSectionId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          const exerciseSectionId = await resolverBloqueDeEjercicio(exerciseId, args.exerciseSectionId);
 
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          assertValidUuid('Exercise', exerciseId);
+          assertValidUuid('ExerciseSection', exerciseSectionId);
 
-          const updated = await updateExerciseSectionMetadataService(args.exerciseId, args.exerciseSectionId, {
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+
+          const updated = await updateExerciseSectionMetadataService(exerciseId, exerciseSectionId, {
             ...(args.title !== undefined ? { title: args.title } : {}),
             ...(args.description !== undefined ? { description: args.description } : {})
           });
@@ -1852,11 +2317,16 @@ export function buildAgentTools(
       inputSchema: createExerciseSectionParam,
       execute: async (args) => {
         return executeAgentTool('create_exercise_section', { orgId, userId, courseId, args }, async () => {
-          assertValidUuid('Exercise', args.exerciseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
 
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          assertValidUuid('Exercise', exerciseId);
 
-          const created = await createExerciseSectionService(args.exerciseId, {
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+
+          // Sin `manijas.invalidar()` a propósito: el mapa del curso no lleva
+          // bloques —se resuelven contra el ejercicio en cada llamada— así que
+          // un bloque nuevo no puede dejarlo viejo.
+          const created = await createExerciseSectionService(exerciseId, {
             title: args.title,
             description: args.description,
             order: args.order,
@@ -1871,17 +2341,23 @@ export function buildAgentTools(
 
     add_questions: tool({
       description:
-        'Add questions to an existing exercise in this course. When get_exercise_details lists in-exercise sections, pass exerciseSectionId so new questions are added to the correct block. Like create_exercise, it refuses questions for a lesson whose text you have not read in this round.',
+        'Add questions the TEACHER dictated to an existing exercise in this course. To add questions written from the lessons, use write_questions instead. When get_exercise_details lists in-exercise sections, pass exerciseSectionId so new questions are added to the correct block. Like create_exercise, every question needs its `evidence` — the sentence of the lesson it tests, copied verbatim — and nothing is added if one of them is not in the lessons this exercise covers.',
       inputSchema: addQuestionsParam,
       execute: async (args) => {
         return executeAgentTool('add_questions', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          const exerciseSectionId =
+            args.exerciseSectionId !== undefined
+              ? await resolverBloqueDeEjercicio(exerciseId, args.exerciseSectionId)
+              : undefined;
 
-          if (args.exerciseSectionId !== undefined) {
-            assertValidUuid('ExerciseSection', args.exerciseSectionId);
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
 
-            const sections = await getExerciseSectionsByExerciseId(args.exerciseId);
-            const belongs = sections.some((section) => section.id === args.exerciseSectionId);
+          if (exerciseSectionId !== undefined) {
+            assertValidUuid('ExerciseSection', exerciseSectionId);
+
+            const sections = await getExerciseSectionsByExerciseId(exerciseId);
+            const belongs = sections.some((section) => section.id === exerciseSectionId);
 
             if (!belongs) {
               throw new AppError(
@@ -1892,20 +2368,17 @@ export function buildAgentTools(
             }
           }
 
-          const existingExercise = await getExercise(args.exerciseId);
+          const existingExercise = await getExercise(exerciseId);
 
-          if (args.questions.length > 0) {
-            const vinculo = existingExercise as { lessonId?: string | null; sectionId?: string | null };
-            const sinLeer = leccionesSinLeer(
-              await leccionesQueCubre({
-                lessonId: vinculo.lessonId ?? undefined,
-                sectionId: vinculo.sectionId ?? undefined
-              }),
-              leccionesConocidas
-            );
+          const vinculo = existingExercise as { lessonId?: string | null; sectionId?: string | null };
+          await exigirEvidencias(
+            args.questions,
+            await leccionesQueCubre({
+              lessonId: vinculo.lessonId ?? undefined,
+              sectionId: vinculo.sectionId ?? undefined
+            })
+          );
 
-            if (sinLeer.length > 0) throw new Error(avisoLeerAntes(sinLeer));
-          }
           const existingQuestions = existingExercise.questions || [];
           const nextOrder = existingQuestions.length;
 
@@ -1914,20 +2387,303 @@ export function buildAgentTools(
             questionTypeId: q.questionTypeId,
             points: q.points,
             order: q.order ?? nextOrder + i,
-            ...(args.exerciseSectionId !== undefined ? { exerciseSectionId: args.exerciseSectionId } : {}),
+            ...(exerciseSectionId !== undefined ? { exerciseSectionId } : {}),
             options: q.options.map((o) => ({ label: o.label, isCorrect: o.isCorrect })),
-            // Donde vive la respuesta de los tipos que no usan opciones.
-            settings: q.settings
+            // Donde vive la respuesta de los tipos que no usan opciones, y
+            // desde ahora también la evidencia de la pregunta.
+            settings: settingsConEvidencia(q)
           }));
 
           // Sólo las nuevas: el servicio no toca las preguntas que no recibe. Reenviar
           // las viejas era reescribirlas, y así se perdía la respuesta de las numéricas.
-          await updateExerciseService(args.exerciseId, { questions: newQuestions });
+          await updateExerciseService(exerciseId, { questions: newQuestions });
           return {
-            exerciseId: args.exerciseId,
+            exerciseId,
             exerciseTitle: existingExercise.title,
             addedCount: args.questions.length,
             totalCount: existingQuestions.length + newQuestions.length
+          };
+        });
+      }
+    }),
+
+    /**
+     * Las preguntas las escribe quien leyó las lecciones.
+     *
+     * ── Por qué una herramienta y no una instrucción ─────────────────────────
+     *
+     * Durante una construcción el constructor NO vio el texto de ninguna
+     * lección: las escribe `write_lesson` con contexto limpio. Escribía igual
+     * las preguntas, sobre lo que suponía que cada lección decía. Medido el
+     * 2026-09-21: 4 de 8 preguntas de una autoevaluación no salían de la
+     * lección que evaluaban, con el viejo control de lectura en verde — porque
+     * ese control comprobaba que hubiera LEÍDO, no que hubiera USADO.
+     *
+     * Acá el texto va a quien escribe, y lo que vuelve trae la frase de la
+     * lección que cada pregunta evalúa. Esa frase se busca en el servidor: la
+     * pregunta cuya evidencia no aparece se descarta y nunca llega al curso.
+     *
+     * ── Por qué descarta en vez de rechazar todo ─────────────────────────────
+     *
+     * Al revés que `create_exercise`. Ahí las preguntas las escribió el modelo
+     * que está conversando, que puede corregirlas y reintentar; acá las escribió
+     * un sub-agente que ya cobró su llamada, y tirar ocho preguntas buenas
+     * porque dos no verifican sería pagar de nuevo por lo mismo. Las descartadas
+     * vuelven en el resultado, para que el constructor pueda contarlo.
+     */
+    write_questions: tool({
+      description:
+        'Write the questions of an exercise FROM the lessons it covers — the normal way to build an exercise. A writer sees the full text of the lessons you list (and nothing else), writes the questions, and returns with each one the sentence of the lesson it tests; the server checks that sentence is really there and drops any question whose sentence is not. Pass exerciseId to add to an existing exercise, or title + sectionId/lessonId (+ order, planKey) to create it. Use blockTitle to put them in a new question block — that is how the final exam is built, one call per prior course section. You do NOT need to read the lessons first: the writer reads them.',
+      inputSchema: writeQuestionsParam,
+      execute: async (args) => {
+        return executeAgentTool('write_questions', { orgId, userId, courseId, args }, async () => {
+          if (!escribirPreguntas) {
+            throw new Error(
+              'The question writer is unavailable on this turn. Read the lessons with read_lessons and write the questions yourself with create_exercise or add_questions, giving each one its evidence.'
+            );
+          }
+
+          /**
+           * El texto de las lecciones, ANTES de gastar la llamada al escritor.
+           *
+           * Una lección vacía no puede sostener una pregunta, y pedírselas al
+           * escritor sobre un texto que no existe termina en preguntas
+           * inventadas que la evidencia después descarta: el mismo resultado,
+           * pagando la llamada.
+           */
+          const contenidos = await getCourseLessonContents(courseId, locale as TLocale);
+          const porId = new Map(contenidos.map((fila) => [fila.id, fila]));
+          const lecciones: Array<{ id: string; title: string; text: string }> = [];
+          const sinContenido: string[] = [];
+
+          for (const valor of [...new Set(args.lessons)]) {
+            const lessonId = await manijas.leccion(valor);
+            await verifyLessonBelongsToCourse(lessonId, courseId);
+
+            const fila = porId.get(lessonId);
+            const texto = textoDeLeccion(fila?.content ?? '');
+
+            if (!texto) {
+              sinContenido.push(fila?.title ?? valor);
+              continue;
+            }
+
+            lecciones.push({ id: lessonId, title: fila?.title ?? '(untitled)', text: texto });
+          }
+
+          if (lecciones.length === 0) {
+            throw new Error(
+              `Nothing was created: none of those lessons has content in "${locale}" yet${
+                sinContenido.length > 0 ? ` (${sinContenido.join(', ')})` : ''
+              }. Write the lessons first — an exercise cannot test what is not written.`
+            );
+          }
+
+          // En qué ejercicio van. El nuevo NO se crea todavía: un ejercicio sin
+          // preguntas es una cáscara que cuenta como construida y que nada
+          // reclama como faltante, así que primero tiene que haber preguntas.
+          const sectionId = args.sectionId ? await manijas.seccion(args.sectionId) : undefined;
+          const lessonId = args.lessonId ? await manijas.leccion(args.lessonId) : undefined;
+
+          if (sectionId) await verifySectionBelongsToCourse(sectionId, courseId);
+          if (lessonId) await verifyLessonBelongsToCourse(lessonId, courseId);
+
+          let exerciseId: string | null = null;
+          let exerciseTitle = args.title ?? '';
+          let preguntasQueYaTiene = 0;
+
+          if (args.exerciseId) {
+            exerciseId = await manijas.ejercicio(args.exerciseId);
+            await verifyExerciseBelongsToCourse(exerciseId, courseId);
+
+            const existente = await getExercise(exerciseId).catch(() => null);
+            exerciseTitle = existente?.title ?? exerciseTitle;
+            preguntasQueYaTiene = existente?.questions?.length ?? 0;
+          } else {
+            if (!args.title) {
+              throw new Error(
+                'Pass exerciseId to add questions to an existing exercise, or title (plus sectionId and order, or lessonId) to create one.'
+              );
+            }
+
+            // Anti-duplicado, el mismo de `create_exercise`: la atadura del
+            // plan primero, y si no hay, la pieza equivalente de esa sección.
+            const yaConstruido =
+              (await findBoundEntity(args.planKey, 'exercise')) ??
+              (sectionId
+                ? (piezaEquivalente(await getCourseContentItems(courseId), {
+                    tipo: 'exercise',
+                    sectionId,
+                    titulo: args.title
+                  })?.id ?? null)
+                : null);
+
+            if (yaConstruido) {
+              await recordBinding(args.planKey, yaConstruido);
+              const existente = await getExercise(yaConstruido).catch(() => null);
+              const preguntas = existente?.questions?.length ?? 0;
+
+              // Ya tiene preguntas y no se pidió un bloque nuevo: es un
+              // reintento sobre algo hecho, y escribir otra vez lo duplicaría.
+              // Con `blockTitle` sí se sigue: cada bloque es otro tramo del
+              // examen y el ejercicio se llena de a uno.
+              if (preguntas > 0 && !args.blockTitle) {
+                return {
+                  exerciseId: yaConstruido,
+                  handle: await manijas.manijaDe(yaConstruido),
+                  title: existente?.title ?? args.title,
+                  added: 0,
+                  questionCount: preguntas,
+                  reused: true,
+                  note: `This exercise already exists with ${preguntas} question(s), so nothing was written. Treat it as built.`
+                };
+              }
+
+              exerciseId = yaConstruido;
+              exerciseTitle = existente?.title ?? args.title;
+              preguntasQueYaTiene = preguntas;
+            }
+          }
+
+          const totalTexto = lecciones.reduce((suma, leccion) => suma + leccion.text.length, 0);
+          const cuantas = args.count ?? cuantasPreguntas(totalTexto);
+
+          let escrito;
+
+          try {
+            escrito = await escribirPreguntas({
+              exerciseTitle: exerciseTitle || args.title || 'Exercise',
+              brief: args.brief,
+              count: cuantas,
+              lecciones: lecciones.map(({ title, text }) => ({ title, text })),
+              locale
+            });
+          } catch (error) {
+            const motivo = error instanceof Error ? error.message : String(error);
+
+            throw new Error(
+              `The question writer failed: ${motivo} Nothing was created. Retry write_questions once; if it fails again, read the lessons with read_lessons and write the questions yourself with create_exercise, giving each one its evidence.`
+            );
+          }
+
+          // La evidencia, contra el texto de ESTAS lecciones y no el del curso:
+          // el escritor no vio ninguna otra, así que una frase que aparece en
+          // otra lección no salió de lo que él leyó.
+          const { validas, rechazadas } = verificarEvidencias(
+            escrito.preguntas,
+            lecciones.map((leccion) => leccion.text)
+          );
+          const descartadas = rechazadas.map((rechazada) => ({
+            question: rechazada.question,
+            evidence: rechazada.evidence,
+            reason: 'its evidence is not in the lessons this exercise covers'
+          }));
+          const aceptadas: Array<z.infer<typeof questionSchema>> = [];
+
+          // Y la regla de cada tipo, que el esquema de salida del escritor no
+          // lleva a propósito: una numérica sin respuesta la rechaza después el
+          // servicio, y ahí se cae la llamada entera en vez de esa pregunta.
+          for (const pregunta of validas) {
+            const revisada = questionSchema.safeParse(pregunta);
+
+            if (revisada.success) {
+              aceptadas.push(revisada.data);
+              continue;
+            }
+
+            descartadas.push({
+              question: pregunta.question,
+              evidence: pregunta.evidence,
+              reason: revisada.error.issues.map((issue) => issue.message).join(' ')
+            });
+          }
+
+          if (aceptadas.length === 0) {
+            return {
+              ...(exerciseId ? { exerciseId } : {}),
+              added: 0,
+              rejected: descartadas,
+              ...(escrito.nota ? { writerNote: escrito.nota } : {}),
+              note: 'Nothing was created: not one question came back with a sentence that is actually in those lessons. Do NOT write the questions yourself to fill the gap — check you passed the right lessons, and tell the teacher if those lessons have nothing to assess.'
+            };
+          }
+
+          const filasDePregunta = (desde: number, exerciseSectionId?: string) =>
+            aceptadas.map((pregunta, i) => ({
+              question: pregunta.question,
+              questionTypeId: pregunta.questionTypeId,
+              points: pregunta.points,
+              order: desde + i,
+              ...(exerciseSectionId ? { exerciseSectionId } : {}),
+              options: pregunta.options.map((opcion) => ({ label: opcion.label, isCorrect: opcion.isCorrect })),
+              settings: settingsConEvidencia(pregunta)
+            }));
+
+          let creado = false;
+
+          if (!exerciseId) {
+            // Sin bloque, el ejercicio nace con sus preguntas adentro, en una
+            // sola transacción: es lo que evita la cáscara vacía que un fallo a
+            // mitad de camino dejaría. Con bloque hay que crearlo antes de
+            // poder asignarlas, y ahí sí son dos pasos.
+            const exercise = await createExercise({
+              title: args.title!,
+              courseId,
+              lessonId,
+              sectionId,
+              order: args.order,
+              questions: args.blockTitle ? [] : filasDePregunta(0)
+            });
+
+            // El ejercicio nuevo todavía no tiene manija, y las de sus hermanos
+            // pueden haberse corrido.
+            manijas.invalidar();
+            await recordBinding(args.planKey, exercise.id);
+
+            exerciseId = exercise.id;
+            exerciseTitle = exercise.title ?? args.title!;
+            creado = true;
+          }
+
+          let exerciseSectionId: string | undefined;
+
+          if (args.blockTitle) {
+            const bloques = await getExerciseSectionsByExerciseId(exerciseId);
+            const bloque = await createExerciseSectionService(exerciseId, {
+              title: args.blockTitle,
+              order: bloques.length
+            });
+
+            exerciseSectionId = bloque.id;
+          }
+
+          // Sólo cuando las preguntas no viajaron ya en el alta. Se mandan sólo
+          // las nuevas: reenviar las viejas las reescribe, y así se perdía la
+          // respuesta de las numéricas.
+          if (exerciseSectionId || !creado) {
+            await updateExerciseService(exerciseId, {
+              questions: filasDePregunta(preguntasQueYaTiene, exerciseSectionId)
+            });
+          }
+
+          anotarCambio(registro, 'pregunto', exerciseTitle);
+
+          return {
+            exerciseId,
+            handle: await manijas.manijaDe(exerciseId),
+            title: exerciseTitle,
+            added: aceptadas.length,
+            ...(creado ? { created: true } : {}),
+            ...(exerciseSectionId ? { exerciseSectionId, blockTitle: args.blockTitle } : {}),
+            ...(descartadas.length > 0 ? { rejected: descartadas } : {}),
+            ...(sinContenido.length > 0 ? { lessonsWithoutContent: sinContenido } : {}),
+            ...(escrito.nota ? { writerNote: escrito.nota } : {}),
+            note:
+              'Every question saved quotes a sentence of the lessons you listed. Do not restate them in chat — the teacher reads them in the exercise.' +
+              (descartadas.length > 0
+                ? ` ${descartadas.length} question(s) were discarded because the server could not find their evidence in those lessons: that is the check doing its job, so do NOT write them by hand.`
+                : '') +
+              (escrito.nota ? ' Pass the writerNote on to the teacher.' : '')
           };
         });
       }
@@ -1939,10 +2695,23 @@ export function buildAgentTools(
       inputSchema: updateQuestionsParam,
       execute: async (args) => {
         return executeAgentTool('update_questions', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+
+          // Los parches se resuelven acá, una vez, y desde acá se trabaja con la
+          // copia resuelta: si el modelo nombró el bloque por manija, el id que
+          // llega a la base tiene que ser el mismo que se validó.
+          const parches = await Promise.all(
+            args.questions.map(async (patch) => ({
+              ...patch,
+              ...(patch.exerciseSectionId
+                ? { exerciseSectionId: await resolverBloqueDeEjercicio(exerciseId, patch.exerciseSectionId) }
+                : {})
+            }))
+          );
 
           const sectionIdsInPatches = new Set<string>();
-          for (const patch of args.questions) {
+          for (const patch of parches) {
             if (patch.exerciseSectionId === undefined || patch.exerciseSectionId === null) {
               continue;
             }
@@ -1952,7 +2721,7 @@ export function buildAgentTools(
           }
 
           if (sectionIdsInPatches.size > 0) {
-            const sections = await getExerciseSectionsByExerciseId(args.exerciseId);
+            const sections = await getExerciseSectionsByExerciseId(exerciseId);
             const validIds = new Set(sections.map((section) => section.id));
 
             for (const sectionId of sectionIdsInPatches) {
@@ -1966,7 +2735,7 @@ export function buildAgentTools(
             }
           }
 
-          const existing = await getExercise(args.exerciseId);
+          const existing = await getExercise(exerciseId);
 
           const merged = buildUpdatedQuestions(
             (existing.questions || []).map((q) => ({
@@ -1979,14 +2748,14 @@ export function buildAgentTools(
               settings: q.settings,
               options: q.options
             })),
-            args.questions,
-            args.exerciseId
+            parches,
+            exerciseId
           );
 
-          await updateExerciseService(args.exerciseId, { questions: merged });
+          await updateExerciseService(exerciseId, { questions: merged });
 
           return {
-            exerciseId: args.exerciseId,
+            exerciseId,
             exerciseTitle: existing.title,
             updatedCount: merged.length
           };
@@ -2000,14 +2769,31 @@ export function buildAgentTools(
       inputSchema: reorderContentParam,
       execute: async (args) => {
         return executeAgentTool('reorder_content', { orgId, userId, courseId, args }, async () => {
-          if (args.sections) {
-            for (const section of args.sections) {
+          // Todo se resuelve ANTES de mover nada: una manija se lee contra el
+          // orden viejo, y a mitad de un reordenamiento ya no significa lo mismo.
+          const secciones = args.sections
+            ? await Promise.all(
+                args.sections.map(async (section) => ({ ...section, id: await manijas.seccion(section.id) }))
+              )
+            : undefined;
+          const items = args.items
+            ? await Promise.all(
+                args.items.map(async (item) => ({
+                  ...item,
+                  id: item.type === 'LESSON' ? await manijas.leccion(item.id) : await manijas.ejercicio(item.id),
+                  ...(item.sectionId ? { sectionId: await manijas.seccion(item.sectionId) } : {})
+                }))
+              )
+            : undefined;
+
+          if (secciones) {
+            for (const section of secciones) {
               await verifySectionBelongsToCourse(section.id, courseId);
             }
           }
 
-          if (args.items) {
-            for (const item of args.items) {
+          if (items) {
+            for (const item of items) {
               if (item.type === 'LESSON') {
                 await verifyLessonBelongsToCourse(item.id, courseId);
               } else {
@@ -2020,10 +2806,16 @@ export function buildAgentTools(
             }
           }
 
-          return reorderCourseContent(courseId, {
-            sections: args.sections,
-            items: args.items
-          });
+          const resultado = await reorderCourseContent(courseId, { sections: secciones, items });
+
+          // Esto es lo único que mueve a todo el mundo de lugar: después de acá,
+          // cualquier manija que el modelo tenga anotada apunta a otra pieza.
+          manijas.invalidar();
+
+          return {
+            ...resultado,
+            note: 'Handles changed: call get_course_structure before using one.'
+          };
         });
       }
     }),
@@ -2091,27 +2883,30 @@ export function buildAgentTools(
       inputSchema: deleteLessonParam,
       execute: async (args) => {
         return executeAgentTool('delete_lesson', { orgId, userId, courseId, args }, async () => {
-          await verifyLessonBelongsToCourse(args.lessonId, courseId);
-          const lesson = await getLesson(args.lessonId);
+          const lessonId = await manijas.leccion(args.lessonId);
+          await verifyLessonBelongsToCourse(lessonId, courseId);
+          const lesson = await getLesson(lessonId);
 
           if (!confirmacionCoincide(args.confirmTitle, lesson.title)) {
             throw new Error(
               avisoDeConfirmacion({
                 tipo: 'lesson',
-                id: args.lessonId,
+                id: lessonId,
                 declarado: args.confirmTitle,
                 real: lesson.title
               })
             );
           }
 
-          await deleteLessonService(args.lessonId);
+          await deleteLessonService(lessonId);
+          // Borrar corre a las que venían detrás: la manija de cada una bajó uno.
+          manijas.invalidar();
 
           return {
             deleted: true,
-            id: args.lessonId,
+            id: lessonId,
             title: lesson.title,
-            note: 'The lesson is gone. If it was part of an approved plan, the Plan Progress block will now show it as missing and you must NOT rebuild it — tell the teacher it is out of the plan too.'
+            note: 'The lesson is gone, and the handles after it have shifted: call get_course_structure before using one. If it was part of an approved plan, the Plan Progress block will now show it as missing and you must NOT rebuild it — tell the teacher it is out of the plan too.'
           };
         });
       }
@@ -2123,23 +2918,30 @@ export function buildAgentTools(
       inputSchema: deleteExerciseParam,
       execute: async (args) => {
         return executeAgentTool('delete_exercise', { orgId, userId, courseId, args }, async () => {
-          await verifyExerciseBelongsToCourse(args.exerciseId, courseId);
-          const exercise = await getExercise(args.exerciseId);
+          const exerciseId = await manijas.ejercicio(args.exerciseId);
+          await verifyExerciseBelongsToCourse(exerciseId, courseId);
+          const exercise = await getExercise(exerciseId);
 
           if (!confirmacionCoincide(args.confirmTitle, exercise.title)) {
             throw new Error(
               avisoDeConfirmacion({
                 tipo: 'exercise',
-                id: args.exerciseId,
+                id: exerciseId,
                 declarado: args.confirmTitle,
                 real: exercise.title
               })
             );
           }
 
-          await deleteExerciseForCourseService(courseId, args.exerciseId);
+          await deleteExerciseForCourseService(courseId, exerciseId);
+          manijas.invalidar();
 
-          return { deleted: true, id: args.exerciseId, title: exercise.title };
+          return {
+            deleted: true,
+            id: exerciseId,
+            title: exercise.title,
+            note: 'Handles changed: call get_course_structure before using one.'
+          };
         });
       }
     }),
@@ -2150,14 +2952,15 @@ export function buildAgentTools(
       inputSchema: deleteSectionParam,
       execute: async (args) => {
         return executeAgentTool('delete_section', { orgId, userId, courseId, args }, async () => {
-          await verifySectionBelongsToCourse(args.sectionId, courseId);
+          const sectionId = await manijas.seccion(args.sectionId);
+          await verifySectionBelongsToCourse(sectionId, courseId);
 
           const [sections, items] = await Promise.all([listCourseSections(courseId), getCourseContentItems(courseId)]);
-          const section = sections.find((s) => s.id === args.sectionId);
+          const section = sections.find((s) => s.id === sectionId);
 
           if (!section) {
             throw new Error(
-              `No section with id "${args.sectionId}" exists in this course. Call get_course_structure and use a real id.`
+              `No section with id "${sectionId}" exists in this course. Call get_course_structure and use a real id.`
             );
           }
 
@@ -2166,7 +2969,7 @@ export function buildAgentTools(
           // el único control que tenemos no existe.
           if (!section.title) {
             throw new Error(
-              `Section ${args.sectionId} has no title, so the confirmation check cannot run and this delete is refused. Give it a title with update_section first, or ask the teacher to delete it from the course page.`
+              `Section ${sectionId} has no title, so the confirmation check cannot run and this delete is refused. Give it a title with update_section first, or ask the teacher to delete it from the course page.`
             );
           }
 
@@ -2174,7 +2977,7 @@ export function buildAgentTools(
             throw new Error(
               avisoDeConfirmacion({
                 tipo: 'section',
-                id: args.sectionId,
+                id: sectionId,
                 declarado: args.confirmTitle,
                 real: section.title
               })
@@ -2185,7 +2988,7 @@ export function buildAgentTools(
           // en UNA llamada convierte un id equivocado en la pérdida de un curso
           // entero, así que se exige vaciarla primero: el modelo tiene que pasar
           // por cada hijo, y cada uno de esos pasos vuelve a pedir el título.
-          const dentro = items.filter((i) => i.sectionId === args.sectionId);
+          const dentro = items.filter((i) => i.sectionId === sectionId);
 
           if (dentro.length > 0) {
             const lista = dentro.map((i) => `"${i.title ?? '(sin título)'}" (${i.type}, id: ${i.id})`).join(', ');
@@ -2195,16 +2998,22 @@ export function buildAgentTools(
             );
           }
 
-          await deleteCourseSectionService(args.sectionId);
+          await deleteCourseSectionService(sectionId);
+          manijas.invalidar();
 
-          return { deleted: true, id: args.sectionId, title: section.title };
+          return {
+            deleted: true,
+            id: sectionId,
+            title: section.title,
+            note: 'Handles changed: call get_course_structure before using one.'
+          };
         });
       }
     }),
 
     generate_course_plan: tool({
       description:
-        'Generate a structured course plan with sections and lessons. Always use this when asked to design or plan a course.',
+        'Generate a structured course plan with sections and lessons. Always use this when asked to design or plan a course. When the course already has content and the teacher asked to change PART of it, set scope to "changes" and list only the sections you touch, each item with its action/target/changes.',
       inputSchema: coursePlanParam,
       execute: async (args) => {
         return executeAgentTool('generate_course_plan', { orgId, userId, courseId, args }, async () => {
@@ -2214,6 +3023,61 @@ export function buildAgentTools(
           const itemCount = plan.sections.reduce((sum, section) => sum + section.items.length, 0);
 
           trackAgentEvent(AgentEvent.PLAN_GENERATED, { orgId, userId, courseId, sectionCount, itemCount });
+
+          /**
+           * Un plan de cambios nombra piezas que ya existen: se resuelven ACÁ.
+           *
+           * El momento es el punto. Un `target` que no apunta a nada no falla al
+           * aprobar ni al construir: falla en silencio, y el docente aprueba una
+           * orden que nunca se va a poder ejecutar. Resolverlo antes de que la
+           * tarjeta se dibuje deja el error donde se puede corregir en un paso,
+           * que es dentro de la misma ronda del modelo.
+           */
+          let atadura;
+
+          if (plan.scope === 'changes') {
+            const mapa = await manijas.mapa();
+            const resolved: Array<{ title: string; handle: string; id: string }> = [];
+            const unresolved: Array<{ title: string; target: string }> = [];
+
+            const anotar = (titulo: string, valor: string, tipo: 'section' | 'lesson' | 'exercise') => {
+              try {
+                const id = resolverEnMapa(mapa, valor, tipo);
+                const manija = mapa.manijaPorId.get(id);
+
+                // Un UUID lo deja pasar `resolverEnMapa` sin mirar nada: si no
+                // está en el mapa, es de otro curso o está inventado, y los dos
+                // casos se contestan igual.
+                if (!manija) {
+                  unresolved.push({ title: titulo, target: valor });
+                  return;
+                }
+
+                resolved.push({ title: titulo, handle: manija, id });
+              } catch {
+                unresolved.push({ title: titulo, target: valor });
+              }
+            };
+
+            for (const seccion of plan.sections) {
+              if (seccion.sectionId) anotar(seccion.title, seccion.sectionId, 'section');
+
+              for (const item of seccion.items) {
+                if ((item.action ?? 'create') === 'create') continue;
+                if (item.target) anotar(item.title, item.target, item.type);
+              }
+            }
+
+            atadura = {
+              resolved,
+              ...(unresolved.length > 0
+                ? {
+                    unresolved,
+                    note: 'Some targets of this plan do not name anything in this course. Fix these BEFORE the teacher sees it: call get_course_structure, take the right handles, and call generate_course_plan again with the same plan.'
+                  }
+                : {})
+            };
+          }
 
           // Cobertura: cuáles de estas lecciones tienen material atrás y cuáles
           // no. Se mide ACÁ, con el plan todavía sin construir, porque es el
@@ -2225,7 +3089,13 @@ export function buildAgentTools(
           let cobertura;
           try {
             const fuentes = await listCourseSources(courseId);
-            const items = plan.sections.flatMap((section) => section.items);
+            // Sólo lo que se va a ESCRIBIR de cero. Una lección que ya existe y
+            // que el plan manda retocar no necesita declarar de qué fuente sale:
+            // salió de la que la escribió, y pedírselo devolvería una lista de
+            // huérfanas que no se pueden arreglar sin reescribirlas.
+            const items = plan.sections
+              .flatMap((section) => section.items)
+              .filter((item) => (item.action ?? 'create') === 'create');
             const medida = medirCobertura(items, fuentes);
             const aviso = avisoDeCobertura(medida, fuentes.length);
 
@@ -2244,7 +3114,128 @@ export function buildAgentTools(
             console.error('[agent-tool] no se pudo medir la cobertura del plan:', error);
           }
 
-          return cobertura ? { ...plan, coverage: cobertura } : plan;
+          return { ...plan, ...(cobertura ? { coverage: cobertura } : {}), ...(atadura ?? {}) };
+        });
+      }
+    }),
+
+    /**
+     * Qué del curso deja viejo un documento nuevo.
+     *
+     * Es de LECTURA: no cambia nada, propone. Lo que devuelve es el insumo del
+     * plan de cambios, y lo que guarda es lo que después le permite al servidor
+     * medir si la orden se cumplió — ver `cambios-de-fuente.ts`.
+     */
+    analyze_source_changes: tool({
+      description:
+        'Compare a NEW source document against everything this course already says, and get back the list of facts it changes: the old value, the new one, why, and exactly where the old one still is (which lesson, which block, which question). Call this FIRST when the teacher uploads a document that updates the course, BEFORE proposing a plan — then propose a change plan with one edit item per lesson or exercise listed here. It changes nothing on its own.',
+      inputSchema: analyzeSourceChangesParam,
+      execute: async (args) => {
+        return executeAgentTool('analyze_source_changes', { orgId, userId, courseId, args }, async () => {
+          if (!analizarCambios) {
+            throw new Error('Source analysis is unavailable on this turn.');
+          }
+
+          const fuentes = await documentosDelCurso();
+          const fuente = buscarFuente(args.sourceId, fuentes);
+
+          if (!fuente) {
+            throw new Error(
+              `No source called "${args.sourceId}" belongs to this course. Copy an id or a file name from the "## Course Sources — index" list — do not invent one.`
+            );
+          }
+
+          if (!fuente.text.trim()) {
+            throw new Error(
+              `"${fuente.fileName}" has no readable text, so there is nothing to compare. Tell the teacher the file could not be read.`
+            );
+          }
+
+          const [estado, mapa] = await Promise.all([estadoDelContenido(courseId, locale), manijas.mapa()]);
+          const mapeadas = [...mapa.sections.flatMap((s) => s.lessons), ...mapa.unfiled.lessons];
+          const lecciones = mapeadas
+            .map((leccion) => ({
+              id: leccion.id,
+              handle: leccion.manija,
+              title: leccion.title,
+              html: estado.textoPorLeccion.get(leccion.id) ?? ''
+            }))
+            .filter((leccion) => leccion.html.trim().length > 0);
+
+          if (lecciones.length === 0) {
+            return {
+              source: fuente.fileName,
+              changes: [],
+              note: 'This course has no written lessons in this language yet, so nothing can be out of date. Build it from this source instead of updating it.'
+            };
+          }
+
+          const { cambios } = await analizarCambios({
+            fuenteNueva: { fileName: fuente.fileName, text: fuente.text },
+            lecciones: lecciones.map((leccion) => ({
+              handle: leccion.handle,
+              title: leccion.title,
+              text: textoDeLeccion(leccion.html)
+            }))
+          });
+
+          // El barrido: el modelo dice QUÉ cambió, el servidor dice DÓNDE está.
+          // Un valor que no aparece en ninguna parte se descarta acá — es la
+          // mitad determinista, y es lo que impide que una orden de edición
+          // mande a cambiar algo que el curso nunca dijo.
+          const preguntas = [...estado.preguntasPorEjercicio.values()].flat();
+          const ocurrencias = barrerValores({
+            valores: cambios.map((cambio) => ({ old: cambio.valorViejo, new: cambio.valorNuevo })),
+            lecciones: lecciones.map((leccion) => ({
+              id: leccion.id,
+              title: leccion.title,
+              content: leccion.html
+            })),
+            preguntas
+          });
+
+          const conLugar = cambios
+            .map((cambio) => ({
+              cambio,
+              donde: ocurrencias.filter((o) => o.valorViejo === cambio.valorViejo.trim())
+            }))
+            .filter((fila) => fila.donde.length > 0);
+
+          await guardarAnalisisDeFuente({
+            ...runScope,
+            sourceId: fuente.id,
+            fileName: fuente.fileName,
+            cambios: conLugar.map((fila) => fila.cambio)
+          }).catch((error: unknown) =>
+            console.error('[analyze_source_changes] no se pudo guardar el análisis:', error)
+          );
+
+          const descartados = cambios.length - conLugar.length;
+
+          return {
+            source: fuente.fileName,
+            changes: conLugar.map((fila) => ({
+              old: fila.cambio.valorViejo,
+              new: fila.cambio.valorNuevo,
+              why: fila.cambio.motivo,
+              occurrences: fila.donde.map((ocurrencia) => ({
+                handle: manijaDe(mapa, ocurrencia.lessonId ?? ocurrencia.exerciseId ?? ''),
+                ...(ocurrencia.blockId ? { blockId: ocurrencia.blockId } : {}),
+                ...(ocurrencia.questionId !== undefined ? { questionId: ocurrencia.questionId } : {}),
+                text: ocurrencia.texto
+              }))
+            })),
+            ...(descartados > 0
+              ? {
+                  discarded: descartados,
+                  discardedNote: `${descartados} proposed change(s) named a value that is nowhere in this course, so they were dropped.`
+                }
+              : {}),
+            note:
+              conLugar.length === 0
+                ? 'This document changes nothing the course already says. Tell the teacher that, and do not propose a plan.'
+                : 'Propose a change plan (generate_course_plan with scope "changes"): one edit item per lesson/exercise listed here with target = its handle, and `changes` saying what replaces what. The server will attach these replacements to the plan and check they are really gone.'
+          };
         });
       }
     }),

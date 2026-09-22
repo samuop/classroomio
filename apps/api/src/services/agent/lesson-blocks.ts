@@ -116,6 +116,211 @@ export function listElementsWithAttribute(content: string, attribute: string): M
   return found;
 }
 
+/** Un elemento de primer nivel del cuerpo de una lección, con su tramo. */
+export interface ElementoDePrimerNivel {
+  tagName: string;
+  /** El tag de apertura completo, tal cual está escrito. */
+  openTag: string;
+  start: number;
+  /** Dónde termina el tag de apertura. */
+  openEnd: number;
+  /** Dónde termina el elemento entero, con su cierre. */
+  end: number;
+}
+
+/**
+ * Un comentario HTML, o un tag de apertura.
+ *
+ * El comentario está en la misma alternancia y no aparte porque tiene que
+ * consumirse ANTES: `<!-- <p>x</p> -->` tiene adentro algo que parece un
+ * elemento, y contarlo lo daría por parte del documento.
+ */
+const COMENTARIO_O_APERTURA = /<!--[\s\S]*?-->|<([a-z][a-z0-9]*)\b[^>]*>/gi;
+
+/**
+ * Los elementos de primer nivel del cuerpo, en orden.
+ *
+ * Mismo escaneo que `listElementsWithAttribute` y con el mismo motivo: sin DOM
+ * y sin re-serializar, para que todo lo que no se toca salga byte a byte igual.
+ * El texto suelto y los comentarios se ignoran — no son unidades direccionables
+ * y el editor tampoco los trata como tales.
+ */
+export function listarElementosDePrimerNivel(content: string): ElementoDePrimerNivel[] {
+  if (!content) return [];
+
+  const encontrados: ElementoDePrimerNivel[] = [];
+  const patron = new RegExp(COMENTARIO_O_APERTURA.source, 'gi');
+  let match: RegExpExecArray | null;
+
+  while ((match = patron.exec(content)) !== null) {
+    const tagName = match[1];
+
+    // Un comentario: ya quedó consumido entero por el patrón.
+    if (!tagName) continue;
+
+    const openTag = match[0];
+    const start = match.index;
+    const openEnd = start + openTag.length;
+    const esAutoCerrado = openTag.endsWith('/>') || VOID_TAGS.has(tagName.toLowerCase());
+    const end = esAutoCerrado ? openEnd : findClosingIndex(content, tagName, openEnd);
+
+    /**
+     * Markup desbalanceado: se corta acá y no se sigue.
+     *
+     * `listElementsWithAttribute` puede darse el lujo de saltearlo porque busca
+     * una marca concreta. Acá no: seguir escaneando después de un tag que nunca
+     * cierra deja el cursor ADENTRO de ese elemento, y todo lo que venga se
+     * reportaría como de primer nivel sin serlo. Un id estampado en un `<li>`
+     * anidado no es recuperable por quien lo lee después.
+     */
+    if (end === -1) break;
+
+    encontrados.push({ tagName, openTag, start, openEnd, end });
+    patron.lastIndex = end;
+  }
+
+  return encontrados;
+}
+
+/**
+ * Los elementos que reciben id.
+ *
+ * Es la lista del editor (`BlockId.ts`) leída en HTML en vez de en nombres de
+ * nodo de ProseMirror, más `figure`, que el editor produce envolviendo una
+ * imagen. `svg` está ausente por el mismo motivo que allá: el editor lo entrega
+ * crudo a ProseMirror y no serializa sus atributos, así que un id puesto acá
+ * desaparecería la primera vez que el docente abriera y guardara la lección —
+ * y un id que no sobrevive es peor que ninguno.
+ */
+const TIPOS_CON_ID = new Set([
+  'p',
+  'h3',
+  'h4',
+  'h5',
+  'ul',
+  'ol',
+  'blockquote',
+  'pre',
+  'hr',
+  'img',
+  'figure',
+  'div',
+  'table'
+]);
+
+/** Ocho caracteres, igual que el editor: mismo formato de id en los dos lados. */
+export function generarIdDeBloque(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().slice(0, 8);
+  }
+
+  return Math.random().toString(36).slice(2, 10);
+}
+
+const ATRIBUTO_ESCRITO = new RegExp(`\\b${BLOCK_ID_ATTRIBUTE}\\s*=\\s*(["'])([^"']*)\\1`, 'i');
+
+function idUnico(usados: Set<string>, generarId: () => string): string {
+  for (let intento = 0; intento < 20; intento += 1) {
+    const id = generarId();
+    if (id && !usados.has(id)) return id;
+  }
+
+  // Un generador que repite —el de un test, o la rama de `Math.random` con mala
+  // suerte— no puede dejar dos bloques con el mismo nombre: el empalme por id
+  // se volvería ambiguo y `findLessonBlock` pegaría en el primero de los dos.
+  const base = (generarId() || 'b').slice(0, 6);
+  let sufijo = 2;
+
+  while (usados.has(`${base}${sufijo}`)) sufijo += 1;
+
+  return `${base}${sufijo}`;
+}
+
+/** Mete el atributo justo antes del cierre del tag, sin tocar lo que ya tenía. */
+function conIdNuevo(openTag: string, id: string): string {
+  const cierre = openTag.endsWith('/>') ? '/>' : '>';
+  const cuerpo = openTag.slice(0, openTag.length - cierre.length).trimEnd();
+
+  return `${cuerpo} ${BLOCK_ID_ATTRIBUTE}="${id}"${cierre === '/>' ? ' />' : '>'}`;
+}
+
+/**
+ * Le pone `data-block-id` a cada bloque de primer nivel que no tenga uno.
+ *
+ * ── Por qué en el servidor ───────────────────────────────────────────────────
+ *
+ * Los ids los ponía SÓLO el editor TipTap del dashboard, cuando el docente abría
+ * la lección y la guardaba. O sea que una lección recién escrita por el
+ * asistente no tenía ni un id, y `replace_lesson_block` —el único camino que
+ * cambia un dato sin reescribir la lección entera— no existía para ella. Lo
+ * medido: cada corrección era una reescritura completa, y cada reescritura es
+ * una oportunidad nueva de inventar («preferentemente» volvió obligatorio en una
+ * de ellas).
+ *
+ * ── Lo que garantiza ─────────────────────────────────────────────────────────
+ *
+ * - Idempotente: una segunda pasada no cambia un byte.
+ * - Conserva los ids existentes. Un id que cambiara entre la lectura y la
+ *   escritura sería peor que no tener id, que es la misma regla que se escribió
+ *   en el editor.
+ * - Un id repetido (copiar y pegar un bloque) se renumera: dos bloques con un
+ *   nombre hacen ambiguo el empalme.
+ * - Sólo primer nivel. Un id adentro de un `<li>` o de una celda multiplica los
+ *   ids sin hacer nada más direccionable.
+ * - Fuera de los tags de apertura, el HTML sale byte a byte igual.
+ */
+export function asignarIdsDeBloque(content: string, generarId: () => string = generarIdDeBloque): string {
+  if (!content) return content;
+
+  const elementos = listarElementosDePrimerNivel(content).filter((elemento) =>
+    TIPOS_CON_ID.has(elemento.tagName.toLowerCase())
+  );
+
+  if (elementos.length === 0) return content;
+
+  const usados = new Set<string>();
+  const parches: Array<{ start: number; openEnd: number; nuevoTag: string }> = [];
+
+  // Los ids se GENERAN en orden de documento, aunque después se apliquen al
+  // revés: el primer bloque de la lección tiene que quedarse con el primer id.
+  // Al revés sale una lección numerada de atrás para adelante, que no rompe
+  // nada pero es ilegible para quien mire el HTML después.
+  for (const elemento of elementos) {
+    const escrito = elemento.openTag.match(ATRIBUTO_ESCRITO);
+    const actual = escrito?.[2] ?? '';
+
+    // Un id vacío no direcciona nada (`listLessonBlocks` lo descarta), así que
+    // cuenta como ausente y se le da uno de verdad.
+    if (actual && !usados.has(actual)) {
+      usados.add(actual);
+      continue;
+    }
+
+    const id = idUnico(usados, generarId);
+    usados.add(id);
+
+    parches.push({
+      start: elemento.start,
+      openEnd: elemento.openEnd,
+      nuevoTag: escrito
+        ? elemento.openTag.replace(ATRIBUTO_ESCRITO, `${BLOCK_ID_ATTRIBUTE}="${id}"`)
+        : conIdNuevo(elemento.openTag, id)
+    });
+  }
+
+  if (parches.length === 0) return content;
+
+  let resultado = content;
+
+  // De atrás para adelante: cada parche cambia el largo del texto, y hacerlo al
+  // revés correría los tramos de todos los que faltan.
+  for (let i = parches.length - 1; i >= 0; i -= 1) {
+    resultado = resultado.slice(0, parches[i].start) + parches[i].nuevoTag + resultado.slice(parches[i].openEnd);
+  }
+
+  return resultado;
+}
+
 /** Every addressable block in a lesson body, in document order. */
 export function listLessonBlocks(content: string): LessonBlock[] {
   return listElementsWithAttribute(content, BLOCK_ID_ATTRIBUTE)

@@ -29,6 +29,26 @@ export type PlanItemKind = 'section' | 'lesson' | 'exercise';
 /** stepType for registry rows, keeping them distinct from `course_todo` steps. */
 const PLAN_ITEM_STEP_TYPE = 'plan_item';
 
+/** Qué se le hace a la pieza. Ausente = `create`, que es lo que hacía todo plan hasta ahora. */
+export type PlanItemAction = 'create' | 'rewrite' | 'edit';
+
+/**
+ * Cómo estaba la pieza cuando el plan se aprobó.
+ *
+ * Es lo que permite decir «esto ya se hizo» sin preguntarle al modelo: si el
+ * contenido cambió respecto de la línea de base, la orden se cumplió.
+ */
+export interface PlanItemBaseline {
+  /** sha1 del contenido de la lección, o del JSON de preguntas+opciones del ejercicio. */
+  contentHash: string;
+}
+
+/** Un dato que hay que reemplazar dentro del target, salido del análisis de la fuente nueva. */
+export interface PlanItemReplacement {
+  old: string;
+  new: string;
+}
+
 export interface PlanRegistryEntry {
   /** Stable short key the model echoes back in create_* calls (e.g. `s1`, `s1.2`). */
   key: string;
@@ -40,16 +60,37 @@ export interface PlanRegistryEntry {
   position: number;
   /** The course row built from this plan item, once it exists. */
   entityId: string | null;
+  /** `create` salvo en un plan de cambios. */
+  action?: PlanItemAction;
+  /** Sólo en `rewrite`/`edit`: cómo estaba el target al aprobar el plan. */
+  baseline?: PlanItemBaseline;
+  /** Sólo en `edit`: los datos que el análisis de la fuente encontró dentro de este target. */
+  replacements?: PlanItemReplacement[];
 }
 
 /**
  * Structural shape of an approved plan. Declared here rather than imported from
  * `@cio/ai-assistant` so the db package stays free of that dependency.
+ *
+ * Los campos de atadura (`entityId`, `action`, `baseline`, `replacements`) no
+ * salen del plan que escribió el modelo: los calcula el servidor antes de
+ * sincronizar (ver `plan-de-cambios.ts` en la API). Acá llegan ya resueltos,
+ * porque resolver una manija necesita el curso y este paquete no lo conoce.
  */
 export interface PlanShape {
   sections: Array<{
     title: string;
-    items: Array<{ type: 'lesson' | 'exercise'; title: string }>;
+    /** La sección del curso que este bloque del plan ya ocupa, si existe. */
+    entityId?: string | null;
+    items: Array<{
+      type: 'lesson' | 'exercise';
+      title: string;
+      /** La fila existente sobre la que este ítem actúa (`rewrite`/`edit`). */
+      entityId?: string | null;
+      action?: PlanItemAction;
+      baseline?: PlanItemBaseline;
+      replacements?: PlanItemReplacement[];
+    }>;
   }>;
 }
 
@@ -61,6 +102,9 @@ type RegistryStepInput = {
   title: string;
   sectionKey: string | null;
   position: number;
+  action?: PlanItemAction;
+  baseline?: PlanItemBaseline;
+  replacements?: PlanItemReplacement[];
 };
 
 type RegistryStepOutput = {
@@ -102,7 +146,10 @@ async function readAllEntries(runId: string) {
       title: input.title ?? '',
       sectionKey: input.sectionKey ?? null,
       position: input.position ?? 0,
-      entityId: output.entityId ?? null
+      entityId: output.entityId ?? null,
+      action: input.action,
+      baseline: input.baseline,
+      replacements: input.replacements
     };
   });
 }
@@ -128,6 +175,19 @@ export async function syncPlanRegistry(
   const existing = await readAllEntries(run.id);
   const usedKeys = new Set(existing.map((e) => e.key));
   const bindingByKey = new Map(existing.map((e) => [e.key, e.entityId] as const));
+  /**
+   * La línea de base la fija la PRIMERA sincronización y ninguna otra.
+   *
+   * Es lo único del registro que no se puede recalcular: mide cómo estaba la
+   * lección ANTES de que la ronda la tocara. Volver a calcularla en cada ronda
+   * la haría igual al contenido de ahora, o sea que un ítem `rewrite` ya hecho
+   * volvería a leerse como pendiente para siempre — y el ancla lo ordenaría
+   * reescribir en cada vuelta, que es el mismo defecto que producía las
+   * lecciones duplicadas, con otro disfraz.
+   */
+  const baselineByKey = new Map(
+    existing.filter((e) => e.baseline).map((e) => [e.key, e.baseline as PlanItemBaseline] as const)
+  );
 
   // Existing keys indexed the way we look them up: sections by title, items by
   // (owning section key + title).
@@ -174,12 +234,16 @@ export async function syncPlanRegistry(
       title: planSection.title,
       sectionKey: null,
       position: position++,
-      entityId: bindingByKey.get(sectionKey) ?? null
+      // La atadura que ya existe le gana a la que trae el plan: es el registro
+      // de lo que se construyó de verdad. La del plan sólo sirve para una
+      // sección que el plan de cambios señaló y el registro todavía no conoce.
+      entityId: bindingByKey.get(sectionKey) ?? planSection.entityId ?? null
     });
 
     for (const item of planSection.items) {
       const lookup = `${sectionKey}::${normalizeTitle(item.title)}`;
       const itemKey = itemKeyBySectionAndTitle.get(lookup) ?? allocateItemKey(sectionKey);
+      const baseline = baselineByKey.get(itemKey) ?? item.baseline;
 
       desired.push({
         key: itemKey,
@@ -187,7 +251,10 @@ export async function syncPlanRegistry(
         title: item.title,
         sectionKey,
         position: position++,
-        entityId: bindingByKey.get(itemKey) ?? null
+        entityId: bindingByKey.get(itemKey) ?? item.entityId ?? null,
+        ...(item.action ? { action: item.action } : {}),
+        ...(baseline ? { baseline } : {}),
+        ...(item.replacements ? { replacements: item.replacements } : {})
       });
     }
   }
@@ -197,7 +264,10 @@ export async function syncPlanRegistry(
       kind: entry.kind,
       title: entry.title,
       sectionKey: entry.sectionKey,
-      position: entry.position
+      position: entry.position,
+      ...(entry.action ? { action: entry.action } : {}),
+      ...(entry.baseline ? { baseline: entry.baseline } : {}),
+      ...(entry.replacements ? { replacements: entry.replacements } : {})
     };
     // A bound item is 'completed', an unbound one 'queued'. `output` is left out
     // of the update set on purpose: re-syncing a plan must never drop a binding.
@@ -210,7 +280,10 @@ export async function syncPlanRegistry(
         stepKey: entry.key,
         stepType: PLAN_ITEM_STEP_TYPE,
         status,
-        input
+        input,
+        // Un ítem que actúa sobre algo que YA existe nace atado: la fila del
+        // curso no hay que construirla, hay que encontrarla, y eso ya se hizo.
+        ...(entry.entityId ? { output: { entityId: entry.entityId } } : {})
       })
       .onConflictDoUpdate({
         target: [schema.aiAgentRunStep.runId, schema.aiAgentRunStep.stepKey],
@@ -265,13 +338,16 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
 
   return entries
     .filter((entry) => entry.status !== 'canceled')
-    .map(({ key, kind, title, sectionKey, position, entityId }) => ({
+    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements }) => ({
       key,
       kind,
       title,
       sectionKey,
       position,
-      entityId
+      entityId,
+      ...(action ? { action } : {}),
+      ...(baseline ? { baseline } : {}),
+      ...(replacements ? { replacements } : {})
     }))
     .sort((a, b) => a.position - b.position);
 }

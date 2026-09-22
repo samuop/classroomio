@@ -99,18 +99,57 @@ export function estadosSobreElPlan(
   return estados;
 }
 
-/** Cuántas secciones, lecciones y ejercicios trae un plan, contados como los cuenta la tarjeta. */
-export function contarPlan(plan: CoursePlan): { secciones: number; lecciones: number; ejercicios: number } {
+export interface CuentaDelPlan {
+  secciones: number;
+  lecciones: number;
+  ejercicios: number;
+  /** Piezas que se crean de cero. */
+  nuevas: number;
+  /** Piezas existentes que se escriben de nuevo. */
+  reescribir: number;
+  /** Piezas existentes a las que se les cambian datos puntuales. */
+  retocar: number;
+  esDeCambios: boolean;
+}
+
+/**
+ * Cuántas secciones, lecciones y ejercicios trae un plan, contados como los
+ * cuenta la tarjeta.
+ *
+ * Un plan de cambios se cuenta además por ACCIÓN, porque es lo que el docente
+ * necesita para decidir: «2 secciones afectadas · 1 lección nueva · 1 se
+ * reescribe · 2 se retocan» dice cuánto de su curso está en juego. «5 lecciones»
+ * no lo dice — suena igual si las cinco son nuevas que si se van a reescribir
+ * cinco que ya estaban bien.
+ */
+export function contarPlan(plan: CoursePlan): CuentaDelPlan {
   let lecciones = 0;
   let ejercicios = 0;
+  let nuevas = 0;
+  let reescribir = 0;
+  let retocar = 0;
 
   for (const seccion of plan.sections ?? []) {
     for (const item of seccion.items ?? []) {
       if (item.type === 'lesson') lecciones += 1;
       // Una lección con ejercicio suma un ejercicio: se construye como un ítem más.
       if (item.type === 'exercise' || item.hasExercise) ejercicios += 1;
+
+      const accion = item.action ?? 'create';
+
+      if (accion === 'rewrite') reescribir += 1;
+      else if (accion === 'edit') retocar += 1;
+      else nuevas += 1;
     }
   }
 
-  return { secciones: plan.sections?.length ?? 0, lecciones, ejercicios };
+  return {
+    secciones: plan.sections?.length ?? 0,
+    lecciones,
+    ejercicios,
+    nuevas,
+    reescribir,
+    retocar,
+    esDeCambios: plan.scope === 'changes'
+  };
 }

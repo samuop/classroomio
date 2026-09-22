@@ -15,8 +15,18 @@ import { createExerciseParam, questionSchema } from '@api/services/agent/agent-t
 const NUMERICA = QUESTION_TYPE_IDS.NUMERIC;
 const OPCION_MULTIPLE = QUESTION_TYPE_IDS.RADIO;
 
+/**
+ * Toda pregunta lleva además su `evidence`: la frase de la lección que evalúa,
+ * que el servidor busca antes de crear nada. Ver `evidencia-de-preguntas.ts`.
+ */
 function preguntaDelAgente(extra: Record<string, unknown> = {}) {
-  return { question: '¿Cuánto es 2 + 2?', questionTypeId: NUMERICA, order: 0, ...extra };
+  return {
+    question: '¿Cuánto es 2 + 2?',
+    questionTypeId: NUMERICA,
+    order: 0,
+    evidence: 'la suma de dos más dos da cuatro',
+    ...extra
+  };
 }
 
 describe('el esquema del agente: una numérica puede llevar su respuesta', () => {
@@ -58,6 +68,7 @@ describe('el esquema del agente: una numérica puede llevar su respuesta', () =>
       question: '¿Cuál es la capital?',
       questionTypeId: OPCION_MULTIPLE,
       order: 0,
+      evidence: 'la capital del país es Buenos Aires',
       options: [
         { label: 'Buenos Aires', isCorrect: true },
         { label: 'Córdoba', isCorrect: false }
@@ -65,6 +76,23 @@ describe('el esquema del agente: una numérica puede llevar su respuesta', () =>
     });
 
     expect(r.success).toBe(true);
+  });
+
+  /**
+   * Sin evidencia no hay pregunta, y se rechaza en el esquema: así el modelo lo
+   * ve como un error de argumentos —que corrige en el mismo paso— y no como una
+   * pregunta que el servidor descarta después.
+   */
+  it('una pregunta sin evidencia no pasa el esquema', () => {
+    const { evidence: _sin, ...sinEvidencia } = preguntaDelAgente({ settings: { correctValue: 4 } });
+
+    expect(questionSchema.safeParse(sinEvidencia).success).toBe(false);
+  });
+
+  it('ni una evidencia de dos palabras: coincidiría con cualquier lección', () => {
+    const r = questionSchema.safeParse(preguntaDelAgente({ settings: { correctValue: 4 }, evidence: 'dos más' }));
+
+    expect(r.success).toBe(false);
   });
 });
 

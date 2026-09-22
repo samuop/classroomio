@@ -11,7 +11,7 @@
   import { pantallaDelPlan } from '$features/ai-assistant/utils/plan-screen.svelte';
   import { contarPlan, estadosSobreElPlan, type EstadoDelItem } from '$features/ai-assistant/utils/plan-summary';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
-  import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
+  import type { CoursePlan, CoursePlanSection } from '$features/ai-assistant/utils/course-plan';
 
   /**
    * El plan del curso, en el área principal y con el chat al costado.
@@ -160,6 +160,27 @@
   const tituloTraeNumero = (titulo: string) =>
     /^\s*(secci[oó]n|section|m[oó]dulo|module|unidad|unit)\s*\d+/i.test(titulo);
 
+  /**
+   * En un plan de cambios, el número que se muestra es el del CURSO, no el de la
+   * lista.
+   *
+   * Un plan de cambios lista sólo las secciones que toca: si toca la 2 y la 5,
+   * numerarlas por posición las mostraría como 1 y 2, y el docente leería que se
+   * va a tocar el principio de su curso cuando no es así. La manija (`S2`) trae
+   * el número real, que es justamente para lo que sirve.
+   */
+  const numeroDeSeccion = (seccion: CoursePlanSection): number | null => {
+    const manija = seccion.sectionId?.trim().match(/^S(\d+)$/i);
+
+    return manija ? Number(manija[1]) : null;
+  };
+
+  const etiquetaDeAccion: Record<'create' | 'rewrite' | 'edit', string> = {
+    create: 'ai_assistant.plan_screen.action_create',
+    rewrite: 'ai_assistant.plan_screen.action_rewrite',
+    edit: 'ai_assistant.plan_screen.action_edit'
+  };
+
   const campoClass =
     'w-full rounded-md border border-transparent bg-transparent px-1.5 py-0.5 transition-colors hover:border-(--border) focus:border-(--ring) focus:bg-(--background) focus:outline-none';
 </script>
@@ -175,7 +196,7 @@
       class="sticky top-0 z-10 flex items-center gap-3 border-b bg-(--background)/95 px-4 py-2.5 backdrop-blur md:px-8"
     >
       <span class="ui:text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        {$t('ai_assistant.plan_screen.card_title')}
+        {$t(cuenta.esDeCambios ? 'ai_assistant.plan_screen.changes_title' : 'ai_assistant.plan_screen.card_title')}
       </span>
 
       {#if aprobado}
@@ -230,11 +251,24 @@
           <h1 id="plan-screen-title" class="text-2xl font-semibold tracking-tight text-balance">{plan.title}</h1>
         {/if}
 
-        <p class="ui:text-muted-foreground mt-2 text-sm">
-          {$t('ai_assistant.plan_screen.sections', { count: cuenta.secciones })} ·
-          {$t('ai_assistant.plan_screen.lessons', { count: cuenta.lecciones })}{#if cuenta.ejercicios > 0}
-            · {$t('ai_assistant.plan_screen.exercises', { count: cuenta.ejercicios })}{/if}
-        </p>
+        <!--
+          El contador de un plan de cambios cuenta por ACCIÓN: lo que el docente
+          necesita saber antes de aprobar es cuánto de lo que ya tiene se toca.
+        -->
+        {#if cuenta.esDeCambios}
+          <p class="ui:text-muted-foreground mt-2 text-sm">
+            {$t('ai_assistant.plan_screen.affected_sections', { count: cuenta.secciones })}{#if cuenta.nuevas > 0}
+              · {$t('ai_assistant.plan_screen.new_lessons', { count: cuenta.nuevas })}{/if}{#if cuenta.reescribir > 0}
+              · {$t('ai_assistant.plan_screen.rewrites', { count: cuenta.reescribir })}{/if}{#if cuenta.retocar > 0}
+              · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}
+          </p>
+        {:else}
+          <p class="ui:text-muted-foreground mt-2 text-sm">
+            {$t('ai_assistant.plan_screen.sections', { count: cuenta.secciones })} ·
+            {$t('ai_assistant.plan_screen.lessons', { count: cuenta.lecciones })}{#if cuenta.ejercicios > 0}
+              · {$t('ai_assistant.plan_screen.exercises', { count: cuenta.ejercicios })}{/if}
+          </p>
+        {/if}
 
         {#if editable}
           <p class="ui:text-muted-foreground mt-1 text-xs">{$t('ai_assistant.plan_screen.edit_hint')}</p>
@@ -257,6 +291,8 @@
         <ol class="mt-8 flex flex-col gap-9">
           {#each plan.sections as seccion, s (s)}
             {@const estadoDeSeccion = estados.get(String(s))}
+            {@const numeroReal = cuenta.esDeCambios ? numeroDeSeccion(seccion) : s + 1}
+            {@const esSeccionNueva = cuenta.esDeCambios && numeroReal === null}
             <li class="flex flex-col gap-3">
               <div class="flex items-start gap-3">
                 <span
@@ -265,12 +301,16 @@
                     ? 'border-green-600/40 bg-green-500/10 text-green-700 dark:text-green-400'
                     : ''}"
                 >
-                  {s + 1}
+                  {numeroReal ?? '+'}
                 </span>
                 <div class="min-w-0 flex-1">
-                  {#if !tituloTraeNumero(seccion.title)}
+                  {#if esSeccionNueva}
                     <p class="ui:text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
-                      {$t('ai_assistant.plan_screen.section', { order: s + 1 })}
+                      {$t('ai_assistant.plan_screen.section_new')}
+                    </p>
+                  {:else if numeroReal !== null && !tituloTraeNumero(seccion.title)}
+                    <p class="ui:text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
+                      {$t('ai_assistant.plan_screen.section', { order: numeroReal })}
                     </p>
                   {/if}
                   {#if editable && borrador}
@@ -279,7 +319,7 @@
                       bind:value={borrador.sections[s].title}
                       use:autoAltura={borrador.sections[s].title}
                       onkeydown={sinSaltos}
-                      aria-label={$t('ai_assistant.plan_screen.section', { order: s + 1 })}
+                      aria-label={$t('ai_assistant.plan_screen.section', { order: numeroReal ?? s + 1 })}
                       class="{campoClass} -ml-1.5 resize-none overflow-hidden text-base font-semibold"
                     ></textarea>
                   {:else}
@@ -291,6 +331,7 @@
               <ul class="ml-3.5 flex flex-col border-l pl-6">
                 {#each seccion.items as item, i (i)}
                   {@const estado = estados.get(`${s}.${i}`)}
+                  {@const accion = item.action ?? 'create'}
                   <li class="flex items-start gap-2.5 py-2.5">
                     <span class="mt-1 shrink-0" title={estado ? $t(etiquetaDeEstado[estado]) : undefined}>
                       {#if estado === 'done'}
@@ -307,6 +348,21 @@
                     </span>
 
                     <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <!--
+                        Qué se le hace a esta pieza. Sólo en un plan de cambios:
+                        en un plan de curso todo es nuevo y la etiqueta sería
+                        ruido repetido en cada línea.
+                      -->
+                      {#if cuenta.esDeCambios}
+                        <span
+                          class="mb-0.5 w-fit rounded-full border px-1.5 py-px text-[10px] font-medium tracking-wide uppercase {accion ===
+                          'create'
+                            ? 'ui:text-primary border-(--primary)/40'
+                            : 'ui:text-muted-foreground'}"
+                        >
+                          {$t(etiquetaDeAccion[accion])}
+                        </span>
+                      {/if}
                       {#if editable && borrador}
                         <textarea
                           rows="1"
@@ -323,12 +379,29 @@
                           aria-label={item.title}
                           class="{campoClass} ui:text-muted-foreground -ml-1.5 resize-none overflow-hidden text-sm"
                         ></textarea>
+                        <!--
+                          Qué le cambia, editable igual que el resto: es lo que
+                          el docente lee para aprobar, y corregirlo antes de
+                          aprobar es más barato que pedírselo al asistente.
+                        -->
+                        {#if item.changes !== undefined}
+                          <textarea
+                            rows="1"
+                            bind:value={borrador.sections[s].items[i].changes}
+                            use:autoAltura={borrador.sections[s].items[i].changes}
+                            aria-label={item.title}
+                            class="{campoClass} -ml-1.5 resize-none overflow-hidden text-sm text-(--primary)"
+                          ></textarea>
+                        {/if}
                       {:else}
                         <p class="text-sm font-medium {estado === 'done' ? 'ui:text-muted-foreground' : ''}">
                           {item.title}
                         </p>
                         {#if item.description}
                           <p class="ui:text-muted-foreground text-sm text-pretty">{item.description}</p>
+                        {/if}
+                        {#if item.changes}
+                          <p class="text-sm text-pretty text-(--primary)">{item.changes}</p>
                         {/if}
                       {/if}
 

@@ -89,8 +89,8 @@ export type ResultadoDeLaRevision = {
  * Vuelve a chequear la lección entera después de una edición, si hacía falta.
  *
  * `undefined` significa «no había nada que rechequear» (la lección no estaba
- * marcada, o esta ronda no tiene verificador), y NO «salió limpia»: quien lo
- * llama no debe contarle nada al modelo en ese caso.
+ * marcada ni bajo orden de trabajo, o esta ronda no tiene verificador), y NO
+ * «salió limpia»: quien lo llama no debe contarle nada al modelo en ese caso.
  */
 export async function revisarTrasEditar(params: {
   registro: RegistroDeAvisos;
@@ -99,16 +99,35 @@ export async function revisarTrasEditar(params: {
   /** La lección COMPLETA ya guardada, no el fragmento que se acaba de escribir. */
   contenido: string;
   verificarFundamento?: Verificador;
+  /**
+   * Rechequear aunque la lección no esté marcada.
+   *
+   * Es el caso del plan de cambios: el servidor mandó editar ESTA lección, así
+   * que lo que la edición escribió es texto nuevo que nadie miró todavía —
+   * exactamente la situación que el rechequeo cubre, sólo que llegando por la
+   * orden de trabajo en vez de por un aviso anterior.
+   *
+   * Quien llama se ocupa de no pedirlo dos veces por la misma lección: acá no
+   * hay estado de ronda, y meter un contador sería duplicar el que ya existe
+   * del otro lado.
+   */
+  bajoOrdenDeTrabajo?: boolean;
 }): Promise<ResultadoDeLaRevision | undefined> {
   const pendiente = params.registro.get(params.lessonId);
 
-  if (!pendiente || !params.verificarFundamento) return undefined;
+  if (!params.verificarFundamento) return undefined;
+  if (!pendiente && !params.bajoOrdenDeTrabajo) return undefined;
 
   // Se lee ANTES del try a propósito: adentro sólo va la llamada que sale a la
   // red. Con esta línea adentro, un error de programación acá se atrapaba como
   // si fuera una caída del proveedor y el rechequeo se salteaba en silencio
   // —lo destapó una mutación, con el test pasando igual—.
-  const soloFuentes = pendiente.soloFuentes;
+  //
+  // Sin lección marcada no hay fuentes guardadas, y `undefined` no es un
+  // descuido: es «contrastá contra el paquete del curso». Es lo correcto para
+  // una lección que ya existía —no se sabe con qué se escribió— y es lo que la
+  // orden de trabajo necesita.
+  const soloFuentes = pendiente?.soloFuentes;
   let avisos: string[];
 
   try {

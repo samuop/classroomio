@@ -14,7 +14,27 @@ import { ZCourseLandingPageUpdate, ZCourseLandingPageMetadataUpdate } from '@cio
 
 export const emptyParam = z.object({});
 
-export const lessonReadParam = z.object({ lessonId: z.string(), locale: z.string().default('en') });
+/**
+ * Cómo se nombra una pieza del curso en cualquier argumento.
+ *
+ * La manija (`S2.L3`) se DERIVA de la estructura; el UUID hay que COPIARLO de un
+ * resultado que el recorte de contexto quizá ya sacó de la vista, y eso es lo
+ * que salió mal seis veces en dos días de pruebas. Ver `manijas.ts`.
+ */
+const piezaPorManija = (que: string) =>
+  `The ${que}: its handle from get_course_structure (for example S2.L3), or the id a tool returned. Never invent either one.`;
+
+/**
+ * El idioma NO es argumento de ninguna herramienta.
+ *
+ * Lo elegía el modelo con un `default('en')`, y así dos lecciones de un curso en
+ * español se guardaron en inglés: contenido que el editor no muestra y que la
+ * búsqueda no encuentra. Ahora lo pone el servidor con el de la ronda
+ * (`buildAgentTools(..., { locale })`), que es el del curso que el docente tiene
+ * abierto. No hay forma de pedir otro.
+ */
+
+export const lessonReadParam = z.object({ lessonId: z.string().describe(piezaPorManija('lesson to read')) });
 
 /**
  * Leer varias lecciones de una vez, como texto. Es para escribir preguntas que
@@ -27,8 +47,7 @@ export const readLessonsParam = z.object({
     .array(z.string())
     .min(1)
     .max(12)
-    .describe('Ids of the lessons to read, copied from get_course_structure or from a tool result.'),
-  locale: z.string().default('en').describe('The course locale from the Current Context.')
+    .describe('The lessons to read, by their handle from get_course_structure (for example S2.L3) or by id.')
 });
 
 // RAG for edits (step 6): search relevant fragments of an attached document
@@ -79,7 +98,26 @@ export const readSourceParam = z.object({
   limit: z.number().int().min(1).max(2000).optional().describe('How many lines to read. Defaults to 600.')
 });
 
-export const exerciseReadParam = z.object({ exerciseId: z.string() });
+/**
+ * Comparar una fuente nueva contra el curso ya escrito.
+ *
+ * Un solo argumento a propósito: el trabajo es del servidor, y cuanto menos
+ * tenga que declarar el modelo acá, menos hay que inventar. Qué lecciones se
+ * comparan no es una decisión suya — son todas, porque un dato viejo que quedó
+ * en la lección que nadie miró es exactamente el que se busca.
+ */
+export const analyzeSourceChangesParam = z.object({
+  sourceId: z
+    .string()
+    .min(1)
+    .describe(
+      'The NEW document, by its id from the "## Course Sources — index" list (its file name also works). The server compares it against every lesson and question of this course.'
+    )
+});
+
+export const exerciseReadParam = z.object({
+  exerciseId: z.string().describe(piezaPorManija('exercise to read'))
+});
 
 /**
  * Borrar exige decir QUÉ se borra, no sólo cuál id.
@@ -95,9 +133,18 @@ const confirmTitleParam = z
     'The exact current title of the item you are deleting, copied from get_course_structure. The server refuses the delete if it does not match the row this id points at — that is what stops a wrong id from destroying the wrong work.'
   );
 
-export const deleteLessonParam = z.object({ lessonId: z.string(), confirmTitle: confirmTitleParam });
-export const deleteExerciseParam = z.object({ exerciseId: z.string(), confirmTitle: confirmTitleParam });
-export const deleteSectionParam = z.object({ sectionId: z.string(), confirmTitle: confirmTitleParam });
+export const deleteLessonParam = z.object({
+  lessonId: z.string().describe(piezaPorManija('lesson to delete')),
+  confirmTitle: confirmTitleParam
+});
+export const deleteExerciseParam = z.object({
+  exerciseId: z.string().describe(piezaPorManija('exercise to delete')),
+  confirmTitle: confirmTitleParam
+});
+export const deleteSectionParam = z.object({
+  sectionId: z.string().describe(piezaPorManija('section to delete')),
+  confirmTitle: confirmTitleParam
+});
 
 /**
  * Ties a create_* call back to the plan item it implements. Optional and free of
@@ -124,7 +171,7 @@ export const createSectionParam = z.object({
 });
 export const updateSectionParam = z
   .object({
-    sectionId: z.string(),
+    sectionId: z.string().describe(piezaPorManija('section to update')),
     title: z.string().min(1).optional(),
     order: z.number().int().min(0).optional()
   })
@@ -132,7 +179,7 @@ export const updateSectionParam = z
     message: 'Provide at least one field to update'
   });
 export const createLessonParam = z.object({
-  sectionId: z.string(),
+  sectionId: z.string().describe(piezaPorManija('section this lesson goes in')),
   title: z.string().min(1),
   order: z.number().int().min(0),
   planKey: planKeyParam,
@@ -146,14 +193,7 @@ export const createLessonParam = z.object({
     .optional()
     .describe(
       'Lesson body HTML. Pass it here to create the lesson AND write its content in ONE call — this is the normal way to build a planned lesson. Same rules as update_lesson_content: body only, no lesson title, headings start at h3.'
-    ),
-  // Defaults to 'en' like every other content tool. Passing the course locale
-  // matters: content written under the wrong one is invisible to the editor and
-  // to RAG, which is how a course ended up with orphaned `en` rows once already.
-  locale: z
-    .string()
-    .default('en')
-    .describe('Locale for `content` — pass the course locale from the Current Context. Ignored when `content` is omitted.')
+    )
 });
 /**
  * Escribir una lección con el sub-agente escritor.
@@ -173,15 +213,13 @@ export const writeLessonParam = z
     lessonId: z
       .string()
       .optional()
-      .describe('Rewrite this existing lesson. Omit it to create a new lesson with sectionId, title and order.'),
-    sectionId: z.string().optional().describe('Section for a new lesson.'),
+      .describe(
+        `Rewrite this existing lesson — ${piezaPorManija('lesson')} Omit it to create a new lesson with sectionId, title and order.`
+      ),
+    sectionId: z.string().optional().describe(piezaPorManija('section a new lesson goes in')),
     title: z.string().min(1).optional().describe('Title for a new lesson.'),
     order: z.number().int().min(0).optional().describe('Order of a new lesson within its section.'),
     planKey: planKeyParam,
-    locale: z
-      .string()
-      .default('en')
-      .describe('The course locale from the Current Context. The lesson is written in it.'),
     brief: z
       .string()
       .min(1)
@@ -200,9 +238,9 @@ export const writeLessonParam = z
 
 export const updateLessonParam = z
   .object({
-    lessonId: z.string(),
+    lessonId: z.string().describe(piezaPorManija('lesson to update')),
     title: z.string().min(1).optional(),
-    sectionId: z.string().optional(),
+    sectionId: z.string().optional().describe(piezaPorManija('section to move it to')),
     order: z.number().int().min(0).optional(),
     lessonAt: z.string().optional(),
     callUrl: z.string().optional(),
@@ -223,14 +261,12 @@ export const updateLessonParam = z
     }
   );
 export const updateContentParam = z.object({
-  lessonId: z.string(),
-  locale: z.string().default('en'),
+  lessonId: z.string().describe(piezaPorManija('lesson to write')),
   content: z.string().min(1)
 });
 
 export const editContentParam = z.object({
-  lessonId: z.string(),
-  locale: z.string().default('en'),
+  lessonId: z.string().describe(piezaPorManija('lesson to edit')),
   oldString: z
     .string()
     .min(1)
@@ -249,8 +285,7 @@ export const editContentParam = z.object({
 });
 
 export const replaceBlockParam = z.object({
-  lessonId: z.string(),
-  locale: z.string().default('en'),
+  lessonId: z.string().describe(piezaPorManija('lesson that contains the block')),
   blockId: z
     .string()
     .min(1)
@@ -276,32 +311,62 @@ export const replaceBlockParam = z.object({
  * Con el campo, además, se crea de UNA llamada: antes hacían falta dos
  * (`create_exercise` y después `update_questions` para el ajuste), y la segunda
  * es justo la que se pierde cuando la ronda se queda sin pasos.
+ *
+ * Los campos van en `questionFields` y la regla del tipo numérico en
+ * `questionSchema`, que es el que usan las herramientas.
  */
-export const questionSchema = z
-  .object({
-    question: z.string().min(1),
-    questionTypeId: z
-      .number()
-      .int()
-      .min(1)
-      .max(QUESTION_TYPE_REGISTRY.length)
-      .describe(
-        'Required. Use the numeric question type IDs from the teacher system prompt (Question Types). Omitting this field is invalid — set an explicit type on every question and vary types within each exercise.'
-      ),
-    points: z.number().min(0).default(1),
-    order: z.number().int().min(0),
-    options: z
-      .array(z.object({ label: z.string().min(1), isCorrect: z.boolean() }))
-      .default([])
-      .describe('Answer options. Leave empty for types whose answer lives in `settings`, such as NUMERIC.'),
-    settings: z
-      .record(z.string(), z.unknown())
-      .optional()
-      .describe(
-        'Per-type answer storage. NUMERIC: { correctValue: number, tolerance?: number } — REQUIRED, and the question takes no options. STAR: { correctValue: number }. WORD_BANK: { correctAnswers: string[], template: string }.'
-      )
-  })
-  .superRefine((question, ctx) => {
+
+/**
+ * Los campos de una pregunta, SIN la regla del tipo numérico.
+ *
+ * Existe aparte porque el escritor de preguntas (`question-writer.ts`) lo usa
+ * como esquema de salida de `generateObject`, y ahí una refinación que falla no
+ * descarta la pregunta mala: tumba la llamada entera y se pierden las ocho que
+ * estaban bien. Quien llama valida cada pregunta por separado con
+ * `questionSchema` y descarta sólo la que no pasa.
+ */
+export const questionFields = z.object({
+  question: z.string().min(1),
+  questionTypeId: z
+    .number()
+    .int()
+    .min(1)
+    .max(QUESTION_TYPE_REGISTRY.length)
+    .describe(
+      'Required. Use the numeric question type IDs from the teacher system prompt (Question Types). Omitting this field is invalid — set an explicit type on every question and vary types within each exercise.'
+    ),
+  points: z.number().min(0).default(1),
+  order: z.number().int().min(0),
+  /**
+   * La evidencia: la frase de la lección que esta pregunta evalúa.
+   *
+   * Es el reemplazo del control «leíste estas lecciones en esta ronda», que
+   * comprobaba el PROCESO y no el resultado. Medido el 2026-09-21: 4 de 8
+   * preguntas de una autoevaluación no salían de la lección que decían evaluar,
+   * con la lectura hecha y el control en verde.
+   *
+   * Una pregunta inventada puede sonar perfecta; su evidencia no, porque está
+   * en la lección o no está, y eso el servidor lo busca.
+   */
+  evidence: z
+    .string()
+    .min(12)
+    .describe(
+      'The sentence of the lesson this question tests, copied VERBATIM (12+ characters). The server checks it appears in a lesson the exercise covers; a question whose evidence is not there is refused.'
+    ),
+  options: z
+    .array(z.object({ label: z.string().min(1), isCorrect: z.boolean() }))
+    .default([])
+    .describe('Answer options. Leave empty for types whose answer lives in `settings`, such as NUMERIC.'),
+  settings: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Per-type answer storage. NUMERIC: { correctValue: number, tolerance?: number } — REQUIRED, and the question takes no options. STAR: { correctValue: number }. WORD_BANK: { correctAnswers: string[], template: string }.'
+    )
+});
+
+export const questionSchema = questionFields.superRefine((question, ctx) => {
     if (question.questionTypeId !== QUESTION_TYPE.NUMERIC) return;
 
     const raw = question.settings?.correctValue;
@@ -326,8 +391,8 @@ export const questionSchema = z
   });
 
 export const createExerciseParam = z.object({
-  lessonId: z.string().optional(),
-  sectionId: z.string().optional(),
+  lessonId: z.string().optional().describe(piezaPorManija('lesson this exercise belongs to')),
+  sectionId: z.string().optional().describe(piezaPorManija('section this exercise goes in')),
   title: z.string().min(1),
   description: z.string().optional().describe('Optional short description shown to students above the questions.'),
   order: z
@@ -344,14 +409,14 @@ export const createExerciseParam = z.object({
 
 export const updateExerciseParam = z
   .object({
-    exerciseId: z.string().describe('The exercise to update. Must be a real UUID returned by a prior tool call.'),
+    exerciseId: z.string().describe(piezaPorManija('exercise to update')),
     title: z.string().min(1).optional().describe('New exercise title. Omit to keep unchanged.'),
     description: z
       .string()
       .optional()
       .describe('New short description shown to students. Pass an empty string to clear it.'),
-    lessonId: z.string().optional().describe('Link the exercise to a lesson in this course.'),
-    sectionId: z.string().optional().describe('Move the exercise to a section in this course.'),
+    lessonId: z.string().optional().describe(`Link the exercise to a lesson. ${piezaPorManija('lesson')}`),
+    sectionId: z.string().optional().describe(`Move the exercise to a section. ${piezaPorManija('section')}`),
     order: z.number().int().min(0).optional().describe('New order within the section (0-based).'),
     dueBy: z
       .string()
@@ -377,12 +442,12 @@ export const updateExerciseParam = z
 
 export const updateExerciseSectionParam = z
   .object({
-    exerciseId: z
-      .string()
-      .describe('The exercise that contains this section. Must match the exercise you read with get_exercise_details.'),
+    exerciseId: z.string().describe(piezaPorManija('exercise that contains this block')),
     exerciseSectionId: z
       .string()
-      .describe('The exercise section id from get_exercise_details `sections[].id` — not a course section id.'),
+      .describe(
+        'The question block inside that exercise: its handle (for example S2.E1.B2, or just B2) or the id from get_exercise_details `sections[].id` — not a course section id.'
+      ),
     title: z.string().min(1).optional().describe('New section heading shown above questions in this block.'),
     description: z.string().optional().describe('Optional intro HTML for this block. Pass an empty string to clear it.')
   })
@@ -391,7 +456,7 @@ export const updateExerciseSectionParam = z
   });
 
 export const createExerciseSectionParam = z.object({
-  exerciseId: z.string().describe('The exercise that will contain this section.'),
+  exerciseId: z.string().describe(piezaPorManija('exercise that will contain this block')),
   title: z.string().min(1).describe('Section heading shown above the questions in this block.'),
   description: z
     .string()
@@ -402,14 +467,67 @@ export const createExerciseSectionParam = z.object({
   afterBehavior: ZExerciseSectionAfterBehavior.optional()
 });
 
-export const addQuestionsParam = z.object({
-  exerciseId: z.string(),
-  exerciseSectionId: z
+/**
+ * Escribir las preguntas de un ejercicio con el sub-agente escritor.
+ *
+ * La entrada es chica por el mismo motivo que la de `write_lesson`: el
+ * constructor manda las manijas de las lecciones y una consigna, no el texto.
+ * Quien lee las lecciones enteras es el escritor, con contexto limpio, y lo que
+ * vuelve son las preguntas ya verificadas contra ese texto.
+ */
+export const writeQuestionsParam = z.object({
+  exerciseId: z
     .string()
-    .uuid()
     .optional()
     .describe(
-      'In-exercise section id from get_exercise_details `sections[].id` where the new questions should appear (not a course outline section id).'
+      `Add the questions to this EXISTING exercise — ${piezaPorManija('exercise')} Omit it to create the exercise: then pass title, and sectionId (+ order) or lessonId.`
+    ),
+  sectionId: z.string().optional().describe(piezaPorManija('section a new exercise goes in')),
+  lessonId: z.string().optional().describe(piezaPorManija('lesson a new exercise belongs to')),
+  title: z.string().min(1).optional().describe('Title for a new exercise.'),
+  order: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('Order of a new exercise within its section (0-based). Lessons and exercises share the same order space.'),
+  planKey: planKeyParam,
+  blockTitle: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      'Put these questions in a NEW question block with this heading, instead of adding them loose. This is how the final exam is built: one call per prior course section, blockTitle = that section topic.'
+    ),
+  lessons: z
+    .array(z.string())
+    .min(1)
+    .max(12)
+    .describe(
+      'The lessons this exercise covers, by handle (for example S2.L3) or id. The writer sees the full text of exactly these and nothing else, so every question will come from them.'
+    ),
+  count: z
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .optional()
+    .describe('How many questions to write. Omit for the default (6–10, from how much the lessons say).'),
+  brief: z
+    .string()
+    .optional()
+    .describe(
+      'One or two lines on what this exercise must assess: its description from the plan, plus anything the teacher asked for it.'
+    )
+});
+
+export const addQuestionsParam = z.object({
+  exerciseId: z.string().describe(piezaPorManija('exercise to add questions to')),
+  exerciseSectionId: z
+    .string()
+    .optional()
+    .describe(
+      'The question block the new questions go in: its handle (for example S2.E1.B2, or just B2) or the id from get_exercise_details `sections[].id` — not a course outline section id.'
     ),
   questions: z.array(questionSchema)
 });
@@ -448,11 +566,10 @@ export const updateQuestionPatchSchema = z
     order: z.number().int().min(0).optional(),
     exerciseSectionId: z
       .string()
-      .uuid()
       .nullable()
       .optional()
       .describe(
-        'Move the question to this in-exercise block (get_exercise_details sections[].id). Use null to clear section assignment.'
+        'Move the question to this question block: its handle (for example S2.E1.B2, or just B2) or the id from get_exercise_details `sections[].id`. Use null to clear the block assignment.'
       ),
     settings: updateQuestionSettingsSchema.optional(),
     options: z.array(updateOptionSchema).optional()
@@ -472,7 +589,7 @@ export const updateQuestionPatchSchema = z
   );
 
 export const updateQuestionsParam = z.object({
-  exerciseId: z.string(),
+  exerciseId: z.string().describe(piezaPorManija('exercise whose questions change')),
   questions: z.array(updateQuestionPatchSchema).min(1)
 });
 export const coursePlanParam = z.object({ plan: CoursePlanSchema });
@@ -630,7 +747,7 @@ export const reorderContentParam = z.object({
   sections: z
     .array(
       z.object({
-        id: z.string().min(1),
+        id: z.string().min(1).describe(piezaPorManija('section to move')),
         order: z.number().int().min(0)
       })
     )
@@ -639,10 +756,14 @@ export const reorderContentParam = z.object({
   items: z
     .array(
       z.object({
-        id: z.string().min(1),
+        id: z.string().min(1).describe(piezaPorManija('lesson or exercise to move')),
         type: z.enum(['LESSON', 'EXERCISE']),
         order: z.number().int().min(0).optional().describe('New order within the section'),
-        sectionId: z.string().nullable().optional().describe('Move item to a different section')
+        sectionId: z
+          .string()
+          .nullable()
+          .optional()
+          .describe(`Move item to a different section. ${piezaPorManija('target section')}`)
       })
     )
     .optional()
@@ -665,8 +786,9 @@ export const generateImageParam = z.object({
   lessonId: z
     .string()
     .optional()
-    .describe('The lesson this illustrates, when there is one. Used to group the stored file.'),
-  locale: z.string().default('en').describe('Locale of the lesson, from the Current Context.'),
+    .describe(
+      `The lesson this illustrates, when there is one. Used to group the stored file and to keep the one-picture-per-lesson limit. ${piezaPorManija('lesson')}`
+    ),
   aspectRatio: z
     .enum(['16:9', '4:3', '1:1', '3:4'])
     .default('16:9')

@@ -79,16 +79,24 @@ import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { buildPlanProgressAnchor } from '@api/services/agent/chat-context';
 import { claveDeTitulo, mismoTitulo, piezaConContenido, piezaEquivalente } from '@api/services/agent/pieza-existente';
 
-const SECCION_1 = { id: 'sec-1', title: 'Sección 1: Historia de la Empresa', order: 1 };
-const SECCION_3 = { id: 'sec-3', title: 'Sección 3: Atención en el Mostrador', order: 3 };
+// Ids con forma de UUID porque eso es lo que son en la base, y desde que las
+// herramientas aceptan manijas (`S1.L2`) un «sec-1» ya no pasa: no es ni una
+// cosa ni la otra, que es justo la forma de los ids que el modelo inventaba.
+const ID_SECCION_1 = '11111111-1111-4111-8111-111111111111';
+const ID_SECCION_3 = '33333333-3333-4333-8333-333333333333';
+const ID_LECCION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const ID_EJERCICIO = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+const SECCION_1 = { id: ID_SECCION_1, title: 'Sección 1: Historia de la Empresa', order: 1 };
+const SECCION_3 = { id: ID_SECCION_3, title: 'Sección 3: Atención en el Mostrador', order: 3 };
 const SECCIONES = [SECCION_1, SECCION_3];
 
 /** Filas como las devuelve `getCourseContentItems`: el tipo en MAYÚSCULAS. */
 const LECCION_ESCRITA = {
-  id: 'lec-historia',
+  id: ID_LECCION,
   type: ContentType.Lesson,
   title: 'Conocer los orígenes y la evolución de la compañía',
-  sectionId: 'sec-1',
+  sectionId: ID_SECCION_1,
   order: 1,
   hasNoteContent: true,
   hasSlideContent: false,
@@ -96,10 +104,10 @@ const LECCION_ESCRITA = {
   questionCount: null
 };
 const AUTOEVALUACION = {
-  id: 'ej-1',
+  id: ID_EJERCICIO,
   type: ContentType.Exercise,
   title: 'Autoevaluación: Historia de la Empresa',
-  sectionId: 'sec-1',
+  sectionId: ID_SECCION_1,
   order: 4,
   hasNoteContent: null,
   hasSlideContent: false,
@@ -146,13 +154,13 @@ describe('la clave de un título', () => {
 describe('la pieza que ya ocupa un lugar', () => {
   it('se busca sólo dentro de su sección: cada sección tiene su propia autoevaluación', () => {
     expect(
-      piezaEquivalente(ITEMS, { tipo: 'exercise', sectionId: 'sec-3', titulo: AUTOEVALUACION.title })
+      piezaEquivalente(ITEMS, { tipo: 'exercise', sectionId: ID_SECCION_3, titulo: AUTOEVALUACION.title })
     ).toBeUndefined();
   });
 
   it('compara el tipo en las dos formas en que llega', () => {
-    expect(piezaEquivalente(ITEMS, { tipo: 'lesson', sectionId: 'sec-1', titulo: LECCION_ESCRITA.title })?.id).toBe(
-      'lec-historia'
+    expect(piezaEquivalente(ITEMS, { tipo: 'lesson', sectionId: ID_SECCION_1, titulo: LECCION_ESCRITA.title })?.id).toBe(
+      ID_LECCION
     );
   });
 
@@ -236,9 +244,9 @@ describe('las herramientas que crean no duplican lo que ya existe', () => {
     );
 
     expect(createCourseSection).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ id: 'sec-1', reused: true });
+    expect(resultado).toMatchObject({ id: ID_SECCION_1, reused: true });
     // Y la ata al plan, para que desde acá se reconozca por id y no por título.
-    expect(bindPlanItem).toHaveBeenCalledWith(expect.objectContaining({ planKey: 's1', entityId: 'sec-1' }));
+    expect(bindPlanItem).toHaveBeenCalledWith(expect.objectContaining({ planKey: 's1', entityId: ID_SECCION_1 }));
   });
 
   it('create_section sigue creando una sección que de verdad no existe', async () => {
@@ -252,7 +260,7 @@ describe('las herramientas que crean no duplican lo que ya existe', () => {
   it('create_lesson no crea una segunda ni pisa la que ya está escrita', async () => {
     const resultado = await herramientas().create_lesson.execute(
       {
-        sectionId: 'sec-1',
+        sectionId: ID_SECCION_1,
         title: LECCION_ESCRITA.title,
         order: 1,
         locale: 'es',
@@ -263,14 +271,14 @@ describe('las herramientas que crean no duplican lo que ya existe', () => {
     );
 
     expect(createLesson).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ id: 'lec-historia', reused: true, contentWritten: false });
+    expect(resultado).toMatchObject({ id: ID_LECCION, reused: true, contentWritten: false });
   });
 
   /** Sin el guardia, el escritor reescribiría la lección que otra conversación ya escribió. */
   it('write_lesson tampoco: ni la crea ni llama al escritor', async () => {
     const resultado = await herramientas().write_lesson.execute(
       {
-        sectionId: 'sec-1',
+        sectionId: ID_SECCION_1,
         title: LECCION_ESCRITA.title,
         order: 1,
         locale: 'es',
@@ -283,22 +291,33 @@ describe('las herramientas que crean no duplican lo que ya existe', () => {
 
     expect(createLesson).not.toHaveBeenCalled();
     expect(escribirLeccion).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ id: 'lec-historia', reused: true, contentWritten: false });
+    expect(resultado).toMatchObject({ id: ID_LECCION, reused: true, contentWritten: false });
   });
 
   it('create_exercise no duplica la autoevaluación que la sección ya tiene', async () => {
     const resultado = await herramientas().create_exercise.execute(
       {
-        sectionId: 'sec-1',
+        sectionId: ID_SECCION_1,
         title: AUTOEVALUACION.title,
         order: 4,
         planKey: 's1.2',
-        questions: [{ question: '¿Algo?', questionTypeId: 1, order: 0, options: [] }]
+        // Con su evidencia, como toda pregunta desde que el servidor la busca
+        // en las lecciones. Acá ni se llega a mirar: el ejercicio ya existía y
+        // la llamada vuelve antes, que es justamente lo que se está fijando.
+        questions: [
+          {
+            question: '¿Algo?',
+            questionTypeId: 1,
+            order: 0,
+            options: [],
+            evidence: 'la compañía abrió su primer local en 1978'
+          }
+        ]
       },
       OPCIONES
     );
 
     expect(createExercise).not.toHaveBeenCalled();
-    expect(resultado).toMatchObject({ id: 'ej-1', reused: true, questionCount: 7 });
+    expect(resultado).toMatchObject({ id: ID_EJERCICIO, reused: true, questionCount: 7 });
   });
 });

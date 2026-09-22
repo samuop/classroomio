@@ -5203,6 +5203,8 @@
         "update_exercise": "Updating exercise",
         "update_exercise_section": "Updating exercise section",
         "add_questions": "Adding questions",
+        "write_questions": "Writing the questions from the lessons",
+        "analyze_source_changes": "Comparing the new source with the course",
         "update_questions": "Updating questions",
         "reorder_content": "Reordering content",
         "update_course_landing_page": "Updating landing page",
@@ -5241,6 +5243,7 @@
       },
       "done": {
         "generic": "Done",
+        "analyze_source_changes": "{count, plural, =0 {Nothing the course already says changes} one {Found # fact that changes} other {Found # facts that change}}",
         "create_section": "Created section: {title}",
         "update_section": "Updated section: {title}",
         "create_lesson": "Created lesson: {title}",
@@ -5251,6 +5254,7 @@
         "update_exercise": "Updated exercise: {title}",
         "update_exercise_section": "Updated exercise section: {title}",
         "add_questions_fallback": "{count, plural, one {Added # question} other {Added # questions}}",
+        "write_questions_fallback": "{count, plural, one {Wrote # question} other {Wrote # questions}}",
         "update_questions_fallback": "{count, plural, one {Updated # question} other {Updated # questions}}",
         "create_exercise_section": "Created exercise section: {title}",
         "get_course_structure": "Course structure loaded",
@@ -5361,7 +5365,16 @@
       "with_exercise": "Includes an exercise",
       "edit_hint": "You can edit any title or description before approving.",
       "busy": "The assistant is working…",
-      "changes_sent": "Request sent. The new plan will show up here."
+      "changes_sent": "Request sent. The new plan will show up here.",
+      "changes_title": "Change plan",
+      "section_new": "New section",
+      "action_create": "New",
+      "action_rewrite": "Rewritten",
+      "action_edit": "Edited",
+      "affected_sections": "{count, plural, one {# section affected} other {# sections affected}}",
+      "new_lessons": "{count, plural, one {# new lesson} other {# new lessons}}",
+      "rewrites": "{count, plural, one {# rewritten} other {# rewritten}}",
+      "edits": "{count, plural, one {# edited} other {# edited}}"
     }
   },
   "side_panel": {

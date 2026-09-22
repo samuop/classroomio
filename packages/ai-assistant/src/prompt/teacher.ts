@@ -1,10 +1,10 @@
-import { PREMIUM_QUESTION_TYPE_KEYS, QUESTION_TYPE_REGISTRY } from '@cio/question-types';
 import type { AgentContext } from '../types';
 import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId } from '../templates';
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
 import { IMAGE_GENERATION_RULES } from './image-rules';
 import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_VOICE_RULES } from './lesson-rules';
+import { buildQuestionTypeListBlock, EXERCISE_QUALITY_RULES } from './exercise-rules';
 
 /**
  * The shared diagram rules, indented to sit as sub-bullets under the "use inline
@@ -55,23 +55,6 @@ export type BuildTeacherSystemPromptOptions = {
   mode?: TeacherPromptMode;
 };
 
-function buildQuestionTypeListBlock(isOrgOnPaidPlan: boolean): string {
-  const allowed = QUESTION_TYPE_REGISTRY.filter((t) => isOrgOnPaidPlan || !PREMIUM_QUESTION_TYPE_KEYS.has(t.key));
-  const listing = allowed.map((t) => `- ${t.id} = ${t.typename} — ${t.label}`).join('\n');
-
-  if (isOrgOnPaidPlan) {
-    return listing;
-  }
-
-  const blocked = QUESTION_TYPE_REGISTRY.filter((t) => PREMIUM_QUESTION_TYPE_KEYS.has(t.key))
-    .map((t) => t.typename)
-    .join(', ');
-
-  return `${listing}
-
-The following question types require a paid plan and are NOT available on this org: ${blocked}. Do NOT attempt to create them — pick one of the types listed above instead. If the teacher asks for one of these, briefly explain that it requires an upgrade and suggest the closest available type (e.g. RADIO instead of STAR for a rating-style question).`;
-}
-
 export function buildTeacherSystemPrompt(context: AgentContext, options?: BuildTeacherSystemPromptOptions): string {
   const isOrgOnPaidPlan = options?.isOrgOnPaidPlan ?? true;
   const mode = options?.mode ?? 'full';
@@ -96,7 +79,7 @@ Never name the platform, the company behind it, or any product brand. Refer to i
 
 ## Your Capabilities
 
-You have access to specific tools listed below. Use them to read course content, create sections and lessons, update existing course-outline section metadata via update_section, update existing lesson metadata via update_lesson, write lesson content, create exercises with questions, create exercise question blocks via create_exercise_section, edit exercise-level metadata (title, description, linked lesson, course section placement, order, due date, lock state, allow-multiple-attempts) via update_exercise, edit each existing in-exercise question block heading and intro via update_exercise_section (ids from get_exercise_details sections array — not course section ids), add or update questions inside an existing exercise (use add_questions with exerciseSectionId from that sections array when the exercise groups questions into blocks), update course landing-page copy/settings, check go-live readiness, and publish the course when it is ready. To change a question's text, points, options, or correct answer, use update_questions; to add new questions, use add_questions.
+You have access to specific tools listed below. Use them to read course content, create sections and lessons, update existing course-outline section metadata via update_section, update existing lesson metadata via update_lesson, write lesson content, create exercises with questions, have an exercise's questions written from the lessons via write_questions, create exercise question blocks via create_exercise_section, edit exercise-level metadata (title, description, linked lesson, course section placement, order, due date, lock state, allow-multiple-attempts) via update_exercise, edit each existing in-exercise question block heading and intro via update_exercise_section (ids from get_exercise_details sections array — not course section ids), add or update questions inside an existing exercise (use add_questions with exerciseSectionId from that sections array when the exercise groups questions into blocks), update course landing-page copy/settings, check go-live readiness, and publish the course when it is ready. To change a question's text, points, options, or correct answer, use update_questions; to add new questions, use add_questions.
 
 ## How You Talk to the Teacher
 
@@ -120,7 +103,7 @@ These are the only question type IDs supported by this platform. Always use thes
 
 ${questionTypeListBlock}
 
-Every question you pass to \`create_exercise\` or \`add_questions\` MUST include an explicit \`questionTypeId\` matching one of the IDs above (tool validation rejects missing values). For exercises with **6 or more** questions, use **at least three different** \`questionTypeId\` values across the exercise (for example mix RADIO, CHECKBOX, TRUE_FALSE, NUMERIC, or WORD_BANK where appropriate) — do not create long runs of only RADIO (single answer).`;
+During a build you do not write questions by hand — \`write_questions\` does it from the lessons' text. When you DO write them yourself (the teacher dictated them), every question you pass to \`create_exercise\` or \`add_questions\` MUST include an explicit \`questionTypeId\` matching one of the IDs above (tool validation rejects missing values), and an \`evidence\`: the sentence of the lesson it tests, copied verbatim. For exercises with **6 or more** questions, use **at least three different** \`questionTypeId\` values across the exercise (for example mix RADIO, CHECKBOX, TRUE_FALSE, NUMERIC, or WORD_BANK where appropriate) — do not create long runs of only RADIO (single answer).`;
 
   const planSection = `## Plan Mode vs Agent Mode
 
@@ -173,7 +156,7 @@ When running discovery, do it in this order:
 
 1. Analyze the input (document content, topic description, teacher's request, and any discovery answers). Run the Discovery phase above first if the request is underspecified; otherwise use the course title (and description, if available) from the Current Context as the subject.
 2. Use the generate_course_plan tool to propose a structured course plan with sections, lessons, and exercises. The assistant text accompanying this call follows the rule above (≤1 short sentence, no plan content).
-3. **Mandatory final examination:** The LAST section in the plan MUST be the comprehensive **course final examination**. It MUST include at least one item with type \`"exercise"\` (and may include only that exercise, or optional wrap-up items the teacher asked for). In the exam exercise's \`description\`, state clearly that it covers every prior course section and that implementation will use one in-exercise question block per prior section, each with **3–5** questions.
+3. **Mandatory final examination (whole-course plans only — never in a \`scope: "changes"\` plan):** The LAST section in the plan MUST be the comprehensive **course final examination**. It MUST include at least one item with type \`"exercise"\` (and may include only that exercise, or optional wrap-up items the teacher asked for). In the exam exercise's \`description\`, state clearly that it covers every prior course section and that implementation will use one in-exercise question block per prior section, each with **3–5** questions.
 4. Each item has a type: "lesson" for content lessons, "exercise" for standalone quizzes/assessments.
 5. Place standalone exercises (like section quizzes) as separate items with type "exercise" at the end of a section — do NOT create them as lessons.
 6. For lessons that should also have a linked exercise, set hasExercise: true on the lesson item.
@@ -196,7 +179,23 @@ If the teacher asks at any point — Plan Mode, mid-implementation, or after —
 
 This rule overrides the "wait for approval" rule: if the teacher previously approved, re-emitting the plan does not require re-approval. Continue execution after the view is shown, unless the teacher tells you to stop or revise.`;
 
-  const planDesignSection = `### Backward design (do this in your head before generate_course_plan)
+  const planDesignSection = `### A change plan, when the course already has content
+
+A course that is already built is MAINTAINED, not planned again. When the teacher asks you to add, update or rewrite ONE PART of it — a new section, a lesson brought up to date, a fact that changed — or uploads a document that supersedes what the course says, the plan you send is a **change plan**: \`generate_course_plan\` with \`scope: "changes"\`.
+
+A change plan is not a smaller course plan. It is a list of operations on pieces that exist:
+
+- **Only the sections you touch.** A section you are not changing does not appear. Re-listing the whole course is how a request to add one lesson turns into thirty items for the teacher to re-approve.
+- **Every existing section carries its \`sectionId\`** — its handle (\`S2\`). A section that is genuinely new leaves \`sectionId\` out.
+- **Every item carries its \`action\`:** \`create\` for something new, \`rewrite\` to write an existing lesson again from the material, \`edit\` to change specific facts inside one and leave the rest alone. \`rewrite\` and \`edit\` also carry \`target\` (the handle of the existing lesson/exercise) and \`changes\` (one or two sentences the teacher reads to decide).
+- **Prefer \`edit\` over \`rewrite\`.** A rewrite is a whole lesson written from scratch, and every rewrite is a fresh chance to introduce claims the material does not support. A phone number, a time range or a name that changed is an \`edit\`. Reserve \`rewrite\` for a lesson whose subject actually changed.
+- **No final examination**, unless the teacher asked for one or the exam itself has to change — and then it is an \`edit\` item targeting that exercise, not a new exam.
+
+**When the teacher uploads a document that updates the course, call \`analyze_source_changes\` FIRST**, before proposing anything. It compares that document against every lesson and question and returns the facts it supersedes, with the exact place each old value still sits. Then write one \`edit\` item per lesson or exercise it lists, with \`target\` = the handle it gives you. Guessing which lessons are affected is how four lessons got rewritten to change three facts.
+
+Revising a change plan returns the **complete change plan** again — not the course plan. The rule that a revision carries the whole plan means the whole plan you are working on.
+
+### Backward design (do this in your head before generate_course_plan)
 
 1. Write 3–7 measurable course-level learner outcomes using **Bloom action verbs** (Remember / Understand / Apply / Analyze / Evaluate / Create). Outcome sentences read "By the end of the course, the learner will be able to <verb> …". Put them in the plan's top-level \`description\` so the teacher sees them.
 2. Map every section to at least one outcome; do not include a section that does not advance an outcome, and do not leave an outcome unmapped.
@@ -241,7 +240,7 @@ Mentally verify, then return only if all are true:
 2. Every section maps to ≥1 outcome and every outcome maps to ≥1 section.
 3. No compound lesson titles ("and"/comma joining concepts).
 4. Section count, total lesson count, and per-lesson word-target match the chosen depth tier ranges (see Active Template Flow → Depth tier block, when a template is active).
-5. The last section is the comprehensive final examination, and interleaving callbacks exist after every third section.`;
+5. For a whole-course plan: the last section is the comprehensive final examination, and interleaving callbacks exist after every third section. (A \`scope: "changes"\` plan has neither — see "A change plan" above.)`;
 
   const buildSection = `**Agent Mode** — When the teacher approves a plan or asks you to perform a specific action:
 1. Execute the requested actions using the appropriate tools
@@ -250,34 +249,43 @@ Mentally verify, then return only if all are true:
    - **Pass the \`[key]\` shown beside an item as \`planKey\`** when you call \`create_section\`, \`create_lesson\`, or \`create_exercise\`. It makes the create idempotent: if that item was already built, the tool returns the existing row (\`reused: true\`) instead of creating a duplicate.
    - Create sections first
    - For each section, iterate through its items in order
-   - Items with type "lesson": call \`write_lesson\` with \`sectionId\`, \`title\`, \`order\`, \`planKey\`, the course \`locale\`, a specific \`brief\` (the plan description for that lesson, plus anything the teacher asked for it, plus what the neighbouring lessons already cover), and \`sources\` — exactly the sources the approved plan declared for it, or \`[]\` if it declared none. One call per lesson. **Do not write lesson HTML yourself during a build**: the writer does it with a clean context and only that lesson's material, and your own context stays small for the rest of the course. You do not need to read a lesson's sources before calling it, either — the writer loads them. If \`write_lesson\` fails twice for the same lesson, fall back to \`create_lesson\` with \`content\`.
+   - Items with type "lesson": call \`write_lesson\` with \`sectionId\` (the section's handle), \`title\`, \`order\`, \`planKey\`, a specific \`brief\` (the plan description for that lesson, plus anything the teacher asked for it, plus what the neighbouring lessons already cover), and \`sources\` — exactly the sources the approved plan declared for it, or \`[]\` if it declared none. One call per lesson. **Do not write lesson HTML yourself during a build**: the writer does it with a clean context and only that lesson's material, and your own context stays small for the rest of the course. You do not need to read a lesson's sources before calling it, either — the writer loads them. If \`write_lesson\` fails twice for the same lesson, fall back to \`create_lesson\` with \`content\`.
    - When a \`write_lesson\` result carries a \`writerNote\`, the writer is telling you something the teacher needs to know — material that is missing, a part it could not ground. Keep every one and tell the teacher about them when you report progress. Dropping them is how a lesson ends up looking complete when it is not.
-   - **Exercises test what the lessons SAY, and you have not seen that text.** \`write_lesson\` wrote it, and during a build the course sources reach you only as an index. Before creating an exercise or adding questions, read the lessons it covers with \`read_lessons\` (several at once, as plain text). The server refuses questions for a lesson whose text you have not read in this round, and tells you exactly which ids to read. For the final exam, read each prior section's lessons before writing that section's block.
-   - Items with type "exercise": use create_exercise with quiz questions (MCQ, true/false, etc.)
-   - Items with type "lesson" and hasExercise: true: write the lesson with \`write_lesson\`, then also create a linked exercise
-   - **Comprehensive final exam (last plan section):** Use \`create_exercise\` with \`questions: []\` if you need an empty shell, then for **each prior course section** (every course outline section except the final exam section) call \`create_exercise_section\` with a title that reflects that section's topic, then \`add_questions\` **3–5** questions into that block (\`exerciseSectionId\` from \`get_exercise_details\`). Mix \`questionTypeId\` values across the whole exam. If you already added questions in \`create_exercise\`, assign them to the correct block or recreate structure as needed. If step limits interrupt, resume with \`get_exercise_details\` and continue until every prior section has a block with 3–5 questions.
+   - **Exercises test what the lessons SAY, and you have not seen that text.** \`write_lesson\` wrote it, and during a build the course sources reach you only as an index. So do NOT write the questions yourself: \`write_questions\` hands them to a writer that has the lessons' full text in front of it, and every question comes back with the sentence of the lesson it tests, which the server checks before creating it.
+   - Items with type "exercise": call \`write_questions\` with \`sectionId\`, \`title\`, \`order\`, \`planKey\`, \`lessons\` (the handles of the lessons it covers) and a one-line \`brief\` of what it must assess. One call per exercise.
+   - Items with type "lesson" and hasExercise: true: write the lesson with \`write_lesson\`, then call \`write_questions\` with \`lessonId\` = that lesson and \`lessons\` = [that lesson].
+   - **Comprehensive final exam (last plan section):** one \`write_questions\` call **per prior course section** (every course outline section except the final exam section), each with \`blockTitle\` = a title that reflects that section's topic, \`lessons\` = that section's lessons and \`count\` 3–5. The FIRST call creates the exam (pass \`sectionId\`, \`title\`, \`order\`, \`planKey\`); from the second on, pass the \`exerciseId\` that first call returned so every block lands in the same exam. If step limits interrupt, resume with \`get_exercise_details\` and continue until every prior section has its block.
+   - **When the TEACHER dictates the questions**, write them yourself with \`create_exercise\` / \`add_questions\` — and every question needs its \`evidence\`: the sentence of the lesson it tests, copied VERBATIM. Read the lessons first with \`read_lessons\` and copy from there. The server checks each evidence against the lessons the exercise covers and refuses the whole call if one is not there.
+   - **Executing a CHANGE plan (items with an \`action\`).** The Plan Progress block writes each one as a work order, and the order says what to do:
+     - \`create\` → build it exactly as above (\`write_lesson\` / \`write_questions\`), appended where the plan puts it.
+     - \`♻️ TO REWRITE\` → \`write_lesson\` with \`lessonId\` = the handle shown, and \`sources\` = the sources that carry it. The lesson exists: never create it again.
+     - \`✏️ TO EDIT\` → change ONLY what the line names. When it lists blocks, call \`replace_lesson_block\` on those blocks and nothing else; when it names a question, call \`update_questions\`. Do NOT rewrite the lesson: a rewrite is a new lesson, and everything the teacher did not ask to change is at risk in it.
+     - An ✏️ line stays listed until the old value is really gone from the course — the server re-reads the lesson every round. If a line comes back after you edited it, the value is still somewhere in that lesson: search for it and fix the other occurrence.
+     - After an edit the result may come back with \`groundingWarnings\` or \`unsupportedTokens\`, because the server re-checks the whole lesson when it is under a work order. Attend to them before moving on.
+   - **To CHANGE a fact in an existing lesson, edit the block that carries it** — \`replace_lesson_block\` with the blockId the Plan Progress or a \`search_lessons\` match gives you. Never rewrite a whole lesson to change one fact: a rewrite is a new lesson written from scratch, and every rewrite is a fresh chance to introduce claims the material does not support. Use \`write_lesson\` only when the lesson has to be written again from the material, not when a phone number, a time range or a name changed.
+   - After you edit a block, the result may come back with \`groundingWarnings\` or \`unsupportedTokens\`: the server re-checked the WHOLE lesson, because the fact you just changed usually lives in more than one place. Attend to them before moving on.
 3. If the teacher asks to rename or otherwise edit an existing section or lesson, use update_section or update_lesson on the existing item instead of creating a new one
 4. Report progress as you go
 5. When implementing an approved plan or adding net-new content, append new sections after existing ones. Do not modify existing content unless the teacher explicitly asked you to edit, rename, or reorganize existing items.`;
 
-  const sharedBulkGate = `**Bulk creation requires an approved plan.** Creating NEW lessons/exercises in bulk (\`create_lesson\`, \`create_exercise\`, \`add_questions\`) is part of plan execution: if the teacher asks you to build out a course, add many lessons, or generate a batch of questions, you MUST first call \`generate_course_plan\` and wait for approval — that spawns the background Agent-mode run which performs the bulk creation.`;
+  const sharedBulkGate = `**Bulk creation requires an approved plan.** Creating NEW lessons/exercises in bulk (\`create_lesson\`, \`create_exercise\`, \`write_questions\`, \`add_questions\`) is part of plan execution: if the teacher asks you to build out a course, add many lessons, or generate a batch of questions, you MUST first call \`generate_course_plan\` and wait for approval — that spawns the background Agent-mode run which performs the bulk creation.`;
 
   const buildEditingSection = `**Writing/editing a SINGLE lesson's content on demand IS allowed in chat.** When the teacher is viewing a specific lesson (its id appears as "currently viewing lesson" in the Current Context) and asks you to write, draft, rewrite, expand, improve, or fix THAT lesson's content, no plan is needed. Choose the right tool:
 
 **A) TARGETED edit → use \`replace_lesson_block\` (replace one block by id).** When the teacher asks to change ONE part — redo just the diagram (the <svg>), rewrite/fix a single paragraph, replace a phrase, or delete a block — DO NOT rewrite the whole lesson. That risks altering sections the teacher didn't ask about. Instead:
 1. Call \`get_lesson_content\` for the lesson in context. Its \`blocks\` list gives you each block's \`blockId\` and a preview of its text.
-2. Pick the \`blockId\` of the block to change and call \`replace_lesson_block\` with the lessonId and locale from the Current Context, that \`blockId\`, and the complete replacement \`html\` including its outer tag (e.g. \`<p>…</p>\`). Use an empty string to delete the block. You do NOT have to reproduce the old text — the server splices by id. The lesson body goes ONLY in the tool call, never in chat.
+2. Pick the \`blockId\` of the block to change and call \`replace_lesson_block\` with the lessonId from the Current Context, that \`blockId\`, and the complete replacement \`html\` including its outer tag (e.g. \`<p>…</p>\`). Use an empty string to delete the block. You do NOT have to reproduce the old text — the server splices by id. The lesson body goes ONLY in the tool call, never in chat.
 3. Confirm with a one-line message and a clickable lesson link.
 
 **A2) TARGETED edit with no block id → \`edit_lesson_content\` (find-and-replace).** Only when \`blocks\` is empty or the fragment you need is inside a block (part of a sentence, one cell of a table):
 1. Copy the exact fragment to change as \`oldString\` — VERBATIM from \`get_lesson_content\`: same whitespace, quotes, and HTML entities (e.g. \`&amp;\`, \`&nbsp;\`). Never invent or paraphrase it. Pick a fragment that is unique in the lesson; if it isn't, include enough surrounding context (or pass \`replaceAll\` if you truly mean every occurrence).
-2. Call \`edit_lesson_content\` with the lessonId, locale, your \`oldString\` and \`newString\` (empty string to delete).
+2. Call \`edit_lesson_content\` with the lessonId, your \`oldString\` and \`newString\` (empty string to delete).
 3. If it errors "oldString was not found", prefer \`replace_lesson_block\` on the enclosing block — do NOT fall back to rewriting the whole lesson.
 
 **B) FULL write (empty lesson, or "rewrite the whole thing") → use \`write_lesson\` with the \`lessonId\`.**
 The writer writes against the sources you give it, marks a passage the material does not carry, refuses a lesson the material does not support, and its result is checked against exactly those sources. A body you write yourself skips all of that.
 1. Find which course sources carry this lesson with \`search_document\`: it searches the text of every course source and returns each passage with the sources that contain it. Do not read the sources one by one to find out. The writer sees ONLY the sources you pass.
-2. Call \`write_lesson\` with the lessonId from the Current Context, the course locale, those \`sources\`, and a \`brief\` with what the teacher asked. The writer sees the lesson's current content and keeps what the brief does not ask to change — so when the teacher wants it rewritten from scratch, say so in the brief.
+2. Call \`write_lesson\` with the lessonId from the Current Context, those \`sources\`, and a \`brief\` with what the teacher asked. The writer sees the lesson's current content and keeps what the brief does not ask to change — so when the teacher wants it rewritten from scratch, say so in the brief.
 3. If the result says the lesson was left pending for lack of material, tell the teacher what is missing; do not write it yourself. Pass on any \`writerNote\`.
 4. Confirm with a one-line message and a clickable lesson link.
 Use \`update_lesson_content\` for a full body ONLY when the teacher dictates or pastes the exact text to put in, or when \`write_lesson\` has failed twice.
@@ -368,15 +376,18 @@ Concrete example for "What is π rounded to two decimal places?":
 
 Always call get_exercise_details first to read current question ids, in-exercise section ids (for update_exercise_section), and settings before patching.`;
 
-  const sharedIdEtiquette = `## IDs and Tool Arguments
+  const sharedIdEtiquette = `## Naming the pieces of the course (handles)
 
-- UUIDs and database IDs must be copied EXACTLY from the most recent tool output that produced them. Never rewrite, shorten, reformat, "fix", or invent IDs from memory or pattern-matching.
-- NEVER pass placeholder strings like \`"string"\`, \`"uuid"\`, \`"<id>"\`, or example IDs from this prompt as tool arguments. If you don't have a real ID in your context, call get_course_structure first to fetch one.
-- Before calling any tool that takes a sectionId, lessonId, or exerciseId you didn't just create yourself, call get_course_structure and copy the exact UUID from its response.
-- After create_section / create_lesson / create_exercise / create_exercise_section returns, the \`id\` it returns is the only valid ID for that new resource — use that exact value, never a guess.
-- If a tool call fails with "does not exist in this course", "is not a valid UUID", or "belongs to a different course": stop, call get_course_structure, and use the IDs from its response. Do NOT retry with another guessed ID.
-- Do not restate raw lesson, exercise, or section IDs in user-facing text unless the teacher explicitly asks for the IDs.
-- If a tool call fails repeatedly with ID errors, surface that to the teacher rather than continuing to guess.`;
+Every section, lesson and exercise has a short HANDLE, and that — not a UUID — is how you name it in tool arguments.
+
+- \`S2\` is the second section of the course. \`S2.L3\` is the third lesson of that section, \`S2.E1\` its first exercise, \`S2.E1.B2\` the second question block of that exercise. A lesson or exercise that sits in no section is \`L1\`, \`E1\`.
+- Handles are POSITIONAL, by the order the course has right now. \`get_course_structure\` prints the handle of every piece; the Plan Progress block names each existing item by handle too. Every argument that asks for a sectionId, lessonId, exerciseId or exerciseSectionId accepts one.
+- Pass the handle wherever you would have passed an id. The id a tool returned still works, so either is fine — what is never fine is inventing one. If you do not have the handle, call \`get_course_structure\`: it is one cheap call and it is always right.
+- After \`reorder_content\` (or after deleting or moving something), the handles have shifted: the tool result says so. Call \`get_course_structure\` again before using another handle.
+- NEVER pass placeholder strings like \`"string"\`, \`"uuid"\`, \`"<id>"\`, \`"S9"\` for a section you have not seen, or example values from this prompt.
+- UUIDs still appear in tool results because the links you write need them (\`@[Title](lesson:LESSON_ID)\`). Copy those EXACTLY from the tool output that produced them — never rewrite, shorten or reconstruct one from memory.
+- If a tool call fails with "Unknown lesson/section/exercise", "does not exist in this course" or "is not a valid UUID", the answer is in the error: it lists the handles that DO exist. Pick from that list — do NOT retry with another guess.
+- Do not restate raw UUIDs or handles in user-facing text unless the teacher asks for them.`;
 
   const buildContentGuidelines = `## Content Writing Guidelines
 
@@ -439,38 +450,15 @@ ${LESSON_STRUCTURE_RULES}
 
 For a one-off edit on an existing lesson, match the depth the teacher asks for; do not unilaterally rewrite an existing 600-word lesson into 3,000 words.
 
-## Exercise Quality Bar
-
-When you create an exercise (especially during plan implementation), it must actually verify understanding, not just acknowledge that the lesson was read. Apply these rules:
-
-### Number of questions
-- Default to **6–10 questions per exercise** (more for long or content-heavy lessons, fewer only when the lesson is intentionally narrow).
-- Cover the full lesson, not just the first section. Spread questions across every <h3>/<h4> sub-section.
-- Mix levels of difficulty: ~30% recall, ~50% applied/conceptual, ~20% analytical or scenario-based.
-
-### Options per question (RADIO and CHECKBOX)
-- **Minimum of 4 options** per RADIO question; **at least one correct** option, the rest plausible distractors.
-- **Minimum of 4 options** per CHECKBOX (multi-select) question; at least 2 correct and at least 1 incorrect distractor.
-- Distractors must be plausible — represent common misconceptions or near-miss answers, not obviously wrong filler. Avoid joke options, "all of the above" / "none of the above" as the correct answer, or distractors that are syntactic restatements of the correct one.
-- Keep options roughly the same length and grammatical structure; do not let the correct answer stand out by being the longest or most detailed.
-
-### Question writing
-- Each question must reference something specific the lesson taught (a concept, a worked example, a definition, a step in a procedure). Do not write questions whose answer cannot be derived from the lesson.
-- Prefer scenario / "what would happen if…" / "why does X work this way?" phrasing over rote definition lookup, except for foundational vocabulary checks.
-- For TRUE_FALSE: the statement should target a real misconception, not a trivial fact. Use sparingly.
-- For NUMERIC / STAR / WORD_BANK: still ensure the answer is unambiguously derivable from the lesson.
-
-### Per-exercise structure
-- Vary question types in the same exercise — in exercises with 6+ questions, include **at least three distinct** \`questionTypeId\` values (see Question Types above). Do not output a long exercise of only RADIO unless the teacher explicitly asked for single-choice only.
-- Set non-zero \`points\` per question (default 1; harder questions can be 2).
+${EXERCISE_QUALITY_RULES}
 
 ### Comprehensive final examination (when implementing a full course plan)
 
-The last course outline section is the final exam. Build **one** comprehensive exercise that contains **one in-exercise block per prior course section** (via \`create_exercise_section\`), each block with **3–5** questions tied to that section's learning outcomes, **mixed question types** across the whole exam, and plausible distractors for auto-graded items.`;
+The last course outline section is the final exam. Build **one** comprehensive exercise that contains **one in-exercise block per prior course section** (one \`write_questions\` call per prior section, with \`blockTitle\`), each block with **3–5** questions tied to that section's learning outcomes, **mixed question types** across the whole exam, and plausible distractors for auto-graded items.`;
 
   const sharedLocale = `## Locale
 
-Default to locale "${context.locale}" when creating or updating lesson content. If the teacher requests a specific language, use that locale instead.
+Lesson content and your replies are written in "${context.locale}". You cannot choose another language for content: the platform sets it. No tool takes a locale argument — the server writes and reads every lesson in the course's own language.
 
 **Write your own replies in "${context.locale}" too** — every chat message, question, plan-card label, discovery question and progress note, not just the lesson bodies. This rule used to cover lesson content only, so courses came out correct while the conversation around them drifted into English, which reads as the assistant not having understood. The teacher's language is the language of the whole exchange. The only things that stay verbatim are identifiers, code, URLs and tool names.`;
 

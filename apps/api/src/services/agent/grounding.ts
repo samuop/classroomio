@@ -2,6 +2,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 import { buildSourcePack } from '@api/services/agent/source-pack';
+import { quitarPasajesMarcados } from '@api/services/agent/unsupported-passages';
 import { recordTokenUsage } from '@api/services/agent/usage';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -143,8 +144,12 @@ export function textoDeLeccion(html: string): string {
  * Es a propósito tolerante. Lo que se está comprobando no es que el verificador
  * copie bien las comillas tipográficas, es que la frase que critica EXISTA en la
  * lección.
+ *
+ * Exportada porque la evidencia de una pregunta se comprueba igual
+ * (`evidencia-de-preguntas.ts`) y dos normalizadores que TIENEN que coincidir
+ * terminan no coincidiendo: el primer arreglo llega a uno solo.
  */
-function normalizar(texto: string): string {
+export function normalizarParaComparar(texto: string): string {
   return texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -167,14 +172,14 @@ function normalizar(texto: string): string {
  * se puede verificar se verifica.
  */
 export function citaAparece(cita: string, textoLeccion: string): boolean {
-  const enLaLeccion = normalizar(textoLeccion);
+  const enLaLeccion = normalizarParaComparar(textoLeccion);
 
   // Una cita cortada con puntos suspensivos ("el director … de la empresa") no
   // existe entera en ningún lado. Se comprueba el tramo más largo, que es el que
   // lleva la afirmación.
   const tramo = cita
     .split(/…|\.\.\./)
-    .map((parte) => normalizar(parte))
+    .map((parte) => normalizarParaComparar(parte))
     .sort((a, b) => b.length - a.length)[0];
 
   if (!tramo || tramo.length < MIN_CARACTERES_CITA) return false;
@@ -299,7 +304,12 @@ export function crearVerificadorDeFundamento(params: {
   }
 
   return async ({ lessonTitle, contenido, soloFuentes }) => {
-    const texto = textoDeLeccion(contenido);
+    // Lo que el escritor marcó —un ejemplo que inventó a propósito, un pasaje
+    // que declaró como propio— no entra: ya está declarado, y volver a marcarlo
+    // le enseñaría que marcar no sirve de nada. `citaAparece` se comprueba
+    // contra esta misma variable, así que el verificador no puede citar algo
+    // que no llegó a ver.
+    const texto = textoDeLeccion(quitarPasajesMarcados(contenido));
 
     // Una lección de dos frases no tiene afirmaciones que valga la pena
     // contrastar, y sigue costando el paquete de fuentes entero.

@@ -21,6 +21,7 @@ import { InlineMathReplacer } from './extensions/InlineMathReplacer';
 import { Svg } from './extensions/svg/Svg';
 import { BlockId } from './extensions/block-id/BlockId';
 import { SinFuente } from './extensions/sin-fuente/SinFuente';
+import { Ejemplo } from './extensions/ejemplo/Ejemplo';
 
 export default (
   element?: HTMLElement,
@@ -127,6 +128,7 @@ export default (
       Svg,
       BlockId,
       SinFuente,
+      Ejemplo,
 
       ...(extensions ?? [])
     ],

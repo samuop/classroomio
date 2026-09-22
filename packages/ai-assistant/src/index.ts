@@ -65,6 +65,9 @@ export {
   SVG_DIAGRAM_RULES,
   MATH_FORMULA_RULES,
   buildLessonWriterPrompt,
+  buildQuestionWriterPrompt,
+  buildQuestionTypeListBlock,
+  EXERCISE_QUALITY_RULES,
   IMAGE_GENERATION_RULES
 } from './prompt';
 export type { TeacherPromptMode } from './prompt/teacher';

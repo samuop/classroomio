@@ -45,6 +45,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'update_exercise',
   'update_exercise_section',
   'add_questions',
+  'write_questions',
   'update_questions',
   'reorder_content',
   'update_course_landing_page',
@@ -62,7 +63,8 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'delete_exercise',
   'delete_section',
   'write_lesson',
-  'read_lessons'
+  'read_lessons',
+  'analyze_source_changes'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */
@@ -141,6 +143,15 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
         shape: 'i18n',
         key: 'ai_assistant.tool.done.read_lessons',
         vars: { count: readPositiveInt(r, 'count') }
+      };
+    // Comparar una fuente con el curso no cambia nada: lo que el docente
+    // necesita leer en el registro es CUÁNTO encontró, porque de eso depende si
+    // el plan que viene después tiene uno o diez ítems.
+    case 'analyze_source_changes':
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.analyze_source_changes',
+        vars: { count: Array.isArray(r.changes) ? r.changes.length : 0 }
       };
     case 'read_source':
       return {
@@ -247,6 +258,25 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
       return {
         shape: 'i18n',
         key: 'ai_assistant.tool.done.add_questions_fallback',
+        vars: { count: addedCount }
+      };
+    }
+    // Para el docente es lo mismo que `add_questions`: este ejercicio tiene
+    // tantas preguntas más. Que las haya escrito un sub-agente desde el texto
+    // de las lecciones es asunto del servidor, no algo que haya que leer acá.
+    case 'write_questions': {
+      const exerciseId = readString(r, 'exerciseId') ?? '';
+      const rawTitle = readString(r, 'title');
+      const displayTitle = rawTitle && rawTitle.trim().length > 0 ? rawTitle : '';
+      const addedCount = readPositiveInt(r, 'added');
+
+      if (exerciseId && displayTitle) {
+        return { shape: 'exercise_questions', exerciseId, title: displayTitle, count: addedCount, action: 'added' };
+      }
+
+      return {
+        shape: 'i18n',
+        key: 'ai_assistant.tool.done.write_questions_fallback',
         vars: { count: addedCount }
       };
     }
@@ -450,6 +480,7 @@ export const MUTATION_TOOLS = [
   'update_exercise',
   'update_exercise_section',
   'add_questions',
+  'write_questions',
   'update_questions',
   'reorder_content',
   'update_course_landing_page',

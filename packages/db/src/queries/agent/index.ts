@@ -5,6 +5,7 @@ export * from './chat-model-context';
 export * from './run-state';
 export * from './chat-run';
 export * from './plan-registry';
+export * from './source-analysis';
 export * from './credit-purchase';
 export * from './token-usage';
 export * from './image-usage';

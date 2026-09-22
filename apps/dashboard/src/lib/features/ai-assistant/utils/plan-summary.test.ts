@@ -117,6 +117,59 @@ describe('las versiones del plan en la conversación', () => {
 
 describe('contar un plan', () => {
   it('una lección con ejercicio suma un ejercicio', () => {
-    expect(contarPlan(plan)).toEqual({ secciones: 2, lecciones: 4, ejercicios: 2 });
+    expect(contarPlan(plan)).toMatchObject({ secciones: 2, lecciones: 4, ejercicios: 2 });
+  });
+
+  /**
+   * Un plan de cambios se cuenta por ACCIÓN.
+   *
+   * «5 lecciones» suena igual si las cinco son nuevas que si se van a reescribir
+   * cinco que ya estaban bien, y son cosas muy distintas para quien aprueba.
+   */
+  it('cuenta por acción y marca que es un plan de cambios', () => {
+    const cambios: CoursePlan = {
+      title: 'Actualización de la circular',
+      scope: 'changes',
+      sections: [
+        {
+          title: 'Mesa de Ayuda',
+          order: 2,
+          sectionId: 'S2',
+          items: [
+            { ...item('Quién atiende cada reclamo'), action: 'edit', target: 'S2.L1', changes: 'El interno pasa a WhatsApp.' },
+            { ...item('Cómo se cierra un reclamo'), action: 'rewrite', target: 'S2.L2', changes: 'Se reescribe con la circular nueva.' },
+            { ...item('Autoevaluación', 'exercise'), action: 'edit', target: 'S2.E1', changes: 'La pregunta del interno.' }
+          ]
+        },
+        {
+          title: 'Escalamiento',
+          order: 5,
+          items: [item('Cuándo escalar un reclamo')]
+        }
+      ]
+    };
+
+    expect(contarPlan(cambios)).toEqual({
+      secciones: 2,
+      lecciones: 3,
+      ejercicios: 1,
+      nuevas: 1,
+      reescribir: 1,
+      retocar: 2,
+      esDeCambios: true
+    });
+  });
+
+  /** Un plan sin `action` es un plan de curso: todo se crea, y nada dice «se retoca». */
+  it('un plan de curso cuenta todo como nuevo y no es de cambios', () => {
+    expect(contarPlan(plan)).toEqual({
+      secciones: 2,
+      lecciones: 4,
+      ejercicios: 2,
+      nuevas: 5,
+      reescribir: 0,
+      retocar: 0,
+      esDeCambios: false
+    });
   });
 });
