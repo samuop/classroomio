@@ -59,6 +59,9 @@ export interface PreguntaEscrita {
   evidence: string;
   options: Array<{ label: string; isCorrect: boolean }>;
   settings?: Record<string, unknown>;
+  /** Ver `camposDelEscritor`: la respuesta de una numérica, como campo plano. */
+  numericAnswer?: number;
+  numericTolerance?: number;
 }
 
 export type EscritorDePreguntas = (params: {
@@ -69,8 +72,39 @@ export type EscritorDePreguntas = (params: {
   locale: string;
 }) => Promise<{ preguntas: PreguntaEscrita[]; nota?: string }>;
 
+/**
+ * Los campos que devuelve el escritor: los de siempre, más la respuesta de una
+ * numérica como DOS campos planos.
+ *
+ * ── Por qué no alcanzaba con `settings` ─────────────────────────────────────
+ *
+ * `settings` es un mapa libre (`record(string, unknown)`), y un mapa libre no
+ * es una instrucción: el proveedor no tiene nada que completar ahí, así que el
+ * escritor devolvía la numérica sin `settings.correctValue` y el servidor la
+ * descartaba al validarla. Medido el 2026-09-22 en dos construcciones
+ * distintas: 5 preguntas numéricas escritas, 5 descartadas, todas con la
+ * evidencia perfecta. El escritor no estaba equivocándose en lo difícil —
+ * estaba dejando vacío un campo que el esquema no le pedía.
+ *
+ * Un campo declarado, con nombre y tipo, sí se completa. El servidor lo vuelca
+ * a `settings.correctValue` antes de validar (ver `write_questions`), así que
+ * la forma que llega a la base es la misma de siempre y nada más abajo cambia.
+ */
+export const camposDelEscritor = questionFields.extend({
+  numericAnswer: z
+    .number()
+    .optional()
+    .describe(
+      'REQUIRED when questionTypeId is NUMERIC: the correct answer, as a number. A NUMERIC question without it is discarded and never reaches the course.'
+    ),
+  numericTolerance: z
+    .number()
+    .optional()
+    .describe('Only for NUMERIC: how far from the answer still counts as correct. Leave out when the answer is exact.')
+});
+
 const Resultado = z.object({
-  questions: z.array(questionFields).describe('The questions of this exercise, in the order a learner sees them.'),
+  questions: z.array(camposDelEscritor).describe('The questions of this exercise, in the order a learner sees them.'),
   note: z
     .string()
     .optional()

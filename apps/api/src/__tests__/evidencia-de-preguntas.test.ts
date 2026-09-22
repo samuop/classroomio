@@ -385,6 +385,68 @@ describe('write_questions: las escribe quien leyó las lecciones', () => {
     expect(enviadas[0]).toMatchObject({ order: 2 });
   });
 
+  /**
+   * La numérica: el escritor la escribía bien y el servidor la tiraba.
+   *
+   * La respuesta de este tipo vive en `settings.correctValue`, y `settings` es
+   * un mapa libre: el esquema de salida no le pedía nada concreto ahí, así que
+   * el escritor lo dejaba vacío y `questionSchema` descartaba la pregunta.
+   * Medido el 2026-09-22 en dos construcciones distintas: 5 numéricas escritas,
+   * 5 descartadas, todas con la evidencia perfecta — el escritor no estaba
+   * fallando en lo difícil, estaba dejando vacío un campo que nadie le pedía.
+   *
+   * Ahora lo pide como `numericAnswer`, que es un campo con nombre y tipo, y el
+   * servidor lo vuelca a la forma que la base espera.
+   */
+  describe('una pregunta numérica', () => {
+    const numerica = (extra: Record<string, unknown>) => ({
+      question: '¿En cuántos días se avisa a Mesa de Ayuda?',
+      questionTypeId: 6,
+      points: 1,
+      order: 0,
+      evidence: 'se avisa a Mesa de Ayuda el mismo día',
+      options: [],
+      ...extra
+    });
+
+    it('con numericAnswer se crea, y la respuesta queda donde el corrector la lee', async () => {
+      escribirPreguntas.mockResolvedValue({
+        preguntas: [numerica({ numericAnswer: 1, numericTolerance: 0 })]
+      });
+
+      const resultado = await herramientas().write_questions.execute(
+        { sectionId: 'S1', title: 'Autoevaluación de recepción', order: 1, lessons: ['S1.L1'] },
+        OPCIONES
+      );
+
+      expect(resultado).toMatchObject({ added: 1 });
+
+      const creado = vi.mocked(createExercise).mock.calls[0][0];
+
+      expect(creado.questions?.[0].settings).toMatchObject({ correctValue: 1, tolerance: 0 });
+      // Y sin perder la evidencia, que viaja en el mismo lugar.
+      expect(creado.questions?.[0].settings).toMatchObject({ evidence: 'se avisa a Mesa de Ayuda el mismo día' });
+    });
+
+    /**
+     * Sin respuesta se descarta ESA pregunta y se dice por qué. Guardarla sería
+     * peor que no tenerla: una numérica sin `correctValue` le pone cero a todo
+     * el mundo y el docente se entera por el reclamo de un alumno.
+     */
+    it('sin numericAnswer se descarta, con el motivo', async () => {
+      escribirPreguntas.mockResolvedValue({ preguntas: [numerica({})] });
+
+      const resultado = await herramientas().write_questions.execute(
+        { sectionId: 'S1', title: 'Autoevaluación de recepción', order: 1, lessons: ['S1.L1'] },
+        OPCIONES
+      );
+
+      expect(createExercise).not.toHaveBeenCalled();
+      expect(resultado).toMatchObject({ added: 0 });
+      expect(String((resultado.rejected as Array<{ reason: string }>)[0].reason)).toContain('settings.correctValue');
+    });
+  });
+
   /** Una lección vacía no sostiene ninguna pregunta, y el escritor ni se llama. */
   it('no gasta la llamada al escritor si la lección todavía no tiene texto', async () => {
     vi.mocked(getCourseLessonContents).mockResolvedValue([

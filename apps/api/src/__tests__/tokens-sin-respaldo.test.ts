@@ -1,4 +1,4 @@
-import { MAX_HALLAZGOS, verificarTokens } from '@api/services/agent/grounding-tokens';
+import { MAX_HALLAZGOS, redactarTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
 
 /**
  * El chequeo determinista de tokens.
@@ -253,6 +253,63 @@ describe('tokens que la fuente no respalda', () => {
 
     it('una unidad no es el comienzo de una palabra más larga', () => {
       expect(numeros('Se usan unos 10 gramos por envase.')).toEqual([]);
+    });
+  });
+
+  /**
+   * El falso positivo que costó una lección entera.
+   *
+   * Medido el 2026-09-22: en las cinco lecciones de una construcción y en cada
+   * edición de otra, el chequeo marcó la primera palabra del título que sigue a
+   * un diagrama. `]` no contaba como fin de oración, así que esa palabra quedaba
+   * «a mitad de oración» — la condición para ser candidata a nombre propio— y el
+   * aviso volvía al modelo pidiéndole que la marcara. No se podía marcar, así
+   * que el modelo reescribió la lección entera y se perdieron tres ejemplos.
+   */
+  describe('lo que sigue al cierre de un diagrama empieza una oración', () => {
+    it('no marca la palabra que abre el título que viene después del diagrama', () => {
+      expect(
+        valores('El circuito se resume así: [diagram: Recepción · Cierre] Faltantes de mercadería en la semana.')
+      ).not.toContain('Faltantes');
+    });
+
+    /** El control: la exclusión es POSICIONAL, no una lista de palabras prohibidas. */
+    it('y sí marca la misma palabra cuando está a mitad de oración', () => {
+      expect(valores('En la semana se anotan los Faltantes de mercadería.')).toContain('Faltantes');
+    });
+
+    it('tampoco marca un encabezado como «Ejemplos», que nunca nombra nada', () => {
+      expect(verificar('Ejemplos de aplicación en la mesa. Se anotan los Ejemplos al pie.')).toEqual([]);
+    });
+  });
+
+  /**
+   * Al modelo va MENOS que al informe, y esa asimetría es el arreglo.
+   *
+   * El informe lo lee una persona que puede juzgar. Al modelo sólo puede ir lo
+   * que tiene una salida posible: una etiqueta adentro de un SVG no se puede
+   * marcar con `data-ejemplo` —no hay ningún elemento HTML ahí adentro— y lo que
+   * hizo el modelo cuando le llegó ese aviso fue reescribir la lección entera
+   * para poder cerrarlo.
+   */
+  describe('lo que vuelve al modelo', () => {
+    const alModelo = (texto: string) => redactarTokens(verificar(texto));
+
+    it('una caja inventada de un diagrama va al informe y NO al modelo', () => {
+      const texto = 'La estructura: [diagram: Casa Central · Planta Rosalía]';
+
+      expect(valores(texto)).toContain('Planta Rosalía');
+      expect(alModelo(texto)).toEqual([]);
+    });
+
+    it('un nombre inventado en la prosa sí vuelve al modelo', () => {
+      expect(alModelo('Trabajamos con Arlux desde hace años y Arlux nos responde.')[0]).toContain('Arlux');
+    });
+
+    it('un número sin respaldo vuelve al modelo aunque esté en un diagrama', () => {
+      // Un plazo equivocado es el daño que este chequeo existe para encontrar, y
+      // un número de una caja se corrige reemplazando el SVG: hay salida.
+      expect(alModelo('El plazo: [diagram: Alta · Respuesta en 2 horas]')[0]).toContain('2 horas');
     });
   });
 

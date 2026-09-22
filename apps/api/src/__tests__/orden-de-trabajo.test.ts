@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContentType } from '@cio/utils/constants';
 import { buildPlanProgressAnchor } from '@api/services/agent/chat-context';
+import { hashDePreguntas } from '@api/services/agent/plan-de-cambios';
 import { estadoDeCursoDePrueba } from './ayuda/estado-del-curso';
 import type { PlanRegistryEntry } from '@cio/db/queries/agent';
 
@@ -228,6 +229,209 @@ describe('una orden de edición con valores concretos', () => {
     expect(progreso?.pendingCount).toBe(1);
     expect(progreso?.anchorText).toContain('question 521 still says «interno 4400»');
     expect(progreso?.anchorText).toContain('update_questions');
+  });
+});
+
+/**
+ * La clave, en la orden de trabajo.
+ *
+ * El ancla mide con el MISMO matcher que el barrido, así que si el barrido
+ * encuentra el dato viejo en una pregunta por su forma corta, el ancla lo tiene
+ * que seguir reclamando hasta que esa pregunta cambie. Medido el 2026-09-22:
+ * las lecciones se arreglaron, cuatro preguntas quedaron con el dato viejo y
+ * nada las reclamó, porque sólo se buscaba la frase larga de la lección.
+ */
+describe('el dato viejo dicho con otras palabras', () => {
+  const PREGUNTA_CON_LA_CLAVE = [
+    {
+      id: 601,
+      exerciseId: ID.autoevaluacion,
+      title: '¿Qué hay que hacer para abrir un reclamo?',
+      options: [{ id: 1, label: 'Llamar al interno 4400', isCorrect: true }],
+      settings: null
+    }
+  ];
+
+  const PREGUNTA_CORREGIDA = [
+    {
+      id: 601,
+      exerciseId: ID.autoevaluacion,
+      title: '¿Qué hay que hacer para abrir un reclamo?',
+      options: [{ id: 1, label: 'Escribir al WhatsApp 11 5555-0101', isCorrect: true }],
+      settings: null
+    }
+  ];
+
+  const planDelExamen = {
+    title: 'Actualización de la circular',
+    scope: 'changes' as const,
+    sections: [
+      {
+        title: 'Mesa de Ayuda',
+        order: 0,
+        sectionId: 'S1',
+        items: [
+          {
+            type: 'exercise' as const,
+            title: 'Autoevaluación de la mesa',
+            description: 'd',
+            order: 0,
+            hasExercise: false,
+            action: 'edit',
+            target: 'S1.E1',
+            changes: 'El interno pasa a WhatsApp.'
+          }
+        ]
+      }
+    ]
+  };
+
+  const registroDelExamen = (entrada: Partial<PlanRegistryEntry>): PlanRegistryEntry[] => [
+    { key: 's1', kind: 'section', title: 'Mesa de Ayuda', sectionKey: null, position: 0, entityId: ID.mesaDeAyuda },
+    {
+      key: 's1.1',
+      kind: 'exercise',
+      title: 'Autoevaluación de la mesa',
+      sectionKey: 's1',
+      position: 1,
+      entityId: ID.autoevaluacion,
+      action: 'edit',
+      ...entrada
+    }
+  ];
+
+  /** La frase de la lección; la pregunta dice el mismo dato de otra forma. */
+  const REEMPLAZO_CON_CLAVE = [
+    { old: 'Teléfono interno 4400', new: 'WhatsApp 11 5555-0101', key: '4400' }
+  ];
+
+  it('sigue pendiente mientras una pregunta diga la clave, y dice cuál es', () => {
+    const progreso = buildPlanProgressAnchor(
+      planDelExamen,
+      SECCIONES,
+      ITEMS,
+      registroDelExamen({ replacements: REEMPLAZO_CON_CLAVE }),
+      estadoDeCursoDePrueba({ preguntas: { [ID.autoevaluacion]: PREGUNTA_CON_LA_CLAVE } })
+    );
+
+    expect(progreso?.pendingCount).toBe(1);
+    expect(progreso?.anchorText).toContain('question 601 still says');
+    // Y lo que muestra es la CLAVE, que es lo corto y lo que se puede buscar.
+    expect(progreso?.anchorText).toContain('«4400»');
+    expect(progreso?.anchorText).not.toContain('Teléfono interno 4400');
+  });
+
+  it('se da por hecha recién cuando ninguna pregunta la dice', () => {
+    const progreso = buildPlanProgressAnchor(
+      planDelExamen,
+      SECCIONES,
+      ITEMS,
+      registroDelExamen({ replacements: REEMPLAZO_CON_CLAVE }),
+      estadoDeCursoDePrueba({ preguntas: { [ID.autoevaluacion]: PREGUNTA_CORREGIDA } })
+    );
+
+    expect(progreso?.items.find((i) => i.key === 's1.1')?.status).toBe('done');
+    expect(progreso?.pendingCount).toBe(0);
+  });
+});
+
+/**
+ * Agregar una sección obliga a tocar el examen final, y eso se mide.
+ *
+ * El examen cubre TODAS las secciones, así que una sección sin bloque en él es
+ * un agujero que paga el alumno. Medido el 2026-09-22: la sección nueva se
+ * construyó y el examen quedó como estaba; el plan ni lo propuso. El prompt lo
+ * propone ahora, y acá se fija que el servidor sepa reconocer cuándo se cumplió
+ * — un bloque nuevo cambia el hash de las preguntas del ejercicio.
+ */
+describe('un ítem de edición sobre el examen, sin valores concretos', () => {
+  const PREGUNTAS_DE_TRES_BLOQUES = [
+    {
+      id: 701,
+      exerciseId: ID.autoevaluacion,
+      title: '¿Quién atiende un reclamo de entrega?',
+      options: [{ id: 1, label: 'La Mesa de Ayuda', isCorrect: true }],
+      settings: null
+    }
+  ];
+
+  const CON_EL_BLOQUE_NUEVO = [
+    ...PREGUNTAS_DE_TRES_BLOQUES,
+    {
+      id: 702,
+      exerciseId: ID.autoevaluacion,
+      title: '¿Qué se revisa antes de firmar el remito?',
+      options: [{ id: 2, label: 'El pedido', isCorrect: true }],
+      settings: null
+    }
+  ];
+
+  const planDelExamen = {
+    title: 'Sección nueva de Devoluciones',
+    scope: 'changes' as const,
+    sections: [
+      {
+        title: 'Mesa de Ayuda',
+        order: 0,
+        sectionId: 'S1',
+        items: [
+          {
+            type: 'exercise' as const,
+            title: 'Autoevaluación de la mesa',
+            description: 'd',
+            order: 0,
+            hasExercise: false,
+            action: 'edit',
+            target: 'S1.E1',
+            changes: 'add one question block for the new section'
+          }
+        ]
+      }
+    ]
+  };
+
+  const registroDelExamen = (baseline: { contentHash: string }): PlanRegistryEntry[] => [
+    { key: 's1', kind: 'section', title: 'Mesa de Ayuda', sectionKey: null, position: 0, entityId: ID.mesaDeAyuda },
+    {
+      key: 's1.1',
+      kind: 'exercise',
+      title: 'Autoevaluación de la mesa',
+      sectionKey: 's1',
+      position: 1,
+      entityId: ID.autoevaluacion,
+      action: 'edit',
+      baseline
+    }
+  ];
+
+  const baselineDe = (preguntas: typeof PREGUNTAS_DE_TRES_BLOQUES) => ({
+    contentHash: hashDePreguntas(preguntas)
+  });
+
+  it('queda pendiente mientras el examen tenga las mismas preguntas', () => {
+    const progreso = buildPlanProgressAnchor(
+      planDelExamen,
+      SECCIONES,
+      ITEMS,
+      registroDelExamen(baselineDe(PREGUNTAS_DE_TRES_BLOQUES)),
+      estadoDeCursoDePrueba({ preguntas: { [ID.autoevaluacion]: PREGUNTAS_DE_TRES_BLOQUES } })
+    );
+
+    expect(progreso?.pendingCount).toBe(1);
+    expect(progreso?.anchorText).toContain('add one question block for the new section');
+  });
+
+  it('se da por hecho cuando el bloque nuevo cambió las preguntas del examen', () => {
+    const progreso = buildPlanProgressAnchor(
+      planDelExamen,
+      SECCIONES,
+      ITEMS,
+      registroDelExamen(baselineDe(PREGUNTAS_DE_TRES_BLOQUES)),
+      estadoDeCursoDePrueba({ preguntas: { [ID.autoevaluacion]: CON_EL_BLOQUE_NUEVO } })
+    );
+
+    expect(progreso?.items.find((i) => i.key === 's1.1')?.status).toBe('done');
+    expect(progreso?.pendingCount).toBe(0);
   });
 });
 

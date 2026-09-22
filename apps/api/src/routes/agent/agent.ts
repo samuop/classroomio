@@ -995,6 +995,15 @@ const agentCoreRouter = new Hono()
        */
       let leccionesBajoOrdenDeTrabajo: Set<string> | undefined;
 
+      /**
+       * Y QUÉ le manda hacer a cada una: `edit` o `rewrite`.
+       *
+       * El conjunto de arriba alcanza para decidir si hay que rechequear; para
+       * decidir si una reescritura está permitida hace falta la acción. Ver
+       * `negarReescrituraBajoOrden` en `chat-tools.ts`.
+       */
+      let accionPorLeccion: Map<string, 'edit' | 'rewrite'> | undefined;
+
       // Coherence anchor: when a plan is being implemented, inject the REAL course
       // state (plan vs live structure — done/empty/missing per item) so the agent
       // can't lose track of progress when history is trimmed or falsely believe it
@@ -1072,18 +1081,21 @@ const agentCoreRouter = new Hono()
 
           if (progress) {
             const pendientes = new Set(progress.items.filter((item) => item.status !== 'done').map((item) => item.key));
-            const bajoOrden = registry
-              .filter(
-                (entrada) =>
-                  entrada.kind === 'lesson' &&
-                  entrada.action !== undefined &&
-                  entrada.action !== 'create' &&
-                  !!entrada.entityId &&
-                  pendientes.has(entrada.key)
-              )
-              .map((entrada) => entrada.entityId as string);
+            const bajoOrden = registry.filter(
+              (entrada) =>
+                entrada.kind === 'lesson' &&
+                entrada.action !== undefined &&
+                entrada.action !== 'create' &&
+                !!entrada.entityId &&
+                pendientes.has(entrada.key)
+            );
 
-            if (bajoOrden.length > 0) leccionesBajoOrdenDeTrabajo = new Set(bajoOrden);
+            if (bajoOrden.length > 0) {
+              leccionesBajoOrdenDeTrabajo = new Set(bajoOrden.map((entrada) => entrada.entityId as string));
+              accionPorLeccion = new Map(
+                bajoOrden.map((entrada) => [entrada.entityId as string, entrada.action as 'edit' | 'rewrite'] as const)
+              );
+            }
           }
 
           if (progress) {
@@ -1220,7 +1232,10 @@ const agentCoreRouter = new Hono()
               }),
               // Las lecciones que el plan de cambios manda tocar: una edición
               // sobre cualquiera de ellas se rechequea entera.
-              leccionesBajoOrdenDeTrabajo
+              leccionesBajoOrdenDeTrabajo,
+              // Y con qué orden, que es lo que decide si una reescritura entera
+              // se permite o se niega.
+              accionPorLeccion
             });
 
       const contextManaged = await buildModelContextMessages({

@@ -230,6 +230,41 @@ describe('comparar una fuente nueva con el curso', () => {
     expect(analista).not.toHaveBeenCalled();
   });
 
+  /**
+   * El defecto medido el 2026-09-22: el analista devuelve el valor viejo como
+   * lo escribe la LECCIÓN («Teléfono interno 4400») y la pregunta lo dice de
+   * otra forma («Al interno 4400»). Sin la clave, el barrido encontraba la
+   * lección y ninguna pregunta, el plan no las listaba, y el curso quedaba
+   * enseñando el dato nuevo y evaluando el viejo.
+   */
+  it('la clave encuentra la pregunta que dice el mismo dato con otras palabras', async () => {
+    analista.mockResolvedValue({
+      cambios: [
+        {
+          valorViejo: 'se toma por el interno 4400',
+          valorNuevo: 'se toma por WhatsApp 11 5555-0101',
+          motivo: 'La circular reemplaza el interno por WhatsApp.',
+          clave: '4400'
+        }
+      ]
+    });
+
+    const resultado = await herramientas().analyze_source_changes.execute({ sourceId: ID.circular }, OPCIONES);
+    const [cambio] = resultado.changes as Array<{ occurrences: Array<Record<string, unknown>> }>;
+
+    expect(cambio.occurrences).toEqual([
+      expect.objectContaining({ handle: 'S1.L1', blockId: 'b7' }),
+      expect.objectContaining({ handle: 'S1.E1', questionId: 521 })
+    ]);
+    // Y la nota le pide un ítem para el ejercicio, no sólo para la lección.
+    expect(String(resultado.note)).toContain('one per exercise');
+
+    // La clave viaja al análisis guardado: el plan mide con lo mismo que se buscó.
+    expect(guardarAnalisisDeFuente).toHaveBeenCalledWith(
+      expect.objectContaining({ cambios: [expect.objectContaining({ clave: '4400' })] })
+    );
+  });
+
   it('cuando el documento no cambia nada, lo dice y no propone un plan', async () => {
     analista.mockResolvedValue({ cambios: [] });
 

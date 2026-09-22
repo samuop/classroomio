@@ -6,6 +6,7 @@ import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
+import { QUESTION_TYPE_IDS as QUESTION_TYPE } from '@cio/question-types';
 import { bindPlanItem, resolvePlanBinding } from '@cio/db/queries/agent';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
@@ -144,7 +145,7 @@ import {
   resolverBloque,
   resolverEnMapa
 } from '@api/services/agent/manijas';
-import { barrerValores, type AnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
+import { barrerValores, valorDelCambio, type AnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { estadoDelContenido } from '@api/services/agent/plan-de-cambios';
 import { guardarAnalisisDeFuente } from '@cio/db/queries/agent';
 
@@ -430,8 +431,15 @@ function contentWarningFields(warnings: {
       // siempre es un ejemplo que el escritor inventó y no declaró, y borrarlo
       // empeoraría la lección. Se dice cuál es, porque un aviso sin salida es un
       // aviso que se aprende a ignorar.
+      //
+      // Y el orden de las salidas importa tanto como cuáles son. Antes empezaba
+      // por «marcalo… o borralo» y terminaba sin decir CÓMO: medido el
+      // 2026-09-22, el modelo entendió «rehacé la lección» y la reescribió
+      // entera dos veces, perdiendo tres ejemplos que ya estaban marcados. Acá
+      // se nombra primero la herramienta quirúrgica y se prohíbe la reescritura
+      // explícitamente.
       (unsupportedTokens.length > 0
-        ? ' For the names/numbers: they are not in the sources and are not marked. Mark each one as an example you made up (data-ejemplo on the smallest element that carries it) or as an unsupported claim (data-sin-fuente), or remove it. Do not invent a source for it.'
+        ? ' For the names/numbers: they are not in the sources and are not marked. Mark each one as an example you made up (data-ejemplo) with replace_lesson_block on that block, or as an unsupported claim (data-sin-fuente); delete it only if it is wrong. Never rewrite the lesson for this, and do not invent a source for it.'
         : '')
   };
 }
@@ -473,6 +481,41 @@ function briefDelRebote(written: { unsupportedTokens: string[]; groundingWarning
   );
 
   return partes.join('\n\n');
+}
+
+/**
+ * La respuesta de una numérica, del campo plano del escritor a `settings`.
+ *
+ * ── Por qué el servidor traduce en vez de pedir la forma final ──────────────
+ *
+ * `settings` es un mapa libre y el escritor lo dejaba vacío: medido el
+ * 2026-09-22, 5 numéricas escritas y 5 descartadas por no traer
+ * `settings.correctValue`, todas con su evidencia impecable. Un campo con
+ * nombre y tipo (`numericAnswer`) sí se completa — ver `camposDelEscritor` en
+ * `question-writer.ts`—, y la traducción a la forma que la base espera es un
+ * renglón que el servidor puede hacer sin equivocarse nunca.
+ *
+ * Lo que el escritor haya puesto en `settings` gana: si acertó la forma final,
+ * no se le pisa.
+ */
+function conRespuestaNumerica<T extends { questionTypeId: number; settings?: Record<string, unknown> }>(
+  pregunta: T & { numericAnswer?: number; numericTolerance?: number }
+): T {
+  if (pregunta.questionTypeId !== QUESTION_TYPE.NUMERIC) return pregunta;
+  if (typeof pregunta.numericAnswer !== 'number' || !Number.isFinite(pregunta.numericAnswer)) return pregunta;
+
+  const settings = pregunta.settings ?? {};
+
+  return {
+    ...pregunta,
+    settings: {
+      ...settings,
+      correctValue: settings.correctValue ?? pregunta.numericAnswer,
+      ...(typeof pregunta.numericTolerance === 'number' && settings.tolerance === undefined
+        ? { tolerance: pregunta.numericTolerance }
+        : {})
+    }
+  };
 }
 
 function logAgentToolDebug(
@@ -677,6 +720,15 @@ export function buildAgentTools(
      * esta misma ronda dejó marcado, como hasta ahora.
      */
     leccionesBajoOrdenDeTrabajo?: ReadonlySet<string>;
+    /**
+     * Qué le manda hacer el plan a cada lección con una orden pendiente.
+     *
+     * Es el mismo conjunto que `leccionesBajoOrdenDeTrabajo`, con el dato que
+     * ahí no hace falta y acá lo es todo: si la orden dice `edit` o `rewrite`.
+     * Con `edit`, reescribir la lección entera está PROHIBIDO, no desaconsejado
+     * — ver `negarReescrituraBajoOrden`.
+     */
+    accionPorLeccion?: ReadonlyMap<string, 'edit' | 'rewrite'>;
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -695,6 +747,57 @@ export function buildAgentTools(
   // simultáneas se pisarían el contador. Ver `revision-tras-editar.ts`.
   const avisosDeFundamento = crearRegistroDeAvisos();
   const leccionesBajoOrdenDeTrabajo = _options?.leccionesBajoOrdenDeTrabajo;
+  const accionPorLeccion = _options?.accionPorLeccion;
+
+  /**
+   * El riel: bajo una orden de EDICIÓN, la lección no se reescribe entera.
+   *
+   * ── Por qué es una negativa y no un consejo ──────────────────────────────
+   *
+   * El prompt ya decía «no reescribas para cambiar un dato», y el resultado
+   * medido el 2026-09-22 fue éste: el servidor devolvió un aviso que el modelo
+   * no podía satisfacer bloque por bloque (una etiqueta de diagrama, ver
+   * `grounding-tokens.ts`), y a la segunda vuelta hizo lo único que se le
+   * ocurrió para cerrarlo — `update_lesson_content` con la lección entera. En
+   * una de las dos lecciones desaparecieron los tres «Caso 1/2/3» que ya
+   * estaban marcados como ejemplo: 3 `data-ejemplo` → 0, reemplazados por un
+   * diagrama que nadie pidió.
+   *
+   * Una reescritura no es una edición más grande: es una lección nueva. Todo lo
+   * que el docente no pidió cambiar está en juego, y el plan que él aprobó dice
+   * exactamente qué pidió. Así que acá se contesta que no, con el camino
+   * correcto adentro del mismo mensaje.
+   *
+   * Con `rewrite` el camino es el escritor y no la mano del constructor: el
+   * escritor escribe contra las fuentes y lo que devuelve se contrasta contra
+   * ellas; un cuerpo tipeado por el constructor —que durante una construcción
+   * no leyó ninguna fuente— se salta todo eso.
+   */
+  function negarReescrituraBajoOrden(
+    lessonId: string,
+    herramienta: 'write_lesson' | 'update_lesson_content' | 'create_lesson'
+  ): void {
+    const accion = accionPorLeccion?.get(lessonId);
+
+    if (!accion) return;
+
+    if (accion === 'edit') {
+      throw new Error(
+        'This lesson is under an EDIT order: change only the blocks the Plan Progress names, with ' +
+          'replace_lesson_block (or edit_lesson_content for a fragment). A full rewrite is not allowed here ' +
+          'because it discards everything the teacher did not ask to change — in one measured round it deleted ' +
+          'three worked examples. If the lesson really needs to be written again, tell the teacher.'
+      );
+    }
+
+    if (herramienta !== 'write_lesson') {
+      throw new Error(
+        'This lesson is under a REWRITE order: write it with write_lesson, passing its lessonId and the sources ' +
+          'that carry it. A body you type yourself is never checked against the material, which is the whole ' +
+          'point of rewriting it from the sources.'
+      );
+    }
+  }
   /**
    * Lecciones que ya se rechequearon por orden de trabajo en esta ronda.
    *
@@ -1531,6 +1634,30 @@ export function buildAgentTools(
             };
           }
 
+          /**
+           * Insertar, no encimar.
+           *
+           * Medido el 2026-09-22: el modelo pidió una sección nueva con
+           * `order: 2`, que era el del examen final, y el servidor la creó
+           * igual. El curso quedó con dos secciones en la posición 2 y las
+           * manijas —que son POSICIONALES— pasaron a depender del desempate:
+           * `S3` podía ser cualquiera de las dos.
+           *
+           * El modelo no puede resolverlo solo porque no siempre sabe qué hay
+           * en cada posición, y pedirle que lea la estructura antes de cada
+           * alta es un paso más para un dato que el servidor tiene delante. Así
+           * que corre a las que estorban, de mayor a menor para no chocar con
+           * una posición ocupada en el camino, y lo dice en el resultado.
+           */
+          const existentes = await listCourseSections(courseId);
+          const corridas = existentes
+            .filter((s) => typeof s.order === 'number' && s.order >= args.order)
+            .sort((a, b) => (b.order ?? 0) - (a.order ?? 0));
+
+          for (const aCorrer of corridas) {
+            await updateCourseSectionService(aCorrer.id, { order: (aCorrer.order ?? 0) + 1 });
+          }
+
           const section = await createCourseSection(courseId, { title: args.title, courseId, order: args.order });
           // Una sección más cambia el mapa: la nueva no tiene manija todavía y
           // las que van detrás pueden haberse corrido.
@@ -1540,7 +1667,10 @@ export function buildAgentTools(
             id: section.id,
             handle: await manijas.manijaDe(section.id),
             title: section.title,
-            order: section.order
+            order: section.order,
+            ...(corridas.length > 0
+              ? { note: `Inserted at position ${args.order}; later sections were shifted.` }
+              : {})
           };
         });
       }
@@ -1599,6 +1729,11 @@ export function buildAgentTools(
           const leccion = await crearOReusarLeccion(args);
 
           if (leccion.yaEscritaPorOtro) return leccionYaEscrita(leccion);
+
+          // Una lección recién creada no puede estar en la orden de trabajo:
+          // esto sólo muerde cuando `crearOReusarLeccion` reusó una existente,
+          // que es justo por donde una reescritura se colaría sin nombrarse.
+          if (args.content) negarReescrituraBajoOrden(leccion.id, 'create_lesson');
 
           const handle = await manijas.manijaDe(leccion.id);
 
@@ -1687,6 +1822,9 @@ export function buildAgentTools(
           if (args.lessonId) {
             const lessonId = await manijas.leccion(args.lessonId);
             await verifyLessonBelongsToCourse(lessonId, courseId);
+            // Antes de gastar la llamada al escritor: bajo una orden de edición
+            // esta reescritura no se va a guardar, así que tampoco se paga.
+            negarReescrituraBajoOrden(lessonId, 'write_lesson');
             const existente = await getLesson(lessonId);
             leccion = { id: lessonId, title: existente.title, order: existente.order, reused: false };
           } else if (args.sectionId && args.title && args.order !== undefined) {
@@ -1898,6 +2036,7 @@ export function buildAgentTools(
         return executeAgentTool('update_lesson_content', { orgId, userId, courseId, args }, async () => {
           const lessonId = await manijas.leccion(args.lessonId);
           await verifyLessonBelongsToCourse(lessonId, courseId);
+          negarReescrituraBajoOrden(lessonId, 'update_lesson_content');
           const lesson = await getLesson(lessonId);
 
           const written = await writeLessonBody({
@@ -2584,7 +2723,7 @@ export function buildAgentTools(
           // lleva a propósito: una numérica sin respuesta la rechaza después el
           // servicio, y ahí se cae la llamada entera en vez de esa pregunta.
           for (const pregunta of validas) {
-            const revisada = questionSchema.safeParse(pregunta);
+            const revisada = questionSchema.safeParse(conRespuestaNumerica(pregunta));
 
             if (revisada.success) {
               aceptadas.push(revisada.data);
@@ -3185,7 +3324,10 @@ export function buildAgentTools(
           // mande a cambiar algo que el curso nunca dijo.
           const preguntas = [...estado.preguntasPorEjercicio.values()].flat();
           const ocurrencias = barrerValores({
-            valores: cambios.map((cambio) => ({ old: cambio.valorViejo, new: cambio.valorNuevo })),
+            // Con la clave y su contexto: la frase larga de la lección no
+            // aparece en las preguntas, que dicen el mismo dato con otras
+            // palabras. Ver `cambios-de-fuente.ts`.
+            valores: cambios.map(valorDelCambio),
             lecciones: lecciones.map((leccion) => ({
               id: leccion.id,
               title: leccion.title,
@@ -3234,7 +3376,7 @@ export function buildAgentTools(
             note:
               conLugar.length === 0
                 ? 'This document changes nothing the course already says. Tell the teacher that, and do not propose a plan.'
-                : 'Propose a change plan (generate_course_plan with scope "changes"): one edit item per lesson/exercise listed here with target = its handle, and `changes` saying what replaces what. The server will attach these replacements to the plan and check they are really gone.'
+                : 'Propose a change plan (generate_course_plan with scope "changes"): one edit item per lesson AND one per exercise listed here, with target = its handle and `changes` saying what replaces what. An occurrence with a questionId is a question that still teaches the old value — the exercise needs its own edit item, or the course will teach the new value and test the old one. The server will attach these replacements to the plan and check they are really gone.'
           };
         });
       }

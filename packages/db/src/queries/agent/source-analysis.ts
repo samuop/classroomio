@@ -35,6 +35,14 @@ export interface CambioDeFuente {
   valorNuevo: string;
   /** Por qué el documento lo cambia — lo lee el docente en la pantalla del plan. */
   motivo: string;
+  /**
+   * La forma más corta y distintiva del valor viejo («4400»), que es la que
+   * también aparece en las preguntas. La frase de la lección no las encuentra:
+   * ver `cambios-de-fuente.ts` en la API.
+   */
+  clave?: string;
+  /** Las palabras que tienen que estar cerca para que la clave cuente («P2»). */
+  contexto?: string[];
 }
 
 export interface AnalisisDeFuente {

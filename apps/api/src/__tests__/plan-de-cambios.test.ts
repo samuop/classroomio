@@ -297,3 +297,159 @@ describe('barrer un valor viejo por el curso', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * La clave: el mismo dato, dicho con otras palabras.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * 2026-09-22. El analista devolvió los valores viejos como la LECCIÓN los
+ * escribe —«Teléfono interno 4400», «Primera respuesta: 2 horas», «de 8 a 18
+ * horas»— y el barrido los buscó así. Las lecciones se arreglaron y las cuatro
+ * preguntas que tenían el mismo dato quedaron intactas, porque una pregunta lo
+ * dice de otra manera: «al interno 4400», «plazo de primera respuesta de 2
+ * horas», «8:00 hs». El plan ni las listó. El curso terminó enseñando el dato
+ * nuevo y evaluando el viejo, que es peor que no haberlo actualizado.
+ *
+ * La clave es la forma corta del mismo dato («4400»), la única que viaja de un
+ * lado al otro. Y el contexto es lo que la hace segura: «2 horas» también es el
+ * plazo de OTRA prioridad, y cambiar las dos rompería la que estaba bien.
+ */
+describe('buscar por la clave, no sólo por la frase de la lección', () => {
+  const PREGUNTAS_DE_LA_MESA = [
+    {
+      id: 601,
+      exerciseId: ID.autoevaluacion,
+      title: '¿Qué hay que hacer para abrir un reclamo?',
+      options: [
+        { id: 1, label: 'Llamar al interno 4400', isCorrect: true },
+        { id: 2, label: 'Mandar un correo', isCorrect: false }
+      ]
+    },
+    {
+      id: 602,
+      exerciseId: ID.autoevaluacion,
+      title: '¿En cuánto tiempo se contesta un incidente P1, el más urgente?',
+      options: [
+        { id: 3, label: 'A las 2 horas de abierto', isCorrect: false },
+        { id: 4, label: 'Dentro de los 30 minutos', isCorrect: true }
+      ]
+    },
+    {
+      id: 603,
+      exerciseId: ID.autoevaluacion,
+      title: 'Para un incidente P2, ¿cuál es el plazo de primera respuesta?',
+      options: [
+        { id: 5, label: '2 horas', isCorrect: true },
+        { id: 6, label: '8 horas', isCorrect: false }
+      ]
+    }
+  ];
+
+  const barrerPreguntas = (valor: Parameters<typeof barrerValores>[0]['valores'][number]) =>
+    barrerValores({ valores: [valor], preguntas: PREGUNTAS_DE_LA_MESA });
+
+  it('la frase de la lección no está en la pregunta; la clave sí', () => {
+    const cambio = { old: 'Teléfono interno 4400', new: 'WhatsApp 11 5555-0101' };
+
+    // Sin clave: la pregunta queda sin tocar, que es exactamente lo que pasó.
+    expect(barrerPreguntas(cambio)).toEqual([]);
+
+    const conClave = barrerPreguntas({ ...cambio, key: '4400' });
+
+    expect(conClave).toHaveLength(1);
+    expect(conClave[0]).toMatchObject({ questionId: 601, exerciseId: ID.autoevaluacion });
+  });
+
+  it('el contexto deja afuera la pregunta que habla de OTRA prioridad', () => {
+    const ocurrencias = barrerPreguntas({
+      old: 'Primera respuesta: 2 horas',
+      new: 'Primera respuesta: 1 hora',
+      key: '2 horas',
+      context: ['P2']
+    });
+
+    // La 602 dice «2 horas» y es del P1: no se toca.
+    expect(ocurrencias.map((o) => o.questionId)).toEqual([603]);
+  });
+
+  it('sin contexto, una clave ambigua se lleva puestas las dos', () => {
+    const ocurrencias = barrerPreguntas({
+      old: 'Primera respuesta: 2 horas',
+      new: 'Primera respuesta: 1 hora',
+      key: '2 horas'
+    });
+
+    expect(ocurrencias.map((o) => o.questionId)).toEqual([602, 603]);
+  });
+
+  /** «2 horas» adentro de «12 horas» no es «2 horas»: la clave se busca como palabra. */
+  it('una clave numérica no coincide como pedazo de otro número', () => {
+    const ocurrencias = barrerValores({
+      valores: [{ old: 'Primera respuesta: 2 horas', new: '1 hora', key: '2 horas' }],
+      preguntas: [
+        {
+          id: 604,
+          exerciseId: ID.autoevaluacion,
+          title: '¿Cuánto dura la guardia de la mesa?',
+          options: [{ id: 7, label: '12 horas', isCorrect: true }]
+        }
+      ]
+    });
+
+    expect(ocurrencias).toEqual([]);
+  });
+
+  it('en una lección, la clave encuentra el bloque igual que la frase larga', () => {
+    const ocurrencias = barrerValores({
+      valores: [{ old: 'Teléfono interno 4400', new: 'WhatsApp 11 5555-0101', key: '4400' }],
+      lecciones: LECCIONES
+    });
+
+    expect(ocurrencias.map((o) => o.blockId)).toEqual(['b7', 'b12']);
+  });
+
+  /**
+   * Y una sola vez por bloque. Desde que se busca dos veces —frase y clave— el
+   * mismo párrafo cae en las dos, y una orden que nombra dos veces el mismo
+   * bloque manda a editarlo, releerlo y editarlo de nuevo.
+   */
+  it('no cuenta dos veces el bloque donde están la frase y la clave', () => {
+    const ocurrencias = barrerValores({
+      valores: [{ old: 'interno 4400', new: 'WhatsApp 11 5555-0101', key: '4400' }],
+      lecciones: LECCIONES
+    });
+
+    expect(ocurrencias.map((o) => o.blockId)).toEqual(['b7', 'b12']);
+  });
+
+  /** La clave y su contexto viajan al registro: el ancla mide con lo mismo que se buscó. */
+  it('el plan se lleva la clave y el contexto de cada valor', () => {
+    const atado = atarPlanDeCambios({
+      plan: planDeCambios([item({ action: 'edit', target: 'S2.L1', changes: 'c' })], 'S2'),
+      secciones: SECCIONES,
+      items: ITEMS,
+      lecciones: LECCIONES,
+      preguntasPorEjercicio: PREGUNTAS,
+      analisis: [
+        {
+          sourceId: 'fuente-1',
+          fileName: 'Circular de atención.pdf',
+          cambios: [
+            {
+              valorViejo: 'interno 4400',
+              valorNuevo: 'WhatsApp 11 5555-0101',
+              motivo: 'La circular reemplaza el interno.',
+              clave: '4400',
+              contexto: ['reclamo']
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(atado.registro.sections[0].items[0].replacements).toEqual([
+      { old: 'interno 4400', new: 'WhatsApp 11 5555-0101', key: '4400', context: ['reclamo'] }
+    ]);
+  });
+});

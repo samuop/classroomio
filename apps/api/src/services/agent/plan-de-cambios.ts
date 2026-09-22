@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CoursePlan } from '@cio/ai-assistant';
-import type { AnalisisDeFuente, PlanItemAction, PlanShape } from '@cio/db/queries/agent';
+import type { AnalisisDeFuente, PlanItemAction, PlanItemReplacement, PlanShape } from '@cio/db/queries/agent';
 import type { TLocale } from '@cio/db/types';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
@@ -14,7 +14,7 @@ import {
   type SeccionParaMapa
 } from '@api/services/agent/manijas';
 import { claveDeTitulo } from '@api/services/agent/pieza-existente';
-import { barrerValores, type PreguntaParaBarrer } from '@api/services/agent/cambios-de-fuente';
+import { barrerValores, valorDelCambio, type PreguntaParaBarrer } from '@api/services/agent/cambios-de-fuente';
 
 /**
  * Un plan que habla de lo que YA existe: atarlo al curso y fijarle la línea de
@@ -178,9 +178,7 @@ export function atarPlanDeCambios(params: {
   // una sola vez y después se reparten: el mismo teléfono puede estar en cuatro
   // lecciones y en una pregunta, y barrerlo una vez por ítem sería barrerlo
   // veinte veces el mismo texto.
-  const valores = (params.analisis ?? []).flatMap((analisis) =>
-    analisis.cambios.map((cambio) => ({ old: cambio.valorViejo, new: cambio.valorNuevo }))
-  );
+  const valores = (params.analisis ?? []).flatMap((analisis) => analisis.cambios.map(valorDelCambio));
 
   const ocurrencias =
     valores.length > 0
@@ -195,20 +193,31 @@ export function atarPlanDeCambios(params: {
         })
       : [];
 
-  const nuevoPorViejo = new Map(valores.map((v) => [v.old, v.new] as const));
+  // Indexado por lo que el barrido escribe en cada ocurrencia, que es la frase
+  // larga cuando existe y la clave cuando el cambio no trae otra cosa.
+  const valorPorEtiqueta = new Map(valores.map((v) => [v.old.trim() || (v.key ?? '').trim(), v] as const));
 
-  const reemplazosDe = (entityId: string): Array<{ old: string; new: string }> => {
-    const encontrados = new Map<string, string>();
+  const reemplazosDe = (entityId: string): PlanItemReplacement[] => {
+    const encontrados = new Map<string, PlanItemReplacement>();
 
     for (const ocurrencia of ocurrencias) {
       if (ocurrencia.lessonId !== entityId && ocurrencia.exerciseId !== entityId) continue;
 
-      const nuevo = nuevoPorViejo.get(ocurrencia.valorViejo);
+      const valor = valorPorEtiqueta.get(ocurrencia.valorViejo);
 
-      if (nuevo !== undefined) encontrados.set(ocurrencia.valorViejo, nuevo);
+      if (!valor) continue;
+
+      // La clave y el contexto viajan con el reemplazo: el ancla los vuelve a
+      // barrer en cada ronda, y sin ellos mediría distinto de como se buscó.
+      encontrados.set(ocurrencia.valorViejo, {
+        old: valor.old,
+        new: valor.new,
+        ...(valor.key ? { key: valor.key } : {}),
+        ...(valor.context && valor.context.length > 0 ? { context: [...valor.context] } : {})
+      });
     }
 
-    return [...encontrados].map(([old, nuevo]) => ({ old, new: nuevo }));
+    return [...encontrados.values()];
   };
 
   const registro: PlanShape = { sections: [] };

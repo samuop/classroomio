@@ -6,6 +6,7 @@ import {
   getCourseSectionBinding,
   getExerciseCourseBinding,
   getLessonCourseBinding,
+  type PlanItemReplacement,
   type PlanRegistryEntry
 } from '@cio/db/queries/agent';
 import { z } from 'zod';
@@ -325,7 +326,7 @@ function medirCambio(params: {
   entityId: string | undefined;
   estado: EstadoDelContenido | undefined;
   baseline: { contentHash: string } | undefined;
-  replacements: Array<{ old: string; new: string }> | undefined;
+  replacements: PlanItemReplacement[] | undefined;
 }): { hecho: boolean; pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }> } {
   const { tipo, entityId, estado, baseline, replacements } = params;
 
@@ -346,10 +347,20 @@ function medirCambio(params: {
 
     const pendientes = replacements
       .map((reemplazo) => {
-        const suyas = ocurrencias.filter((o) => o.valorViejo === reemplazo.old.trim());
+        const etiqueta = reemplazo.old.trim() || (reemplazo.key ?? '').trim();
+        const suyas = ocurrencias.filter((o) => o.valorViejo === etiqueta);
 
         return {
-          old: reemplazo.old,
+          /**
+           * Lo que la orden de trabajo MUESTRA es la clave, no la frase larga.
+           *
+           * «replace «4400» → «WhatsApp 11 5555-0101»» se lee de un vistazo y
+           * se puede buscar; «replace «Teléfono interno 4400 de la Mesa de
+           * Ayuda» → …» ocupa una línea entera y manda al modelo a buscar una
+           * frase que en la pregunta que tiene que arreglar no está escrita
+           * así. La clave es lo que las dos puntas comparten.
+           */
+          old: (reemplazo.key ?? '').trim() || reemplazo.old,
           new: reemplazo.new,
           donde: [...new Set(suyas.map((o) => o.blockId).filter((b): b is string => !!b))],
           preguntas: [...new Set(suyas.map((o) => o.questionId).filter((q): q is number => typeof q === 'number'))],

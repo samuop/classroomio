@@ -103,6 +103,18 @@ export interface HallazgoDeToken {
   valor: string;
   /** Un tramo corto alrededor, para que el docente lo ubique. */
   contexto: string;
+  /**
+   * Si el token vive dentro de una etiqueta de diagrama (`[diagram: …]`).
+   *
+   * Lo necesita el filtro del canal al modelo (`redactarTokens`) y no el
+   * informe: un nombre que está en una caja de un SVG no se puede «marcar»
+   * —`data-ejemplo` va en un elemento del HTML, y adentro del diagrama no hay
+   * ninguno—, así que pedírselo al modelo es pedirle algo imposible. Medido el
+   * 2026-09-22: el aviso volvía en cada edición y el modelo terminó
+   * reescribiendo la lección entera para satisfacerlo, perdiendo tres ejemplos
+   * ya marcados.
+   */
+  enDiagrama: boolean;
 }
 
 /**
@@ -236,6 +248,22 @@ const NO_SON_NOMBRES = new Set([
   'objetivos',
   'referencias',
   'references',
+  // Sustantivos de ESTRUCTURA del texto. Encabezan un título o una viñeta
+  // («Ejemplos de aplicación», «Casos frecuentes», «Paso 3», «Vía WhatsApp») y
+  // nunca nombran nada. Estaban afuera y se pagó caro: «Ejemplos» en un título
+  // que seguía a un diagrama se marcó en las cinco lecciones de una corrida.
+  'ejemplos',
+  'casos',
+  'situacion',
+  'situaciones',
+  'escenario',
+  'escenarios',
+  'paso',
+  'pasos',
+  'via',
+  'puntos',
+  'bloque',
+  'bloques',
   // Interrogativos y marcadores de discurso. Aparecen en mayúscula dentro de
   // una viñeta o una pregunta al lector, nunca son nombres, y no hay caso
   // ambiguo: ninguna empresa se llama «Cuál».
@@ -317,6 +345,13 @@ const NEXOS = new Set(['de', 'del', 'la', 'las', 'los', 'el', 'da', 'do']);
  * «Gerencia General»). Tratarla como comienzo de oración descartaba justo la
  * palabra más informativa de la caja — que es donde apareció el problema que
  * originó todo esto.
+ *
+ * El `]` que CIERRA un diagrama sí abre oración, y es lo contrario del caso de
+ * arriba: lo que viene después del diagrama es el título o el párrafo
+ * siguiente, no la continuación de la última etiqueta. Sin esta línea, «…
+ * Cierre] Ejemplos de aplicación» dejaba a «Ejemplos» «a mitad de oración»,
+ * o sea candidata a nombre propio. Medido el 2026-09-22: ese falso positivo
+ * salió en las cinco lecciones de una construcción y en cada edición de otra.
  */
 function arrancaOracion(texto: string, indice: number): boolean {
   for (let i = indice - 1; i >= 0; i--) {
@@ -324,7 +359,7 @@ function arrancaOracion(texto: string, indice: number): boolean {
 
     if (c === ' ' || c === '\n' || c === '\t' || c === '"' || c === '«' || c === '(' || c === '[') continue;
 
-    return c === '.' || c === '!' || c === '?' || c === ':' || c === ';';
+    return c === '.' || c === '!' || c === '?' || c === ':' || c === ';' || c === ']';
   }
 
   return true;
@@ -605,7 +640,12 @@ export function verificarTokens(params: {
     if (registrados.some((r) => r.includes(clave) || clave.includes(r))) return;
 
     registrados.push(clave);
-    hallazgos.push({ tipo, valor, contexto: contexto(texto, indice, valor.length) });
+    hallazgos.push({
+      tipo,
+      valor,
+      contexto: contexto(texto, indice, valor.length),
+      enDiagrama: diagramas.some(([desde, hasta]) => indice >= desde && indice < hasta)
+    });
   }
 
   for (const m of texto.matchAll(NUMERO)) {
@@ -676,6 +716,35 @@ export function verificarTokens(params: {
 }
 
 /**
+ * ¿Este hallazgo se le puede pedir al modelo que lo atienda?
+ *
+ * El informe del docente y el canal al modelo NO llevan lo mismo, y esa
+ * asimetría es deliberada. El informe lo lee una persona que puede juzgar:
+ * ahí va todo. Al modelo sólo puede ir lo que tiene una salida posible, porque
+ * un aviso que no se puede satisfacer se atiende igual — y lo que hace el
+ * modelo cuando no puede satisfacerlo por bloques es reescribir la lección
+ * entera. Medido el 2026-09-22: en las dos lecciones de una actualización, el
+ * aviso imposible («Vía WhatsApp», «Incidentes Críticos», etiquetas de un
+ * diagrama) terminó en un `update_lesson_content` que borró tres ejemplos ya
+ * marcados y los reemplazó por otra cosa.
+ *
+ * Lo que queda:
+ *
+ * - Los NÚMEROS, siempre. Un plazo o un teléfono equivocado es el daño que este
+ *   chequeo existe para encontrar, esté donde esté — y adentro de un diagrama
+ *   un número sigue siendo corregible reemplazando el SVG.
+ * - Los nombres y las citas que están en la PROSA, que es donde el modelo puede
+ *   marcar el elemento que los contiene.
+ *
+ * Lo que se cae: nombres y citas dentro de un `[diagram: …]`. Una etiqueta en
+ * mayúscula no es un nombre propio, y aunque lo fuera no hay ningún elemento
+ * HTML adentro del SVG al que ponerle `data-ejemplo`.
+ */
+function vaAlModelo(hallazgo: HallazgoDeToken): boolean {
+  return hallazgo.tipo === 'numero' || !hallazgo.enDiagrama;
+}
+
+/**
  * Los hallazgos tal como los lee el modelo: «valor» — contexto.
  *
  * Con el contexto y no pelados. Un aviso que dice sólo «4471» lo manda a buscar
@@ -684,5 +753,8 @@ export function verificarTokens(params: {
  * un dato que creyó copiar.
  */
 export function redactarTokens(hallazgos: HallazgoDeToken[], tope = MAX_TOKENS_AL_MODELO): string[] {
-  return hallazgos.slice(0, tope).map((hallazgo) => `«${hallazgo.valor}» — ${hallazgo.contexto}`);
+  return hallazgos
+    .filter(vaAlModelo)
+    .slice(0, tope)
+    .map((hallazgo) => `«${hallazgo.valor}» — ${hallazgo.contexto}`);
 }

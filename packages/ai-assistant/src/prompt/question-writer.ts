@@ -24,6 +24,15 @@ import { EXERCISE_QUALITY_RULES } from './exercise-rules';
  * la pregunta se descarta. Una pregunta inventada puede sonar perfecta; su
  * evidencia, no — o está en la lección o no está.
  *
+ * ── Por qué la numérica pide un campo propio ─────────────────────────────────
+ *
+ * La respuesta de una pregunta numérica vive en `settings.correctValue`, y
+ * `settings` es un mapa libre: el esquema no le pide nada concreto ahí y el
+ * escritor lo dejaba vacío. Medido el 2026-09-22: 5 numéricas escritas, 5
+ * descartadas al validarlas, todas con su evidencia impecable. Ahora la pide
+ * como `numericAnswer`, un campo con nombre y tipo, y el servidor la vuelca a
+ * `settings` antes de validar.
+ *
  * ── Por qué recibe la lista de tipos ─────────────────────────────────────────
  *
  * Los tipos premium dependen del plan de la organización, así que el bloque se
@@ -53,7 +62,7 @@ These are the only question type IDs supported by this platform. Always use thes
 
 ${questionTypeListBlock}
 
-- NUMERIC: the correct answer goes in \`settings.correctValue\` as a number (add \`settings.tolerance\` unless the answer is exact), and the question takes NO options. Only use it when the lessons let the learner compute or recall an exact number.
+- NUMERIC: the correct answer goes in \`numericAnswer\` as a number (add \`numericTolerance\` unless the answer is exact), and the question takes NO options. **A NUMERIC question without \`numericAnswer\` is discarded** — it would award zero points to every learner, so the server refuses it. Only use this type when the lessons let the learner compute or recall an exact number.
 - STAR: \`settings.correctValue\`. WORD_BANK: \`settings.correctAnswers\` and \`settings.template\`.
 - TRUE_FALSE: exactly two options, labelled with the words for true and false IN THE COURSE LANGUAGE ("Verdadero" / "Falso" in Spanish, "True" / "False" in English), exactly one marked correct.
 - RADIO / CHECKBOX: the options carry the answer (\`isCorrect\`), and the question takes no \`settings\`.

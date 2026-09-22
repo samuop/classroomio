@@ -43,10 +43,23 @@ export interface PlanItemBaseline {
   contentHash: string;
 }
 
-/** Un dato que hay que reemplazar dentro del target, salido del análisis de la fuente nueva. */
+/**
+ * Un dato que hay que reemplazar dentro del target, salido del análisis de la
+ * fuente nueva.
+ *
+ * `key` y `context` viajan con él porque la medición de «esto ya se hizo» usa
+ * el MISMO matcher que el barrido: un ítem se sigue reclamando mientras la
+ * frase larga o la clave (con su contexto) aparezcan. Ver `cambios-de-fuente.ts`
+ * en la API — sin la clave, las preguntas quedaban con el dato viejo y nada lo
+ * reclamaba.
+ */
 export interface PlanItemReplacement {
   old: string;
   new: string;
+  /** La forma más corta y distintiva del valor viejo: «4400». */
+  key?: string;
+  /** Lo que tiene que estar cerca para que una coincidencia por clave cuente: «P2». */
+  context?: string[];
 }
 
 export interface PlanRegistryEntry {
