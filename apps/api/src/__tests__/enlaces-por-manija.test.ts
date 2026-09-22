@@ -154,6 +154,17 @@ describe('dónde se puede cortar el texto que llega en trozos', () => {
       pendiente: ''
     });
   });
+
+  /**
+   * Medido con el texto real de una ronda cortado de a 7 y de a 23 caracteres:
+   * los trozos que terminaban justo en la `@` o justo en el `]` se emitían, y el
+   * enlace quedaba partido en dos emisiones que ninguna búsqueda ve entero.
+   */
+  it('retiene también la @ sola y el título cerrado sin paréntesis', () => {
+    expect(cortarEnElBorde('Ver @')).toEqual({ listo: 'Ver ', pendiente: '@' });
+    expect(cortarEnElBorde('Ver @[Quién atiende]')).toEqual({ listo: 'Ver ', pendiente: '@[Quién atiende]' });
+    expect(cortarEnElBorde('Ver @[Quién atiende](')).toEqual({ listo: 'Ver ', pendiente: '@[Quién atiende](' });
+  });
 });
 
 /** Las partes del stream, como las manda el AI SDK. */
@@ -193,6 +204,55 @@ describe('la traducción sobre el texto que sale en trozos', () => {
     expect(texto).toBe(`Listo. Ver @[Quién atiende cada reclamo](lesson:${ID.quienAtiende}) y nada más.`);
     // Y el cierre sigue estando, después del texto.
     expect(salida[salida.length - 1]).toMatchObject({ type: 'text-end' });
+  });
+
+  /**
+   * Medido en producción: Gemini cierra un bloque de texto y abre otro entre
+   * trozos, así que un enlace también cae partido entre DOS bloques. Con un
+   * buffer por bloque que se volcaba en cada `text-end`, 8 de 8 enlaces de una
+   * ronda quedaron sin traducir.
+   */
+  it('traduce un enlace partido entre dos bloques de texto, y cierra el primero antes de abrir el segundo', async () => {
+    const { salida } = await pasarPorLaTransformacion([
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', text: 'Listo. Ver @[Quién atiende' },
+      { type: 'text-end', id: 't1' },
+      { type: 'text-start', id: 't2' },
+      { type: 'text-delta', id: 't2', text: ' cada reclamo](lesson:S1.L1) y nada más.' },
+      { type: 'text-end', id: 't2' }
+    ]);
+
+    const texto = salida
+      .filter((parte) => parte.type === 'text-delta')
+      .map((parte) => parte.text)
+      .join('');
+
+    expect(texto).toBe(`Listo. Ver @[Quién atiende cada reclamo](lesson:${ID.quienAtiende}) y nada más.`);
+    // El orden de las marcas se respeta: el primer bloque cierra antes de que
+    // abra el segundo, y lo retenido viaja con el segundo.
+    expect(salida.map((parte) => `${parte.type}${parte.id ? ':' + parte.id : ''}`)).toEqual([
+      'text-start:t1',
+      'text-delta:t1',
+      'text-end:t1',
+      'text-start:t2',
+      'text-delta:t2',
+      'text-end:t2'
+    ]);
+    expect(salida.filter((parte) => parte.type === 'text-delta' && parte.id === 't2')[0].text).toContain(
+      '@[Quién atiende cada reclamo]'
+    );
+  });
+
+  it('un cierre retenido sale, con lo retenido antes, cuando lo que sigue no es texto', async () => {
+    const { salida } = await pasarPorLaTransformacion([
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', text: 'Ver @[Quién at' },
+      { type: 'text-end', id: 't1' },
+      { type: 'finish' }
+    ]);
+
+    expect(salida.map((parte) => parte.type)).toEqual(['text-start', 'text-delta', 'text-delta', 'text-end', 'finish']);
+    expect(salida[2]).toMatchObject({ type: 'text-delta', id: 't1', text: '@[Quién at' });
   });
 
   it('lo retenido sale aunque el bloque de texto nunca cierre', async () => {

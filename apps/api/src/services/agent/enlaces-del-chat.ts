@@ -45,8 +45,17 @@ export type TipoDeEnlace = 'lesson' | 'exercise' | 'section';
  */
 const ENLACE = /@\[([^\]]+)\]\((lesson|exercise|section):([A-Za-z0-9_.-]+)\)/gi;
 
-/** Lo que hay que retener cuando un enlace podría estar empezando en el borde de un trozo. */
-export const INICIO_DE_ENLACE = /@\[[^\]]*(?:\]\([^)]*)?$/;
+/**
+ * Lo que hay que retener cuando un enlace podría estar empezando en el borde de un trozo.
+ *
+ * Cubre CADA prefijo posible de `@[Título](tipo:id)`: la `@` sola, `@[Tít`,
+ * `@[Título]` (sin el paréntesis todavía) y `@[Título](tipo:S1`. Medido con el
+ * texto real de una ronda cortado de a 7 y de a 23 caracteres: la versión que
+ * no contemplaba `]` suelto ni `@` suelta dejaba 1 o 2 enlaces sin traducir de
+ * cada 8, porque el trozo que terminaba justo ahí se emitía y el enlace quedaba
+ * partido en dos emisiones que ninguna búsqueda ve entero.
+ */
+export const INICIO_DE_ENLACE = /@(?:\[[^\]]*(?:\](?:\([^)]*)?)?)?$/;
 
 /** Misma normalización que el dashboard: si difirieran, una repararía donde la otra no. */
 function normalizarTitulo(titulo: string): string {
@@ -161,8 +170,29 @@ export function transformarEnlacesDelChat(
   alReparar?: (cambios: EnlaceReparado[]) => void
 ): StreamTextTransform<ToolSet> {
   return () => {
-    /** Lo retenido de cada bloque de texto: un enlace puede caer partido en tres trozos. */
-    const pendientePorId = new Map<string, string>();
+    /**
+     * Lo retenido del texto: un enlace puede caer partido en tres trozos.
+     *
+     * Es UN solo buffer y no uno por bloque a propósito. El proveedor puede
+     * cerrar un bloque de texto (`text-end`) y abrir otro en cualquier punto
+     * —medido: Gemini lo hace entre trozos—, así que un enlace también puede
+     * quedar partido entre dos bloques. Si el buffer se volcara en cada
+     * `text-end`, ese enlace saldría en dos mitades que ninguna búsqueda ve
+     * entero. Medido con el texto real de una ronda, un bloque por trozo: 8 de 8
+     * enlaces sin traducir. Lo retenido de un bloque pasa entonces al primer
+     * trozo del bloque siguiente, y el panel los concatena en orden: el texto
+     * que lee el docente es el mismo.
+     */
+    let pendiente = '';
+    /** El id del bloque al que pertenece lo retenido, para emitirlo con él si nada lo sigue. */
+    let idPendiente: string | undefined;
+    /**
+     * El `text-end` que no se puede mandar todavía: cierra un bloque que dejó
+     * texto retenido. Se libera cuando se sabe si ese texto sigue en otro
+     * bloque (se muda ahí) o si no sigue nada (se emite como está, y después
+     * el cierre).
+     */
+    let cierreRetenido: TextStreamPart<ToolSet> | null = null;
     let curso: Promise<CursoParaEnlaces> | null = null;
 
     type Parte = TextStreamPart<ToolSet>;
@@ -194,10 +224,19 @@ export function transformarEnlacesDelChat(
       controller.enqueue({ ...plantilla, text: salida } as unknown as Parte);
     };
 
-    const volcarRetenido = async (controller: TransformStreamDefaultController<Parte>): Promise<void> => {
-      for (const [id, resto] of [...pendientePorId]) {
-        pendientePorId.delete(id);
-        await emitir(controller, { type: 'text-delta', ...(id ? { id } : {}) }, resto);
+    /** Nada más viene de este bloque ni del siguiente: lo retenido sale como está, y después el cierre. */
+    const cerrarLoRetenido = async (controller: TransformStreamDefaultController<Parte>): Promise<void> => {
+      const resto = pendiente;
+      const id = idPendiente;
+
+      pendiente = '';
+      idPendiente = undefined;
+
+      await emitir(controller, { type: 'text-delta', ...(id ? { id } : {}) }, resto);
+
+      if (cierreRetenido) {
+        controller.enqueue(cierreRetenido);
+        cierreRetenido = null;
       }
     };
 
@@ -207,24 +246,47 @@ export function transformarEnlacesDelChat(
 
         if (parte.type === 'text-delta' && typeof parte.text === 'string') {
           const id = parte.id ?? '';
-          const { listo, pendiente } = cortarEnElBorde((pendientePorId.get(id) ?? '') + parte.text);
 
-          pendientePorId.set(id, pendiente);
+          // Un bloque nuevo hereda lo retenido del anterior; el cierre del
+          // anterior ya salió en su `text-start` (ver abajo).
+          const { listo, pendiente: resto } = cortarEnElBorde(pendiente + parte.text);
+
+          pendiente = resto;
+          idPendiente = id;
           await emitir(controller, parte, listo);
 
           return;
         }
 
-        // Lo retenido sale ANTES de cualquier marca de cierre: una parte de
-        // texto emitida después de su `text-end` llegaría fuera de lugar.
-        if (parte.type === 'text-end' || parte.type === 'finish' || parte.type === 'abort' || parte.type === 'error') {
-          await volcarRetenido(controller);
+        if (parte.type === 'text-end' && pendiente) {
+          // Se retiene el cierre: todavía no se sabe si el enlace sigue en el
+          // bloque que viene.
+          cierreRetenido = chunk;
+
+          return;
+        }
+
+        if (parte.type === 'text-start' && cierreRetenido) {
+          // Sigue otro bloque: lo retenido se muda a él, y el bloque anterior
+          // se cierra sin esa cola. El panel concatena los bloques en orden, así
+          // que el texto queda igual.
+          controller.enqueue(cierreRetenido);
+          cierreRetenido = null;
+          controller.enqueue(chunk);
+
+          return;
+        }
+
+        // Cualquier otra cosa —una herramienta, el final de la ronda, un
+        // error— significa que el texto no sigue: lo retenido sale como está.
+        if (parte.type !== 'text-start' && (pendiente || cierreRetenido)) {
+          await cerrarLoRetenido(controller);
         }
 
         controller.enqueue(chunk);
       },
       async flush(controller) {
-        await volcarRetenido(controller);
+        if (pendiente || cierreRetenido) await cerrarLoRetenido(controller);
       }
     });
   };

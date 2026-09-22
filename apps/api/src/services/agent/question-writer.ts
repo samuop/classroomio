@@ -91,6 +91,24 @@ export type EscritorDePreguntas = (params: {
  * la forma que llega a la base es la misma de siempre y nada más abajo cambia.
  */
 export const camposDelEscritor = questionFields.extend({
+  /**
+   * Las opciones, OBLIGATORIAS en el esquema del escritor.
+   *
+   * En `questionFields` tienen `.default([])`, y un campo con default no es
+   * requerido en el esquema JSON que ve el proveedor. Medido el 2026-09-22
+   * contra el modelo real de producción, mismo prompt y mismas lecciones, dos
+   * corridas de 6 preguntas por variante: con el campo opcional, 7 de 12
+   * preguntas de opción volvieron sin ninguna opción (6/6 en una corrida); con
+   * el campo requerido, 0 de 12. Otro modelo de la misma familia no fallaba
+   * con ninguna de las dos. No es que el escritor «se olvide»: es que un campo
+   * que el esquema no exige, ese proveedor lo deja vacío cuando el objeto es
+   * largo. Una NUMERIC manda `[]`, que sigue siendo cumplir con el esquema.
+   */
+  options: z
+    .array(z.object({ label: z.string().min(1), isCorrect: z.boolean() }))
+    .describe(
+      'REQUIRED on every question. RADIO / CHECKBOX / TRUE_FALSE: the answer options the learner chooses from (two or more, with isCorrect on the right ones). NUMERIC: an empty array [].'
+    ),
   numericAnswer: z
     .number()
     .optional()
