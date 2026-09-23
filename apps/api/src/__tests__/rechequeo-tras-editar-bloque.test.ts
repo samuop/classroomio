@@ -158,7 +158,7 @@ beforeEach(() => {
 
 describe('una lección bajo orden de trabajo', () => {
   it('se rechequea ENTERA después de empalmar un bloque', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
 
     await herramientas({
       verificarFundamento,
@@ -184,7 +184,7 @@ describe('una lección bajo orden de trabajo', () => {
   it('se rechequea una sola vez por ronda, no una por bloque editado', async () => {
     // Editar una lección larga son diez o quince empalmes. Salir a la red en
     // cada uno sería verificar quince veces casi el mismo texto.
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
     const tools = herramientas({ verificarFundamento, leccionesBajoOrdenDeTrabajo: new Set([ID_LECCION]) });
 
     await tools.replace_lesson_block.execute(
@@ -200,7 +200,7 @@ describe('una lección bajo orden de trabajo', () => {
   });
 
   it('un dato que el bloque nuevo trajo y ninguna fuente dice vuelve como aviso', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
 
     const resultado = await herramientas({
       verificarFundamento,
@@ -216,7 +216,7 @@ describe('una lección bajo orden de trabajo', () => {
 
   it('el aviso del fundamento vuelve al modelo', async () => {
     const aviso = 'This lesson states things the course sources do not support: "atiende las 24 horas".';
-    const verificarFundamento = vi.fn().mockResolvedValue([aviso]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [aviso], estado: 'ok' });
 
     const resultado = await herramientas({
       verificarFundamento,
@@ -229,8 +229,38 @@ describe('una lección bajo orden de trabajo', () => {
     expect(resultado.groundingWarnings).toEqual([aviso]);
   });
 
+  /**
+   * Si el rechequeo se cae, se dice — y NO se manda a reescribir.
+   *
+   * El aviso decía «retry write_lesson later» igual que tras una escritura
+   * entera. Bajo una orden de EDICIÓN eso choca con `negarReescrituraBajoOrden`
+   * («A full rewrite is not allowed here»): una instrucción que la herramienta
+   * de al lado contradice.
+   */
+  it('un rechequeo caído lo dice sin mandar a write_lesson', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const verificarFundamento = vi.fn().mockRejectedValue(new Error('503 del proveedor'));
+
+    const resultado = await herramientas({
+      verificarFundamento,
+      leccionesBajoOrdenDeTrabajo: new Set([ID_LECCION])
+    }).replace_lesson_block.execute(
+      { lessonId: 'S1.L1', blockId: 'bbbb2222', html: '<p>La Mesa de Ayuda atiende de 8 a 20.</p>' },
+      OPCIONES
+    );
+
+    expect(resultado).toMatchObject({ updated: true, groundingStatus: 'failed', groundingReason: '503 del proveedor' });
+
+    const nota = String(resultado.note);
+
+    expect(nota).toContain('did NOT run');
+    expect(nota).toContain('503 del proveedor');
+    expect(nota).toContain('edit is saved');
+    expect(nota).not.toContain('write_lesson');
+  });
+
   it('edit_lesson_content hace lo mismo', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
 
     await herramientas({
       verificarFundamento,
@@ -249,7 +279,7 @@ describe('una lección que nadie marcó y que el plan no manda tocar', () => {
   it('no sale a la red por un retoque', async () => {
     // Devuelve algo válido a propósito: si devolviera `undefined`, una regresión
     // que lo llamara reventaría adentro y el fallo se leería como otra cosa.
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
 
     const resultado = await herramientas({ verificarFundamento }).replace_lesson_block.execute(
       { lessonId: 'S1.L1', blockId: 'bbbb2222', html: '<p>La Mesa de Ayuda atiende de 8 a 20.</p>' },
@@ -262,7 +292,7 @@ describe('una lección que nadie marcó y que el plan no manda tocar', () => {
   });
 
   it('y tampoco por una orden de trabajo que es de OTRA lección', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = vi.fn().mockResolvedValue({ avisos: [], estado: 'ok' });
 
     await herramientas({
       verificarFundamento,

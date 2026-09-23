@@ -196,6 +196,24 @@ describe('las reglas son las mismas que las del constructor', () => {
     expect(escritor).not.toContain('${');
   });
 
+  /**
+   * Capacidad nueva, instrucción vieja: la guardia de conservación niega la
+   * versión del escritor que pierde un diagrama, una tabla o un ejemplo
+   * marcado, y el prompt sólo le pedía conservar las <img> — y le prohibía
+   * escribir <table>. Una orden `rewrite` sobre una lección con tabla quedaba
+   * trabada entre las dos reglas.
+   */
+  it('el escritor sabe qué piezas tiene que conservar al reescribir', () => {
+    for (const pieza of ['data-ejemplo', '<svg>', '<img>', '<figure>', '<table>', '<pre>']) {
+      expect(escritor).toContain(pieza);
+    }
+    expect(escritor).toMatch(/refuses your version/);
+    expect(escritor).toMatch(/Changing a diagram means REPLACING it/);
+    // Y la regla de HTML ya no le prohíbe CONSERVAR la tabla que ya estaba.
+    expect(escritor).toContain('no new <table>');
+    expect(escritor).not.toContain('keep every <img> exactly where it is.');
+  });
+
   it('el escritor sabe que no puede hablar con el docente y usa la nota', () => {
     expect(escritor).toMatch(/You cannot talk to the teacher/);
     expect(escritor).toMatch(/"tell the teacher" always means: put it in <note>/);

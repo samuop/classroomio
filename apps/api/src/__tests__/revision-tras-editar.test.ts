@@ -17,6 +17,11 @@ const FUENTES: FuenteVista[] = [{ fileName: 'manual.docx', text: 'el texto que e
 
 const AVISO_ORIGINAL = 'This lesson states things the course sources do not support: "the system blocks the sale".';
 
+/** Un juez que CORRIÓ y devolvió estos avisos. Ver `ResultadoDeFundamento`. */
+function juezQueCorrio(avisos: string[] = []) {
+  return vi.fn().mockResolvedValue({ avisos, estado: 'ok' });
+}
+
 function registroConLeccionMarcada() {
   const registro = crearRegistroDeAvisos();
   anotarChequeo(registro, 'leccion-1', { avisos: [AVISO_ORIGINAL], soloFuentes: FUENTES });
@@ -45,7 +50,7 @@ describe('revisarTrasEditar', () => {
     // Devuelve algo válido a propósito: si el mock devolviera `undefined`, una
     // regresión que llamara al verificador reventaría adentro y el fallo se
     // leería como otra cosa. Así, lo único que puede fallar es el `not.toHaveBeenCalled`.
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = juezQueCorrio();
 
     const resultado = await revisarTrasEditar({
       registro: crearRegistroDeAvisos(),
@@ -76,7 +81,7 @@ describe('revisarTrasEditar', () => {
    * afirmación sobrevivía justamente en lo que la edición no tocó.
    */
   it('chequea la lección ENTERA, no el fragmento que se acaba de escribir', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = juezQueCorrio();
     const leccionCompleta = '<h3>Una lección marcada</h3><p>frase corregida</p><p>la misma afirmación, en otro lado</p>';
 
     await revisarTrasEditar({
@@ -91,7 +96,7 @@ describe('revisarTrasEditar', () => {
   });
 
   it('contrasta contra las MISMAS fuentes que tuvo el verificador al escribirla', async () => {
-    const verificarFundamento = vi.fn().mockResolvedValue([]);
+    const verificarFundamento = juezQueCorrio();
 
     await revisarTrasEditar({
       registro: registroConLeccionMarcada(),
@@ -113,10 +118,10 @@ describe('revisarTrasEditar', () => {
       lessonId: 'leccion-1',
       lessonTitle: 'Una lección marcada',
       contenido: '<p>la afirmación sigue acá</p>',
-      verificarFundamento: vi.fn().mockResolvedValue([sigueMal])
+      verificarFundamento: juezQueCorrio([sigueMal])
     });
 
-    expect(resultado).toEqual({ groundingWarnings: [sigueMal], resuelto: false });
+    expect(resultado).toEqual({ groundingWarnings: [sigueMal], resuelto: false, estado: 'ok' });
     // Sigue marcada: la próxima edición tiene que volver a mirarla.
     expect(tieneAvisosAbiertos(registro, 'leccion-1')).toBe(true);
   });
@@ -129,18 +134,22 @@ describe('revisarTrasEditar', () => {
       lessonId: 'leccion-1',
       lessonTitle: 'Una lección marcada',
       contenido: '<p>ahora dice sólo lo que dice la fuente</p>',
-      verificarFundamento: vi.fn().mockResolvedValue([])
+      verificarFundamento: juezQueCorrio()
     });
 
-    expect(resultado).toEqual({ groundingWarnings: [], resuelto: true });
+    expect(resultado).toEqual({ groundingWarnings: [], resuelto: true, estado: 'ok' });
     expect(tieneAvisosAbiertos(registro, 'leccion-1')).toBe(false);
   });
 
   /**
    * El verificador sale a la red. Si se cae, la edición YA está guardada: hacerla
    * fallar por esto sería perder trabajo bueno por un chequeo opcional.
+   *
+   * Lo que SÍ cambió: antes devolvía `undefined`, que es lo mismo que devuelve
+   * «no había nada que rechequear», así que una caída del proveedor se leía
+   * como silencio y nadie se enteraba. Ahora lo dice.
    */
-  it('si el verificador se cae, la edición sobrevive y la lección queda marcada', async () => {
+  it('si el verificador se cae, la edición sobrevive, lo dice, y la lección queda marcada', async () => {
     const registro = registroConLeccionMarcada();
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -152,8 +161,40 @@ describe('revisarTrasEditar', () => {
       verificarFundamento: vi.fn().mockRejectedValue(new Error('502 del proveedor'))
     });
 
-    expect(resultado).toBeUndefined();
+    expect(resultado).toEqual({
+      groundingWarnings: [],
+      resuelto: false,
+      estado: 'failed',
+      motivo: '502 del proveedor'
+    });
     // Sin desmarcar: el aviso original sigue abierto y la próxima edición reintenta.
+    expect(tieneAvisosAbiertos(registro, 'leccion-1')).toBe(true);
+  });
+
+  /**
+   * La otra mitad del mismo agujero: el juez puede no tirar y aun así no haber
+   * corrido (el proveedor contestó mal, el paquete de fuentes no se pudo armar).
+   * Un `avisos: []` con estado `failed` NO puede leerse como «quedó limpia».
+   */
+  it('un chequeo que no corrió no desmarca la lección ni se declara resuelto', async () => {
+    const registro = registroConLeccionMarcada();
+
+    const resultado = await revisarTrasEditar({
+      registro,
+      lessonId: 'leccion-1',
+      lessonTitle: 'Una lección marcada',
+      contenido: '<p>x</p>',
+      verificarFundamento: vi
+        .fn()
+        .mockResolvedValue({ avisos: [], estado: 'failed', motivo: 'el proveedor devolvió 500' })
+    });
+
+    expect(resultado).toEqual({
+      groundingWarnings: [],
+      resuelto: false,
+      estado: 'failed',
+      motivo: 'el proveedor devolvió 500'
+    });
     expect(tieneAvisosAbiertos(registro, 'leccion-1')).toBe(true);
   });
 });

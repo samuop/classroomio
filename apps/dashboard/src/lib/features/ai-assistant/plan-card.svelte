@@ -72,7 +72,8 @@
         {$t('ai_assistant.plan_screen.affected_sections', { count: cuenta.secciones })}{#if cuenta.nuevas > 0}
           · {$t('ai_assistant.plan_screen.new_lessons', { count: cuenta.nuevas })}{/if}{#if cuenta.reescribir > 0}
           · {$t('ai_assistant.plan_screen.rewrites', { count: cuenta.reescribir })}{/if}{#if cuenta.retocar > 0}
-          · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}
+          · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}{#if cuenta.seDejan > 0}
+          · {$t('ai_assistant.plan_screen.left_as_is_count', { count: cuenta.seDejan })}{/if}
       </p>
     {:else}
       <p class="ui:text-muted-foreground truncate text-xs">

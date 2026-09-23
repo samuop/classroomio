@@ -352,6 +352,8 @@ function medirCambio(params: {
   replacements: PlanItemReplacement[] | undefined;
   /** Lo que el modelo declaró con `confirm_change_applied`, si lo hizo. */
   confirmed: { reason: string; at: string } | undefined;
+  /** El plan aprobado dice que esta pieza se deja como está. */
+  skip?: boolean;
 }): {
   hecho: boolean;
   pendientes: Array<{ old: string; new: string; donde: string[]; preguntas: number[] }>;
@@ -368,6 +370,16 @@ function medirCambio(params: {
   confirmado?: string;
 } {
   const { tipo, entityId, estado, baseline, replacements, confirmed } = params;
+
+  /**
+   * Una pieza que el plan deja COMO ESTÁ no se mide: no hay nada que medir.
+   *
+   * Antes de la línea de abajo a propósito — un ítem `skip` puede no tener
+   * estado ni línea de base y sigue estando hecho. Lo que lo hace legítimo es
+   * que el docente aprobó un plan que dice, con todas las letras, que esa pieza
+   * queda afuera y por qué.
+   */
+  if (params.skip) return { hecho: true, pendientes: [], editado: false };
 
   if (!entityId || !estado) return { hecho: false, pendientes: [], editado: false };
 
@@ -492,10 +504,21 @@ function describirPendiente(params: {
 
   const lista = pendientes
     .map((p) => {
+      /**
+       * Sin bloque, la salida es LEER la lección, no `edit_lesson_content`.
+       *
+       * Decía «with no block id: use edit_lesson_content», y medido el
+       * 2026-09-22 eso es exactamente lo que el modelo hizo con un valor que
+       * vivía dentro de un diagrama: mandó un `<svg>` reconstruido de memoria
+       * como `oldString`, no coincidió con nada, y terminó pegando el diagrama
+       * al lado del párrafo. Una lección vieja se estampa con sus ids en la
+       * primera lectura (ver `asegurarIdsDeBloque`), así que después de
+       * `get_lesson_content` el bloque —el diagrama incluido— SÍ tiene nombre.
+       */
       const donde =
         p.donde.length > 0
           ? ` (still present: ${p.donde.length === 1 ? 'block' : 'blocks'} ${p.donde.join(', ')})`
-          : ' (still present, with no block id: use edit_lesson_content)';
+          : ' (still present, in no listed block: call get_lesson_content first — it gives every block an id, a diagram included — and then replace_lesson_block)';
 
       return `replace «${p.old}» → «${p.new}»${donde}`;
     })
@@ -747,15 +770,22 @@ export function buildPlanProgressAnchor(
           estado,
           baseline: regItem?.baseline,
           replacements: regItem?.replacements,
-          confirmed: regItem?.confirmed
+          confirmed: regItem?.confirmed,
+          // El registro manda sobre el plan: es lo que el docente aprobó y lo
+          // que sobrevive a que la conversación se recorte.
+          skip: regItem?.skip ?? item.skip
         });
         const donde = `"${realDelCambio?.title ?? item.title}" (${manijaOInterrogante(mapa, entityId)})`;
 
         if (medida.hecho) {
           // Un ítem dado por hecho POR DECLARACIÓN se ve distinto de uno medido:
           // el docente tiene que poder distinguir «el 4400 ya no está» de «el
-          // asistente dice que lo que queda es de otra regla».
-          const porDeclaracion = medida.confirmado ? ` (confirmed by the assistant: ${medida.confirmado})` : '';
+          // asistente dice que lo que queda es de otra regla» y de «el plan dice
+          // que esta pieza se deja como está».
+          const seDeja = (regItem?.skip ?? item.skip)
+            ? ` (left as is on purpose${item.changes ? `: ${item.changes}` : ''} — do NOT edit it)`
+            : '';
+          const porDeclaracion = medida.confirmado ? ` (confirmed by the assistant: ${medida.confirmado})` : seDeja;
 
           itemStatuses.push(`  - ${tag(itemKey)}${item.type} ${donde} ✅${porDeclaracion}`);
           progressItems.push({

@@ -39,7 +39,14 @@ import {
   validateSvgDiagram
 } from '@api/services/agent/lesson-content';
 import type { RedisClient } from '@api/utils/redis/redis';
-import { textoDeLeccion, type FuenteVista, type Verificador } from '@api/services/agent/grounding';
+import {
+  SIN_VERIFICADOR,
+  textoDeLeccion,
+  type EstadoDelFundamento,
+  type FuenteVista,
+  type ResultadoDeFundamento,
+  type Verificador
+} from '@api/services/agent/grounding';
 import { redactarTokens, textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
 import {
   anotarChequeo,
@@ -132,10 +139,13 @@ import { searchWeb } from '@api/services/agent/web-search';
 import {
   asignarIdsDeBloque,
   findLessonBlock,
+  listarElementosDePrimerNivel,
   preserveBlockId,
+  quitarDiagramasDuplicados,
   replaceLessonBlock,
   summarizeLessonBlocks
 } from '@api/services/agent/lesson-blocks';
+import { negarPerdidaEstructural, PerdidaEstructural } from '@api/services/agent/conservacion';
 import {
   crearResolutorDeManijas,
   describirCurso,
@@ -148,7 +158,7 @@ import {
 } from '@api/services/agent/manijas';
 import { barrerValores, valorDelCambio, type AnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { estadoDelContenido } from '@api/services/agent/plan-de-cambios';
-import { guardarAnalisisDeFuente } from '@cio/db/queries/agent';
+import { guardarAnalisisDeFuente, leerAnalisisDeFuente } from '@cio/db/queries/agent';
 
 function summarizeAgentDebugValue(value: unknown, depth = 0): unknown {
   if (value == null) return value;
@@ -204,6 +214,71 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 /**
+ * El cuerpo que esta lección tiene guardado AHORA en ese idioma, o vacío.
+ *
+ * Sin `catch`, a propósito. Tenía uno que devolvía vacío ante cualquier falla,
+ * y con `antes` vacío la guardia de conservación no hace nada: una caída
+ * pasajera de la base apagaba la guardia en silencio y la escritura de cuerpo
+ * entero seguía adelante contra el mismo Postgres que acababa de fallar. Es el
+ * mismo «falla abierto y mudo» que se le sacó al juez de fundamento. Si la
+ * lectura se cae, la herramienta falla fuerte y no se guarda nada.
+ *
+ * Y se relee de la base en cada escritura, en vez de usar lo que la
+ * herramienta leyó al empezar: en el rebote del escritor lo que hay que
+ * conservar es la PRIMERA versión recién guardada, no la de antes del escritor
+ * (ver el test del rebote en `conservacion-al-escribir.test.ts`).
+ */
+async function contenidoGuardado(lessonId: string, locale: string): Promise<string> {
+  const actual = (await getLesson(lessonId)) as {
+    lessonLanguages?: Array<{ locale: string; content: string | null }>;
+  } | null;
+
+  return actual?.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
+}
+
+/**
+ * Una lección vieja se vuelve direccionable al LEERLA.
+ *
+ * ── Por qué hace falta ───────────────────────────────────────────────────────
+ *
+ * Los ids se estampan al ESCRIBIR, así que toda lección anterior a ese deploy
+ * —y todo `<svg>` anterior a que el svg entrara en `TIPOS_CON_ID`— sigue sin
+ * id hasta que alguien la reescriba. Y ahí se cierra el círculo que se midió el
+ * 2026-09-22: el diagrama no aparece en la lista de bloques, la orden de
+ * trabajo no lo puede nombrar, el riel contra «un diagrama al lado del otro»
+ * manda a «replace it by its own id from the blocks list», y esa lista no lo
+ * tiene. El modelo queda sin una sola jugada legal.
+ *
+ * Se GUARDA, no sólo se devuelve: un id que no está en la base no sirve para
+ * `replace_lesson_block`, que empalma sobre el contenido guardado. Es
+ * idempotente (una segunda lectura no cambia un byte) y no toca nada más del
+ * HTML. Y no cuenta como una edición del docente: el hash de la línea de base
+ * ignora los `data-block-id` justamente por esto — ver `hashDeContenido` en
+ * `plan-de-cambios.ts`.
+ */
+async function asegurarIdsDeBloque(lessonId: string, locale: string, contenido: string): Promise<string> {
+  const conIds = asignarIdsDeBloque(contenido);
+
+  if (conIds === contenido) return contenido;
+
+  try {
+    await upsertLessonLanguageService(lessonId, { locale: locale as 'en', content: conIds });
+  } catch (error) {
+    // Una LECTURA no puede fallar porque el estampado no se pudo guardar. Y se
+    // devuelve el contenido viejo a propósito: entregar ids que no están en la
+    // base sería peor que no entregar ninguno — el empalme por id no los
+    // encontraría y el modelo no tendría cómo saber por qué.
+    console.error(`[lesson-blocks] no se pudieron guardar los ids de «${lessonId}»:`, error);
+
+    return contenido;
+  }
+
+  console.info(`[lesson-blocks] ids de bloque estampados al leer «${lessonId}»`);
+
+  return conIds;
+}
+
+/**
  * Normalize, save and check one lesson body — the single path for it.
  *
  * Shared by `update_lesson_content` and by `create_lesson` when it is handed a
@@ -238,6 +313,9 @@ async function writeLessonBody(params: {
   mathWarnings: string[];
   visualWarnings: string[];
   groundingWarnings: string[];
+  /** Si el chequeo de fundamento corrió, y si no, por qué. Ver `grounding.ts`. */
+  groundingStatus: EstadoDelFundamento;
+  groundingReason?: string;
   /** Nombres y números que no están en las fuentes y que nadie marcó. Ver B2. */
   unsupportedTokens: string[];
 }> {
@@ -250,8 +328,30 @@ async function writeLessonBody(params: {
    * pasara `replace_lesson_block` —el único camino que cambia un dato sin
    * reescribir la lección entera— no existía para esa lección. Ver
    * `lesson-blocks.ts`.
+   *
+   * La deduplicación de diagramas va antes de los ids: un diagrama que se va no
+   * tiene por qué gastar un nombre.
    */
-  const normalizedContent = asignarIdsDeBloque(normalizeAgentLessonContent(params.content, params.lessonTitle));
+  const normalizedContent = asignarIdsDeBloque(
+    quitarDiagramasDuplicados(normalizeAgentLessonContent(params.content, params.lessonTitle), params.lessonTitle)
+  );
+
+  /**
+   * La guardia de conservación, en el ÚNICO punto que guarda un cuerpo entero.
+   *
+   * Acá y no en cada herramienta: los caminos que escriben una lección completa
+   * son cuatro y van creciendo, y el riel que existía sólo cubría los dos
+   * quirúrgicos. Ver `conservacion.ts` para lo que se midió.
+   */
+  negarPerdidaEstructural({
+    alcance: 'lesson',
+    antes: await contenidoGuardado(params.lessonId, params.locale),
+    despues: normalizedContent,
+    // Una escritura de cuerpo entero nunca es un borrado declarado: para vaciar
+    // una lección está `delete_lesson`, y para sacar un bloque, un reemplazo
+    // vacío por su id.
+    esBorrado: false
+  });
 
   await upsertLessonLanguageService(params.lessonId, {
     locale: params.locale as 'en',
@@ -281,13 +381,24 @@ async function writeLessonBody(params: {
   // esta función. Los retoques quirúrgicos (`edit_lesson_content`,
   // `replace_lesson_block`) no pasan, y está bien: son de una frase, con el
   // docente mirando.
-  const fundamento = params.verificarFundamento
-    ? params.verificarFundamento({
-        lessonTitle: params.lessonTitle,
-        contenido: normalizedContent,
-        soloFuentes: params.fuentesDeLaLeccion
-      })
-    : Promise.resolve<string[]>([]);
+  const fundamento: Promise<ResultadoDeFundamento> = params.verificarFundamento
+    ? params
+        .verificarFundamento({
+          lessonTitle: params.lessonTitle,
+          contenido: normalizedContent,
+          soloFuentes: params.fuentesDeLaLeccion
+        })
+        // El verificador ya atrapa lo suyo, pero la garantía no puede depender
+        // de eso: una excepción que se escape acá tumbaría la herramienta
+        // DESPUÉS de haber guardado la lección, y el resultado se perdería.
+        .catch((error) => {
+          const motivo = error instanceof Error ? error.message : String(error);
+
+          console.error(`[grounding] no corrió para «${params.lessonTitle}»: ${motivo}`);
+
+          return { avisos: [], estado: 'failed' as const, motivo };
+        })
+    : Promise.resolve(SIN_VERIFICADOR);
 
   // Problems the prompt forbids but nothing used to catch (labels below the
   // readable size, rows stacked on top of each other, formulas KaTeX will never
@@ -340,15 +451,18 @@ async function writeLessonBody(params: {
   const pasajesSinFuente = extraerPasajesSinFuente(normalizedContent);
   const ejemplos = extraerEjemplos(normalizedContent);
 
-  const groundingWarnings = await fundamento;
+  const chequeo = await fundamento;
+  const groundingWarnings = chequeo.avisos;
 
   /**
    * Queda anotado para que una edición posterior pueda volver a mirar.
    *
-   * Se anota SIEMPRE, con avisos o sin ellos: una lección reescrita limpia se
-   * desmarca, y la próxima edición no paga un rechequeo que no hace falta.
+   * Se anota con avisos o sin ellos —una lección reescrita limpia se desmarca y
+   * la próxima edición no paga un rechequeo que no hace falta—, pero SÓLO si el
+   * chequeo corrió. Desmarcar porque el proveedor se cayó sería dar por
+   * resuelto un aviso que nadie volvió a mirar.
    */
-  if (params.avisosDeFundamento) {
+  if (params.avisosDeFundamento && chequeo.estado === 'ok') {
     anotarChequeo(params.avisosDeFundamento, params.lessonId, {
       avisos: groundingWarnings,
       soloFuentes: params.fuentesDeLaLeccion
@@ -375,6 +489,11 @@ async function writeLessonBody(params: {
       // distingue «limpia» de «no se contrastó».
       checkedAgainst: contraste.alcance,
       groundingWarnings,
+      // Si el juez CORRIÓ. Sin esto, una caída del proveedor y una lección
+      // impecable quedaban escritas igual —`groundingWarnings: []`— y el
+      // informe del docente decía «limpia» sobre algo que nadie miró.
+      groundingStatus: chequeo.estado,
+      ...(chequeo.motivo ? { groundingReason: chequeo.motivo } : {}),
       diagramWarnings: svgWarnings,
       tokenWarnings,
       unsupportedPassages: pasajesSinFuente,
@@ -391,6 +510,8 @@ async function writeLessonBody(params: {
     // puede querer exactamente el párrafo que pidió y nada más.
     visualWarnings: params.isBuilding ? validateLessonVisuals(normalizedContent) : [],
     groundingWarnings,
+    groundingStatus: chequeo.estado,
+    ...(chequeo.motivo ? { groundingReason: chequeo.motivo } : {}),
     // Sólo cuando hubo contra qué contrastar. Sin fuentes el chequeo no corrió,
     // y devolver una lista vacía se leería como «limpia», que es otra cosa.
     unsupportedTokens: contraste.alcance !== 'none' ? redactarTokens(tokenWarnings) : []
@@ -404,11 +525,63 @@ function contentWarningFields(warnings: {
   visualWarnings?: string[];
   groundingWarnings?: string[];
   unsupportedTokens?: string[];
+  /** Si el juez de fundamento corrió. Ver `grounding.ts`. */
+  groundingStatus?: EstadoDelFundamento;
+  groundingReason?: string;
+  /**
+   * Qué camino escribió: una lección entera (`write_lesson`,
+   * `update_lesson_content`) o un pedazo (`replace_lesson_block`,
+   * `edit_lesson_content`). Cambia la salida que se le da al modelo cuando el
+   * juez no corrió. Ver `avisoDelJuezCaido`.
+   */
+  camino?: 'lesson' | 'block';
 }) {
   const visualWarnings = warnings.visualWarnings ?? [];
   const groundingWarnings = warnings.groundingWarnings ?? [];
   const unsupportedTokens = warnings.unsupportedTokens ?? [];
   const notes: string[] = [];
+
+  /**
+   * El juez se cayó: hay que DECIRLO, no devolver silencio.
+   *
+   * Silencio acá se leía como «salió limpia», que es lo contrario de lo que
+   * pasó: el `catch` devolvía `[]` igual que una lección impecable. Se dice
+   * como una nota más —no cortando las otras—, porque una lección puede a la
+   * vez no estar verificada y tener un diagrama ilegible.
+   *
+   * Y la salida depende del camino. Decía «retry write_lesson later» también
+   * después de un `replace_lesson_block`, y bajo una orden de EDICIÓN eso
+   * manda al modelo contra `negarReescrituraBajoOrden` («A full rewrite is not
+   * allowed here»): una instrucción que la herramienta de al lado contradice,
+   * y pasos gastados en averiguarlo. Tras una edición por bloque no hay nada
+   * que reescribir: la edición quedó guardada y lo que falta es decirlo.
+   */
+  const juezSeCayo = warnings.groundingStatus === 'failed';
+  const avisoDelJuezCaido = !juezSeCayo
+    ? ''
+    : warnings.camino === 'block'
+      ? ` The source recheck of this lesson did NOT run (provider error: ${warnings.groundingReason ?? 'unknown'}). ` +
+        'Your edit is saved; the lesson stays unverified and any earlier source warning on it stays open. ' +
+        'Tell the teacher. Do not rewrite the lesson for this.'
+      : ` The source check did NOT run for this lesson (provider error: ${warnings.groundingReason ?? 'unknown'}). ` +
+        'Its content is unverified: tell the teacher, and retry write_lesson later or check it against the source yourself.';
+
+  /**
+   * «No corrió a propósito» también viaja CON su motivo.
+   *
+   * Un `groundingStatus: 'skipped'` pelado no dice si la lección era corta, si
+   * el curso no tiene fuentes o si el chequeo está apagado en esta ronda — y
+   * con el chequeo apagado lo lleva TODA escritura, así que sin motivo el modelo
+   * no tiene cómo distinguirlo de algo que tiene que atender.
+   */
+  const estadoDelJuez =
+    warnings.groundingStatus && warnings.groundingStatus !== 'ok'
+      ? {
+          groundingStatus: warnings.groundingStatus,
+          ...(warnings.groundingReason ? { groundingReason: warnings.groundingReason } : {})
+        }
+      : {};
+
   // El fundamento va primero a propósito. Los otros tres avisos son sobre cómo
   // se ve la lección; éste es sobre si lo que dice es cierto, y si hay que
   // elegir uno solo para atender, es ése.
@@ -418,7 +591,13 @@ function contentWarningFields(warnings: {
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
   if (visualWarnings.length > 0) notes.push('it has no diagram and no picture');
 
-  if (notes.length === 0) return {};
+  if (notes.length === 0) {
+    // Nada que arreglar, pero el estado del juez igual viaja: «sin avisos» y
+    // «no se miró» no pueden llegar iguales.
+    if (juezSeCayo) return { ...estadoDelJuez, note: avisoDelJuezCaido.trim() };
+
+    return estadoDelJuez;
+  }
 
   return {
     ...(groundingWarnings.length > 0 ? { groundingWarnings } : {}),
@@ -426,8 +605,12 @@ function contentWarningFields(warnings: {
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
     ...(visualWarnings.length > 0 ? { visualWarnings } : {}),
+    // Viaja siempre que no sea `ok`: «no corrió» es información, y callarla es
+    // lo que hacía que una caída del proveedor se leyera como una lección
+    // verificada.
+    ...estadoDelJuez,
     note:
-      `The lesson was saved, but ${notes.join(', and ')}. Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.` +
+      `The lesson was saved, but ${notes.join(', and ')}.${avisoDelJuezCaido} Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.` +
       // La salida correcta para un token no es la misma que para lo demás: casi
       // siempre es un ejemplo que el escritor inventó y no declaró, y borrarlo
       // empeoraría la lección. Se dice cuál es, porque un aviso sin salida es un
@@ -494,73 +677,6 @@ function recortarMotivo(texto: string): string {
 }
 
 /**
- * Una edición no puede llevarse puestos los ejemplos marcados.
- *
- * ── Qué se midió ─────────────────────────────────────────────────────────────
- *
- * Producción, 2026-09-22. El bloque de una lección era un `<ul>` con tres
- * `<li data-ejemplo>` («Caso 1/2/3»); la orden de trabajo decía «todavía está»
- * por un número que vivía dentro del Caso 2, y el modelo reemplazó el `<ul>`
- * ENTERO por un `<p>`. En la otra lección, un `<ul>` con cuatro casos marcados
- * terminó siendo un `<svg>`. Ocho marcas quedaron en una.
- *
- * El mecanismo es siempre el mismo: la orden pide cambiar UN dato, y la forma
- * más corta de hacer desaparecer ese dato es tirar el elemento que lo contiene.
- * Nadie miente y nadie desobedece — el riel medía «¿sigue el 4400?» y no
- * «¿sigue estando lo demás?».
- *
- * ── Por qué es una negativa y no un aviso ────────────────────────────────────
- *
- * Un aviso después de guardar llega tarde: el contenido ya no está y nadie
- * tiene el texto viejo para reponerlo. Y una marca `data-ejemplo` no es
- * decoración: es contenido que el docente conserva a propósito (ver
- * `unsupported-passages.ts`). Un reemplazo VACÍO sí se permite: borrar un
- * bloque es una decisión, no un accidente.
- */
-function describirEjemplo(ejemplo: { texto: string; porque: string }): string {
-  const descripcion = ejemplo.porque.trim() || ejemplo.texto.trim();
-
-  return descripcion.length > 60 ? `${descripcion.slice(0, 60)}…` : descripcion;
-}
-
-function avisoDePerdidaDeEjemplos(params: {
-  /** «This block» / «This lesson»: qué se estaba por pisar. */
-  alcance: 'block' | 'lesson';
-  antes: ReturnType<typeof extraerEjemplos>;
-  faltan: number;
-}): string {
-  const donde = params.alcance === 'block' ? 'This block' : 'This lesson';
-  const comoCambiar =
-    params.alcance === 'block'
-      ? 'change the value inside them (edit_lesson_content with the exact old fragment, or replace_lesson_block keeping every element marked data-ejemplo) — do not replace the list.'
-      : 'change the value inside them (a smaller edit_lesson_content whose newString keeps every element marked data-ejemplo) — do not replace the list.';
-
-  return (
-    `${donde} holds ${params.antes.length} marked example(s) (${params.antes.map(describirEjemplo).join('; ')}) ` +
-    `and your replacement drops ${params.faltan} of them. Marked examples are content the teacher keeps: ` +
-    `${comoCambiar} To delete one example because it is wrong, replace only that element.`
-  );
-}
-
-/** Nada se guarda si el reemplazo pierde marcas: se tira antes de tocar la base. */
-function negarPerdidaDeEjemplos(params: {
-  alcance: 'block' | 'lesson';
-  antes: string;
-  despues: string;
-  /** Un reemplazo vacío: el modelo pidió BORRAR, y eso es una decisión, no un accidente. */
-  esBorrado: boolean;
-}): void {
-  if (params.esBorrado) return;
-
-  const antes = extraerEjemplos(params.antes);
-  const despues = extraerEjemplos(params.despues);
-
-  if (despues.length >= antes.length) return;
-
-  throw new Error(avisoDePerdidaDeEjemplos({ alcance: params.alcance, antes, faltan: antes.length - despues.length }));
-}
-
-/**
  * Elementos que no pueden ser el envoltorio de un bloque suelto.
  *
  * Medido en la misma ronda: el modelo reemplazó un `<ul>` por un `<li>` suelto
@@ -568,6 +684,62 @@ function negarPerdidaDeEjemplos(params: {
  * volver a abrir — y no da ningún error en ningún lado.
  */
 const NO_SON_BLOQUES = new Set(['li', 'td', 'th', 'tr', 'tbody', 'thead', 'tfoot', 'option']);
+
+/**
+ * Nadie agrega un diagrama al lado de otro.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-22. El diagrama no tenía id, el modelo quería corregir un
+ * valor de adentro, y lo que hizo fue reemplazar el PÁRRAFO anterior por
+ * «párrafo + svg nuevo». El servidor conserva el id del párrafo y deja el svg
+ * nuevo al lado; el viejo sigue ahí con el valor viejo, así que el aviso vuelve
+ * y el modelo lo repite: 8 y 9 copias seguidas en dos lecciones.
+ *
+ * El id en el `<svg>` saca el motivo; esto saca la jugada. Y se hace acá —antes
+ * de guardar— porque después no hay forma de saber cuál de los dos diagramas
+ * era el bueno.
+ */
+function contarDiagramas(html: string): number {
+  return (html.match(/<svg\b/gi) ?? []).length;
+}
+
+function negarDiagramaAlLado(params: {
+  contenido: string;
+  bloque: { html: string; end: number };
+  reemplazo: string;
+}): void {
+  /**
+   * Lo que se niega es AGREGAR un diagrama, no traer uno.
+   *
+   * Preguntaba si el reemplazo trae un `<svg>` y si el bloque viejo EMPIEZA con
+   * uno. Con eso, un bloque que ya contenía un diagrama adentro —un `<div>` o
+   * un `<figure>` con su `<svg>`, que no «empieza con svg»— no podía volver a
+   * guardarse nunca: mandarlo entero se negaba acá («your replacement adds
+   * another one next to it», y no agregó nada) y mandarlo sin el svg se negaba
+   * en la guardia de conservación («drops 1 diagram»). Las dos guardias
+   * negándose entre sí dejan el bloque sin una sola jugada legal.
+   *
+   * Contar es el criterio correcto: sólo molesta el reemplazo que trae MÁS
+   * diagramas de los que el bloque tenía, que es la jugada medida (párrafo →
+   * «párrafo + svg») y la única que duplica.
+   */
+  if (contarDiagramas(params.reemplazo) <= contarDiagramas(params.bloque.html)) return;
+
+  const siguiente = listarElementosDePrimerNivel(params.contenido).find(
+    (elemento) => elemento.start >= params.bloque.end
+  );
+
+  if (!siguiente || siguiente.tagName.toLowerCase() !== 'svg') return;
+
+  const id = siguiente.openTag.match(/\bdata-block-id\s*=\s*["']([^"']+)["']/i)?.[1];
+
+  throw new Error(
+    `This block is followed by a diagram${id ? ` (block ${id})` : ''}, and your replacement adds another one next to it. ` +
+      `To change that diagram, replace it by its own id${id ? ` (replace_lesson_block with blockId "${id}")` : ' from the blocks list of get_lesson_content'} ` +
+      'and send only the new <svg>. Never add a second diagram beside the one you meant to fix.'
+  );
+}
 
 function negarBloqueSuelto(html: string): void {
   const externo = html.trim().match(/^<([a-z][a-z0-9]*)\b/i)?.[1]?.toLowerCase();
@@ -962,7 +1134,13 @@ export function buildAgentTools(
     lessonTitle: string;
     /** La lección completa YA guardada. */
     contenido: string;
-  }): Promise<{ groundingWarnings?: string[]; unsupportedTokens?: string[]; groundingResolved?: boolean }> {
+  }): Promise<{
+    groundingWarnings?: string[];
+    unsupportedTokens?: string[];
+    groundingResolved?: boolean;
+    groundingStatus?: EstadoDelFundamento;
+    groundingReason?: string;
+  }> {
     const marcada = tieneAvisosAbiertos(avisosDeFundamento, params.lessonId);
     const porOrden =
       !marcada &&
@@ -1009,8 +1187,131 @@ export function buildAgentTools(
     return {
       groundingWarnings: revision.groundingWarnings,
       unsupportedTokens,
-      ...(revision.resuelto ? { groundingResolved: true } : {})
+      ...(revision.resuelto ? { groundingResolved: true } : {}),
+      // Que el rechequeo no haya corrido es información: el aviso que se estaba
+      // arreglando sigue abierto y nadie volvió a mirarlo.
+      ...(revision.estado !== 'ok'
+        ? { groundingStatus: revision.estado, ...(revision.motivo ? { groundingReason: revision.motivo } : {}) }
+        : {})
     };
+  }
+
+  /**
+   * Las piezas del curso donde el análisis encontró el valor viejo y que el
+   * plan de cambios NO toca.
+   *
+   * La cuenta la hace el servidor con el mismo barrido que usa el ancla, así
+   * que «el plan deja esto afuera» es una medición y no una opinión. Devuelve
+   * la lista vacía cuando no hay análisis en esta conversación: un plan de
+   * cambios pedido a mano («sacá la sección 3») no tiene nada contra qué
+   * contrastarse y sigue andando igual que siempre.
+   */
+  async function piezasSinCubrir(params: {
+    mapa: Awaited<ReturnType<typeof manijas.mapa>>;
+    /** Los ids que los ítems `edit`/`rewrite` del plan ya nombran. */
+    tocados: ReadonlySet<string>;
+  }): Promise<Array<{ handle: string; title: string; questionIds?: number[]; values: string[] }>> {
+    /**
+     * Si el análisis no se puede leer, el plan NO sale.
+     *
+     * Devolvía lista vacía ante cualquier falla, y una lista vacía es
+     * exactamente «no había análisis contra qué contrastar»: el plan se
+     * dibujaba entero sin que nadie mirara si callaba piezas, que es el riel
+     * que esto vino a poner. Una caída de la base no puede leerse igual que
+     * «todo bien». Se niega con un motivo que el modelo puede atender
+     * (reintentar), en vez de pasar en silencio.
+     */
+    const analisis = await leerAnalisisDeFuente(runScope).catch((error: unknown) => {
+      const motivo = error instanceof Error ? error.message : String(error);
+
+      console.error('[generate_course_plan] no se pudo leer el análisis de la fuente:', error);
+
+      throw new Error(
+        `Could not read the source analysis of this conversation (${motivo}), so the plan could not be checked ` +
+          'against it and was NOT shown to the teacher. Call generate_course_plan again with the same plan.'
+      );
+    });
+
+    const valores = analisis.flatMap((fila) => fila.cambios.map(valorDelCambio));
+
+    if (valores.length === 0) return [];
+
+    /**
+     * Las piezas que un plan ANTERIOR ya cerró no se vuelven a reclamar.
+     *
+     * El análisis vive en la conversación entera, así que sin esto el segundo
+     * plan de cambios de la misma charla vuelve a barrer todo el curso. Y una
+     * ocurrencia legítima que quedó atrás —la «2 horas» que es del P1, no la
+     * del P2 que cambió la circular— no se puede sacar del barrido: es texto
+     * correcto. El mecanismo para eso YA existe y ya se usó, sólo que acá no se
+     * consultaba: `confirm_change_applied` (el modelo declaró por qué lo que
+     * queda es de otra regla) y `skip: true` (el docente aprobó dejarla como
+     * está). Sin esto, pedir después «agregá una sección sobre feriados» se
+     * negaba por una lección que nadie mencionó, y la única salida era meter un
+     * ítem `skip` sobre ella en un plan que no tiene nada que ver.
+     */
+    const registroDelPlan = await readPlanRegistry(runScope).catch((error: unknown) => {
+      console.error('[generate_course_plan] no se pudo leer el registro del plan:', error);
+
+      return [];
+    });
+    const yaResueltas = new Set(
+      registroDelPlan
+        .filter((fila) => !!fila.entityId && (!!fila.confirmed || fila.skip === true))
+        .map((fila) => fila.entityId as string)
+    );
+
+    const estado = await estadoDelContenido(courseId, locale);
+    const lecciones = [...params.mapa.sections.flatMap((s) => s.lessons), ...params.mapa.unfiled.lessons];
+    const tituloPorId = new Map<string, string>([
+      ...lecciones.map((leccion) => [leccion.id, leccion.title] as const),
+      ...[...params.mapa.sections.flatMap((s) => s.exercises), ...params.mapa.unfiled.exercises].map(
+        (ejercicio) => [ejercicio.id, ejercicio.title] as const
+      )
+    ]);
+
+    const ocurrencias = barrerValores({
+      valores,
+      lecciones: lecciones.map((leccion) => ({
+        id: leccion.id,
+        title: leccion.title,
+        content: estado.textoPorLeccion.get(leccion.id) ?? ''
+      })),
+      preguntas: [...estado.preguntasPorEjercicio.values()].flat()
+    });
+
+    // La etiqueta que muestra el barrido es la frase larga, o la clave cuando el
+    // cambio no trae otra cosa: el mismo índice que arma `atarPlanDeCambios`.
+    const valorPorEtiqueta = new Map(valores.map((valor) => [valor.old.trim() || (valor.key ?? '').trim(), valor]));
+    const porPieza = new Map<string, { handle: string; title: string; questionIds: number[]; values: Set<string> }>();
+
+    for (const ocurrencia of ocurrencias) {
+      const id = ocurrencia.lessonId ?? ocurrencia.exerciseId;
+
+      if (!id || params.tocados.has(id) || yaResueltas.has(id)) continue;
+
+      const valor = valorPorEtiqueta.get(ocurrencia.valorViejo);
+      const pieza = porPieza.get(id) ?? {
+        handle: manijaDe(params.mapa, id),
+        title: tituloPorId.get(id) ?? '',
+        questionIds: [],
+        values: new Set<string>()
+      };
+
+      if (valor) pieza.values.add(`«${(valor.key ?? '').trim() || valor.old}» → «${valor.new}»`);
+      if (typeof ocurrencia.questionId === 'number' && !pieza.questionIds.includes(ocurrencia.questionId)) {
+        pieza.questionIds.push(ocurrencia.questionId);
+      }
+
+      porPieza.set(id, pieza);
+    }
+
+    return [...porPieza.values()].map((pieza) => ({
+      handle: pieza.handle,
+      title: pieza.title,
+      ...(pieza.questionIds.length > 0 ? { questionIds: pieza.questionIds } : {}),
+      values: [...pieza.values]
+    }));
   }
 
   /** Lo que `read_source` ya devolvió en esta ronda. Ver `relecturas.ts`. */
@@ -1601,7 +1902,7 @@ export function buildAgentTools(
 
     get_lesson_content: tool({
       description:
-        'Get the HTML content of a specific lesson in this course. The response also lists the addressable blocks — use a blockId with replace_lesson_block to change one of them.',
+        'Get the HTML content of a specific lesson in this course. The response also lists the addressable blocks — use a blockId with replace_lesson_block to change one of them. A diagram is a block like any other: it shows up as "[diagram: …]" with its own blockId, and that is how you change it.',
       inputSchema: lessonReadParam,
       execute: async (args) => {
         return executeAgentTool('get_lesson_content', { orgId, userId, courseId, args }, async () => {
@@ -1614,7 +1915,12 @@ export function buildAgentTools(
             lessonLanguages?: Array<{ locale: string; content: string | null }>;
           };
           const langContent = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale);
-          const content = langContent?.content || null;
+          const guardado = langContent?.content || null;
+          // Una lección escrita antes de los ids se estampa acá, en su primera
+          // lectura, y recién entonces se listan sus bloques: si no, el diagrama
+          // que el modelo tiene que corregir no aparece en la lista y no hay
+          // forma de nombrarlo. Ver `asegurarIdsDeBloque`.
+          const content = guardado ? await asegurarIdsDeBloque(lessonId, locale, guardado) : null;
           // The ids are already in the HTML above; listing them separately saves
           // the model from parsing them out, and is cheap — id plus a short
           // preview, not the block bodies again.
@@ -2033,7 +2339,33 @@ export function buildAgentTools(
               notaDelEscritor: nota
             });
 
-          let written = await guardar(escrito.html, escrito.material, escrito.nota);
+          /**
+           * Si lo que pierde piezas es la PRIMERA versión, el que se equivocó
+           * es el escritor, y hay que decirlo así.
+           *
+           * El aviso genérico de `alcance: 'lesson'` termina en «Do NOT rewrite
+           * the whole lesson for this», que bajo una orden `rewrite` del plan
+           * contradice la orden: `update_lesson_content` está negado por
+           * `negarReescrituraBajoOrden`, y reintentar `write_lesson` vuelve a
+           * llamar al MISMO escritor con el MISMO brief. El constructor se
+           * queda sin ninguna jugada legal, y lo único que puede hacer con eso
+           * es dar vueltas. Así que el mensaje nombra al escritor, lo que se
+           * perdió, y las dos salidas reales.
+           */
+          let written: Awaited<ReturnType<typeof guardar>>;
+
+          try {
+            written = await guardar(escrito.html, escrito.material, escrito.nota);
+          } catch (error) {
+            if (!(error instanceof PerdidaEstructural)) throw error;
+
+            throw new Error(
+              `The writer's version of "${leccion.title}" drops ${error.resumen} the saved lesson has, so nothing was ` +
+                'saved and the lesson keeps its current content. Call write_lesson again with a brief that names them ' +
+                '("keep the existing table and diagram; change only …"). If the teacher really wants one of them gone, ' +
+                'delete it first with replace_lesson_block (its blockId, html: "") and then call write_lesson again.'
+            );
+          }
 
           /**
            * El rebote: si el servidor encontró algo, vuelve el escritor. UNA vez.
@@ -2053,6 +2385,16 @@ export function buildAgentTools(
            */
           const hallazgos = [...written.unsupportedTokens, ...written.groundingWarnings];
           let writerRetried = false;
+          /**
+           * La segunda versión se descartó por perder contenido, y por qué.
+           *
+           * Es la excepción documentada de la guardia de conservación: acá NO se
+           * puede negar la escritura y devolver el error, porque ya hay una
+           * primera versión guardada. Negar de verdad sería dejar la lección con
+           * los avisos de la primera —que es lo correcto— y eso es justamente lo
+           * que pasa: la segunda se tira y la primera se queda.
+           */
+          let reboteDescartado: string | undefined;
           /**
            * Por QUÉ rebotó, escrito una sola vez y contado en dos lados.
            *
@@ -2087,9 +2429,21 @@ export function buildAgentTools(
             // guardada, y borrarla porque el segundo intento se arrepintió
             // sería peor que quedarse con la que tiene avisos.
             if (reintento && !('faltaMaterial' in reintento)) {
-              escrito = reintento;
-              written = await guardar(reintento.html, reintento.material, reintento.nota);
-              writerRetried = true;
+              try {
+                // Se guarda ANTES de adoptar la versión nueva: si la guardia la
+                // rechaza, `escrito` tiene que seguir siendo la primera, que es
+                // la que quedó en la base.
+                const segunda = await guardar(reintento.html, reintento.material, reintento.nota);
+
+                escrito = reintento;
+                written = segunda;
+                writerRetried = true;
+              } catch (error) {
+                if (!(error instanceof PerdidaEstructural)) throw error;
+
+                reboteDescartado = `the second version was discarded: it dropped ${error.resumen} the first one had`;
+                console.log(`[write_lesson] rebote descartado «${leccion.title}»: ${error.resumen}`);
+              }
             }
           }
 
@@ -2109,6 +2463,7 @@ export function buildAgentTools(
             ...(escrito.recortadas.length > 0 ? { sourcesTruncated: escrito.recortadas } : {}),
             ...(escrito.nota ? { writerNote: escrito.nota } : {}),
             ...(writerRetried ? { writerRetried: true, writerRetryReason: motivoDelRebote } : {}),
+            ...(reboteDescartado ? { writerRetried: false, writerRetryReason: reboteDescartado } : {}),
             ...contentWarningFields(written)
           };
         });
@@ -2194,7 +2549,7 @@ export function buildAgentTools(
 
     replace_lesson_block: tool({
       description:
-        'PREFERRED way to change part of a lesson: replace one block by its data-block-id, leaving the rest byte-for-byte untouched. Take the blockId from a search_lessons match (the direct route) or from the `blocks` list of get_lesson_content — never invent one. You only write the new block — you do NOT have to reproduce the old one. Pass the complete replacement including its outer tag (e.g. "<p>…</p>"), or an empty string to delete the block. If the block has no id (older content), fall back to edit_lesson_content.',
+        'PREFERRED way to change part of a lesson: replace one block by its data-block-id, leaving the rest byte-for-byte untouched. Take the blockId from a search_lessons match (the direct route) or from the `blocks` list of get_lesson_content — never invent one. You only write the new block — you do NOT have to reproduce the old one. Pass the complete replacement including its outer tag (e.g. "<p>…</p>"), or an empty string to delete the block. A DIAGRAM has its own blockId too: to change one, replace it by that id with the new <svg> — never by adding a second diagram next to it. Your replacement must keep every element the old block had (marked examples, diagrams, images, tables, code blocks) or nothing is saved. If the lesson shows no ids (older content), call get_lesson_content: reading it gives every block an id.',
       inputSchema: replaceBlockParam,
       execute: async (args) => {
         return executeAgentTool('replace_lesson_block', { orgId, userId, courseId, args }, async () => {
@@ -2220,7 +2575,11 @@ export function buildAgentTools(
             const available = summarizeLessonBlocks(current);
             throw new Error(
               available.length === 0
-                ? 'This lesson has no addressable blocks yet (it predates block ids). Use edit_lesson_content instead.'
+                ? // Una lección anterior a los ids se estampa al leerla (ver
+                  // `asegurarIdsDeBloque`), así que la salida es leerla, no
+                  // `edit_lesson_content`: por ahí el modelo reconstruye un
+                  // `<svg>` de memoria y no coincide con nada.
+                  'This lesson has no addressable blocks yet (it predates block ids). Call get_lesson_content: it gives every block an id, a diagram included, and lists them. Then use one of those ids here.'
                 : `No block with id "${args.blockId}". Call get_lesson_content and copy an id from its blocks list. Available: ${available.map((b) => b.blockId).join(', ')}.`
             );
           }
@@ -2232,9 +2591,10 @@ export function buildAgentTools(
           }
 
           // Los dos rieles de la edición por bloques, ANTES de tocar nada. Ver
-          // `negarPerdidaDeEjemplos` y `negarBloqueSuelto`.
+          // `conservacion.ts` y `negarBloqueSuelto`.
           negarBloqueSuelto(args.html);
-          negarPerdidaDeEjemplos({
+          negarDiagramaAlLado({ contenido: current, bloque: block, reemplazo: args.html });
+          negarPerdidaEstructural({
             alcance: 'block',
             antes: block.html,
             despues: args.html,
@@ -2255,7 +2615,7 @@ export function buildAgentTools(
           // El reemplazo puede traer bloques NUEVOS al lado del que se pisó (un
           // párrafo partido en dos, una lista que se agrega): sin esto, nacen sin
           // id y no se pueden volver a editar por bloque. Ver `lesson-blocks.ts`.
-          const updated = asignarIdsDeBloque(empalmado);
+          const updated = asignarIdsDeBloque(quitarDiagramasDuplicados(empalmado, lesson.title));
 
           await upsertLessonLanguageService(lessonId, {
             locale: locale as 'en',
@@ -2292,7 +2652,10 @@ export function buildAgentTools(
               svgWarnings: replacement.includes('<svg') ? validateSvgDiagram(replacement) : [],
               mathWarnings: validateLessonMath(replacement),
               groundingWarnings: revision.groundingWarnings,
-              unsupportedTokens: revision.unsupportedTokens
+              unsupportedTokens: revision.unsupportedTokens,
+              groundingStatus: revision.groundingStatus,
+              groundingReason: revision.groundingReason,
+              camino: 'block'
             })
           };
         });
@@ -2301,7 +2664,7 @@ export function buildAgentTools(
 
     edit_lesson_content: tool({
       description:
-        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to redo just a diagram (the <svg>), fix or rewrite a single paragraph or sentence, or delete a block — NOT to write a lesson from scratch or rewrite the whole thing (use write_lesson for that). oldString must be text you have VERBATIM from the server, never text you reconstructed from memory — either the `textoExacto` of a search_lessons match (the direct route: no other call needed) or a fragment copied from get_lesson_content. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
+        'FALLBACK for content with no block ids — prefer replace_lesson_block when the block you want has a data-block-id. Makes a TARGETED edit by find-and-replace: replaces one exact fragment of the lesson HTML, leaving the rest byte-for-byte untouched. Use this to fix or rewrite a single sentence, or to delete a fragment — NOT to write a lesson from scratch or rewrite the whole thing (use write_lesson for that). A DIAGRAM has its own blockId: change it with replace_lesson_block, never by pasting an <svg> here. oldString must be text you have VERBATIM from the server, never text you reconstructed from memory — either the `textoExacto` of a search_lessons match (the direct route: no other call needed) or a fragment copied from get_lesson_content. oldString must be unique in the lesson (include surrounding context) unless you pass replaceAll. Set newString to an empty string to delete the fragment.',
       inputSchema: editContentParam,
       execute: async (args) => {
         return executeAgentTool('edit_lesson_content', { orgId, userId, courseId, args }, async () => {
@@ -2341,8 +2704,9 @@ export function buildAgentTools(
             );
           }
 
-          // Repair SVG geometry on the replacement fragment (edit_lesson_content is
-          // often used to redo just a diagram); ensures the <svg> keeps viewBox +
+          // Repair SVG geometry on the replacement fragment, if it brings one (a
+          // diagram should go through replace_lesson_block by its own id, but a
+          // fragment can still carry an <svg>); ensures it keeps viewBox +
           // explicit width/height so it isn't clipped. No-op for non-SVG fragments.
           const newString = convertMarkdownMathToKatex(
             args.newString.includes('<svg') ? repararDiagrama(args.newString) : args.newString
@@ -2360,8 +2724,8 @@ export function buildAgentTools(
           // Acá el riel se mide sobre la lección ENTERA y no sobre el fragmento:
           // `oldString` puede ser un pedacito de un `<ul>` y llevarse el cierre,
           // y lo único que dice si se perdió un ejemplo es cuántas marcas
-          // quedaron en el resultado. Ver `negarPerdidaDeEjemplos`.
-          negarPerdidaDeEjemplos({
+          // quedaron en el resultado. Ver `conservacion.ts`.
+          negarPerdidaEstructural({
             alcance: 'lesson',
             antes: current,
             despues: reemplazado,
@@ -2371,7 +2735,7 @@ export function buildAgentTools(
           // Un bloque entero pegado por acá nace sin id y no se podría volver a
           // editar por bloque; y una lección vieja, anterior a los ids, se vuelve
           // direccionable en su primera edición. Ver `lesson-blocks.ts`.
-          const updated = asignarIdsDeBloque(reemplazado);
+          const updated = asignarIdsDeBloque(quitarDiagramasDuplicados(reemplazado, lesson.title));
 
           await upsertLessonLanguageService(lessonId, {
             locale: locale as 'en',
@@ -2407,7 +2771,10 @@ export function buildAgentTools(
               svgWarnings: newString.includes('<svg') ? validateSvgDiagram(newString) : [],
               mathWarnings: validateLessonMath(newString),
               groundingWarnings: revision.groundingWarnings,
-              unsupportedTokens: revision.unsupportedTokens
+              unsupportedTokens: revision.unsupportedTokens,
+              groundingStatus: revision.groundingStatus,
+              groundingReason: revision.groundingReason,
+              camino: 'block'
             })
           };
         });
@@ -3450,15 +3817,57 @@ export function buildAgentTools(
               }
             }
 
-            atadura = {
-              resolved,
-              ...(unresolved.length > 0
-                ? {
-                    unresolved,
-                    note: 'Some targets of this plan do not name anything in this course. Fix these BEFORE the teacher sees it: call get_course_structure, take the right handles, and call generate_course_plan again with the same plan.'
-                  }
-                : {})
-            };
+            /**
+             * Un target que no resuelve ya no es un aviso: es una NEGATIVA.
+             *
+             * Era un aviso, y el aviso se ignoró: medido el 2026-09-22, el
+             * modelo mandó el plan al docente igual y la orden quedó sin poder
+             * ejecutarse. Un plan que nombra algo que no existe no se puede
+             * construir, así que dibujarlo sólo sirve para que lo apruebe
+             * alguien que no tiene cómo saberlo.
+             */
+            if (unresolved.length > 0) {
+              return {
+                ok: false as const,
+                unresolved,
+                note: 'Some targets of this plan do not name anything in this course, so the plan was NOT shown to the teacher. Call get_course_structure, take the right handles, and call generate_course_plan again with the same plan.'
+              };
+            }
+
+            /**
+             * Y un plan de cambios no puede CALLAR una pieza que el análisis
+             * encontró.
+             *
+             * Medido el 2026-09-22: `analyze_source_changes` listó, además de la
+             * sección que el docente nombró, otra lección, una pregunta de la
+             * práctica y una del examen final con el valor viejo. La nota de la
+             * herramienta lo decía con todas las letras («un ítem edit por cada
+             * lección Y por cada ejercicio listado acá»). El modelo armó el plan
+             * con la sección nombrada y nada más; se aprobó, se construyó 4/4, y
+             * el curso quedó enseñando el valor nuevo en la sección 1 y el viejo
+             * en la 2 y en el examen. Una nota no es un riel.
+             *
+             * El barrido se rehace acá contra el contenido de AHORA —no contra
+             * el del momento del análisis— por lo mismo que lo rehace el ancla:
+             * entre una cosa y la otra el curso pudo cambiar.
+             */
+            const sinCubrir = await piezasSinCubrir({
+              mapa,
+              tocados: new Set(resolved.map((fila) => fila.id))
+            });
+
+            if (sinCubrir.length > 0) {
+              return {
+                ok: false as const,
+                uncovered: sinCubrir,
+                note:
+                  'The analysis found the old values in these pieces and your plan does not touch them, so the plan was NOT shown to the teacher: the course would teach the new value in one place and the old one in another. ' +
+                  'Add an `edit` item for each (target = its handle) and call generate_course_plan again. ' +
+                  'If the teacher explicitly asked to leave one of them alone, keep the item and set `skip: true` with the reason in `changes`.'
+              };
+            }
+
+            atadura = { resolved };
           }
 
           // Cobertura: cuáles de estas lecciones tienen material atrás y cuáles
@@ -3552,7 +3961,7 @@ export function buildAgentTools(
             };
           }
 
-          const { cambios } = await analizarCambios({
+          const { cambios, descartados: sinRespaldoEnLaFuente = [] } = await analizarCambios({
             fuenteNueva: { fileName: fuente.fileName, text: fuente.text },
             lecciones: lecciones.map((leccion) => ({
               handle: leccion.handle,
@@ -3595,7 +4004,30 @@ export function buildAgentTools(
             console.error('[analyze_source_changes] no se pudo guardar el análisis:', error)
           );
 
-          const descartados = cambios.length - conLugar.length;
+          /**
+           * Todo lo que el servidor NO pudo sostener, con su motivo.
+           *
+           * Las dos mitades juntas y en una sola lista: el valor viejo que no
+           * está en ninguna parte del curso (la orden sería incumplible) y el
+           * valor nuevo que no está en el documento (el curso terminaría
+           * diciendo algo que la fuente no dice). Antes era un número suelto, y
+           * un número no le dice al modelo cuál de sus cambios no usar.
+           */
+          const conLugarPorValor = new Set(conLugar.map((fila) => fila.cambio.valorViejo));
+          const descartados = [
+            ...sinRespaldoEnLaFuente.map((descartado) => ({
+              old: descartado.valorViejo,
+              new: descartado.valorNuevo,
+              reason: descartado.motivo
+            })),
+            ...cambios
+              .filter((cambio) => !conLugarPorValor.has(cambio.valorViejo))
+              .map((cambio) => ({
+                old: cambio.valorViejo,
+                new: cambio.valorNuevo,
+                reason: `the old value "${cambio.valorViejo}" is nowhere in this course`
+              }))
+          ];
 
           return {
             source: fuente.fileName,
@@ -3610,10 +4042,13 @@ export function buildAgentTools(
                 text: ocurrencia.texto
               }))
             })),
-            ...(descartados > 0
+            ...(descartados.length > 0
               ? {
                   discarded: descartados,
-                  discardedNote: `${descartados} proposed change(s) named a value that is nowhere in this course, so they were dropped.`
+                  discardedNote:
+                    `${descartados.length} proposed change(s) were dropped because the server could not find them: ` +
+                    'do NOT put them in the plan and do not mention them as facts. If you believe one of them is real, ' +
+                    'quote the sentence of the document that states it and say so to the teacher.'
                 }
               : {}),
             note:

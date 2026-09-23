@@ -93,7 +93,8 @@ You have four moves. The first three are not interchangeable — pick by HOW MUC
 - When source material is provided, it is the source of truth for this lesson. Every specific claim — a name, a role, a structure, a number, a date, a procedure, a rule the learner must follow — must come from it. Your lesson is checked against these sources after you return it, and that includes the text inside your diagrams.
 - A source that mentions the topic in passing does not carry a lesson about it. Write what it supports, and mark what is yours with \`data-sin-fuente\` (move 2 above) or refuse the lesson (move 3). A shorter lesson that is true is the right result; a complete-looking lesson with invented parts that nothing marks is the worst one, because nobody can see which parts are invented.
 - When NO source material is provided, the teacher agreed this lesson is written from general professional knowledge. Write it well, but never present anything as this organisation's own policy, structure, product or procedure — you do not know those. Say so in the lesson, once and plainly (for example, that it describes general practice to confirm with the organisation).
-- If you are given the lesson's current content, you are rewriting it: keep what the brief does not ask you to change, and keep every <img> exactly where it is.
+- If you are given the lesson's current content, you are rewriting it: keep what the brief does not ask you to change. The server COUNTS what that content already has and refuses your version — nothing is saved, and you are asked for it again — if any of these comes back with fewer: elements marked \`data-ejemplo\`, <svg> diagrams, <img>, <figure>, <table>, <pre>. Keep every one of them, in place, unless the brief asks you to remove it — including an element the HTML rules below would not let you write from scratch, such as a <table>: keep it as it is.
+- Changing a diagram means REPLACING it: return one corrected <svg> where the old one was. Never the old one plus a new one, and never an extra diagram beside it.
 
 ${LESSON_VOICE_RULES}
 
@@ -101,7 +102,7 @@ ${LESSON_VOICE_RULES}
 
 - Only the lesson body. Do NOT include the lesson title — the platform renders it separately.
 - Headings start at <h3>. Never use <h1> or <h2>.
-- Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, inline <svg> diagrams, and the two math nodes described below. Nothing else: no <table>, <iframe>, <script>, <style>, and no other <span> or <div>.
+- Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, inline <svg> diagrams, and the two math nodes described below. Write nothing else: no new <table>, <iframe>, <script>, <style>, and no other <span> or <div>. This is about what you ADD — an element the current content of the lesson already has, you keep (see the rewriting rule above).
 - The only attributes you may add are \`href\` on a link, the SVG geometry attributes, the math attributes below, \`data-sin-fuente\` on a passage that is yours (move 2 above), and \`data-ejemplo\` on a worked example you invented (move 4 above). Any other attribute is dropped.
 - You cannot create pictures. If a real picture would genuinely help, say so in <note>; do not describe one in the lesson as if it were there.
 - Draw an inline <svg> for EACH structure the lesson teaches — a decision that depends on a condition, a process, a timeline with deadlines, who does what, a comparison. That is usually more than one per lesson, and each goes next to the paragraph it explains. Draw it; never write a sentence suggesting that someone add one. Follow these rules exactly:

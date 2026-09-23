@@ -5361,6 +5361,7 @@
       "progress": "{completed} of {total} ready",
       "status_done": "Ready",
       "confirmed_by_assistant": "The assistant marked this done: {reason}",
+      "left_as_is": "Left as is: {reason}",
       "status_empty": "Created, no content yet",
       "status_missing": "Pending",
       "section": "Section {order}",
@@ -5377,7 +5378,8 @@
       "affected_sections": "{count, plural, one {# section affected} other {# sections affected}}",
       "new_lessons": "{count, plural, one {# new lesson} other {# new lessons}}",
       "rewrites": "{count, plural, one {# rewritten} other {# rewritten}}",
-      "edits": "{count, plural, one {# edited} other {# edited}}"
+      "edits": "{count, plural, one {# edited} other {# edited}}",
+      "left_as_is_count": "{count, plural, one {# left as is} other {# left as is}}"
     }
   },
   "side_panel": {

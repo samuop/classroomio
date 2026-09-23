@@ -86,6 +86,24 @@ function hashDe(texto: string): string {
   return createHash('sha1').update(texto).digest('hex');
 }
 
+/**
+ * El hash del cuerpo de una lección, SIN los `data-block-id`.
+ *
+ * ── Por qué se sacan ─────────────────────────────────────────────────────────
+ *
+ * Un id de bloque no es contenido: es cómo el servidor nombra un pedazo de
+ * HTML. Se estampan solos —al guardar, y también al LEER una lección vieja que
+ * todavía no los tenía (ver `asegurarIdsDeBloque` en `chat-tools.ts`)—, así que
+ * contándolos, abrir una lección para mirarla cambiaría su hash. Y el hash es
+ * lo que decide si una orden de cambio ya se ejecutó: un ítem `rewrite` habría
+ * quedado ✅ por haber sido LEÍDO, y `confirm_change_applied` habría aceptado
+ * una declaración sin una sola edición atrás. Que es justo lo que ese riel
+ * existe para impedir.
+ */
+function hashDeContenido(html: string): string {
+  return hashDe(html.replace(/\s*data-block-id\s*=\s*(["'])[^"']*\1/gi, ''));
+}
+
 /** El hash de un ejercicio: todo lo que una corrección puede cambiarle. */
 export function hashDePreguntas(preguntas: unknown): string {
   return hashDe(JSON.stringify(preguntas ?? []));
@@ -275,7 +293,7 @@ export function atarPlanDeCambios(params: {
       const baseline = {
         contentHash:
           item.type === 'lesson'
-            ? hashDe(contenidoPorLeccion.get(entityId) ?? '')
+            ? hashDeContenido(contenidoPorLeccion.get(entityId) ?? '')
             : hashDePreguntas(params.preguntasPorEjercicio.get(entityId) ?? [])
       };
       const replacements = reemplazosDe(entityId);
@@ -286,7 +304,10 @@ export function atarPlanDeCambios(params: {
         action,
         entityId,
         baseline,
-        ...(replacements.length > 0 ? { replacements } : {})
+        ...(replacements.length > 0 ? { replacements } : {}),
+        // Se deja como está, y el motivo ya está en el plan que el docente
+        // aprobó. El ancla no tiene nada que medir acá. Ver `medirCambio`.
+        ...(item.skip ? { skip: true } : {})
       });
     }
 
@@ -320,7 +341,7 @@ export async function estadoDelContenido(courseId: string, locale: string): Prom
 
   for (const leccion of lecciones) {
     const contenido = leccion.content ?? '';
-    hashPorLeccion.set(leccion.id, hashDe(contenido));
+    hashPorLeccion.set(leccion.id, hashDeContenido(contenido));
     textoPorLeccion.set(leccion.id, contenido);
   }
 

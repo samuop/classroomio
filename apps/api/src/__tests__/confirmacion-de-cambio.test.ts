@@ -243,6 +243,57 @@ describe('el ancla ofrece la salida sólo cuando corresponde', () => {
 
     expect(progreso?.anchorText).toContain('✅ (confirmed by the assistant: La 2 horas que queda es la del P1.)');
   });
+
+  /**
+   * Un ítem que el PLAN deja como está es otra cosa que uno confirmado después.
+   *
+   * El confirmado se declara durante el trabajo, sobre un target que ya cambió;
+   * éste lo aprobó el docente ANTES, con su motivo escrito en el plan. Los dos
+   * terminan en ✅, y el ancla tiene que distinguirlos: si reclamara el `skip`,
+   * el modelo terminaría editando justo la pieza que se pidió no tocar.
+   */
+  it('un ítem que el plan deja como está se da por hecho sin medir nada', () => {
+    const progreso = anclaCon({ skip: true });
+
+    expect(progreso?.items.find((item) => item.key === 's1.1')).toMatchObject({ status: 'done' });
+    expect(progreso?.pendingCount).toBe(0);
+  });
+
+  it('y el ✅ dice que se deja a propósito, con el motivo del plan', () => {
+    const conPendiente = {
+      ...plan(),
+      sections: [
+        {
+          ...plan().sections[0],
+          items: [
+            { ...plan().sections[0].items[0], skip: true, changes: 'La docente pidió no tocar esta lección.' },
+            {
+              type: 'lesson' as const,
+              title: 'Una lección que todavía no existe',
+              description: 'd',
+              order: 1,
+              hasExercise: false
+            }
+          ]
+        }
+      ]
+    };
+
+    const progreso = buildPlanProgressAnchor(
+      conPendiente,
+      SECCIONES,
+      ITEMS,
+      registro({ skip: true }),
+      estadoDeCursoDePrueba({
+        lecciones: { [ID.escalamiento]: CON_LAS_DOS },
+        hashes: { [ID.escalamiento]: HASH_INICIAL }
+      })
+    );
+
+    expect(progreso?.anchorText).toContain('left as is on purpose');
+    expect(progreso?.anchorText).toContain('La docente pidió no tocar esta lección.');
+    expect(progreso?.anchorText).toContain('do NOT edit it');
+  });
 });
 
 const OPCIONES = { toolCallId: 'llamada', messages: [] };

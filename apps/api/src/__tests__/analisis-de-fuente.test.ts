@@ -56,7 +56,9 @@ vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
   bindPlanItem: vi.fn(),
   resolvePlanBinding: vi.fn().mockResolvedValue(null),
-  guardarAnalisisDeFuente: vi.fn().mockResolvedValue(undefined)
+  guardarAnalisisDeFuente: vi.fn().mockResolvedValue(undefined),
+  leerAnalisisDeFuente: vi.fn().mockResolvedValue([]),
+  readPlanRegistry: vi.fn().mockResolvedValue([])
 }));
 
 import { listCourseSections } from '@api/services/course/section';
@@ -64,7 +66,7 @@ import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { getOptionsByQuestionIds, getQuestionsByExerciseIds } from '@cio/db/queries/exercise';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
-import { guardarAnalisisDeFuente } from '@cio/db/queries/agent';
+import { guardarAnalisisDeFuente, leerAnalisisDeFuente, readPlanRegistry } from '@cio/db/queries/agent';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 
 const ID = {
@@ -150,6 +152,10 @@ beforeEach(() => {
   vi.mocked(listCourseSources).mockResolvedValue([
     { id: ID.circular, fileName: 'Circular de atención.pdf', text: 'El contacto pasa a WhatsApp 11 5555-0101.' }
   ] as never);
+  // Sin análisis guardado: el caso normal de un plan de cambios pedido a mano.
+  vi.mocked(leerAnalisisDeFuente).mockResolvedValue([]);
+  // Sin plan anterior en la conversación.
+  vi.mocked(readPlanRegistry).mockResolvedValue([]);
 });
 
 describe('comparar una fuente nueva con el curso', () => {
@@ -211,7 +217,17 @@ describe('comparar una fuente nueva con el curso', () => {
     const resultado = await herramientas().analyze_source_changes.execute({ sourceId: ID.circular }, OPCIONES);
 
     expect((resultado.changes as unknown[]).map((c) => (c as { old: string }).old)).toEqual(['interno 4400']);
-    expect(resultado).toMatchObject({ discarded: 1 });
+    // Y se dice CUÁL se descartó y por qué: un número suelto no le sirve al
+    // modelo para saber qué cambio no usar.
+    expect(resultado).toMatchObject({
+      discarded: [
+        {
+          old: 'formulario F-12',
+          new: 'formulario F-20',
+          reason: expect.stringContaining('nowhere in this course')
+        }
+      ]
+    });
 
     // Y lo que se guarda para el plan es lo que sobrevivió al barrido.
     expect(guardarAnalisisDeFuente).toHaveBeenCalledWith(
@@ -242,7 +258,9 @@ describe('comparar una fuente nueva con el curso', () => {
       cambios: [
         {
           valorViejo: 'se toma por el interno 4400',
-          valorNuevo: 'se toma por WhatsApp 11 5555-0101',
+          // Tal cual lo escribe la circular: el analista real descarta un `new`
+          // que no está en el documento, y «se toma por WhatsApp…» no está.
+          valorNuevo: 'WhatsApp 11 5555-0101',
           motivo: 'La circular reemplaza el interno por WhatsApp.',
           clave: '4400'
         }
@@ -315,11 +333,24 @@ describe('proponer un plan de cambios', () => {
     expect(resultado.unresolved).toBeUndefined();
   });
 
-  it('un target que no existe vuelve marcado, para arreglarlo antes de que el docente lo vea', async () => {
+  /**
+   * Era un AVISO y ahora es una negativa: el aviso se ignoró.
+   *
+   * Medido el 2026-09-22: el plan salió igual hacia el docente con un target
+   * que no apuntaba a nada, y la orden quedó sin poder ejecutarse. Dibujar un
+   * plan incumplible sólo sirve para que lo apruebe alguien que no tiene cómo
+   * saberlo.
+   */
+  it('un target que no existe NIEGA el plan, en vez de avisar al costado', async () => {
     const resultado = await herramientas().generate_course_plan.execute(planDeCambios('S9.L4'), OPCIONES);
 
-    expect(resultado).toMatchObject({ unresolved: [{ title: 'Quién atiende cada reclamo', target: 'S9.L4' }] });
-    expect(String(resultado.note)).toContain('BEFORE the teacher sees it');
+    expect(resultado).toMatchObject({
+      ok: false,
+      unresolved: [{ title: 'Quién atiende cada reclamo', target: 'S9.L4' }]
+    });
+    // Y el plan NO se dibuja: sin secciones no hay tarjeta que aprobar.
+    expect(resultado.sections).toBeUndefined();
+    expect(String(resultado.note)).toContain('NOT shown to the teacher');
   });
 
   /** Un UUID con forma válida pero de otro curso es un id inventado, y se contesta igual. */
@@ -343,5 +374,238 @@ describe('proponer un plan de cambios', () => {
 
     expect(resultado.ok).not.toBe(false);
     expect(resultado.sections).toHaveLength(1);
+  });
+});
+
+/**
+ * Lo que el análisis encontró, el plan no lo puede CALLAR.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * 2026-09-22. `analyze_source_changes` listó, además de la sección que el
+ * docente nombró, otra lección y dos preguntas con el valor viejo, con la nota
+ * «un ítem edit por cada lección Y por cada ejercicio listado acá». El modelo
+ * armó el plan con la sección nombrada y nada más. Se aprobó, se construyó 4/4,
+ * y el curso quedó enseñando el valor nuevo en un lado y el viejo en otro. En
+ * la prueba anterior el MISMO modelo sí los había incluido: una nota no es un
+ * riel.
+ */
+describe('un plan de cambios que deja piezas afuera', () => {
+  /** Lo que quedó guardado del análisis: el interno 4400 pasa a WhatsApp. */
+  const ANALISIS = [
+    {
+      sourceId: ID.circular,
+      fileName: 'Circular de atención.pdf',
+      cambios: [
+        {
+          valorViejo: 'se toma por el interno 4400',
+          valorNuevo: 'WhatsApp 11 5555-0101',
+          motivo: 'La circular reemplaza el interno por WhatsApp.',
+          clave: '4400'
+        }
+      ]
+    }
+  ];
+
+  const item = (extra: Record<string, unknown>) => ({
+    type: 'lesson',
+    title: 'Quién atiende cada reclamo',
+    description: 'Actualizar el canal de contacto.',
+    order: 0,
+    hasExercise: false,
+    ...extra
+  });
+
+  const plan = (items: Array<Record<string, unknown>>) => ({
+    plan: {
+      title: 'Actualización de la circular',
+      scope: 'changes',
+      sections: [{ title: 'Mesa de Ayuda', order: 0, sectionId: 'S1', items }]
+    }
+  });
+
+  const LA_LECCION = item({
+    action: 'edit',
+    target: 'S1.L1',
+    changes: 'El interno 4400 pasa a WhatsApp.'
+  });
+
+  const EL_EJERCICIO = item({
+    type: 'exercise',
+    title: 'Autoevaluación de la mesa',
+    description: 'Actualizar la opción correcta.',
+    order: 1,
+    action: 'edit',
+    target: 'S1.E1',
+    changes: 'La opción «Al interno 4400» pasa a WhatsApp.'
+  });
+
+  beforeEach(() => {
+    vi.mocked(leerAnalisisDeFuente).mockResolvedValue(ANALISIS as never);
+  });
+
+  it('se niega, y nombra la pieza con su manija y su pregunta', async () => {
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      uncovered: [
+        {
+          handle: 'S1.E1',
+          title: 'Autoevaluación de la mesa',
+          questionIds: [521],
+          values: ['«4400» → «WhatsApp 11 5555-0101»']
+        }
+      ]
+    });
+    // El plan no se dibuja: el docente no puede aprobar algo incompleto.
+    expect(resultado.sections).toBeUndefined();
+    expect(String(resultado.note)).toContain('skip: true');
+  });
+
+  it('con el ítem del ejercicio, el plan sale', async () => {
+    const resultado = await herramientas().generate_course_plan.execute(
+      plan([LA_LECCION, EL_EJERCICIO]),
+      OPCIONES
+    );
+
+    expect(resultado.ok).not.toBe(false);
+    expect(resultado.uncovered).toBeUndefined();
+    expect(resultado.sections).toHaveLength(1);
+  });
+
+  /** La salida declarada: dejarla afuera DICIÉNDOLO, para que el docente lo vea. */
+  it('con skip y su motivo también sale, y el motivo viaja al plan', async () => {
+    const resultado = await herramientas().generate_course_plan.execute(
+      plan([
+        LA_LECCION,
+        item({
+          type: 'exercise',
+          title: 'Autoevaluación de la mesa',
+          description: 'Se deja como está.',
+          order: 1,
+          action: 'edit',
+          target: 'S1.E1',
+          skip: true,
+          changes: 'La docente pidió no tocar la autoevaluación hasta después del cierre del mes.'
+        })
+      ]),
+      OPCIONES
+    );
+
+    expect(resultado.ok).not.toBe(false);
+
+    const [seccion] = resultado.sections as Array<{ items: Array<Record<string, unknown>> }>;
+
+    expect(seccion.items[1]).toMatchObject({ skip: true, changes: expect.stringContaining('no tocar') });
+  });
+
+  it('un skip sin motivo se rechaza: el docente no puede ver lo que nadie escribió', async () => {
+    const resultado = await herramientas().generate_course_plan.execute(
+      plan([
+        LA_LECCION,
+        item({
+          type: 'exercise',
+          title: 'Autoevaluación de la mesa',
+          description: 'Se deja como está.',
+          order: 1,
+          action: 'edit',
+          target: 'S1.E1',
+          skip: true
+        })
+      ]),
+      OPCIONES
+    );
+
+    expect(resultado.ok).toBe(false);
+    expect(String(resultado.error)).toContain('changes');
+  });
+
+  it('y sin análisis en la conversación, nada de esto corre', async () => {
+    vi.mocked(leerAnalisisDeFuente).mockResolvedValue([]);
+
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado.ok).not.toBe(false);
+    expect(resultado.uncovered).toBeUndefined();
+  });
+
+  /**
+   * Una pieza que un plan ANTERIOR ya cerró no se vuelve a reclamar.
+   *
+   * El análisis vive en la conversación entera. Sin mirar el registro, el
+   * segundo plan de cambios de la misma charla («agregá una sección sobre
+   * feriados») se negaba por una ocurrencia que el modelo ya había confirmado
+   * como legítima, y la única salida era un ítem `skip` sobre una pieza que
+   * nadie mencionó.
+   */
+  it('una pieza confirmada en el plan anterior no traba el plan nuevo', async () => {
+    vi.mocked(readPlanRegistry).mockResolvedValue([
+      {
+        key: 's1-e1',
+        kind: 'exercise',
+        title: 'Autoevaluación de la mesa',
+        position: 1,
+        entityId: ID.autoevaluacion,
+        action: 'edit',
+        confirmed: { reason: 'La opción que queda es la del reclamo comercial, que no cambió.', at: '2026-09-22T10:00:00Z' }
+      }
+    ] as never);
+
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado.ok).not.toBe(false);
+    expect(resultado.uncovered).toBeUndefined();
+  });
+
+  it('y una que el plan anterior dejó como está, tampoco', async () => {
+    vi.mocked(readPlanRegistry).mockResolvedValue([
+      {
+        key: 's1-e1',
+        kind: 'exercise',
+        title: 'Autoevaluación de la mesa',
+        position: 1,
+        entityId: ID.autoevaluacion,
+        action: 'edit',
+        skip: true
+      }
+    ] as never);
+
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado.uncovered).toBeUndefined();
+  });
+
+  it('pero una pieza del registro que sólo se ATÓ, sin confirmar ni dejar, sigue contando', async () => {
+    vi.mocked(readPlanRegistry).mockResolvedValue([
+      {
+        key: 's1-e1',
+        kind: 'exercise',
+        title: 'Autoevaluación de la mesa',
+        position: 1,
+        entityId: ID.autoevaluacion,
+        action: 'edit'
+      }
+    ] as never);
+
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado).toMatchObject({ ok: false, uncovered: [{ handle: 'S1.E1' }] });
+  });
+
+  /**
+   * Si el análisis no se puede leer, el plan no sale como si no hubiera
+   * análisis: esa lista vacía es exactamente lo que se lee como «todo bien».
+   */
+  it('si el análisis no se puede leer, el plan se niega y lo dice', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(leerAnalisisDeFuente).mockRejectedValue(new Error('conexión cerrada'));
+
+    const resultado = await herramientas().generate_course_plan.execute(plan([LA_LECCION]), OPCIONES);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.sections).toBeUndefined();
+    expect(String(resultado.error)).toContain('source analysis');
+    expect(String(resultado.error)).toContain('conexión cerrada');
   });
 });

@@ -113,17 +113,25 @@ describe('asignar ids de bloque', () => {
   });
 
   /**
-   * El editor no persiste un atributo puesto en el `<svg>`: lo entrega crudo a
-   * ProseMirror. Un id acá volvería a estamparse en cada carga y no llegaría
-   * nunca a la base — y además los diagramas ya tienen su propio direccionamiento
-   * (su ordinal entre los SVG), del que depende `regenerateDiagram`.
+   * El `<svg>` SÍ lleva id, contra lo que decía este test.
+   *
+   * Estaba excluido por una suposición: «el editor lo entrega crudo a
+   * ProseMirror, así que un id acá no llegaría nunca a la base». Medido con el
+   * editor de verdad (`apps/dashboard/.../diagrama-en-el-editor.svelte.test.ts`),
+   * es al revés: el nodo `svgBlock` guarda el markup crudo y lo vuelve a
+   * escribir tal cual, así que un id que ya viene en el HTML sobrevive — y el
+   * sanitizador lo deja pasar.
+   *
+   * Lo que costó la suposición: el diagrama era el único bloque sin nombre, y
+   * el modelo terminó pegando 8 y 9 copias del mismo dibujo tratando de
+   * corregir un valor de adentro (2026-09-22).
    */
-  it('no le pone id a un <svg>', () => {
+  it('le pone id a un <svg> de primer nivel, que es lo que lo hace direccionable', () => {
     const html = '<p>Antes</p><svg viewBox="0 0 10 10"><text>A</text></svg><p>Después</p>';
     const resultado = asignarIdsDeBloque(html, contador());
 
-    expect(resultado).toContain('<svg viewBox="0 0 10 10">');
-    expect(listLessonBlocks(resultado).map((b) => b.blockId)).toEqual(['blq1', 'blq2']);
+    expect(resultado).toContain('<svg viewBox="0 0 10 10" data-block-id="blq2">');
+    expect(listLessonBlocks(resultado).map((b) => b.blockId)).toEqual(['blq1', 'blq2', 'blq3']);
   });
 
   it('no le pone id a los elementos anidados', () => {

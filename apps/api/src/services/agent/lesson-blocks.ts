@@ -187,10 +187,31 @@ export function listarElementosDePrimerNivel(content: string): ElementoDePrimerN
  *
  * Es la lista del editor (`BlockId.ts`) leída en HTML en vez de en nombres de
  * nodo de ProseMirror, más `figure`, que el editor produce envolviendo una
- * imagen. `svg` está ausente por el mismo motivo que allá: el editor lo entrega
+ * imagen.
+ *
+ * ── Por qué `svg` SÍ está, contra lo que decía este comentario ───────────────
+ *
+ * Estuvo ausente a propósito, con este argumento: «el editor entrega el svg
  * crudo a ProseMirror y no serializa sus atributos, así que un id puesto acá
- * desaparecería la primera vez que el docente abriera y guardara la lección —
- * y un id que no sobrevive es peor que ninguno.
+ * desaparecería la primera vez que el docente guardara». Lo que costó esa
+ * suposición, medido en producción el 2026-09-22: el diagrama era el ÚNICO
+ * bloque sin nombre, la orden de trabajo señalaba un valor viejo que vivía
+ * adentro, el modelo no tenía cómo nombrarlo y terminó reemplazando el PÁRRAFO
+ * anterior por «párrafo + svg nuevo» 7 y 10 veces. Quedaron 8 y 9 diagramas
+ * idénticos seguidos, una lección pasó de 7,9 KB a 29,8 KB y la ronda murió
+ * contra el tope de 40 pasos. Sin un solo error en ningún lado.
+ *
+ * La suposición era falsa a medias, y la mitad que importa es la contraria: el
+ * nodo `svgBlock` guarda el markup CRUDO (`element.outerHTML`) y lo vuelve a
+ * escribir tal cual, así que un atributo que ya viene en el HTML viaja adentro
+ * del markup y sobrevive. Lo que no sobrevive es un id que la extensión
+ * estampara por serialización de atributos —que es de lo que hablaba
+ * `BlockId.ts`— y tampoco un `<figure>` que lo envuelva: ProseMirror no tiene
+ * ese nodo y lo atraviesa.
+ *
+ * Las dos cosas están medidas, con el editor de verdad y con el sanitizador de
+ * verdad, en `apps/dashboard/src/lib/features/course/utils/
+ * diagrama-en-el-editor.svelte.test.ts`.
  */
 const TIPOS_CON_ID = new Set([
   'p',
@@ -205,7 +226,8 @@ const TIPOS_CON_ID = new Set([
   'img',
   'figure',
   'div',
-  'table'
+  'table',
+  'svg'
 ]);
 
 /** Ocho caracteres, igual que el editor: mismo formato de id en los dos lados. */
@@ -357,20 +379,159 @@ export function preserveBlockId(replacement: string, blockId: string): string {
   return withId + trimmed.slice(openTag[0].length);
 }
 
+/** ¿Este bloque es un diagrama? */
+export function esDiagrama(html: string): boolean {
+  return /^\s*<svg\b/i.test(html);
+}
+
+/**
+ * Las etiquetas `<text>` de un diagrama, en orden y sin markup.
+ *
+ * Es lo único legible de un `<svg>`: la geometría no se puede juzgar ni mostrar.
+ * Vive acá y no en tres lugares porque las tres puntas que la necesitan —la
+ * vista previa de los bloques, el texto que ve el verificador de fundamento
+ * (`grounding.ts`) y la comparación entre dos diagramas de acá abajo— tienen
+ * que estar mirando lo mismo.
+ */
+export function etiquetasDeDiagrama(svg: string): string[] {
+  return [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+    .map((m) =>
+      m[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean);
+}
+
 /**
  * A compact map of the lesson for the model to choose from: the id and enough
  * text to recognise the block, without shipping the whole body back.
  */
 export function summarizeLessonBlocks(content: string, previewLength = 120): Array<{ blockId: string; text: string }> {
   return listLessonBlocks(content).map((block) => {
-    const text = block.html
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    // Un diagrama aplanado a texto son sus etiquetas pegadas, que se leen como
+    // un párrafo cortado: «P2 Alta Primera respuesta 2 horas». Dicho así, el
+    // modelo no sabe que ese bloque es un dibujo y le manda un `<p>`.
+    const text = esDiagrama(block.html)
+      ? `[diagram: ${etiquetasDeDiagrama(block.html).join(' · ')}]`
+      : block.html
+          .replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
 
     return {
       blockId: block.blockId,
       text: text.length > previewLength ? `${text.slice(0, previewLength)}…` : text
     };
   });
+}
+
+/** Forma comparable de una etiqueta: lo que decide si dos diagramas dicen lo mismo. */
+function plegarEtiqueta(etiqueta: string): string {
+  return etiqueta.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Cuánto se tienen que parecer dos diagramas seguidos para dar uno por copia
+ * del otro.
+ *
+ * Alto a propósito. Lo que se está por borrar es contenido, así que el error
+ * caro es el falso positivo: dos diagramas distintos que comparten la mitad de
+ * sus etiquetas (el mismo proceso en dos variantes) tienen que quedar los dos.
+ * Lo que esto caza es la copia literal —el mismo dibujo pegado ocho veces— con
+ * a lo sumo una etiqueta cambiada, que es el valor que el modelo estaba
+ * corrigiendo cuando lo duplicó.
+ */
+export const COINCIDENCIA_DE_DIAGRAMAS = 0.9;
+
+function sonElMismoDiagrama(unoHtml: string, otroHtml: string): boolean {
+  const uno = etiquetasDeDiagrama(unoHtml).map(plegarEtiqueta);
+  const otro = etiquetasDeDiagrama(otroHtml).map(plegarEtiqueta);
+
+  // Sin etiquetas no hay con qué comparar: dos dibujos de pura geometría pueden
+  // ser dos dibujos distintos, y borrar uno sería tirar contenido a ciegas.
+  if (uno.length === 0 || uno.length !== otro.length) return false;
+
+  const iguales = uno.filter((etiqueta, i) => etiqueta === otro[i]).length;
+
+  return iguales / uno.length >= COINCIDENCIA_DE_DIAGRAMAS;
+}
+
+/**
+ * La red de seguridad contra el diagrama duplicado: de una tira de copias queda
+ * la ÚLTIMA.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-22. El modelo quería corregir un valor DENTRO de un
+ * diagrama que entonces no tenía id, y la única jugada que se le ocurrió fue
+ * reemplazar el párrafo anterior por «párrafo + svg nuevo». El servidor conserva
+ * el id del párrafo y deja el svg nuevo al lado; el viejo sigue ahí con el valor
+ * viejo, así que el aviso vuelve y el modelo lo hace otra vez: 8 y 9 diagramas
+ * idénticos seguidos en dos lecciones.
+ *
+ * El id en el `<svg>` (ver `TIPOS_CON_ID`) saca el motivo. Esto es el piso: si
+ * por cualquier otro camino vuelven a quedar dos copias seguidas, la lección no
+ * se guarda con las dos.
+ *
+ * Se conserva la ÚLTIMA porque es la nueva: en el caso medido, la copia de
+ * arriba es la que todavía dice el valor viejo. Quedarse con la primera
+ * significaría revertir la corrección que el modelo acababa de hacer.
+ */
+export function quitarDiagramasDuplicados(content: string, lessonTitle?: string): string {
+  const { contenido, eliminados } = deduplicarDiagramas(content);
+
+  if (eliminados > 0) {
+    console.info(
+      `[lesson-blocks] ${eliminados} diagrama(s) duplicado(s) eliminado(s)` +
+        (lessonTitle ? ` en «${lessonTitle}»` : '')
+    );
+  }
+
+  return contenido;
+}
+
+/**
+ * Lo mismo que `quitarDiagramasDuplicados`, pero MUDO: sólo cuenta.
+ *
+ * La guardia de conservación deduplica los dos lados antes de comparar (ver
+ * `contarPiezas` en `conservacion.ts`), o sea dos veces por cada escritura y
+ * por cada edición. Con el log adentro, una lección vieja con ocho copias
+ * dejaba dos líneas de «7 eliminados» por cada `replace_lesson_block` sobre
+ * OTRO bloque, sin que se eliminara nada de la base, y el log que tenía que
+ * decir cuándo actuó la red de seguridad dejaba de servir para eso. El log
+ * queda sólo en los puntos que GUARDAN.
+ */
+export function deduplicarDiagramas(content: string): { contenido: string; eliminados: number } {
+  if (!content || !/<svg\b/i.test(content)) return { contenido: content, eliminados: 0 };
+
+  const elementos = listarElementosDePrimerNivel(content);
+  const aBorrar: Array<{ start: number; end: number }> = [];
+
+  for (let i = 0; i < elementos.length - 1; i += 1) {
+    const actual = elementos[i];
+    const siguiente = elementos[i + 1];
+
+    if (actual.tagName.toLowerCase() !== 'svg' || siguiente.tagName.toLowerCase() !== 'svg') continue;
+    // Seguidos de verdad: entre los dos no puede haber texto suelto. Si lo hay,
+    // el de arriba es parte de otra cosa y no una copia colgada al lado.
+    if (content.slice(actual.end, siguiente.start).trim()) continue;
+    if (!sonElMismoDiagrama(content.slice(actual.start, actual.end), content.slice(siguiente.start, siguiente.end))) {
+      continue;
+    }
+
+    aBorrar.push({ start: actual.start, end: actual.end });
+  }
+
+  if (aBorrar.length === 0) return { contenido: content, eliminados: 0 };
+
+  let resultado = content;
+
+  // De atrás para adelante: cada corte corre los tramos de los que faltan.
+  for (let i = aBorrar.length - 1; i >= 0; i -= 1) {
+    resultado = resultado.slice(0, aBorrar[i].start) + resultado.slice(aBorrar[i].end);
+  }
+
+  return { contenido: resultado, eliminados: aBorrar.length };
 }

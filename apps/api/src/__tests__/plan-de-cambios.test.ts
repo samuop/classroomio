@@ -217,6 +217,35 @@ describe('atar un plan de cambios al curso', () => {
   });
 
   /**
+   * Leer una lección vieja no cuenta como editarla.
+   *
+   * `get_lesson_content` estampa y GUARDA los ids de bloque de una lección
+   * anterior a ellos, para que su diagrama se pueda nombrar. Si el hash de la
+   * línea de base contara los ids, esa lectura cambiaría el hash: un ítem
+   * `rewrite` quedaría ✅ por haber sido leído, y `confirm_change_applied`
+   * aceptaría una declaración sin una sola edición atrás.
+   */
+  it('la línea de base no cambia porque la lección haya recibido sus ids de bloque', () => {
+    const plan = planDeCambios([item({ action: 'rewrite', target: 'S2.L2', changes: 'c' })], 'S2');
+    const conIds = atar(plan);
+    const sinIds = atarPlanDeCambios({
+      plan,
+      secciones: SECCIONES,
+      items: ITEMS,
+      lecciones: LECCIONES.map((leccion) => ({
+        ...leccion,
+        content: leccion.content.replace(/ data-block-id="[^"]*"/g, '')
+      })),
+      preguntasPorEjercicio: PREGUNTAS,
+      analisis: ANALISIS
+    });
+
+    expect(sinIds.registro.sections[0].items[0].baseline?.contentHash).toBe(
+      conIds.registro.sections[0].items[0].baseline?.contentHash
+    );
+  });
+
+  /**
    * Los reemplazos se reparten por DÓNDE ESTÁN, no por lo que el plan diga: el
    * plan dice qué lección tocar, los valores los sabe el servidor.
    */

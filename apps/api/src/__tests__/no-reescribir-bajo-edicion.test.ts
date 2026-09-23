@@ -137,6 +137,16 @@ const CON_EJEMPLOS =
   '<p data-block-id="b8" data-ejemplo="caso inventado">Caso 1: el cliente llama por un faltante.</p>' +
   '<p data-block-id="b9" data-ejemplo="caso inventado">Caso 2: el cliente escribe por una rotura.</p>';
 
+/**
+ * La otra lección del curso, sin nada marcado.
+ *
+ * Cada lección tiene que tener SU contenido y no el de la vecina: la guardia de
+ * conservación compara contra lo que la lección tiene guardado, así que un mock
+ * que le devuelve a todas la lección con ejemplos hace que cualquier escritura
+ * sobre cualquier otra se lea como una pérdida. Ver `conservacion.ts`.
+ */
+const SIN_EJEMPLOS = '<p data-block-id="c1">El reclamo se cierra con la conformidad del cliente.</p>';
+
 const OPCIONES = { toolCallId: 'llamada', messages: [] };
 
 type Herramienta = { execute: (args: unknown, opciones: unknown) => Promise<Record<string, unknown>> };
@@ -163,7 +173,13 @@ beforeEach(() => {
         id,
         title: ITEMS.find((item) => item.id === id)?.title ?? 'Lección',
         order: 0,
-        lessonLanguages: [{ locale: 'es', content: CON_EJEMPLOS }]
+        lessonLanguages: [
+          {
+            locale: 'es',
+            // La lección nueva no existe todavía: no tiene contenido guardado.
+            content: id === ID.quienAtiende ? CON_EJEMPLOS : id === ID.leccionNueva ? '' : SIN_EJEMPLOS
+          }
+        ]
       }) as never
   );
   // El informe se guarda con `.catch(...)`: sin promesa acá, el guardado del
@@ -246,8 +262,11 @@ describe('una lección con orden de EDICIÓN', () => {
   });
 
   it('y sin orden de trabajo nada de esto se activa', async () => {
+    // Conserva los dos ejemplos marcados: sin orden de trabajo este riel no
+    // corre, pero la guardia de conservación sí — y con razón. Ver
+    // `conservacion.ts`.
     const resultado = await herramientas().update_lesson_content.execute(
-      { lessonId: 'S1.L1', content: '<p>Una lección nueva, escrita de cero.</p>' },
+      { lessonId: 'S1.L1', content: CON_EJEMPLOS.replace('el interno 4400', 'WhatsApp 11 5555-0101') },
       OPCIONES
     );
 
@@ -260,7 +279,10 @@ describe('una lección con orden de REESCRITURA', () => {
 
   it('write_lesson sigue habilitado: el escritor es el camino', async () => {
     escribirLeccion.mockResolvedValue({
-      html: '<p>El reclamo se toma por WhatsApp 11 5555-0101.</p>',
+      // Con los ejemplos que la lección ya tenía: el escritor recibe el
+      // contenido actual justamente para conservarlos, y si los tirara, la
+      // guardia de conservación no guardaría nada.
+      html: CON_EJEMPLOS.replace('el interno 4400', 'WhatsApp 11 5555-0101'),
       material: [],
       fuentesUsadas: [],
       fuentesNoEncontradas: [],

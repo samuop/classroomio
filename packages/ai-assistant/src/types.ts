@@ -138,6 +138,28 @@ export const CoursePlanItemSchema = z.object({
     .optional()
     .describe(
       'What changes, in one or two sentences — the teacher reads this to decide. Required for "rewrite" and "edit".'
+    ),
+  /**
+   * La única forma de dejar afuera una pieza que el análisis encontró: DICIÉNDOLO.
+   *
+   * Medido el 2026-09-22: el análisis listó la lección de escalamiento, una
+   * pregunta de la práctica y otra del examen final con el valor viejo, y la
+   * nota de la herramienta decía «un ítem edit por cada lección Y por cada
+   * ejercicio listado acá». El modelo armó el plan con la sección que el
+   * docente había nombrado y nada más. Se aprobó, se construyó, y el curso
+   * quedó enseñando el valor nuevo en un lado y el viejo en otro: una nota no
+   * es un riel.
+   *
+   * Hoy el servidor NIEGA un plan de cambios que calle una pieza con
+   * ocurrencias. `skip` es la salida legítima —el docente pidió no tocar esa
+   * pieza— y el motivo va en `changes`, así que el docente ve en la pantalla
+   * qué queda afuera y por qué.
+   */
+  skip: z
+    .boolean()
+    .optional()
+    .describe(
+      'Set true ONLY to declare that this existing piece is deliberately left as it is, with the reason in `changes` (e.g. the teacher asked to leave it alone). The item still needs its target. The server marks it done without measuring it, and the teacher sees it as "left as is".'
     )
 });
 
@@ -219,8 +241,23 @@ export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine((plan, ctx) =
         if (!item.changes?.trim()) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `A "${action}" item needs \`changes\`: one or two sentences saying what changes, so the teacher can approve it.`,
+            message: item.skip
+              ? 'A `skip` item needs `changes`: the reason you are leaving this piece as it is, so the teacher can see what is left out and why.'
+              : `A "${action}" item needs \`changes\`: one or two sentences saying what changes, so the teacher can approve it.`,
             path: ['sections', sectionIndex, 'items', itemIndex, 'changes']
+          });
+        }
+      });
+
+      // `skip` sobre un ítem que se CREA no significa nada: no hay pieza que
+      // dejar como está. Aceptarlo sería dejar que un ítem inventado cuente
+      // como cobertura de uno real.
+      section.items.forEach((item, itemIndex) => {
+        if (item.skip && (item.action ?? 'create') === 'create') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: '`skip` only applies to an existing piece: use action "edit" (or "rewrite") with its target.',
+            path: ['sections', sectionIndex, 'items', itemIndex, 'skip']
           });
         }
       });

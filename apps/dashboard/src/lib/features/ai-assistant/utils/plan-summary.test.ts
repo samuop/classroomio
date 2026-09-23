@@ -191,8 +191,43 @@ describe('contar un plan', () => {
       nuevas: 1,
       reescribir: 1,
       retocar: 2,
+      seDejan: 0,
       esDeCambios: true
     });
+  });
+
+  /**
+   * Un ítem `skip` es un `edit` que declara que NO se toca.
+   *
+   * Contarlo como «se retoca» le dice al docente lo contrario de lo que dice la
+   * tarjeta de ese mismo ítem, que muestra «Se deja como está: …». Y es
+   * justamente la pieza que el servidor obligó a nombrar para poder dejarla
+   * afuera, así que es la que más importa que se lea bien.
+   */
+  it('un ítem que se deja como está no se cuenta como retocado', () => {
+    const conSkip: CoursePlan = {
+      title: 'Actualización de la circular',
+      scope: 'changes',
+      sections: [
+        {
+          title: 'Mesa de Ayuda',
+          order: 2,
+          sectionId: 'S2',
+          items: [
+            { ...item('Quién atiende cada reclamo'), action: 'edit', target: 'S2.L1', changes: 'El interno pasa a WhatsApp.' },
+            {
+              ...item('Autoevaluación', 'exercise'),
+              action: 'edit',
+              target: 'S2.E1',
+              skip: true,
+              changes: 'La docente pidió no tocar la autoevaluación hasta el cierre del mes.'
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(contarPlan(conSkip)).toMatchObject({ retocar: 1, seDejan: 1 });
   });
 
   /** Un plan sin `action` es un plan de curso: todo se crea, y nada dice «se retoca». */
@@ -204,6 +239,7 @@ describe('contar un plan', () => {
       nuevas: 5,
       reescribir: 0,
       retocar: 0,
+      seDejan: 0,
       esDeCambios: false
     });
   });

@@ -83,10 +83,18 @@ for (const leccion of manifiesto.lecciones) {
   console.log('='.repeat(78));
 
   for (let i = 1; i <= veces; i++) {
-    const avisos = await verificar({ lessonTitle: leccion.titulo, contenido, soloFuentes: [fuente] });
+    const chequeo = await verificar({ lessonTitle: leccion.titulo, contenido, soloFuentes: [fuente] });
 
     console.log(`\n-- corrida ${i} --`);
-    console.log(avisos.length === 0 ? 'SIN AVISOS: el verificador no marcó nada.' : avisos.join('\n'));
+
+    // «No corrió» y «no marcó nada» se ven igual en los avisos y son cosas
+    // opuestas: por eso el resultado trae estado. Ver `grounding.ts`.
+    if (chequeo.estado !== 'ok') {
+      console.log(`NO CORRIÓ (${chequeo.estado}): ${chequeo.motivo ?? 'sin motivo'}`);
+      continue;
+    }
+
+    console.log(chequeo.avisos.length === 0 ? 'SIN AVISOS: el verificador no marcó nada.' : chequeo.avisos.join('\n'));
   }
 
   console.log('');

@@ -1,4 +1,9 @@
-import type { FuenteVista, Verificador } from '@api/services/agent/grounding';
+import type {
+  EstadoDelFundamento,
+  FuenteVista,
+  ResultadoDeFundamento,
+  Verificador
+} from '@api/services/agent/grounding';
 
 /**
  * Cerrar el lazo: cuando el agente edita una lección para tapar un aviso de
@@ -83,6 +88,17 @@ export type ResultadoDeLaRevision = {
   groundingWarnings: string[];
   /** El aviso que se estaba arreglando ya no aparece. */
   resuelto: boolean;
+  /**
+   * Si el rechequeo CORRIÓ.
+   *
+   * Un rechequeo que se cayó devolvía `undefined`, igual que «no había nada que
+   * rechequear», así que el modelo leía silencio en los dos casos y un aviso
+   * abierto podía quedar tapado por una caída del proveedor sin que nadie lo
+   * dijera. Ver `EstadoDelFundamento` en `grounding.ts`.
+   */
+  estado: EstadoDelFundamento;
+  /** Por qué no corrió, cuando no corrió. */
+  motivo?: string;
 };
 
 /**
@@ -128,23 +144,33 @@ export async function revisarTrasEditar(params: {
   // una lección que ya existía —no se sabe con qué se escribió— y es lo que la
   // orden de trabajo necesita.
   const soloFuentes = pendiente?.soloFuentes;
-  let avisos: string[];
+  let chequeo: ResultadoDeFundamento;
 
   try {
-    avisos = await params.verificarFundamento({
+    chequeo = await params.verificarFundamento({
       lessonTitle: params.lessonTitle,
       contenido: params.contenido,
       soloFuentes
     });
   } catch (error) {
     // Falla abierto: la edición ya está guardada y el aviso original sigue
-    // anotado, así que la próxima edición vuelve a intentarlo.
-    console.error('[fundamento] no se pudo rechequear la lección tras editarla:', error);
+    // anotado, así que la próxima edición vuelve a intentarlo. Lo que ya no
+    // hace es callarse: quien llama tiene que poder decir que no se miró.
+    const motivo = error instanceof Error ? error.message : String(error);
 
-    return undefined;
+    console.error(`[fundamento] no se pudo rechequear «${params.lessonTitle}»: ${motivo}`);
+
+    return { groundingWarnings: [], resuelto: false, estado: 'failed', motivo };
   }
 
-  anotarChequeo(params.registro, params.lessonId, { avisos, soloFuentes });
+  // Un chequeo que no corrió no desmarca la lección: borrar la marca por una
+  // caída del proveedor sería dar por resuelto un aviso que nadie volvió a
+  // mirar, que es exactamente el agujero que esto vino a tapar.
+  if (chequeo.estado !== 'ok') {
+    return { groundingWarnings: [], resuelto: false, estado: chequeo.estado, motivo: chequeo.motivo };
+  }
 
-  return { groundingWarnings: avisos, resuelto: avisos.length === 0 };
+  anotarChequeo(params.registro, params.lessonId, { avisos: chequeo.avisos, soloFuentes });
+
+  return { groundingWarnings: chequeo.avisos, resuelto: chequeo.avisos.length === 0, estado: 'ok' };
 }

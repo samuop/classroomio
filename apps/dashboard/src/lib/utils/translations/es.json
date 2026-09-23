@@ -490,6 +490,7 @@
       "progress": "{completed} de {total} listos",
       "status_done": "Listo",
       "confirmed_by_assistant": "El asistente lo dio por hecho: {reason}",
+      "left_as_is": "Se deja como está: {reason}",
       "status_empty": "Creado, sin contenido",
       "status_missing": "Pendiente",
       "section": "Sección {order}",
@@ -506,7 +507,8 @@
       "affected_sections": "{count, plural, one {# sección afectada} other {# secciones afectadas}}",
       "new_lessons": "{count, plural, one {# lección nueva} other {# lecciones nuevas}}",
       "rewrites": "{count, plural, one {# se reescribe} other {# se reescriben}}",
-      "edits": "{count, plural, one {# se retoca} other {# se retocan}}"
+      "edits": "{count, plural, one {# se retoca} other {# se retocan}}",
+      "left_as_is_count": "{count, plural, one {# se deja como está} other {# se dejan como están}}"
     }
   },
   "analytics": {

@@ -136,6 +136,8 @@ export interface CuentaDelPlan {
   reescribir: number;
   /** Piezas existentes a las que se les cambian datos puntuales. */
   retocar: number;
+  /** Piezas que el plan nombra para decir que NO se tocan. Ver `skip` en `course-plan.ts`. */
+  seDejan: number;
   esDeCambios: boolean;
 }
 
@@ -155,6 +157,7 @@ export function contarPlan(plan: CoursePlan): CuentaDelPlan {
   let nuevas = 0;
   let reescribir = 0;
   let retocar = 0;
+  let seDejan = 0;
 
   for (const seccion of plan.sections ?? []) {
     for (const item of seccion.items ?? []) {
@@ -164,7 +167,11 @@ export function contarPlan(plan: CoursePlan): CuentaDelPlan {
 
       const accion = item.action ?? 'create';
 
-      if (accion === 'rewrite') reescribir += 1;
+      // Un ítem `skip` es un `edit` que declara que NO se toca, y contarlo como
+      // «se retoca» dice lo contrario de lo que dice la tarjeta del ítem: el
+      // docente lee «2 se retocan» sobre un plan donde una se deja como está.
+      if (item.skip) seDejan += 1;
+      else if (accion === 'rewrite') reescribir += 1;
       else if (accion === 'edit') retocar += 1;
       else nuevas += 1;
     }
@@ -177,6 +184,7 @@ export function contarPlan(plan: CoursePlan): CuentaDelPlan {
     nuevas,
     reescribir,
     retocar,
+    seDejan,
     esDeCambios: plan.scope === 'changes'
   };
 }

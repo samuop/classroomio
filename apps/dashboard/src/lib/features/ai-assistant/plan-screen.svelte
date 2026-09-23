@@ -275,7 +275,8 @@
             {$t('ai_assistant.plan_screen.affected_sections', { count: cuenta.secciones })}{#if cuenta.nuevas > 0}
               · {$t('ai_assistant.plan_screen.new_lessons', { count: cuenta.nuevas })}{/if}{#if cuenta.reescribir > 0}
               · {$t('ai_assistant.plan_screen.rewrites', { count: cuenta.reescribir })}{/if}{#if cuenta.retocar > 0}
-              · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}
+              · {$t('ai_assistant.plan_screen.edits', { count: cuenta.retocar })}{/if}{#if cuenta.seDejan > 0}
+              · {$t('ai_assistant.plan_screen.left_as_is_count', { count: cuenta.seDejan })}{/if}
           </p>
         {:else}
           <p class="ui:text-muted-foreground mt-2 text-sm">
@@ -416,7 +417,17 @@
                           <p class="ui:text-muted-foreground text-sm text-pretty">{item.description}</p>
                         {/if}
                         {#if item.changes}
-                          <p class="text-sm text-pretty text-(--primary)">{item.changes}</p>
+                          <!--
+                            Un ítem que se deja como está se lee distinto: no es
+                            lo que se va a cambiar, es lo que NO se va a tocar y
+                            por qué. El docente tiene que poder verlo antes de
+                            aprobar. Ver `skip` en `course-plan.ts`.
+                          -->
+                          <p class="text-sm text-pretty {item.skip ? 'ui:text-muted-foreground' : 'text-(--primary)'}">
+                            {item.skip
+                              ? $t('ai_assistant.plan_screen.left_as_is', { reason: item.changes })
+                              : item.changes}
+                          </p>
                         {/if}
                       {/if}
 

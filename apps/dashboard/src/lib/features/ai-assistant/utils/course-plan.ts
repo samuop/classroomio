@@ -13,6 +13,15 @@ export interface CoursePlanSectionItem {
   target?: string;
   /** Qué le cambia, en una o dos oraciones: es lo que el docente lee para aprobar. */
   changes?: string;
+  /**
+   * Esta pieza se deja COMO ESTÁ, y `changes` dice por qué.
+   *
+   * El servidor niega un plan de cambios que calle una pieza donde el análisis
+   * encontró el valor viejo (el curso terminaría enseñando el valor nuevo en un
+   * lado y el viejo en otro). `skip` es la salida declarada, y existe para que
+   * el docente VEA qué queda afuera y con qué motivo.
+   */
+  skip?: boolean;
 }
 
 export interface CoursePlanSection {

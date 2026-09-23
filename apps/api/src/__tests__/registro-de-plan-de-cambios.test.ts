@@ -139,6 +139,40 @@ describe('sincronizar un plan de cambios', () => {
     expect(fila?.input).toMatchObject({ baseline: { contentHash: 'hash-del-lunes' } });
   });
 
+  /**
+   * Un ítem que se deja COMO ESTÁ tiene que llegar así al registro.
+   *
+   * Es lo que hace que el ancla lo dé por hecho sin medir nada. Si se perdiera
+   * acá, el ancla lo reclamaría en cada ronda y el modelo terminaría editando
+   * justo la pieza que el docente pidió no tocar.
+   */
+  it('conserva el `skip` de una pieza que el plan deja como está', async () => {
+    const entradas = await syncPlanRegistry({
+      ...CORRIDA,
+      plan: {
+        sections: [
+          {
+            title: 'Mesa de Ayuda',
+            items: [
+              {
+                type: 'exercise' as const,
+                title: 'Autoevaluación de la mesa',
+                action: 'edit' as const,
+                entityId: 'bbbbbbb1-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                skip: true
+              }
+            ]
+          }
+        ]
+      }
+    });
+
+    const orden = entradas.find((entrada) => entrada.kind === 'exercise');
+
+    expect(orden).toMatchObject({ action: 'edit', skip: true });
+    expect(filas.find((f) => f.stepKey === orden!.key)?.input).toMatchObject({ skip: true });
+  });
+
   /** Un plan de construcción común no lleva nada de esto y tiene que seguir igual. */
   it('un plan sin órdenes de cambio no guarda ni acción ni línea de base', async () => {
     const entradas = await syncPlanRegistry({

@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
+import { etiquetasDeDiagrama } from '@api/services/agent/lesson-blocks';
 import { buildSourcePack } from '@api/services/agent/source-pack';
 import { quitarPasajesMarcados } from '@api/services/agent/unsupported-passages';
 import { recordTokenUsage } from '@api/services/agent/usage';
@@ -118,9 +119,10 @@ If everything checkable is supported, return an empty list.`;
  */
 export function textoDeLeccion(html: string): string {
   const conDiagramas = html.replace(/<svg\b[\s\S]*?<\/svg>/gi, (svg) => {
-    const etiquetas = [...svg.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
-      .map((m) => m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
-      .filter(Boolean);
+    // La extracción vive en `lesson-blocks.ts` y no acá: la vista previa de un
+    // bloque y este texto tienen que mostrar las mismas etiquetas, y dos copias
+    // de la misma regex terminan sin serlo — el primer arreglo llega a una sola.
+    const etiquetas = etiquetasDeDiagrama(svg);
 
     return etiquetas.length > 0 ? ` [diagram: ${etiquetas.join(' · ')}] ` : ' ';
   });
@@ -219,6 +221,37 @@ export interface FuenteVista {
   text: string;
 }
 
+/**
+ * Si el chequeo CORRIÓ, y si no, por qué.
+ *
+ * ── Por qué hace falta decirlo ───────────────────────────────────────────────
+ *
+ * Antes esto devolvía `string[]` y el `catch` devolvía `[]`: una caída del
+ * proveedor y una lección impecable llegaban al informe EXACTAMENTE iguales —
+ * `groundingWarnings: []`—, sin una línea de diferencia en ningún lado. En una
+ * construcción de dieciséis lecciones eso son dieciséis lecciones «limpias» que
+ * nadie verificó, y el docente leyendo el informe no tiene cómo enterarse.
+ *
+ * Por eso el resultado dice el estado y no sólo los hallazgos: «sin avisos» y
+ * «no se miró» son cosas opuestas y tienen que llegar como cosas distintas.
+ */
+export type EstadoDelFundamento = 'ok' | 'skipped' | 'failed';
+
+export interface ResultadoDeFundamento {
+  /** Lo que hay que arreglar. Vacío cuando corrió y salió limpio, y cuando no corrió. */
+  avisos: string[];
+  estado: EstadoDelFundamento;
+  /** Por qué no corrió. Sólo cuando `estado` no es `ok`. */
+  motivo?: string;
+}
+
+/** Lo que devuelve una ronda sin verificador: no corrió, y se dice. */
+export const SIN_VERIFICADOR: ResultadoDeFundamento = {
+  avisos: [],
+  estado: 'skipped',
+  motivo: 'the grounding check is off on this round'
+};
+
 export type Verificador = (params: {
   lessonTitle: string;
   contenido: string;
@@ -237,7 +270,7 @@ export type Verificador = (params: {
    * política atribuida a ESTA empresa que ninguna fuente dice, no.
    */
   soloFuentes?: FuenteVista[];
-}) => Promise<string[]>;
+}) => Promise<ResultadoDeFundamento>;
 
 /**
  * Las fuentes propias de una lección, con la misma forma que el paquete del
@@ -313,10 +346,17 @@ export function crearVerificadorDeFundamento(params: {
 
     // Una lección de dos frases no tiene afirmaciones que valga la pena
     // contrastar, y sigue costando el paquete de fuentes entero.
-    if (texto.length < 400) return [];
+    if (texto.length < 400) {
+      return { avisos: [], estado: 'skipped', motivo: 'the lesson is too short to have checkable claims' };
+    }
 
     const material = soloFuentes && soloFuentes.length > 0 ? materialPropio(soloFuentes) : await fuentes();
-    if (!material) return [];
+
+    if (!material) {
+      // Un curso sin fuentes legibles se escribe desde el conocimiento general
+      // y esto no marca nada: es correcto, pero no es «limpia».
+      return { avisos: [], estado: 'skipped', motivo: 'no readable source material to check against' };
+    }
 
     try {
       const { object, usage } = await generateObject({
@@ -357,12 +397,16 @@ export function crearVerificadorDeFundamento(params: {
           `${reales.length} con cita verificable${descartadas > 0 ? `, ${descartadas} descartada(s) por cita inexistente` : ''}`
       );
 
-      return redactarAviso(reales);
+      return { avisos: redactarAviso(reales), estado: 'ok' };
     } catch (error) {
-      // Nunca puede tumbar la escritura de una lección. Sin chequeo se vuelve
-      // exactamente a donde estábamos: la lección queda guardada igual.
-      console.error('[grounding] el chequeo falló:', error);
-      return [];
+      // Nunca puede tumbar la escritura de una lección: la lección queda
+      // guardada igual. Lo que ya no pasa es que se guarde como si se hubiera
+      // verificado — el motivo viaja al informe y de vuelta al modelo.
+      const motivo = error instanceof Error ? error.message : String(error);
+
+      console.error(`[grounding] no corrió para «${lessonTitle}»: ${motivo}`);
+
+      return { avisos: [], estado: 'failed', motivo };
     }
   };
 }

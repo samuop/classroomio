@@ -109,6 +109,15 @@ export interface PlanRegistryEntry {
   replacements?: PlanItemReplacement[];
   /** El modelo declaró que lo que queda del valor viejo es legítimo. Ver {@link PlanItemConfirmed}. */
   confirmed?: PlanItemConfirmed;
+  /**
+   * El plan declara que esta pieza se deja COMO ESTÁ, con el motivo en el plan.
+   *
+   * Es la única salida para dejar afuera una pieza donde el análisis encontró
+   * el valor viejo: o se la edita, o se dice por qué no. El ancla la da por
+   * hecha sin medir nada, porque no hay nada que medir — el docente lo aprobó
+   * así. Ver `generate_course_plan` en la API.
+   */
+  skip?: boolean;
 }
 
 /**
@@ -133,6 +142,8 @@ export interface PlanShape {
       action?: PlanItemAction;
       baseline?: PlanItemBaseline;
       replacements?: PlanItemReplacement[];
+      /** Esta pieza se deja como está, con el motivo en el plan. */
+      skip?: boolean;
     }>;
   }>;
 }
@@ -149,6 +160,7 @@ type RegistryStepInput = {
   baseline?: PlanItemBaseline;
   replacements?: PlanItemReplacement[];
   confirmed?: PlanItemConfirmed;
+  skip?: boolean;
 };
 
 type RegistryStepOutput = {
@@ -194,7 +206,8 @@ async function readAllEntries(runId: string) {
       action: input.action,
       baseline: input.baseline,
       replacements: input.replacements,
-      confirmed: input.confirmed
+      confirmed: input.confirmed,
+      skip: input.skip
     };
   });
 }
@@ -309,6 +322,7 @@ export async function syncPlanRegistry(
         ...(item.action ? { action: item.action } : {}),
         ...(baseline ? { baseline } : {}),
         ...(item.replacements ? { replacements: item.replacements } : {}),
+        ...(item.skip ? { skip: true } : {}),
         ...(confirmedByKey.has(itemKey) ? { confirmed: confirmedByKey.get(itemKey) as PlanItemConfirmed } : {})
       });
     }
@@ -323,6 +337,7 @@ export async function syncPlanRegistry(
       ...(entry.action ? { action: entry.action } : {}),
       ...(entry.baseline ? { baseline: entry.baseline } : {}),
       ...(entry.replacements ? { replacements: entry.replacements } : {}),
+      ...(entry.skip ? { skip: true } : {}),
       ...(entry.confirmed ? { confirmed: entry.confirmed } : {})
     };
     // A bound item is 'completed', an unbound one 'queued'. `output` is left out
@@ -394,7 +409,7 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
 
   return entries
     .filter((entry) => entry.status !== 'canceled')
-    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements, confirmed }) => ({
+    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements, confirmed, skip }) => ({
       key,
       kind,
       title,
@@ -404,7 +419,10 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
       ...(action ? { action } : {}),
       ...(baseline ? { baseline } : {}),
       ...(replacements ? { replacements } : {}),
-      ...(confirmed ? { confirmed } : {})
+      ...(confirmed ? { confirmed } : {}),
+      // Sin esto el `skip` se guardaba y no se leía nunca: el ancla caía siempre
+      // en el plan que viaja en la conversación, que es justo lo que se recorta.
+      ...(skip ? { skip: true } : {})
     }))
     .sort((a, b) => a.position - b.position);
 }

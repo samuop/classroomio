@@ -1,4 +1,4 @@
-import { BLOCK_ID_ATTRIBUTE } from '@api/services/agent/lesson-blocks';
+import { listLessonBlocks, type LessonBlock } from '@api/services/agent/lesson-blocks';
 
 /**
  * Buscar DENTRO de las lecciones del curso, en vez de traerlas enteras.
@@ -140,18 +140,25 @@ function plegar(texto: string): { plegado: string; indices: number[] } {
   return { plegado, indices };
 }
 
-/** El bloque que contiene esa posición del HTML, si hay alguno. */
-function bloqueQueContiene(html: string, posicion: number): string | undefined {
-  const patron = new RegExp(`\\b${BLOCK_ID_ATTRIBUTE}\\s*=\\s*["']([^"']+)["']`, 'gi');
-  let ultimo: string | undefined;
-  let match: RegExpExecArray | null;
-
-  while ((match = patron.exec(html)) !== null) {
-    if (match.index > posicion) break;
-    ultimo = match[1];
-  }
-
-  return ultimo;
+/**
+ * El bloque que CONTIENE esa posición del HTML, si hay alguno.
+ *
+ * ── Por qué mira dónde termina el bloque y no sólo dónde empieza ─────────────
+ *
+ * Antes devolvía el último `data-block-id` cuyo índice fuera menor o igual a la
+ * posición, sin mirar si ese bloque seguía abierto ahí. Para un valor que vive
+ * DENTRO de un elemento sin id —el caso real: una lección escrita antes de que
+ * el servidor le pusiera id al `<svg>`, con el plazo viejo adentro del
+ * diagrama— eso devolvía el id del PÁRRAFO de arriba. Y ese id viaja: la orden
+ * de trabajo decía «still present: block <el párrafo>», el modelo reemplazaba
+ * ese párrafo por «párrafo + svg corregido» y el servidor terminaba con dos
+ * diagramas al lado. Es la jugada medida el 2026-09-22 (8 y 9 copias seguidas).
+ *
+ * Un id equivocado es peor que ninguno: sin id, quien lee sabe que no lo sabe.
+ * Así que si la posición cae fuera de todo bloque, esto devuelve `undefined`.
+ */
+function bloqueQueContiene(bloques: readonly LessonBlock[], posicion: number): string | undefined {
+  return bloques.find((bloque) => bloque.start <= posicion && posicion < bloque.end)?.blockId;
 }
 
 /** Hasta dónde se estira el tramo textual a cada lado, si no aparece un corte antes. */
@@ -235,6 +242,10 @@ export function buscarEnLecciones(params: {
 
     const { texto: visible, indices: aHtml } = textoVisibleConMapa(leccion.content);
     const { plegado, indices: aVisible } = plegar(visible);
+    // Una sola vez por lección: el barrido de un plan de cambios puede pedir
+    // veinte coincidencias de la misma lección, y volver a parsear el HTML en
+    // cada una sería parsearlo veinte veces para la misma respuesta.
+    const bloques = listLessonBlocks(leccion.content);
 
     let desde = 0;
     let enEstaLeccion = 0;
@@ -248,7 +259,7 @@ export function buscarEnLecciones(params: {
       const finVisible = (aVisible[pos + aguja.length - 1] ?? inicioVisible) + 1;
       const inicioHtml = aHtml[inicioVisible] ?? 0;
       const finHtml = (aHtml[finVisible - 1] ?? inicioHtml) + 1;
-      const blockId = bloqueQueContiene(leccion.content, inicioHtml);
+      const blockId = bloqueQueContiene(bloques, inicioHtml);
 
       coincidencias.push({
         lessonId: leccion.id,

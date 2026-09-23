@@ -223,9 +223,12 @@ describe('nombrar una pieza por su manija', () => {
 
     expect(getLesson).toHaveBeenCalledWith(ID.leccionCierre);
     // El idioma lo pone la ronda: se devuelve el español, no el inglés viejo.
+    // Con su id de bloque: una lección anterior a los ids se estampa al leerla
+    // (ver `asegurarIdsDeBloque` y `diagramas-direccionables.test.ts`). Lo que
+    // este test cuida es el idioma, no los bytes.
     expect(resultado).toMatchObject({
       locale: 'es',
-      content: '<p>El reclamo se cierra con la conformidad del cliente.</p>'
+      content: expect.stringMatching(/^<p data-block-id="[^"]+">El reclamo se cierra con la conformidad del cliente\.<\/p>$/)
     });
   });
 

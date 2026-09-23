@@ -354,10 +354,18 @@ export interface LeccionParaAnalizar {
   text: string;
 }
 
+/** Un cambio que el analista propuso y el servidor no pudo sostener. */
+export interface CambioDescartado {
+  valorViejo: string;
+  valorNuevo: string;
+  /** En inglés: se lo lee el modelo. */
+  motivo: string;
+}
+
 export type AnalistaDeCambios = (params: {
   fuenteNueva: { fileName: string; text: string };
   lecciones: LeccionParaAnalizar[];
-}) => Promise<{ cambios: CambioDetectado[] }>;
+}) => Promise<{ cambios: CambioDetectado[]; descartados?: CambioDescartado[] }>;
 
 /**
  * Tope de texto de lecciones que se le muestra al analista.
@@ -429,7 +437,12 @@ const Resultado = z.object({
           .describe(
             'Up to 3 words that must appear NEAR the key for a match to count — only when the key alone is ambiguous. For the "2 horas" of a P2 incident: ["P2", "Alta"]. For "4400": leave it out.'
           ),
-        new: z.string().min(1).describe('The value the new document gives instead.'),
+        new: z
+          .string()
+          .min(1)
+          .describe(
+            'The NEW value EXACTLY as the new document writes it — verbatim, at most 8 words. The server searches the document for this string and DROPS the change when it cannot find it, so copy it, never paraphrase it. If the document removes the fact instead of replacing it, copy the phrase that removes it ("se elimina el interno 4400"); never write "removed", "n/a" or "(none)".'
+          ),
         why: z.string().min(1).describe('One sentence: where in the new document this is stated and what it supersedes.'),
         lesson: z.string().optional().describe('The handle of the lesson you saw it in, if you can tell (e.g. S2.L3).')
       })
@@ -456,6 +469,8 @@ The key exists because the same fact is also in the course's QUESTIONS, written 
 Rules:
 - Only facts the document actually CONTRADICTS or REPLACES. A fact the document merely repeats, confirms or mentions is NOT a change.
 - The old value must be a short literal string that is really in the lesson text you were shown. The server searches the course for it: a paraphrase finds nothing and the change is dropped.
+- The NEW value is checked the same way, against the NEW document: copy it verbatim from the document, at most 8 words. The server searches the document for it and drops the change when it is not there, so "1 hora" where the document says "una hora" loses a real change in silence, and the teacher is never told about it.
+- When the document REMOVES a fact instead of replacing it, the new value is the phrase that removes it, copied from the document ("se elimina el interno 4400"). Never "removed", "n/a" or "(none)": those are not in the document, so the change would be dropped and the course would go on teaching the fact that was removed.
 - Do not invent a change to seem useful. An empty list is the correct answer when the document changes nothing, and it is a useful answer.
 - Do not propose editorial improvements, reorganisations or additions. This is only about facts that are now wrong.`;
 
@@ -525,13 +540,42 @@ export function crearAnalistaDeCambios(params: {
       };
     });
 
+    /**
+     * El valor NUEVO tiene que estar en el documento nuevo.
+     *
+     * ── Por qué ─────────────────────────────────────────────────────────────
+     *
+     * El servidor ya comprobaba la mitad de abajo —que el valor VIEJO exista en
+     * el curso— y no comprobaba nada de la mitad de arriba: el `new` se copiaba
+     * tal cual al plan y de ahí al curso. O sea que la única parte que decide
+     * QUÉ va a decir el curso a partir de ahora era la única que nadie miraba.
+     *
+     * Es el mismo molde que la evidencia de una pregunta: lo que el modelo
+     * devuelve, el servidor lo tiene que ENCONTRAR. Si no lo encuentra, el
+     * cambio no se propone; y se dice, para que el modelo no lo use igual.
+     */
+    const descartados: CambioDescartado[] = [];
+    const conRespaldo = cambios.filter((cambio) => {
+      if (apareceValor(fuenteNueva.text, { old: cambio.valorNuevo, new: cambio.valorNuevo })) return true;
+
+      console.info(`[analista] cambio descartado: «${cambio.valorNuevo}» no está en la fuente`);
+      descartados.push({
+        valorViejo: cambio.valorViejo,
+        valorNuevo: cambio.valorNuevo,
+        motivo: `the new value "${cambio.valorNuevo}" is nowhere in ${fuenteNueva.fileName}`
+      });
+
+      return false;
+    });
+
     console.info(
       `[analista-de-cambios] "${fuenteNueva.fileName}": ${lecciones.length} lección(es), ` +
-        `${armado.texto.length} caracteres, ${cambios.length} cambio(s), ` +
-        `${((Date.now() - inicio) / 1000).toFixed(1)} s` +
+        `${armado.texto.length} caracteres, ${conRespaldo.length} cambio(s)` +
+        (descartados.length ? `, ${descartados.length} descartado(s) por valor nuevo ausente` : '') +
+        `, ${((Date.now() - inicio) / 1000).toFixed(1)} s` +
         (armado.recortadas.length ? `, recortadas: ${armado.recortadas.join(', ')}` : '')
     );
 
-    return { cambios };
+    return { cambios: conRespaldo, ...(descartados.length > 0 ? { descartados } : {}) };
   };
 }
