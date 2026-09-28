@@ -26,9 +26,10 @@ export function assertOrgAccess(
   // then resolves the site name to an organisation and returns exactly the same
   // private figures. Skipping the check when `orgId` is absent would leave the
   // hole open through the other door, so an authenticated dashboard route has to
-  // name the organisation by id. Nothing calls the site-name form: on
-  // /login-activity it was already broken (the org id was asserted non-null and
-  // passed through undefined), and /dash/stats has no caller at all.
+  // name the organisation by id. On /login-activity the site-name form was
+  // already broken (the org id was asserted non-null and passed through
+  // undefined). /dash/stats DID have a caller — the panel's loader asked by site
+  // name, and from 2026-08-18 to 2026-09-28 every company's panel showed zeros.
   if (!requestedOrgId) {
     throw new AppError('An organization id is required', ErrorCodes.VALIDATION_ERROR, 400);
   }
