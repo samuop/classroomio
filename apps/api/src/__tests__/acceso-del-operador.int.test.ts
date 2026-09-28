@@ -155,14 +155,20 @@ describe('el operador de plataforma administra todas las empresas', () => {
  * contestaba 403, «No pudimos abrir este curso». Las compuertas de curso miraban
  * sólo la fila directa; el permiso derivado que vale en toda la app no valía acá.
  */
-describe('la consultora entra a los cursos de sus clientes sin fila propia', () => {
+describe('la consultora entra a los cursos y programas de sus clientes sin fila propia', () => {
   it('la ADMIN de la consultora pasa las dos compuertas del curso del cliente', async () => {
     expect(await isUserCourseMemberOrOrgAdmin(CURSO, ADMIN_DE_LA_CONSULTORA)).toBe(true);
     expect(await isCourseTeamMemberOrOrgAdmin(CURSO, ADMIN_DE_LA_CONSULTORA)).toBe(true);
   });
+  // El mismo día, en los programas: 403 en /program/:programId/*, incluida la
+  // pantalla de invitar alumnos al programa.
+  it('y administra los programas del cliente', async () => {
+    expect(await isOrgAdminByProgramId(PROGRAMA, ADMIN_DE_LA_CONSULTORA)).toBe(true);
+  });
   it('una TUTORA de la consultora no: el permiso baja sólo desde ADMIN', async () => {
     expect(await isUserCourseMemberOrOrgAdmin(CURSO, TUTORA_DE_LA_CONSULTORA)).toBe(false);
     expect(await isCourseTeamMemberOrOrgAdmin(CURSO, TUTORA_DE_LA_CONSULTORA)).toBe(false);
+    expect(await isOrgAdminByProgramId(PROGRAMA, TUTORA_DE_LA_CONSULTORA)).toBe(false);
   });
 });
 

@@ -23,8 +23,19 @@
   import AddCourseToProgramModal from '$features/program/components/add-course-to-program-modal.svelte';
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
+  import { ROLE } from '@cio/utils/constants';
+  import { isOrgAdmin } from '$lib/utils/store/org';
+  import { profile } from '$lib/utils/store/user';
 
   let { data } = $props();
+
+  // Agregar y quitar cursos es del equipo del programa. Al alumno la API se lo
+  // rechaza igual, pero los botones y el aviso para el equipo se le mostraban.
+  // La misma regla que el menú lateral del programa.
+  const currentMemberRole = $derived(programApi.members.find((m) => m.profileId === $profile.id)?.roleId ?? null);
+  const canManageCourses = $derived(
+    $isOrgAdmin === true || (currentMemberRole !== null && currentMemberRole <= ROLE.TUTOR)
+  );
 
   let showAddCourseModal = $state(false);
   let showDeleteModal = $state(false);
@@ -52,7 +63,7 @@
       description: item.course.description ?? '',
       lessonCount: 0,
       totalStudents: 0,
-      isPublished: item.course.status === 'ACTIVE',
+      isPublished: item.course.isPublished === true,
       tags: []
     }))
   );
@@ -94,19 +105,23 @@
   <Page.Header>
     <Page.HeaderContent class="min-w-0 flex-1">
       <Page.Title>{$t('programs.sidebar.courses') || 'Courses'}</Page.Title>
-      <Alert.Callout
-        variant="information"
-        title={$t('programs.courses.published_access_callout_title')}
-        description={$t('programs.courses.published_access_callout_description')}
-        class="mt-3 w-full"
-      />
+      {#if canManageCourses}
+        <Alert.Callout
+          variant="information"
+          title={$t('programs.courses.published_access_callout_title')}
+          description={$t('programs.courses.published_access_callout_description')}
+          class="mt-3 w-full"
+        />
+      {/if}
     </Page.HeaderContent>
-    <Page.Action>
-      <Button onclick={() => (showAddCourseModal = true)}>
-        <Plus size={16} />
-        {$t('programs.courses.add') || 'Add Course'}
-      </Button>
-    </Page.Action>
+    {#if canManageCourses}
+      <Page.Action>
+        <Button onclick={() => (showAddCourseModal = true)}>
+          <Plus size={16} />
+          {$t('programs.courses.add') || 'Add Course'}
+        </Button>
+      </Page.Action>
+    {/if}
   </Page.Header>
   <Page.Body>
     {#snippet child()}
@@ -129,11 +144,13 @@
           title={$t('programs.courses.empty_title') || 'No courses yet'}
           description={searchValue.trim()
             ? $t('programs.courses.no_matching_program_courses') || 'No program courses match your search.'
-            : $t('programs.courses.empty_description') || 'Add courses to this program.'}
+            : canManageCourses
+              ? $t('programs.courses.empty_description') || 'Add courses to this program.'
+              : ''}
           icon={BookOpenIcon}
           variant="page"
         >
-          {#if !searchValue.trim()}
+          {#if !searchValue.trim() && canManageCourses}
             <Button onclick={() => (showAddCourseModal = true)}>
               <Plus size={16} />
               {$t('programs.courses.add') || 'Add Course'}
@@ -161,20 +178,22 @@
                     <p>{item.course.description}</p>
                   </Table.Cell>
                   <Table.Cell>
-                    <CoursePublishBadge isPublished={item.course.status === 'ACTIVE'} />
+                    <CoursePublishBadge isPublished={item.course.isPublished === true} />
                   </Table.Cell>
                   <Table.Cell class="text-center">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="text-muted-foreground hover:text-destructive"
-                      onclick={(event) => {
-                        event.stopPropagation();
-                        openDeleteModal(item.courseId);
-                      }}
-                    >
-                      <Trash2Icon size={16} />
-                    </Button>
+                    {#if canManageCourses}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="text-muted-foreground hover:text-destructive"
+                        onclick={(event) => {
+                          event.stopPropagation();
+                          openDeleteModal(item.courseId);
+                        }}
+                      >
+                        <Trash2Icon size={16} />
+                      </Button>
+                    {/if}
                   </Table.Cell>
                 </Table.Row>
               {/each}
@@ -186,17 +205,19 @@
           {#each courseCards as course (course.id)}
             <CourseCard course={course as unknown as OrgCourses[number]} href={`/courses/${course.id}`}>
               {#snippet actions()}
-                <Button
-                  variant="outline"
-                  size="icon"
-                  class="text-muted-foreground hover:text-destructive absolute! top-6 right-6 z-40"
-                  onclick={(event) => {
-                    event.stopPropagation();
-                    openDeleteModal(course.id);
-                  }}
-                >
-                  <Trash2Icon size={16} />
-                </Button>
+                {#if canManageCourses}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="text-muted-foreground hover:text-destructive absolute! top-6 right-6 z-40"
+                    onclick={(event) => {
+                      event.stopPropagation();
+                      openDeleteModal(course.id);
+                    }}
+                  >
+                    <Trash2Icon size={16} />
+                  </Button>
+                {/if}
               {/snippet}
             </CourseCard>
           {/each}

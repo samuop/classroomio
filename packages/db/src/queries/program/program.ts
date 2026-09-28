@@ -1,6 +1,7 @@
 import * as schema from '@db/schema';
 
 import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
@@ -288,11 +289,22 @@ export async function getProgramMemberRole(programId: string, profileId: string)
   }
 }
 
+/**
+ * ADMIN de la empresa del programa: por fila directa, por ser ADMIN de la empresa
+ * madre (la consultora administra a sus clientes sin fila propia, igual que en
+ * `getUserOrgRolesMap`) o por ser el operador de plataforma.
+ *
+ * Sin la derivación, la ADMIN de la consultora recibía 403 en todas las rutas
+ * `/program/:programId/*` de una empresa hija que no creó ella: no podía ver el
+ * programa ni invitar alumnos. Es el mismo agujero que tenían los cursos.
+ */
 export async function isOrgAdminByProgramId(programId: string, profileId: string): Promise<boolean> {
   try {
+    const adminDeLaMadre = alias(schema.organizationmember, 'admin_de_la_madre');
     const result = await db
       .select({ programId: schema.program.id })
       .from(schema.program)
+      .innerJoin(schema.organization, eq(schema.organization.id, schema.program.organizationId))
       .leftJoin(
         schema.organizationmember,
         and(
@@ -301,11 +313,23 @@ export async function isOrgAdminByProgramId(programId: string, profileId: string
           eq(schema.organizationmember.roleId, ROLE.ADMIN)
         )
       )
+      .leftJoin(
+        adminDeLaMadre,
+        and(
+          eq(adminDeLaMadre.organizationId, schema.organization.parentOrganizationId),
+          eq(adminDeLaMadre.profileId, profileId),
+          eq(adminDeLaMadre.roleId, ROLE.ADMIN)
+        )
+      )
       .where(
         and(
           eq(schema.program.id, programId),
           // The platform operator administers every organization (see platform-access.ts).
-          or(isNotNull(schema.organizationmember.id), isPlatformAdminCondition(profileId))
+          or(
+            isNotNull(schema.organizationmember.id),
+            isNotNull(adminDeLaMadre.id),
+            isPlatformAdminCondition(profileId)
+          )
         )
       )
       .limit(1);

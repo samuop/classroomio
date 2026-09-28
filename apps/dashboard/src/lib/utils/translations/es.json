@@ -3819,15 +3819,15 @@
       "select_course": "Elegí un curso",
       "select_placeholder": "Elegí un curso…",
       "empty_title": "Aún no hay cursos",
-      "empty_description": "Agregue cursos a este programa.",
+      "empty_description": "Agregá cursos a este programa.",
       "select_courses": "Seleccionar cursos",
       "search_placeholder": "Buscar cursos",
       "no_available_courses": "No hay cursos disponibles para agregar.",
       "no_matching_courses": "Ningún curso coincide con tu búsqueda.",
-      "no_matching_program_courses": "Ningún programa de cursos coincide con su búsqueda.",
+      "no_matching_program_courses": "Ningún curso del programa coincide con tu búsqueda.",
       "pagination_status": "Página {page} de {totalPages}",
       "published_access_callout_title": "Acceso de estudiantes",
-      "published_access_callout_description": "Los estudiantes solo tienen acceso a los cursos publicados. Los cursos pueden estar en este programa para su equipo mientras aún no están publicados, mientras que permanecen ocultos para los estudiantes hasta que los publique."
+      "published_access_callout_description": "Los estudiantes sólo ven los cursos publicados. Un curso sin publicar puede estar en el programa: el equipo lo ve y los estudiantes no, hasta que lo publiques."
     },
     "newsfeed": {
       "post": "Nueva publicación",
