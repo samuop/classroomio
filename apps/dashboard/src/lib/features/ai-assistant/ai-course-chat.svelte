@@ -68,6 +68,7 @@
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
   import { sourcesApi } from '$features/ai-assistant/api/sources.svelte';
   import { profile } from '$lib/utils/store/user';
+  import { conIdsUnicos } from './utils/ids-unicos';
   import type {
     AiAssistantMessage,
     AiAssistantMessageMetadata,
@@ -188,7 +189,7 @@
     const conversation = aiAssistantApi.currentConversation;
 
     if (conversation) {
-      const loadedMessages = (conversation.messages ?? []) as AiAssistantMessage[];
+      const loadedMessages = conIdsUnicos((conversation.messages ?? []) as AiAssistantMessage[]);
       // Only overwrite in-memory messages if the loaded conversation actually has saved
       // messages. An empty result means the conversation was just created and the first
       // message hasn't been persisted yet — overwriting would wipe the optimistic message

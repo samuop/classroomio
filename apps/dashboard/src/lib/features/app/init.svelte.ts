@@ -361,6 +361,14 @@ class AppInitApi extends BaseApi {
   get isInitializedAndReady() {
     return !this.isLoading && !this.error && this.data !== null;
   }
+
+  /**
+   * La cuenta ya llegó (o falló): desde acá `currentOrg` es la empresa de la
+   * persona, con su rol, y ya no la dueña del dominio que puso el layout raíz.
+   */
+  get cuentaResuelta() {
+    return this.data !== null || this.error !== null;
+  }
 }
 
 export const appInitApi = new AppInitApi();

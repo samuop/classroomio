@@ -30,7 +30,9 @@
     if (days === 0) return $t('programs.goals.lms.due_today');
     if (days === 1) return $t('programs.goals.lms.due_tomorrow');
 
-    return $t('programs.goals.lms.due_in_days').replace('{days}', String(days));
+    // La variable va como parámetro: el formateador de mensajes TIRA si el texto
+    // tiene un {days} y no se lo pasan, y eso rompía el muro del programa entero.
+    return $t('programs.goals.lms.due_in_days', { days });
   }
 
   function progressPct(assignment: (typeof programGoalApi.myGoals)[number]): number {

@@ -8,6 +8,7 @@
   import { currentOrg } from '$lib/utils/store/org';
   import { authClient } from '$lib/utils/services/auth/client';
   import { reportIncident } from '$lib/utils/services/audit/report-incident';
+  import EsperarSuEmpresa from '$features/app/components/esperar-su-empresa.svelte';
 
   interface Props {
     children?: import('svelte').Snippet;
@@ -84,7 +85,12 @@
     estaba.
   -->
   <svelte:boundary onerror={reportRenderError}>
-    {@render children?.()}
+    <EsperarSuEmpresa
+      isOrgSite={data.isOrgSite && !data.skipAuth}
+      conSesion={Boolean(data.locals?.user || $session.data)}
+    >
+      {@render children?.()}
+    </EsperarSuEmpresa>
 
     {#snippet failed(error, reset)}
       <div class="flex min-h-[60vh] w-full flex-col items-center justify-center gap-4 p-6 text-center">

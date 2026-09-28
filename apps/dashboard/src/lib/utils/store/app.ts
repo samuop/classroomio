@@ -13,8 +13,13 @@ export const globalStore = writable<{
   orgSiteName: ''
 });
 
+/**
+ * `null` cuando no hay rol para leer. No sólo el 0 del estado inicial: la dueña
+ * del dominio que pone el layout raíz llega del servidor sin `roleId`, y leída
+ * como «no es alumna» mandaba a la alumna al panel de administración.
+ */
 export const isOrgStudent = derived(currentOrg, ($currentOrg) => {
-  if ($currentOrg.roleId === 0) return null;
+  if (!$currentOrg.roleId) return null;
 
   return $currentOrg.roleId === ROLE.STUDENT;
 });

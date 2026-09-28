@@ -62,8 +62,9 @@ export const isPrimaryWorkspace = derived(
   ($currentOrg) => Boolean($currentOrg.id) && !$currentOrg.parentOrganizationId
 );
 export const orgTeam = writable<OrgTeamMember[]>([]);
+// Sin rol (0 o ausente, ver isOrgStudent) es «no se sabe», no «no es».
 export const isOrgAdmin = derived(currentOrg, ($currentOrg) => {
-  if ($currentOrg.roleId === 0) return null;
+  if (!$currentOrg.roleId) return null;
 
   return $currentOrg.roleId === ROLE.ADMIN;
 });
