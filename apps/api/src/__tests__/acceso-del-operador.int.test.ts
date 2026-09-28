@@ -36,7 +36,11 @@ const RUN = randomUUID().slice(0, 8);
 const OPERADOR = randomUUID();
 const BANEADO = randomUUID();
 const COMUN = randomUUID();
-const PERSONAS = [OPERADOR, BANEADO, COMUN];
+/** ADMIN de la consultora, sin fila propia en la empresa cliente: el permiso se deriva. */
+const ADMIN_DE_LA_CONSULTORA = randomUUID();
+/** TUTORA de la consultora: enseñar para la consultora no es administrar a sus clientes. */
+const TUTORA_DE_LA_CONSULTORA = randomUUID();
+const PERSONAS = [OPERADOR, BANEADO, COMUN, ADMIN_DE_LA_CONSULTORA, TUTORA_DE_LA_CONSULTORA];
 
 const CONSULTORA = randomUUID();
 /** Empresa hija de la consultora: el último nivel del árbol. */
@@ -76,7 +80,9 @@ beforeAll(async () => {
   await db.insert(user).values([
     { id: OPERADOR, name: 'Operador', email: `operador-${RUN}@test.local`, role: PLATFORM_ROLE.ADMIN },
     { id: BANEADO, name: 'Baneado', email: `baneado-${RUN}@test.local`, role: PLATFORM_ROLE.ADMIN, banned: true },
-    { id: COMUN, name: 'Común', email: `comun-${RUN}@test.local` }
+    { id: COMUN, name: 'Común', email: `comun-${RUN}@test.local` },
+    { id: ADMIN_DE_LA_CONSULTORA, name: 'Admin consultora', email: `admin-consultora-${RUN}@test.local` },
+    { id: TUTORA_DE_LA_CONSULTORA, name: 'Tutora consultora', email: `tutora-consultora-${RUN}@test.local` }
   ]);
   await db.insert(profile).values(
     PERSONAS.map((id, i) => ({ id, fullname: `Persona ${i}`, username: `int-${RUN}-${i}`, email: `p${i}-${RUN}@test.local` }))
@@ -93,7 +99,10 @@ beforeAll(async () => {
 
   await db.insert(organizationmember).values([
     { organizationId: SUELTA, profileId: COMUN, roleId: ROLE.STUDENT },
-    { organizationId: SUELTA, profileId: OPERADOR, roleId: ROLE.STUDENT }
+    { organizationId: SUELTA, profileId: OPERADOR, roleId: ROLE.STUDENT },
+    // Las dos de la consultora tienen fila SÓLO en la consultora, nunca en el cliente.
+    { organizationId: CONSULTORA, profileId: ADMIN_DE_LA_CONSULTORA, roleId: ROLE.ADMIN },
+    { organizationId: CONSULTORA, profileId: TUTORA_DE_LA_CONSULTORA, roleId: ROLE.TUTOR }
   ]);
 
   await db.insert(group).values({ id: GRUPO, name: `grupo-${RUN}`, organizationId: CLIENTE });
@@ -137,6 +146,23 @@ describe('el operador de plataforma administra todas las empresas', () => {
     expect(await isUserCourseMemberOrOrgAdmin(CURSO, OPERADOR)).toBe(true);
     expect(await isCourseTeamMemberOrOrgAdmin(CURSO, OPERADOR)).toBe(true);
     expect(await isOrgAdminByProgramId(PROGRAMA, OPERADOR)).toBe(true);
+  });
+});
+
+/**
+ * Medido en producción el 2026-09-28: la ADMIN de la consultora entraba a una
+ * empresa hija creada por otra persona (sin fila propia ahí) y cada curso le
+ * contestaba 403, «No pudimos abrir este curso». Las compuertas de curso miraban
+ * sólo la fila directa; el permiso derivado que vale en toda la app no valía acá.
+ */
+describe('la consultora entra a los cursos de sus clientes sin fila propia', () => {
+  it('la ADMIN de la consultora pasa las dos compuertas del curso del cliente', async () => {
+    expect(await isUserCourseMemberOrOrgAdmin(CURSO, ADMIN_DE_LA_CONSULTORA)).toBe(true);
+    expect(await isCourseTeamMemberOrOrgAdmin(CURSO, ADMIN_DE_LA_CONSULTORA)).toBe(true);
+  });
+  it('una TUTORA de la consultora no: el permiso baja sólo desde ADMIN', async () => {
+    expect(await isUserCourseMemberOrOrgAdmin(CURSO, TUTORA_DE_LA_CONSULTORA)).toBe(false);
+    expect(await isCourseTeamMemberOrOrgAdmin(CURSO, TUTORA_DE_LA_CONSULTORA)).toBe(false);
   });
 });
 

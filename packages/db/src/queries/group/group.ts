@@ -2,6 +2,7 @@ import * as schema from '@db/schema';
 
 import { TNewGroup, TNewGroupmember } from '@db/types';
 import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { ROLE } from '@cio/utils/constants';
 import { db, type DbOrTxClient } from '@db/drizzle';
@@ -134,23 +135,44 @@ export const isUserCourseMember = async (
 };
 
 /**
- * Checks if a user is either:
- * - a member of the course's group (any role), OR
- * - an ADMIN of the organization that owns the course's group.
+ * ¿Puede esta persona entrar al curso? Una sola consulta, para el middleware.
  *
- * This is designed for middleware use to avoid doing multiple DB queries.
+ * Entra quien es miembro del grupo del curso (con los roles que se pidan), quien
+ * es ADMIN de la empresa dueña del curso, quien es ADMIN de la empresa MADRE de
+ * esa empresa, y el operador de plataforma.
+ *
+ * ── Por qué también la empresa madre ──────────────────────────────────────
+ *
+ * El permiso de la consultora sobre sus empresas cliente se DERIVA (ser ADMIN
+ * de la madre da ADMIN de las hijas, ver `getUserOrgRolesMap`), y toda la app
+ * lo lee de la sesión. Estas dos consultas eran la excepción: miraban sólo la
+ * fila directa de `organizationmember`. No se notó durante un mes porque la
+ * consultora había creado ella misma a sus dos clientes y quedó con fila
+ * directa en cada uno. La primera empresa hija creada por OTRA persona (el
+ * operador, 2026-09-28) dejó a la ADMIN de la consultora adentro de la empresa
+ * pero con 403 en cada curso: «No pudimos abrir este curso».
+ *
+ * Un solo nivel y sólo desde ADMIN, igual que `orgIdsAdministeredBy`.
  */
-export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: string): Promise<boolean> => {
+async function puedeEntrarAlCurso(courseId: string, profileId: string, rolesDelGrupo?: number[]): Promise<boolean> {
+  const adminDeLaMadre = alias(schema.organizationmember, 'admin_de_la_madre');
+
   const result = await db
     .select({
       groupMemberId: schema.groupmember.id,
-      orgMemberId: schema.organizationmember.id
+      orgMemberId: schema.organizationmember.id,
+      parentAdminId: adminDeLaMadre.id
     })
     .from(schema.course)
     .innerJoin(schema.group, eq(schema.course.groupId, schema.group.id))
+    .innerJoin(schema.organization, eq(schema.organization.id, schema.group.organizationId))
     .leftJoin(
       schema.groupmember,
-      and(eq(schema.groupmember.groupId, schema.group.id), eq(schema.groupmember.profileId, profileId))
+      and(
+        eq(schema.groupmember.groupId, schema.group.id),
+        eq(schema.groupmember.profileId, profileId),
+        ...(rolesDelGrupo ? [inArray(schema.groupmember.roleId, rolesDelGrupo)] : [])
+      )
     )
     .leftJoin(
       schema.organizationmember,
@@ -160,12 +182,21 @@ export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: 
         eq(schema.organizationmember.roleId, ROLE.ADMIN)
       )
     )
+    .leftJoin(
+      adminDeLaMadre,
+      and(
+        eq(adminDeLaMadre.organizationId, schema.organization.parentOrganizationId),
+        eq(adminDeLaMadre.profileId, profileId),
+        eq(adminDeLaMadre.roleId, ROLE.ADMIN)
+      )
+    )
     .where(
       and(
         eq(schema.course.id, courseId),
         or(
           isNotNull(schema.groupmember.id),
           isNotNull(schema.organizationmember.id),
+          isNotNull(adminDeLaMadre.id),
           // The platform operator administers every organization (see platform-access.ts).
           isPlatformAdminCondition(profileId)
         )
@@ -174,6 +205,17 @@ export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: 
     .limit(1);
 
   return result.length > 0;
+}
+
+/**
+ * Checks if a user is either:
+ * - a member of the course's group (any role), OR
+ * - an ADMIN of the organization that owns the course's group (or of its parent).
+ *
+ * This is designed for middleware use to avoid doing multiple DB queries.
+ */
+export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: string): Promise<boolean> => {
+  return puedeEntrarAlCurso(courseId, profileId);
 };
 
 /**
@@ -201,43 +243,7 @@ export const getUserCourseRole = async (courseId: string, profileId: string): Pr
  * This is designed for middleware use to avoid doing multiple DB queries.
  */
 export const isCourseTeamMemberOrOrgAdmin = async (courseId: string, profileId: string): Promise<boolean> => {
-  const result = await db
-    .select({
-      groupMemberId: schema.groupmember.id,
-      orgMemberId: schema.organizationmember.id
-    })
-    .from(schema.course)
-    .innerJoin(schema.group, eq(schema.course.groupId, schema.group.id))
-    .leftJoin(
-      schema.groupmember,
-      and(
-        eq(schema.groupmember.groupId, schema.group.id),
-        eq(schema.groupmember.profileId, profileId),
-        or(eq(schema.groupmember.roleId, ROLE.ADMIN), eq(schema.groupmember.roleId, ROLE.TUTOR))
-      )
-    )
-    .leftJoin(
-      schema.organizationmember,
-      and(
-        eq(schema.organizationmember.organizationId, schema.group.organizationId),
-        eq(schema.organizationmember.profileId, profileId),
-        eq(schema.organizationmember.roleId, ROLE.ADMIN)
-      )
-    )
-    .where(
-      and(
-        eq(schema.course.id, courseId),
-        or(
-          isNotNull(schema.groupmember.id),
-          isNotNull(schema.organizationmember.id),
-          // The platform operator administers every organization (see platform-access.ts).
-          isPlatformAdminCondition(profileId)
-        )
-      )
-    )
-    .limit(1);
-
-  return result.length > 0;
+  return puedeEntrarAlCurso(courseId, profileId, [ROLE.ADMIN, ROLE.TUTOR]);
 };
 
 /**
