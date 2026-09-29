@@ -85,10 +85,7 @@
     estaba.
   -->
   <svelte:boundary onerror={reportRenderError}>
-    <EsperarSuEmpresa
-      isOrgSite={data.isOrgSite && !data.skipAuth}
-      conSesion={Boolean(data.locals?.user || $session.data)}
-    >
+    <EsperarSuEmpresa conSesion={!data.skipAuth && Boolean(data.locals?.user || $session.data)}>
       {@render children?.()}
     </EsperarSuEmpresa>
 

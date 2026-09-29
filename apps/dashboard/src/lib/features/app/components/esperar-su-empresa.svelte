@@ -17,21 +17,23 @@
    * cargaban vacías y, al guardar, pisaban la configuración real con los
    * valores por defecto.
    *
+   * Fuera del dominio de una empresa el hueco es otro, pero igual de roto: la
+   * empresa está vacía y el camino base vale '#'. La comunidad, que recibe las
+   * preguntas del servidor, armaba sus enlaces con `resolve('#/community/…')` y
+   * la pantalla entera se caía («Se rompió esta pantalla»).
+   *
    * Arreglarlo pantalla por pantalla dejaba afuera a la próxima que se
-   * escribiera. Acá se ataja para todas: sin sesión no hay a quién esperar, y
-   * fuera del dominio de una empresa nadie puso a la dueña antes de tiempo.
+   * escribiera. Acá se ataja para todas; sin sesión no hay a quién esperar.
    */
   let {
-    isOrgSite,
     conSesion,
     children
   }: {
-    isOrgSite: boolean;
     conSesion: boolean;
     children?: Snippet;
   } = $props();
 
-  const esperando = $derived(isOrgSite && conSesion && !appInitApi.cuentaResuelta);
+  const esperando = $derived(conSesion && !appInitApi.cuentaResuelta);
 </script>
 
 {#if esperando}

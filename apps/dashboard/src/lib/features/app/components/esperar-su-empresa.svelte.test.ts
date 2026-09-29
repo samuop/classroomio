@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/svelte';
 import EsperarSuEmpresa from './esperar-su-empresa.svelte';
 import { ROLE } from '@cio/utils/constants';
 import { appInitApi } from '$features/app/init.svelte';
+import { basePath } from '$lib/utils/store/app';
 import { currentOrg } from '$lib/utils/store/org';
 
 // init.svelte.ts arrastra Sentry, que importa `$app/stores` de SvelteKit: acá
@@ -12,26 +13,33 @@ import { currentOrg } from '$lib/utils/store/org';
 vi.mock('$lib/utils/services/sentry', () => ({ setSentryUser: vi.fn() }));
 
 /**
- * Entrar en frío por el dominio de una consultora.
+ * Entrar en frío, con sesión.
  *
- * El orden real: el layout raíz pone a la dueña del dominio (sin rol), y recién
- * cuando llega la cuenta se pone la empresa de la persona. Una pantalla que se
- * monta antes pide sus datos con la dueña: eso es lo que mandaba a la alumna al
- * panel de la consultora.
+ * El orden real: antes de que llegue la cuenta, `currentOrg` es la dueña del
+ * dominio (sin rol) o, fuera del dominio de una empresa, la empresa vacía. Una
+ * pantalla que se monta en ese hueco pide sus datos con la empresa equivocada
+ * o arma sus enlaces con un camino base '#'.
  */
 
 const EMPRESA_VACIA = get(currentOrg);
 const DUENA_DEL_DOMINIO = { ...EMPRESA_VACIA, id: 'consultora', siteName: 'consultora', roleId: undefined as never };
-const SU_EMPRESA = { ...EMPRESA_VACIA, id: 'empresa-cliente', siteName: 'empresa-cliente', roleId: ROLE.STUDENT };
+const SU_EMPRESA = { ...EMPRESA_VACIA, id: 'empresa-cliente', siteName: 'empresa-cliente', roleId: ROLE.ADMIN };
 
-let montadaCon: string[] = [];
+let montadaCon: { id: string; basePath: string }[] = [];
 
 const pantalla = createRawSnippet(() => ({
   render: () => '<p>pantalla</p>',
   setup: () => {
-    montadaCon.push(get(currentOrg).id);
+    montadaCon.push({ id: get(currentOrg).id, basePath: get(basePath) });
   }
 }));
+
+/** Lo que hace setupApp al recibir la cuenta: guarda los datos y pone la empresa. */
+function llegaLaCuenta() {
+  appInitApi.data = { success: true } as never;
+  currentOrg.set(SU_EMPRESA);
+  flushSync();
+}
 
 beforeEach(() => {
   montadaCon = [];
@@ -46,24 +54,31 @@ afterEach(() => {
 });
 
 describe('EsperarSuEmpresa', () => {
-  it('en el dominio de una empresa, la pantalla se monta recién con la empresa de la persona', async () => {
+  it('en el dominio de una consultora, la pantalla se monta recién con la empresa de la persona', () => {
     currentOrg.set(DUENA_DEL_DOMINIO);
-    render(EsperarSuEmpresa, { props: { isOrgSite: true, conSesion: true, children: pantalla } });
+    render(EsperarSuEmpresa, { props: { conSesion: true, children: pantalla } });
 
     expect(screen.queryByText('pantalla')).not.toBeInTheDocument();
 
-    // Lo que hace setupApp al recibir la cuenta: guarda los datos y pone la empresa.
-    appInitApi.data = { success: true } as never;
-    currentOrg.set(SU_EMPRESA);
-    flushSync();
+    llegaLaCuenta();
 
     expect(screen.getByText('pantalla')).toBeInTheDocument();
-    expect(montadaCon).toEqual(['empresa-cliente']);
+    expect(montadaCon).toEqual([{ id: 'empresa-cliente', basePath: '/org/empresa-cliente' }]);
   });
 
-  it('si la cuenta falla, no deja la pantalla colgada en la espera', async () => {
+  it('en el dominio de la plataforma, no se monta con la empresa vacía y el camino base en «#»', () => {
+    render(EsperarSuEmpresa, { props: { conSesion: true, children: pantalla } });
+
+    expect(screen.queryByText('pantalla')).not.toBeInTheDocument();
+
+    llegaLaCuenta();
+
+    expect(montadaCon).toEqual([{ id: 'empresa-cliente', basePath: '/org/empresa-cliente' }]);
+  });
+
+  it('si la cuenta falla, no deja la pantalla colgada en la espera', () => {
     currentOrg.set(DUENA_DEL_DOMINIO);
-    render(EsperarSuEmpresa, { props: { isOrgSite: true, conSesion: true, children: pantalla } });
+    render(EsperarSuEmpresa, { props: { conSesion: true, children: pantalla } });
 
     appInitApi.error = 'fallo';
     flushSync();
@@ -71,12 +86,8 @@ describe('EsperarSuEmpresa', () => {
     expect(screen.getByText('pantalla')).toBeInTheDocument();
   });
 
-  it('sin sesión, o fuera del dominio de una empresa, no espera a nadie', async () => {
-    const { unmount } = render(EsperarSuEmpresa, { props: { isOrgSite: true, conSesion: false, children: pantalla } });
-    expect(screen.getByText('pantalla')).toBeInTheDocument();
-    unmount();
-
-    render(EsperarSuEmpresa, { props: { isOrgSite: false, conSesion: true, children: pantalla } });
+  it('sin sesión no espera a nadie', () => {
+    render(EsperarSuEmpresa, { props: { conSesion: false, children: pantalla } });
     expect(screen.getByText('pantalla')).toBeInTheDocument();
   });
 });
