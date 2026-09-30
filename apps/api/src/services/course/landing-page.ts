@@ -14,6 +14,8 @@ type CourseLandingPageUpdateResult = {
   course: TCourse;
   courseUrl: string;
   bannerImageUrl: string | null;
+  /** Se pidió buscar una imagen y no se puso ninguna: el motivo. */
+  imageNotSet?: string;
 };
 
 export async function generateUniqueCourseSlug(baseSlug: string): Promise<string> {
@@ -70,9 +72,19 @@ export async function resolveCourseUrl(organizationId: string, courseId: string,
   return `${buildCourseBaseUrl(organization)}/course/${encodeURIComponent(slug)}`;
 }
 
-async function resolveUnsplashBannerImage(courseTitle: string, query?: string) {
+/**
+ * La foto que se encontró, o por qué no hay.
+ *
+ * Antes cada falla era un `null` callado y la herramienta del asistente
+ * contestaba `updated: true`. Medido en producción el 2026-09-30: la búsqueda
+ * no andaba, el modelo la pidió tres veces, leyó «actualizado» cada vez y
+ * terminó escribiendo de memoria la dirección de una foto de Unsplash.
+ */
+type FotoBuscada = { url: string } | { motivo: string };
+
+async function resolveUnsplashBannerImage(courseTitle: string, query?: string): Promise<FotoBuscada> {
   if (!env.UNSPLASH_API_KEY) {
-    return null;
+    return { motivo: 'the image search is not configured on this server' };
   }
 
   const searchQuery = (query?.trim() || courseTitle.trim() || 'education').slice(0, 120);
@@ -82,7 +94,8 @@ async function resolveUnsplashBannerImage(courseTitle: string, query?: string) {
   );
 
   if (!response.ok) {
-    return null;
+    console.error(`[landing-page] la búsqueda de Unsplash respondió ${response.status}`);
+    return { motivo: `the image search failed (HTTP ${response.status})` };
   }
 
   const data = (await response.json()) as {
@@ -93,32 +106,34 @@ async function resolveUnsplashBannerImage(courseTitle: string, query?: string) {
     }>;
   };
 
-  const photos = data.results ?? [];
+  const photos = (data.results ?? []).filter((photo) => photo?.urls?.regular);
   if (photos.length === 0) {
-    return null;
+    return { motivo: `the image search found no photo for "${searchQuery}"` };
   }
 
   const photo = photos[Math.floor(Math.random() * photos.length)];
-  return photo?.urls?.regular ?? null;
+  return { url: photo.urls!.regular! };
 }
 
+/** La imagen que queda, y si se pidió buscar una y no se pudo, por qué. */
 async function resolveLandingPageImage(
   courseTitle: string,
   payload: Pick<TCourseLandingPageUpdate, 'generateImage' | 'imageQuery' | 'imageUrl'>
-) {
+): Promise<{ url: string | null; noSePuso?: string }> {
   if (payload.imageUrl) {
-    return payload.imageUrl;
+    return { url: payload.imageUrl };
   }
 
   if (!payload.generateImage && !payload.imageQuery) {
-    return null;
+    return { url: null };
   }
 
   try {
-    return await resolveUnsplashBannerImage(courseTitle, payload.imageQuery);
+    const foto = await resolveUnsplashBannerImage(courseTitle, payload.imageQuery);
+    return 'url' in foto ? { url: foto.url } : { url: null, noSePuso: foto.motivo };
   } catch (error) {
     console.error('resolveLandingPageImage error:', error);
-    return null;
+    return { url: null, noSePuso: 'the image search failed' };
   }
 }
 
@@ -192,7 +207,8 @@ export async function updateCourseLandingPageService(
 
   const nextTitle = payload.title ?? existingCourse.title;
   const metadata = mergeLandingPageMetadata(existingCourse.metadata ?? undefined, payload.metadata);
-  const imageUrl = await resolveLandingPageImage(nextTitle, payload);
+  const imagen = await resolveLandingPageImage(nextTitle, payload);
+  const imageUrl = imagen.url;
 
   const updatedCourse = await updateCourse(courseId, {
     title: payload.title,
@@ -219,6 +235,7 @@ export async function updateCourseLandingPageService(
   return {
     course: updatedCourse,
     courseUrl,
-    bannerImageUrl: updatedCourse.logo || imageUrl || null
+    bannerImageUrl: updatedCourse.logo || imageUrl || null,
+    ...(imagen.noSePuso ? { imageNotSet: imagen.noSePuso } : {})
   };
 }

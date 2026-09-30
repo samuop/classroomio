@@ -149,6 +149,13 @@ vi.mock('@api/config/storage', async (original) => ({
   getStorageConfig: () => ({ mediaPublicBaseUrl: 'https://medios.ejemplo.test' })
 }));
 
+// Lo que el chequeo de publicación dice del curso en sí: listo. Lo que agrega
+// del plan es lo que se prueba.
+vi.mock('@api/services/course/go-live-readiness', async (original) => ({
+  ...(await original<typeof import('@api/services/course/go-live-readiness')>()),
+  getCourseGoLiveReadiness: vi.fn(async () => ({ ready: true, blockers: [], warnings: [], suggestedFixes: {} }))
+}));
+
 const { agentRouter } = await import('@api/routes/agent/agent');
 const { redis } = await import('@api/utils/redis/redis');
 const { recordTokenUsage, enforceTokenBalance } = await import('@api/services/agent/usage');
@@ -216,8 +223,8 @@ const RESPUESTA_FINAL = 'Revisé la estructura: el curso tiene una sección y un
 /** Lo que el proveedor recibió en cada paso, como texto, para buscar qué viajó. */
 let promptsRecibidos: string[] = [];
 
-/** Paso 1: pide la estructura del curso. Paso 2: contesta. */
-function modeloDeDosPasos() {
+/** Paso 1: llama a una herramienta sin argumentos (la estructura del curso). Paso 2: contesta. */
+function modeloDeDosPasos(herramienta = 'get_course_structure') {
   let paso = 0;
 
   return new MockLanguageModelV4({
@@ -229,7 +236,7 @@ function modeloDeDosPasos() {
         paso === 1
           ? [
               { type: 'stream-start' as const, warnings: [] },
-              { type: 'tool-call' as const, toolCallId: 'llamada-1', toolName: 'get_course_structure', input: '{}' },
+              { type: 'tool-call' as const, toolCallId: 'llamada-1', toolName: herramienta, input: '{}' },
               { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool_use' }, usage: uso(1000, 50) }
             ]
           : [
@@ -716,5 +723,102 @@ describe('las fuentes agregadas después del plan', () => {
     );
 
     expect(promptsRecibidos[0]).not.toContain('## Sources added after the plan');
+  });
+
+  /**
+   * Medido en producción el 2026-09-30: con 6 de 20 piezas hechas, el
+   * constructor fue al chequeo de publicación, leyó «falta la imagen» y cerró
+   * con «el curso ha sido construido en su totalidad». Ver
+   * `plan-antes-de-publicar.ts`.
+   */
+  describe('el chequeo de publicación en medio de la construcción', () => {
+    type Chequeo = { ready: boolean; blockers: Array<{ code: string; message: string }> };
+
+    /** Lo que el modelo leyó del chequeo, sacado del prompt de su segundo paso. */
+    const loQueLeyoDelChequeo = (): Chequeo => {
+      const prompt = JSON.parse(promptsRecibidos[1] ?? '[]') as Array<{ content: unknown }>;
+      const partes = prompt.flatMap((m) => (Array.isArray(m.content) ? m.content : [])) as Array<{
+        type: string;
+        toolName?: string;
+        output?: { value?: unknown };
+      }>;
+      const resultado = partes.find((p) => p.type === 'tool-result' && p.toolName === 'check_course_go_live_readiness');
+      return resultado?.output?.value as Chequeo;
+    };
+
+    beforeEach(() => {
+      vi.mocked(createModel).mockImplementation(() => modeloDeDosPasos('check_course_go_live_readiness') as never);
+      vi.mocked(listCourseSources).mockResolvedValue([MANUAL] as never);
+    });
+
+    it('con el plan a medias, dice primero qué pieza falta', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: CONSTRUCCION }));
+
+      const chequeo = loQueLeyoDelChequeo();
+      expect(chequeo.ready).toBe(false);
+      expect(chequeo.blockers[0].code).toBe('PLAN_INCOMPLETE');
+      expect(chequeo.blockers[0].message).toContain('only 1 of its 3 items are built');
+      expect(chequeo.blockers[0].message).toContain('Next: «Hacer el arqueo» (lesson, not created yet).');
+    });
+
+    it('lee el avance del momento: la pieza que se construyó en esta ronda ya no falta', async () => {
+      // Paso 1: una escritura (acá, una que falla por validación: lo que cuenta
+      // es que PUDO cambiar el curso), y mientras tanto la lección que faltaba
+      // aparece. Paso 2: va al chequeo. Paso 3: contesta. Con el avance del
+      // comienzo de la ronda, el chequeo seguiría pidiendo una lección que ya
+      // existe.
+      const conElArqueo = [...ITEMS, { ...ITEMS[0], id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', title: 'Hacer el arqueo', order: 2 }];
+      let paso = 0;
+      vi.mocked(createModel).mockImplementation(
+        () =>
+          new MockLanguageModelV4({
+            doStream: async ({ prompt }) => {
+              promptsRecibidos.push(JSON.stringify(prompt));
+              paso += 1;
+              if (paso === 1) vi.mocked(getCourseContentItems).mockImplementation(async () => conElArqueo as never);
+              const herramienta = paso === 1 ? 'update_section' : paso === 2 ? 'check_course_go_live_readiness' : null;
+              const chunks = herramienta
+                ? [
+                    { type: 'stream-start' as const, warnings: [] },
+                    { type: 'tool-call' as const, toolCallId: `llamada-${paso}`, toolName: herramienta, input: '{}' },
+                    { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool_use' }, usage: uso(1000, 50) }
+                  ]
+                : [
+                    { type: 'stream-start' as const, warnings: [] },
+                    { type: 'text-start' as const, id: 't1' },
+                    { type: 'text-delta' as const, id: 't1', delta: RESPUESTA_FINAL },
+                    { type: 'text-end' as const, id: 't1' },
+                    { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: uso(1200, 80) }
+                  ];
+              return { stream: simulateReadableStream({ chunks }) };
+            }
+          }) as never
+      );
+
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: CONSTRUCCION }));
+
+      const prompt = JSON.parse(promptsRecibidos[2] ?? '[]') as Array<{ content: unknown }>;
+      const chequeo = prompt
+        .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+        .find((p: { type: string; toolName?: string }) => p.type === 'tool-result' && p.toolName === 'check_course_go_live_readiness') as
+        | { output: { value: unknown } }
+        | undefined;
+
+      expect(chequeo?.output.value).toEqual({ ready: true, blockers: [], warnings: [], suggestedFixes: {} });
+    });
+
+    it('con el plan terminado, contesta sólo por la publicación', async () => {
+      await leerPartes(
+        await chat({ conversationId: conversacionNueva(), messages: construccion(PLAN_TERMINADO as typeof PLAN_A_MEDIAS) })
+      );
+
+      expect(loQueLeyoDelChequeo()).toEqual({ ready: true, blockers: [], warnings: [], suggestedFixes: {} });
+    });
+
+    it('sin un plan aprobado, tampoco', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+      expect(loQueLeyoDelChequeo()).toEqual({ ready: true, blockers: [], warnings: [], suggestedFixes: {} });
+    });
   });
 });

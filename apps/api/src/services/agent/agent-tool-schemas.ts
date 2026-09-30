@@ -822,6 +822,9 @@ export const updateCourseLandingPageParam = ZCourseLandingPageUpdate.extend({
     .max(120)
     .optional()
     .describe('Optional Unsplash search query (1–120 chars). Omit to let the server use the course title.'),
+  imageUrl: ZCourseLandingPageUpdate.shape.imageUrl.describe(
+    'A banner image URL the teacher gave you, or one a tool returned (e.g. generate_image). Never one written from memory: it is an unknown photo or a broken link.'
+  ),
   metadata: agentLandingPageMetadataUpdate.optional()
 }).refine(
   (data) =>

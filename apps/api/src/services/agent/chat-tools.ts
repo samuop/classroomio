@@ -120,8 +120,10 @@ import {
   assertValidUuid,
   verifyExerciseBelongsToCourse,
   verifyLessonBelongsToCourse,
-  verifySectionBelongsToCourse
+  verifySectionBelongsToCourse,
+  type PlanProgress
 } from '@api/services/agent/chat-context';
+import { conElPlanPendiente } from '@api/services/agent/plan-antes-de-publicar';
 import {
   addQuestionsParam,
   analyzeSourceChangesParam,
@@ -1124,6 +1126,13 @@ export function buildAgentTools(
     /** Dónde anotar lo que la ronda cambió de verdad. Ver `round-ledger.ts`. */
     registro?: RegistroDeRonda;
     /**
+     * El avance del plan aprobado, medido por el servidor al empezar la ronda
+     * y después de cada paso. Sólo en una ronda que construye ese plan: el
+     * chequeo de publicación lo usa para no dar por listo un curso a medio
+     * construir. Ver `plan-antes-de-publicar.ts`.
+     */
+    progresoDelPlan?: () => PlanProgress | undefined;
+    /**
      * El idioma del curso, resuelto por la ronda.
      *
      * Se pasa en vez de dejarlo en los argumentos con default `'en'`, que es la
@@ -1174,6 +1183,7 @@ export function buildAgentTools(
   const avisosDeFundamento = crearRegistroDeAvisos();
   const leccionesBajoOrdenDeTrabajo = _options?.leccionesBajoOrdenDeTrabajo;
   const accionPorLeccion = _options?.accionPorLeccion;
+  const progresoDelPlan = _options?.progresoDelPlan;
 
   /**
    * El riel: bajo una orden de EDICIÓN, la lección no se reescribe entera.
@@ -4095,7 +4105,13 @@ export function buildAgentTools(
             description: result.course.description,
             courseUrl: result.courseUrl,
             bannerImageUrl: result.bannerImageUrl,
-            updated: true
+            updated: true,
+            // Lo demás se guardó; la imagen no. Ver `FotoBuscada` en landing-page.ts.
+            ...(result.imageNotSet
+              ? {
+                  imageNotSet: `No banner image was set: ${result.imageNotSet}. Asking again will not change that. Never write an image URL yourself: one from memory is an unknown photo or a broken link. You can draw one with generate_image (aspectRatio "16:9") and pass the URL it returns as imageUrl; otherwise tell the teacher the banner is still missing so they can upload one.`
+                }
+              : {})
           };
         });
       }
@@ -4107,7 +4123,7 @@ export function buildAgentTools(
       inputSchema: emptyParam,
       execute: async () => {
         return executeAgentTool('check_course_go_live_readiness', { orgId, userId, courseId }, async () => {
-          return getCourseGoLiveReadiness(courseId);
+          return conElPlanPendiente(await getCourseGoLiveReadiness(courseId), progresoDelPlan?.());
         });
       }
     }),

@@ -1355,6 +1355,10 @@ const agentCoreRouter = new Hono()
           : buildAgentTools(orgId, user.id, courseId, messages, {
               presupuesto: presupuestoDePasos,
               registro: registroDeRonda,
+              // Leído en cada llamada: `planProgress` se vuelve a medir después
+              // de cada paso. Sólo al construir el plan; ver
+              // `plan-antes-de-publicar.ts` por qué no en cualquier ronda.
+              progresoDelPlan: teacherPromptMode === 'build' ? () => planProgress : undefined,
               // El idioma del curso, resuelto acá y no elegido por el modelo.
               // Ahora gobierna TODAS las herramientas de contenido, no sólo la
               // búsqueda: ninguna tiene ya un parámetro `locale`.
