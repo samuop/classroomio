@@ -3967,9 +3967,7 @@
           "title": "Banner Widget",
           "width": "Images wider than 1500 pixels work best.",
           "size": "The maximum size per file is 500kb.",
-          "drag_drop": "Drag and drop your image here, or click to select",
-          "submit": "Submit",
-          "no_images": "No images available."
+          "drag_drop": "Drag and drop your image here, or click to select"
         },
         "pricing_section": {
           "free": "Free",
@@ -4809,8 +4807,7 @@
       "error": {
         "file_size": "File Size must not be greater than 500kb",
         "try_again": "Try Again",
-        "label": "Upload Image",
-        "fetch_error": "Error fetching images from Unsplash"
+        "label": "Upload Image"
       },
       "success": {
         "complete": "Complete :)"

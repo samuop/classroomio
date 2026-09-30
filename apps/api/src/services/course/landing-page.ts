@@ -2,7 +2,6 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import type { TCourse, TOrganization } from '@db/types';
 import type { TCourseLandingPageMetadataUpdate, TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 
-import { env } from '@api/config/env';
 import { generateSlug } from '@cio/utils/functions';
 import { getCourseById, isCourseSlugTaken, updateCourseSlug } from '@cio/db/queries/course';
 import { getCourseOrganizationId } from '@cio/db/queries/tag';
@@ -14,8 +13,6 @@ type CourseLandingPageUpdateResult = {
   course: TCourse;
   courseUrl: string;
   bannerImageUrl: string | null;
-  /** Se pidió buscar una imagen y no se puso ninguna: el motivo. */
-  imageNotSet?: string;
 };
 
 export async function generateUniqueCourseSlug(baseSlug: string): Promise<string> {
@@ -70,71 +67,6 @@ export async function resolveCourseUrl(organizationId: string, courseId: string,
 
   const slug = await ensureCourseSlug(courseId, title);
   return `${buildCourseBaseUrl(organization)}/course/${encodeURIComponent(slug)}`;
-}
-
-/**
- * La foto que se encontró, o por qué no hay.
- *
- * Antes cada falla era un `null` callado y la herramienta del asistente
- * contestaba `updated: true`. Medido en producción el 2026-09-30: la búsqueda
- * no andaba, el modelo la pidió tres veces, leyó «actualizado» cada vez y
- * terminó escribiendo de memoria la dirección de una foto de Unsplash.
- */
-type FotoBuscada = { url: string } | { motivo: string };
-
-async function resolveUnsplashBannerImage(courseTitle: string, query?: string): Promise<FotoBuscada> {
-  if (!env.UNSPLASH_API_KEY) {
-    return { motivo: 'the image search is not configured on this server' };
-  }
-
-  const searchQuery = (query?.trim() || courseTitle.trim() || 'education').slice(0, 120);
-  const response = await fetch(
-    `https://api.unsplash.com/search/photos?page=1&per_page=15&auto=format&fit=crop&w=2970&q=80&client_id=${env.UNSPLASH_API_KEY}&query=${encodeURIComponent(searchQuery)}`,
-    { method: 'GET' }
-  );
-
-  if (!response.ok) {
-    console.error(`[landing-page] la búsqueda de Unsplash respondió ${response.status}`);
-    return { motivo: `the image search failed (HTTP ${response.status})` };
-  }
-
-  const data = (await response.json()) as {
-    results?: Array<{
-      urls?: {
-        regular?: string;
-      };
-    }>;
-  };
-
-  const photos = (data.results ?? []).filter((photo) => photo?.urls?.regular);
-  if (photos.length === 0) {
-    return { motivo: `the image search found no photo for "${searchQuery}"` };
-  }
-
-  const photo = photos[Math.floor(Math.random() * photos.length)];
-  return { url: photo.urls!.regular! };
-}
-
-/** La imagen que queda, y si se pidió buscar una y no se pudo, por qué. */
-async function resolveLandingPageImage(
-  courseTitle: string,
-  payload: Pick<TCourseLandingPageUpdate, 'generateImage' | 'imageQuery' | 'imageUrl'>
-): Promise<{ url: string | null; noSePuso?: string }> {
-  if (payload.imageUrl) {
-    return { url: payload.imageUrl };
-  }
-
-  if (!payload.generateImage && !payload.imageQuery) {
-    return { url: null };
-  }
-
-  try {
-    const foto = await resolveUnsplashBannerImage(courseTitle, payload.imageQuery);
-    return 'url' in foto ? { url: foto.url } : { url: null, noSePuso: foto.motivo };
-  } catch (error) {
-    console.error('resolveLandingPageImage error:', error);
-    return { url: null, noSePuso: 'the image search failed' };
-  }
 }
 
 function mergeLandingPageMetadata(
@@ -205,10 +137,10 @@ export async function updateCourseLandingPageService(
     throw new AppError('Course not found', ErrorCodes.COURSE_NOT_FOUND, 404);
   }
 
-  const nextTitle = payload.title ?? existingCourse.title;
   const metadata = mergeLandingPageMetadata(existingCourse.metadata ?? undefined, payload.metadata);
-  const imagen = await resolveLandingPageImage(nextTitle, payload);
-  const imageUrl = imagen.url;
+  // Sólo una dirección explícita: la de la docente, una subida o la que dibujó
+  // `generate_image`. La búsqueda de fotos de Unsplash se sacó el 2026-09-30.
+  const imageUrl = payload.imageUrl ?? null;
 
   const updatedCourse = await updateCourse(courseId, {
     title: payload.title,
@@ -235,7 +167,6 @@ export async function updateCourseLandingPageService(
   return {
     course: updatedCourse,
     courseUrl,
-    bannerImageUrl: updatedCourse.logo || imageUrl || null,
-    ...(imagen.noSePuso ? { imageNotSet: imagen.noSePuso } : {})
+    bannerImageUrl: updatedCourse.logo || imageUrl || null
   };
 }

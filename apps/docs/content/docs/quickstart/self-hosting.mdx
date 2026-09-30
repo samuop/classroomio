@@ -129,7 +129,6 @@ Use `./run-docker-full-stack.sh --no-minio` to exclude MinIO if you do not need 
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth |
 | `AUTH_COOKIE_DOMAIN` | Root domain for cross-subdomain cookies (e.g. `.yourdomain.com`) |
 | `PRIVATE_APP_HOST`, `PRIVATE_APP_SUBDOMAINS` | Multi-subdomain routing |
-| `UNSPLASH_API_KEY` | Unsplash image search |
 | `LICENSE_KEY` | Enterprise features (SSO, token-auth, no-tracking) |
 | `PUBLIC_APP_TITLE`, `PUBLIC_APP_DESCRIPTION`, `PUBLIC_OG_IMAGE_URL` | Custom branding |
 
@@ -229,7 +228,7 @@ CLOUDFLARE_IMAGE_BUCKET_DOMAIN=
   When API and dashboard use different subdomains, set `AUTH_COOKIE_DOMAIN` to your root domain (e.g. `yourdomain.com`). Without it, Better Auth cookies will not be set and login will fail.
 </Callout>
 
-Optional: add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` for OAuth, `UNSPLASH_API_KEY` for image search, or `LICENSE_KEY` for enterprise features.
+Optional: add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` for OAuth, or `LICENSE_KEY` for enterprise features.
 
 ### cio-dashboard
 

@@ -251,8 +251,7 @@
       "error": {
         "file_size": "La taille du fichier ne doit pas dépasser 500 Ko",
         "try_again": "Réessayez",
-        "label": "Télécharger une image",
-        "fetch_error": "Erreur lors de la récupération des images depuis Unsplash"
+        "label": "Télécharger une image"
       }
     },
     "team_members": {
@@ -847,9 +846,7 @@
           "title": "Widget de bannière",
           "width": "Les images plus larges que 1 500 pixels fonctionnent mieux.",
           "size": "La taille maximale par fichier est de 500 Ko.",
-          "drag_drop": "Faites glisser et déposez votre image ici, ou cliquez pour sélectionner",
-          "submit": "Soumettre",
-          "no_images": "Aucune image disponible."
+          "drag_drop": "Faites glisser et déposez votre image ici, ou cliquez pour sélectionner"
         },
         "editor": {
           "save": "Enregistrer",

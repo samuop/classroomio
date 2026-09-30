@@ -668,8 +668,6 @@ export const ZCourseLandingPageUpdate = z.object({
   cost: z.number().int().min(0).optional(),
   currency: z.enum(['NGN', 'USD']).optional(),
   imageUrl: z.url().optional(),
-  generateImage: z.boolean().optional(),
-  imageQuery: z.string().min(1).max(120).optional(),
   metadata: ZCourseLandingPageMetadataUpdate.optional()
 });
 export type TCourseLandingPageUpdate = z.infer<typeof ZCourseLandingPageUpdate>;

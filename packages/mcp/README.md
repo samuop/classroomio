@@ -242,7 +242,6 @@ Result:
 - sections and lessons are created
 - localized lesson content is written
 - publish returns the live `courseId` and public `courseUrl`
-- publish can optionally set a random Unsplash-derived course cover
 
 ### Flow 2: Update a landing page with AI-generated copy and media
 
@@ -272,7 +271,6 @@ What the landing-page tool can update:
 The tool can either:
 
 - use an explicit `imageUrl`
-- or generate a random Unsplash-based image with `generateImage` and `imageQuery`
 
 ### Flow 3: Create a draft from a PDF
 
@@ -337,7 +335,6 @@ Expected tool sequence:
 What this publish does today:
 
 - updates the existing course title, description, type, and metadata
-- can set a generated course cover from Unsplash
 - returns the public `courseUrl`
 - updates existing sections when the draft keeps their IDs
 - updates existing lessons when the draft keeps their IDs
@@ -406,8 +403,6 @@ For large updates, the agent should:
 Publish input also supports:
 
 - `bannerImageUrl`: use this exact course cover
-- `bannerImageQuery`: search Unsplash with this query
-- `generateBannerImage`: fetch a random Unsplash image using the course title or query
 
 Tagging tools use:
 

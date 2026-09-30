@@ -40,7 +40,6 @@ import rateLimiter from '@api/middlewares/rate-limiter';
 import { secureHeaders } from 'hono/secure-headers';
 import { signupGuard } from '@api/middlewares/signup-guard';
 import { ssoDiscoveryRouter } from '@api/routes/sso/discovery';
-import { unsplashRouter } from '@api/routes/unsplash/unsplash';
 import { v1Router } from '@api/routes/v1';
 
 // Los ingresos, cierres de sesión y cambios de cuenta pasan por Better Auth, que
@@ -229,7 +228,6 @@ export const app = new Hono()
   .route('/public-api/v1', v1Router)
   .route('/program', programRouter)
   .route('/student', studentRouter)
-  .route('/unsplash', unsplashRouter)
   .route('/widgets', publicWidgetsRouter)
   .route('/internal', internalRouter)
   .route('/agent', agentRouter)

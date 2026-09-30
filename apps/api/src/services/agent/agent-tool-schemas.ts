@@ -810,20 +810,8 @@ export const updateCourseLandingPageParam = ZCourseLandingPageUpdate.extend({
   title: z.string().min(1).optional().describe('Plain-text public course title (no HTML).'),
   description: z.string().min(1).optional().describe(LANDING_PAGE_COURSE_DESCRIPTION_PLAIN_HINT),
   overview: z.string().optional().describe(LANDING_PAGE_SECTION_HTML_AGENT_HINT),
-  generateImage: z
-    .boolean()
-    .optional()
-    .describe(
-      'Set true to auto-resolve a banner image from Unsplash. The server searches Unsplash using imageQuery if provided, otherwise the course title. Use this to fix a missing-banner blocker — do NOT ask the teacher to describe an image.'
-    ),
-  imageQuery: z
-    .string()
-    .min(1)
-    .max(120)
-    .optional()
-    .describe('Optional Unsplash search query (1–120 chars). Omit to let the server use the course title.'),
   imageUrl: ZCourseLandingPageUpdate.shape.imageUrl.describe(
-    'A banner image URL the teacher gave you, or one a tool returned (e.g. generate_image). Never one written from memory: it is an unknown photo or a broken link.'
+    'A banner image URL the teacher gave you, or one a tool returned (to fix a missing banner, draw one with generate_image, aspectRatio "16:9", and pass its URL here). Never one written from memory: it is an unknown photo or a broken link.'
   ),
   metadata: agentLandingPageMetadataUpdate.optional()
 }).refine(
@@ -834,8 +822,6 @@ export const updateCourseLandingPageParam = ZCourseLandingPageUpdate.extend({
     data.cost !== undefined ||
     data.currency !== undefined ||
     data.imageUrl !== undefined ||
-    data.generateImage !== undefined ||
-    data.imageQuery !== undefined ||
     data.metadata !== undefined,
   {
     message: 'Provide at least one landing-page field to update'

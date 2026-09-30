@@ -122,7 +122,6 @@ services:
       PRIVATE_SERVER_KEY: ${PRIVATE_SERVER_KEY:-local-dev-api-key}
       DASHBOARD_ORIGIN: ${DASHBOARD_ORIGIN:-}
       LICENSE_KEY: ${LICENSE_KEY:-}
-      UNSPLASH_API_KEY: ${UNSPLASH_API_KEY:-}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-dev-only-secret-change-this}
       SKIP_DB_SETUP: ${SKIP_DB_SETUP:-}
     restart: unless-stopped

@@ -30,7 +30,7 @@ Key points:
 - **Auth cookies:** Set `AUTH_COOKIE_DOMAIN` to your root domain (e.g. `.yourdomain.com`) when API and dashboard use different subdomains. Without it, auth cookies may not be set and login will fail.
 - **Auto-generated:** `AUTH_BEARER_TOKEN`, `PRIVATE_SERVER_KEY` (by `./run-docker-full-stack.sh`).
 - **Auto-configured:** All `MINIO_*` / `OBJECT_STORAGE_*` vars (by the startup script).
-- **Optional:** Email (SMTP or Zoho), Google OAuth, Unsplash, `LICENSE_KEY` (enterprise).
+- **Optional:** Email (SMTP or Zoho), Google OAuth, `LICENSE_KEY` (enterprise).
 
 `PRIVATE_SERVER_KEY` must be the same value in both API and dashboard — the script ensures this.
 

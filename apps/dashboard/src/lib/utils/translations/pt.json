@@ -251,8 +251,7 @@
       "error": {
         "file_size": "O tamanho do arquivo não deve ser superior a 500kb",
         "try_again": "Tente novamente",
-        "label": "Carregar imagem",
-        "fetch_error": "Erro ao buscar imagens do Unsplash"
+        "label": "Carregar imagem"
       }
     },
     "team_members": {
@@ -847,9 +846,7 @@
           "title": "Widget de Banner",
           "width": "Imagens maiores que 1.500 pixels funcionam melhor.",
           "size": "O tamanho máximo por arquivo é 500kb.",
-          "drag_drop": "Arraste e solte sua imagem aqui ou clique para selecionar",
-          "submit": "Enviar",
-          "no_images": "Nenhuma imagem disponível."
+          "drag_drop": "Arraste e solte sua imagem aqui ou clique para selecionar"
         },
         "editor": {
           "save": "Salvar",

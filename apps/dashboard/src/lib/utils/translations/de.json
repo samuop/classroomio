@@ -251,8 +251,7 @@
       "error": {
         "file_size": "Die Dateigröße darf 500 KB nicht überschreiten",
         "try_again": "Versuchen Sie es erneut",
-        "label": "Bild hochladen",
-        "fetch_error": "Fehler beim Abrufen von Bildern von Unsplash"
+        "label": "Bild hochladen"
       }
     },
     "team_members": {
@@ -847,9 +846,7 @@
           "title": "Banner-Widget",
           "width": "Am besten funktionieren Bilder, die breiter als 1500 Pixel sind.",
           "size": "Die maximale Größe pro Datei beträgt 500 KB.",
-          "drag_drop": "Ziehen Sie Ihr Bild per Drag-and-Drop hierher oder klicken Sie, um es auszuwählen",
-          "submit": "Senden",
-          "no_images": "Keine Bilder verfügbar."
+          "drag_drop": "Ziehen Sie Ihr Bild per Drag-and-Drop hierher oder klicken Sie, um es auszuwählen"
         },
         "editor": {
           "save": "Speichern",

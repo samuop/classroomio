@@ -1,17 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Pedir una foto de portada que no se consigue.
+ * La portada del curso, sin Unsplash.
  *
- * Medido en producción el 2026-09-30: la búsqueda de Unsplash no andaba (la
- * del panel tampoco), el asistente la pidió tres veces, leyó `updated: true`
- * cada vez sin ninguna imagen, y terminó escribiendo de memoria la dirección de
- * una foto. Cada falla era un `null` callado.
+ * La búsqueda de fotos de Unsplash no tenía clave en producción: la del
+ * asistente devolvía `updated: true` sin imagen (el modelo la pidió tres veces y
+ * terminó escribiendo de memoria la dirección de una foto) y la del panel le
+ * mostraba un error a la docente cada vez que abría el cargador. Se sacó el
+ * 2026-09-30. Una portada es ahora una dirección explícita: la que sube la
+ * docente o la que dibuja el asistente con `generate_image`.
  */
-
-const entorno = vi.hoisted(() => ({ env: { UNSPLASH_API_KEY: 'clave-de-prueba' as string | undefined } }));
-
-vi.mock('@api/config/env', () => entorno);
 
 vi.mock('isomorphic-dompurify', () => ({
   default: new Proxy({}, { get: () => (valor: unknown) => valor })
@@ -52,102 +50,80 @@ vi.mock('@api/services/course/course', async (original) => ({
 
 const { updateCourseLandingPageService } = await import('@api/services/course/landing-page');
 const { updateCourse } = await import('@api/services/course/course');
-const { buildAgentTools } = await import('@api/services/agent/chat-tools');
+const { evaluateCourseGoLiveReadiness } = await import('@api/services/course/go-live-readiness');
 const { updateCourseLandingPageParam } = await import('@api/services/agent/agent-tool-schemas');
+const { ZCourseLandingPageUpdate } = await import('@cio/utils/validation/course');
+const { ZCourseImportDraftPublishBase } = await import('@cio/utils/validation/course-import');
 const { buildTeacherSystemPrompt } = await import('../../../../packages/ai-assistant/src/prompt/teacher');
 
-const respuesta = (status: number, cuerpo: unknown) =>
-  ({ ok: status >= 200 && status < 300, status, json: async () => cuerpo }) as Response;
-
-const FOTO = 'https://images.unsplash.com/photo-caja?w=1080';
-
-beforeEach(() => {
-  entorno.env.UNSPLASH_API_KEY = 'clave-de-prueba';
-});
+const DIBUJADA = 'https://medios.ejemplo.test/media/courses/curso/generated/portada.jpg';
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
-describe('la foto de portada que se pidió buscar', () => {
-  it('sin la clave de la búsqueda, dice que no está configurada y no toca la imagen', async () => {
-    entorno.env.UNSPLASH_API_KEY = undefined;
+describe('la portada, sólo con una dirección explícita', () => {
+  it('con una dirección, la pone, y no sale a buscar nada', async () => {
     vi.stubGlobal('fetch', vi.fn());
 
-    const resultado = await updateCourseLandingPageService('curso', { generateImage: true });
+    const resultado = await updateCourseLandingPageService('curso', { imageUrl: DIBUJADA });
 
-    expect(resultado.imageNotSet).toBe('the image search is not configured on this server');
+    expect(resultado.bannerImageUrl).toBe(DIBUJADA);
+    expect(vi.mocked(updateCourse).mock.calls[0][1]).toMatchObject({ logo: DIBUJADA, bannerImage: DIBUJADA });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('sin dirección no toca la imagen, y tampoco sale a buscar', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+
+    const resultado = await updateCourseLandingPageService('curso', { title: 'Caja del almacén' });
+
     expect(resultado.bannerImageUrl).toBeNull();
     expect(vi.mocked(updateCourse).mock.calls[0][1]).not.toHaveProperty('logo');
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('si la búsqueda falla, dice con qué código', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => respuesta(401, {})));
-
-    const resultado = await updateCourseLandingPageService('curso', { generateImage: true, imageQuery: 'caja registradora' });
-
-    expect(resultado.imageNotSet).toBe('the image search failed (HTTP 401)');
-    expect(resultado.bannerImageUrl).toBeNull();
+  it('un cliente viejo que manda los campos de búsqueda no recibe error: se ignoran', () => {
+    expect(ZCourseLandingPageUpdate.parse({ title: 'Caja', generateImage: true, imageQuery: 'caja registradora' })).toEqual({
+      title: 'Caja'
+    });
+    expect(
+      ZCourseImportDraftPublishBase.parse({ bannerImageUrl: DIBUJADA, bannerImageQuery: 'caja', generateBannerImage: true })
+    ).toEqual({ bannerImageUrl: DIBUJADA });
   });
 
-  it('si no encuentra nada, dice qué buscó', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => respuesta(200, { results: [] })));
+  it('el chequeo de publicación sigue pidiendo la portada, sin sugerir buscarla', () => {
+    const chequeo = evaluateCourseGoLiveReadiness({
+      course: { id: 'curso', title: 'Caja', description: '', overview: '', slug: 'caja', logo: '', bannerImage: '', metadata: {} } as never,
+      contentItems: [],
+      organization: null
+    });
 
-    const resultado = await updateCourseLandingPageService('curso', { imageQuery: 'caja registradora' });
-
-    expect(resultado.imageNotSet).toBe('the image search found no photo for "caja registradora"');
-  });
-
-  it('con una foto, la pone y no hay nada que avisar', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => respuesta(200, { results: [{ urls: { regular: FOTO } }] })));
-
-    const resultado = await updateCourseLandingPageService('curso', { generateImage: true });
-
-    expect(resultado.bannerImageUrl).toBe(FOTO);
-    expect(resultado).not.toHaveProperty('imageNotSet');
-    expect(vi.mocked(updateCourse).mock.calls[0][1]).toMatchObject({ logo: FOTO, bannerImage: FOTO });
-  });
-
-  it('sin pedir una foto, no hay nada que avisar', async () => {
-    vi.stubGlobal('fetch', vi.fn());
-
-    const resultado = await updateCourseLandingPageService('curso', { title: 'Caja del almacén' });
-
-    expect(resultado).not.toHaveProperty('imageNotSet');
+    expect(chequeo.blockers.map((b) => b.code)).toContain('LANDING_IMAGE_MISSING');
+    expect(chequeo.suggestedFixes.landingPage ?? {}).not.toHaveProperty('generateImage');
   });
 });
 
-describe('la herramienta del asistente', () => {
-  type Herramienta = { execute: (args: unknown, opciones: unknown) => Promise<Record<string, unknown>> };
-  const portada = () =>
-    (buildAgentTools('empresa', 'docente', 'curso', [], { locale: 'es' }) as Record<string, Herramienta>).update_course_landing_page;
+describe('el asistente dibuja la portada que falta', () => {
+  it('la herramienta no ofrece buscar, y la dirección dice de dónde sale', () => {
+    const campos = Object.keys(updateCourseLandingPageParam.shape);
 
-  it('cuando no se puso la imagen lo dice, y manda a no escribir una dirección de memoria', async () => {
-    entorno.env.UNSPLASH_API_KEY = undefined;
-
-    const resultado = await portada().execute({ generateImage: true }, { toolCallId: 'llamada', messages: [] });
-
-    expect(resultado.updated).toBe(true);
-    expect(resultado.bannerImageUrl).toBeNull();
-    expect(String(resultado.imageNotSet)).toContain('No banner image was set: the image search is not configured on this server.');
-    expect(String(resultado.imageNotSet)).toContain('Never write an image URL yourself');
-    expect(String(resultado.imageNotSet)).toContain('generate_image');
-  });
-
-  it('el campo de la dirección le dice de dónde puede salir', () => {
+    expect(campos).not.toContain('generateImage');
+    expect(campos).not.toContain('imageQuery');
+    expect(updateCourseLandingPageParam.shape.imageUrl.description).toContain('draw one with generate_image');
     expect(updateCourseLandingPageParam.shape.imageUrl.description).toContain('Never one written from memory');
   });
 
-  it('el prompt del constructor sabe que un «no se puso» no se arregla pidiéndolo de nuevo', () => {
+  it('el prompt del constructor lo manda a generate_image, y no nombra a Unsplash', () => {
     const prompt = buildTeacherSystemPrompt(
       { orgId: 'o', courseId: 'c', courseTitle: 'C', userId: 'u', role: 'teacher' as never, locale: 'es' },
       { mode: 'build' }
     );
 
-    expect(prompt).toContain(
-      'If the result carries `imageNotSet`, no image was set and trying again will not help: follow what it says, and never write an image URL yourself.'
-    );
+    expect(prompt).toContain('draw one with `generate_image`');
+    expect(prompt).toContain('never write an image URL yourself');
+    expect(prompt).not.toMatch(/unsplash/i);
+    expect(prompt).not.toContain('generateImage');
   });
 });

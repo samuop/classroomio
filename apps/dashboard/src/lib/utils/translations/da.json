@@ -251,8 +251,7 @@
       "error": {
         "file_size": "Filstørrelsen må ikke være større end 500 kb",
         "try_again": "Prøv igen",
-        "label": "Upload billede",
-        "fetch_error": "Fejl ved hentning af billeder fra Unsplash"
+        "label": "Upload billede"
       }
     },
     "team_members": {
@@ -847,9 +846,7 @@
           "title": "Banner-widget",
           "width": "Billeder bredere end 1500 pixels fungerer bedst.",
           "size": "Den maksimale størrelse pr. fil er 500 kb.",
-          "drag_drop": "Træk og slip dit billede her, eller klik for at vælge",
-          "submit": "Indsend",
-          "no_images": "Ingen tilgængelige billeder."
+          "drag_drop": "Træk og slip dit billede her, eller klik for at vælge"
         },
         "editor": {
           "save": "Gem",

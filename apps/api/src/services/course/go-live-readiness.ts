@@ -137,7 +137,6 @@ export function evaluateCourseGoLiveReadiness(input: CourseReadinessInput): Cour
 
   if (!course.logo && !course.bannerImage) {
     blockers.push(buildIssue('LANDING_IMAGE_MISSING', 'Add a landing-page banner or course image.', 'course.logo'));
-    landingPageFixes.generateImage = true;
   }
 
   const learningItems = contentItems.filter(

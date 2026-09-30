@@ -476,9 +476,6 @@ importers:
       tldts:
         specifier: ^6.1.41
         version: 6.1.86
-      unsplash-js:
-        specifier: ^7.0.18
-        version: 7.0.20
       utf-8-validate:
         specifier: ^6.0.5
         version: 6.0.6
@@ -822,7 +819,7 @@ importers:
         version: link:../../packages/tsconfig
       '@sveltejs/adapter-cloudflare':
         specifier: ^7.0.0
-        version: 7.2.8(@sveltejs/kit@2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(wrangler@4.21.2(@cloudflare/workers-types@4.20260529.1)(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+        version: 7.2.8(@sveltejs/kit@2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(wrangler@4.21.2(@cloudflare/workers-types@4.20260529.1))
       '@sveltejs/kit':
         specifier: ^2.5.27
         version: 2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0))
@@ -11815,10 +11812,6 @@ packages:
     resolution: {integrity: sha512-5uKD0nqiYVzlmCRs01Fhs2BdkEgBS3SAVP6ndrBsuK42iC2+JHyxM05Rm9G8+5mkmRtzMZGY8Ct5+mliZxU/Ww==}
     engines: {node: '>=18.12.0'}
 
-  unsplash-js@7.0.20:
-    resolution: {integrity: sha512-0IzJGKbD6qHm0wg5sNndcCjhNDrtAr08/mySr9TGJ6biD7N03ZldidqXopkOvhAABaeFtRGYBrX1YkgMhKrFOQ==}
-    engines: {node: '>=10'}
-
   unzipper@0.10.14:
     resolution: {integrity: sha512-ti4wZj+0bQTiX2KmKWuwj7lhV+2n//uXEotUmGuQqrbVZSEGFMbI68+c6JCQ8aAmUWYvtHEz2A8K6wXvueR/6g==}
 
@@ -16096,7 +16089,7 @@ snapshots:
       worktop: 0.8.0-next.18
       wrangler: 4.21.2(@cloudflare/workers-types@4.20260529.1)(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
-  '@sveltejs/adapter-cloudflare@7.2.8(@sveltejs/kit@2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(wrangler@4.21.2(@cloudflare/workers-types@4.20260529.1)(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
+  '@sveltejs/adapter-cloudflare@7.2.8(@sveltejs/kit@2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(wrangler@4.21.2(@cloudflare/workers-types@4.20260529.1))':
     dependencies:
       '@cloudflare/workers-types': 4.20260529.1
       '@sveltejs/kit': 2.61.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@4.0.4(svelte@5.55.10(@typescript-eslint/types@8.60.0))(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0)))(svelte@5.55.10(@typescript-eslint/types@8.60.0))(typescript@5.9.3)(vite@5.4.21(@types/node@24.12.4)(lightningcss@1.32.0)(sass@1.100.0))
@@ -23490,8 +23483,6 @@ snapshots:
       acorn: 8.16.0
       picomatch: 4.0.4
       webpack-virtual-modules: 0.6.2
-
-  unsplash-js@7.0.20: {}
 
   unzipper@0.10.14:
     dependencies:

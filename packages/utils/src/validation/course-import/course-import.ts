@@ -228,9 +228,7 @@ export const ZCourseImportDraftPublishBase = z.object({
   type: z.enum(['LIVE_CLASS', 'SELF_PACED', 'COMPLIANCE']).optional(),
   metadata: ZCourseMetadata.optional(),
   compliance: ZComplianceSettings.optional(),
-  bannerImageUrl: z.string().url().optional(),
-  bannerImageQuery: z.string().min(1).max(120).optional(),
-  generateBannerImage: z.boolean().optional()
+  bannerImageUrl: z.string().url().optional()
 });
 
 export const ZCourseImportDraftPublish = ZCourseImportDraftPublishBase.refine(

@@ -251,8 +251,7 @@
       "error": {
         "file_size": "Rozmiar pliku nie może przekraczać 500 KB",
         "try_again": "Spróbuj ponownie",
-        "label": "Prześlij obraz",
-        "fetch_error": "Błąd podczas pobierania obrazów z Unsplash"
+        "label": "Prześlij obraz"
       }
     },
     "team_members": {
@@ -847,9 +846,7 @@
           "title": "Widżet banera",
           "width": "Najlepiej sprawdzają się obrazy szersze niż 1500 pikseli.",
           "size": "Maksymalny rozmiar pliku wynosi 500 KB.",
-          "drag_drop": "Przeciągnij i upuść tutaj swój obraz lub kliknij, aby wybrać",
-          "submit": "Prześlij",
-          "no_images": "Brak dostępnych obrazów."
+          "drag_drop": "Przeciągnij i upuść tutaj swój obraz lub kliknij, aby wybrać"
         },
         "editor": {
           "save": "Zapisz",

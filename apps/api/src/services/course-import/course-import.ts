@@ -1,5 +1,4 @@
 import { AppError, ErrorCodes } from '@api/utils/errors';
-import { env } from '@api/config/env';
 import { getDashboardBaseUrl } from '@api/config/dashboard-url';
 import { createCourse, updateCourse } from '@api/services/course/course';
 import {
@@ -143,56 +142,9 @@ async function resolveCourseUrl(organizationId: string, courseId: string, title:
   return `${buildCourseBaseUrl(organization)}/course/${encodeURIComponent(slug)}`;
 }
 
-async function resolveUnsplashBannerImage(courseTitle: string, query?: string) {
-  if (!env.UNSPLASH_API_KEY) {
-    return null;
-  }
-
-  const searchQuery = (query?.trim() || courseTitle.trim() || 'education').slice(0, 120);
-  const response = await fetch(
-    `https://api.unsplash.com/search/photos?page=1&per_page=15&auto=format&fit=crop&w=2970&q=80&client_id=${env.UNSPLASH_API_KEY}&query=${encodeURIComponent(searchQuery)}`,
-    { method: 'GET' }
-  );
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = (await response.json()) as {
-    results?: Array<{
-      urls?: {
-        regular?: string;
-      };
-    }>;
-  };
-
-  const photos = data.results ?? [];
-  if (photos.length === 0) {
-    return null;
-  }
-
-  const photo = photos[Math.floor(Math.random() * photos.length)];
-  return photo?.urls?.regular ?? null;
-}
-
-async function resolvePublishBannerImage(
-  title: string,
-  overrides: Pick<TCourseImportDraftPublish, 'bannerImageQuery' | 'bannerImageUrl' | 'generateBannerImage'>
-) {
-  if (overrides.bannerImageUrl) {
-    return overrides.bannerImageUrl;
-  }
-
-  if (!overrides.generateBannerImage && !overrides.bannerImageQuery) {
-    return null;
-  }
-
-  try {
-    return await resolveUnsplashBannerImage(title, overrides.bannerImageQuery);
-  } catch (error) {
-    console.error('resolvePublishBannerImage error:', error);
-    return null;
-  }
+/** La portada al publicar: sólo una dirección explícita. La búsqueda de Unsplash se sacó el 2026-09-30. */
+function resolvePublishBannerImage(overrides: Pick<TCourseImportDraftPublish, 'bannerImageUrl'>) {
+  return overrides.bannerImageUrl ?? null;
 }
 
 async function maybeApplyCourseBannerImage(courseId: string, imageUrl: string | null) {
@@ -764,7 +716,7 @@ export async function publishCourseImportDraftService(
       }
     }
 
-    const bannerImageUrl = await resolvePublishBannerImage(courseTitle, overrides);
+    const bannerImageUrl = resolvePublishBannerImage(overrides);
     await maybeApplyCourseBannerImage(courseId, bannerImageUrl);
 
     const sectionIdMap = new Map<string, string>();
@@ -878,7 +830,7 @@ export async function publishCourseImportDraftToExistingCourseService(
     const courseMetadata = overrides.metadata ?? draft.course.metadata;
     const courseCompliance = overrides.compliance ?? draft.course.compliance;
     const preferredLocale = draft.course.locale as TLocale;
-    const bannerImageUrl = await resolvePublishBannerImage(courseTitle, overrides);
+    const bannerImageUrl = resolvePublishBannerImage(overrides);
 
     await updateCourse(course.id, {
       title: courseTitle,

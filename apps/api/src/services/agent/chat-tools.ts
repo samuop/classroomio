@@ -4105,13 +4105,7 @@ export function buildAgentTools(
             description: result.course.description,
             courseUrl: result.courseUrl,
             bannerImageUrl: result.bannerImageUrl,
-            updated: true,
-            // Lo demás se guardó; la imagen no. Ver `FotoBuscada` en landing-page.ts.
-            ...(result.imageNotSet
-              ? {
-                  imageNotSet: `No banner image was set: ${result.imageNotSet}. Asking again will not change that. Never write an image URL yourself: one from memory is an unknown photo or a broken link. You can draw one with generate_image (aspectRatio "16:9") and pass the URL it returns as imageUrl; otherwise tell the teacher the banner is still missing so they can upload one.`
-                }
-              : {})
+            updated: true
           };
         });
       }

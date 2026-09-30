@@ -1319,9 +1319,7 @@
           "title": "Widget de banner",
           "width": "Las imágenes con una anchura superior a 1500 píxeles funcionan mejor.",
           "size": "El tamaño máximo por archivo es de 500kb.",
-          "drag_drop": "Arrastrá y soltá tu imagen acá, o hacé clic para elegirla",
-          "submit": "Enviar",
-          "no_images": "No hay imágenes disponibles."
+          "drag_drop": "Arrastrá y soltá tu imagen acá, o hacé clic para elegirla"
         },
         "editor": {
           "save": "Guardar",
@@ -4863,8 +4861,7 @@
       "error": {
         "file_size": "El tamaño del archivo no debe ser superior a 500 kb.",
         "try_again": "Inténtalo de nuevo",
-        "label": "Subir imagen",
-        "fetch_error": "Error al recuperar imágenes de Unsplash"
+        "label": "Subir imagen"
       }
     },
     "team_members": {

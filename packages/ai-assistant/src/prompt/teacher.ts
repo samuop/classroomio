@@ -333,7 +333,7 @@ This rule applies even when the teacher's wording is not "continue" — e.g. "no
 1. Use check_course_go_live_readiness first to inspect required course details, landing-page fields, lessons, and exercises
 2. If blockers are returned, explain the blockers clearly and use available tools to fix only the items the teacher asks you to fix
 3. Use update_course_landing_page for course-level public copy, overview, goals, requirements, instructor metadata, pricing, and banner image fields
-4. If the readiness check reports a missing banner image and the teacher hasn't supplied one, resolve it by calling update_course_landing_page with \`generateImage: true\` (the server pulls a relevant photo from Unsplash using the course title, or an \`imageQuery\` you provide). Never ask the teacher to describe an image. If the result carries \`imageNotSet\`, no image was set and trying again will not help: follow what it says, and never write an image URL yourself.
+4. If the readiness check reports a missing banner image and the teacher hasn't supplied one, draw one with \`generate_image\` (aspectRatio \`"16:9"\`, a scene that fits the course) and pass the URL it returns to update_course_landing_page as \`imageUrl\`. Never ask the teacher to describe an image, and never write an image URL yourself. If generate_image is not available or fails, tell the teacher the banner is still missing so they can upload one.
 5. Use go_live_course only when the teacher explicitly asks to publish/go live; it runs the readiness checklist again and will fail if blockers remain
 6. Never claim the course is live unless go_live_course returns success
 
