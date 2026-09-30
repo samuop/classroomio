@@ -125,7 +125,7 @@ export interface DocumentCacheStatus {
 }
 
 export type GetCacheStatusRequest = (typeof classroomio.agent.documents)[':documentId']['cache-status']['$get'];
-export type RefreshCacheRequest = (typeof classroomio.agent.documents)[':documentId']['refresh-cache']['$post'];
+export type RereadSourceRequest = (typeof classroomio.agent.documents)[':documentId']['reread']['$post'];
 export type ReconcileSourcesRequest = typeof classroomio.agent.documents.reconcile.$post;
 export type AddUrlSourceRequest = typeof classroomio.agent.documents.url.$post;
 
@@ -254,6 +254,8 @@ export interface AiAssistantMessageMetadata {
    * cerró con «era la única lección donde figuraba» después de editar cinco.
    */
   roundChanges?: string[];
+  /** La ronda cerró por el «Detener» de la docente, después del paso en curso. */
+  stoppedByTeacher?: boolean;
   continuation?: AiAssistantMessageContinuation;
   template?: AiAssistantTemplateMetadata;
   discovery?: AiAssistantDiscoveryMetadata;

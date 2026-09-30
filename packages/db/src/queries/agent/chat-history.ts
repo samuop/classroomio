@@ -1,8 +1,52 @@
-import { and, eq, desc } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import * as schema from '@db/schema';
-import { db } from '@db/drizzle';
+import { db, type DbOrTxClient } from '@db/drizzle';
 
 const MAX_CONVERSATIONS_PER_COURSE = 50;
+
+/**
+ * Título de la conversación oculta donde cae cada fuente del curso.
+ *
+ * Una fuente necesita una conversación (`ai_chat_document.conversation_id` es
+ * NOT NULL), y las que se agregan desde el panel de Fuentes, la investigación o
+ * el asistente de creación no vienen de ningún chat: van a ésta. Vive acá, en
+ * la base, porque la base la tiene que reconocer —para no listarla en el
+ * historial, para reusarla en vez de abrir otra cada vez y para mudarle las
+ * fuentes de un chat que se borra—, y la API la reexporta.
+ *
+ * Es una constante y no un literal repetido porque un error de tipeo en un solo
+ * lugar abriría una SEGUNDA conversación oculta. Va en el idioma de la
+ * interfaz: el panel llegó a mostrarla como nombre de conversación.
+ */
+export const SOURCES_CONVERSATION_TITLE = 'Fuentes del curso';
+
+/**
+ * Una conversación oculta de fuentes: ese título y ningún mensaje.
+ *
+ * El «ningún mensaje» es a propósito. El panel del chat, cuando no tenía una
+ * conversación guardada, abría la última de la lista —que podía ser ésta— y la
+ * docente conversaba adentro sin saberlo. Con el título viejo («Course
+ * sources») quedó una así en producción, con 24 mensajes: ocultarla por el
+ * título le borraría un chat de verdad de la lista.
+ */
+function esConversacionDeFuentes() {
+  return and(
+    eq(schema.aiChatConversation.title, SOURCES_CONVERSATION_TITLE),
+    sql`jsonb_array_length(${schema.aiChatConversation.messages}) = 0`
+  );
+}
+
+/**
+ * Lo contrario, escrito a mano y no con un `not`: en SQL `NULL <> 'x'` no es
+ * verdadero, y una conversación sin título desaparecería de la lista.
+ */
+function noEsConversacionDeFuentes() {
+  return or(
+    isNull(schema.aiChatConversation.title),
+    ne(schema.aiChatConversation.title, SOURCES_CONVERSATION_TITLE),
+    sql`jsonb_array_length(${schema.aiChatConversation.messages}) > 0`
+  );
+}
 
 export interface ChatConversationSummary {
   id: string;
@@ -13,6 +57,15 @@ export interface ChatConversationSummary {
 
 // ─── List all conversations for a user in a course ───────────────────────────
 
+/**
+ * Los chats de una persona en un curso, sin las conversaciones ocultas de
+ * fuentes.
+ *
+ * Aparecían en el historial como «Fuentes del curso», vacías y con una papelera
+ * que borraba de un clic —y con ellas, por la cascada, las fuentes que
+ * guardaban—. Medido en producción: en un curso eran 9 de 13 conversaciones, en
+ * otro 7 de 7, y ahí el chat abría una vacía.
+ */
 export async function listChatConversations(courseId: string, userId: string): Promise<ChatConversationSummary[]> {
   try {
     const rows = await db
@@ -23,7 +76,13 @@ export async function listChatConversations(courseId: string, userId: string): P
         updatedAt: schema.aiChatConversation.updatedAt
       })
       .from(schema.aiChatConversation)
-      .where(and(eq(schema.aiChatConversation.courseId, courseId), eq(schema.aiChatConversation.userId, userId)))
+      .where(
+        and(
+          eq(schema.aiChatConversation.courseId, courseId),
+          eq(schema.aiChatConversation.userId, userId),
+          noEsConversacionDeFuentes()
+        )
+      )
       .orderBy(desc(schema.aiChatConversation.updatedAt))
       .limit(MAX_CONVERSATIONS_PER_COURSE);
 
@@ -53,23 +112,74 @@ export async function getChatConversation(conversationId: string, userId: string
 
 // ─── Create a new conversation ───────────────────────────────────────────────
 
+/**
+ * La conversación oculta de fuentes de esta persona en este curso, si ya hay
+ * una. La más vieja: si quedaron varias de antes, todas las altas convergen en
+ * la misma.
+ */
+async function buscarConversacionDeFuentes(
+  cliente: DbOrTxClient,
+  courseId: string,
+  userId: string,
+  excepto?: string
+): Promise<{ id: string; title: string | null } | null> {
+  const [row] = await cliente
+    .select({ id: schema.aiChatConversation.id, title: schema.aiChatConversation.title })
+    .from(schema.aiChatConversation)
+    .where(
+      and(
+        eq(schema.aiChatConversation.courseId, courseId),
+        eq(schema.aiChatConversation.userId, userId),
+        esConversacionDeFuentes(),
+        excepto ? ne(schema.aiChatConversation.id, excepto) : undefined
+      )
+    )
+    .orderBy(asc(schema.aiChatConversation.createdAt))
+    .limit(1);
+
+  return row ?? null;
+}
+
+async function insertarConversacion(
+  cliente: DbOrTxClient,
+  courseId: string,
+  userId: string,
+  title?: string
+): Promise<{ id: string; title: string | null }> {
+  const [row] = await cliente
+    .insert(schema.aiChatConversation)
+    .values({
+      courseId,
+      userId,
+      title: title || 'New conversation',
+      messages: []
+    })
+    .returning({ id: schema.aiChatConversation.id, title: schema.aiChatConversation.title });
+
+  return row;
+}
+
+/**
+ * Crea una conversación. Con el título de fuentes, reusa la que ya exista.
+ *
+ * Cada fuente que se agregaba sin un chat abierto creaba una conversación
+ * oculta nueva: medido en producción, 45 conversaciones vacías en 18 cursos. La
+ * de fuentes es una por curso y persona, que es lo único que una fuente
+ * necesita.
+ */
 export async function createChatConversation(
   courseId: string,
   userId: string,
   title?: string
 ): Promise<{ id: string; title: string | null }> {
   try {
-    const [row] = await db
-      .insert(schema.aiChatConversation)
-      .values({
-        courseId,
-        userId,
-        title: title || 'New conversation',
-        messages: []
-      })
-      .returning({ id: schema.aiChatConversation.id, title: schema.aiChatConversation.title });
+    if (title === SOURCES_CONVERSATION_TITLE) {
+      const existente = await buscarConversacionDeFuentes(db, courseId, userId);
 
-    return row;
+      if (existente) return existente;
+    }
+
+    return await insertarConversacion(db, courseId, userId, title);
   } catch (error) {
     console.error('createChatConversation error:', error);
     throw new Error('Failed to create chat conversation');
@@ -101,11 +211,52 @@ export async function saveChatMessages(conversationId: string, userId: string, m
 
 // ─── Delete a conversation ───────────────────────────────────────────────────
 
+/**
+ * Borra una conversación sin llevarse las fuentes del curso.
+ *
+ * `ai_chat_document` cuelga de la conversación con ON DELETE CASCADE, así que
+ * borrar un chat borraba las fuentes que se habían agregado desde él. Medido en
+ * producción: borrar el chat de un curso armado con investigación se llevaba
+ * sus 10 fuentes, y borrar una «Fuentes del curso» vacía del historial (un clic,
+ * sin confirmación) se llevaba lo que guardaba. Una fuente es del curso, no del
+ * chat donde entró.
+ *
+ * Antes de borrar, las fuentes de la conversación se mudan a la conversación
+ * oculta de fuentes de esa persona en ese curso —otra que no sea ésta, creada
+ * si falta—. Todo en una transacción: si algo falla no se borra nada.
+ */
 export async function deleteChatConversation(conversationId: string, userId: string) {
   try {
-    await db
-      .delete(schema.aiChatConversation)
-      .where(and(eq(schema.aiChatConversation.id, conversationId), eq(schema.aiChatConversation.userId, userId)));
+    await db.transaction(async (tx) => {
+      const [conversacion] = await tx
+        .select({ id: schema.aiChatConversation.id, courseId: schema.aiChatConversation.courseId })
+        .from(schema.aiChatConversation)
+        .where(and(eq(schema.aiChatConversation.id, conversationId), eq(schema.aiChatConversation.userId, userId)))
+        .limit(1);
+
+      if (!conversacion) return;
+
+      const [conFuentes] = await tx
+        .select({ id: schema.aiChatDocument.id })
+        .from(schema.aiChatDocument)
+        .where(eq(schema.aiChatDocument.conversationId, conversacion.id))
+        .limit(1);
+
+      if (conFuentes) {
+        const destino =
+          (await buscarConversacionDeFuentes(tx, conversacion.courseId, userId, conversacion.id)) ??
+          (await insertarConversacion(tx, conversacion.courseId, userId, SOURCES_CONVERSATION_TITLE));
+
+        await tx
+          .update(schema.aiChatDocument)
+          .set({ conversationId: destino.id })
+          .where(eq(schema.aiChatDocument.conversationId, conversacion.id));
+      }
+
+      await tx
+        .delete(schema.aiChatConversation)
+        .where(and(eq(schema.aiChatConversation.id, conversacion.id), eq(schema.aiChatConversation.userId, userId)));
+    });
   } catch (error) {
     console.error('deleteChatConversation error:', error);
     throw new Error('Failed to delete chat conversation');

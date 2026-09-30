@@ -15,6 +15,7 @@ const groundedSearch = vi.fn();
 const fetchDocumentationUrl = vi.fn();
 const storeDraftDocument = vi.fn();
 const storeUrlDocument = vi.fn();
+const lugarParaFuentes = vi.fn();
 
 vi.mock('@api/services/agent/web-search', async () => {
   const actual = await vi.importActual<typeof import('@api/services/agent/web-search')>(
@@ -31,7 +32,11 @@ vi.mock('@api/services/agent/fetch-url', () => ({
 vi.mock('@api/services/agent/document', () => ({
   URL_SOURCE_MIME_TYPE: 'text/markdown',
   storeDraftDocument: (...args: unknown[]) => storeDraftDocument(...args),
-  storeUrlDocument: (...args: unknown[]) => storeUrlDocument(...args)
+  storeUrlDocument: (...args: unknown[]) => storeUrlDocument(...args),
+  // El tope de fuentes del curso: lugar de sobra salvo que el test diga otra cosa.
+  lugarParaFuentes: (...args: unknown[]) => lugarParaFuentes(...args),
+  errorDeTopeDeFuentes: () => Object.assign(new Error('This course already has 100 sources'), { code: 'SOURCE_LIMIT_REACHED', statusCode: 422 }),
+  esTopeDeFuentes: (error: unknown) => (error as { code?: string } | null)?.code === 'SOURCE_LIMIT_REACHED'
 }));
 
 vi.mock('@api/config/env', () => ({ env: { JINA_API_KEY: 'key' } }));
@@ -66,6 +71,7 @@ function found(results: { url: string; title?: string }[], queries: string[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  lugarParaFuentes.mockResolvedValue(100);
   groundedSearch.mockResolvedValue(found([]));
   storeDraftDocument.mockImplementation(async () => ({ documentId: `doc-${storeDraftDocument.mock.calls.length}` }));
   storeUrlDocument.mockImplementation(async () => ({ documentId: `src-${storeUrlDocument.mock.calls.length}` }));
@@ -193,8 +199,9 @@ describe('runResearch', () => {
     // Jina answered a search in about a second, so a reading-only deadline was
     // close enough. A grounded call is the model running several searches and
     // writing a survey — 13s measured — and stacked on top of a 45s read budget
-    // that put a deep run past Nginx's 60s. A 504 nobody would have read as a
-    // clock problem.
+    // that put a deep run past what the other end was willing to wait (then
+    // Nginx; measured later, the browser at 30s). A timeout nobody would have
+    // read as a clock problem.
     let clock = Date.now();
     const now = vi.spyOn(Date, 'now').mockImplementation(() => clock);
 
@@ -286,6 +293,60 @@ describe('runResearch', () => {
 
     expect(storeDraftDocument).toHaveBeenCalledTimes(1);
     expect(storeUrlDocument).not.toHaveBeenCalled();
+  });
+
+  describe('el tope de fuentes del curso', () => {
+    const EN_EL_CURSO = { courseId: 'course-1', conversationId: 'conv-1' };
+
+    it('con el curso lleno no busca nada: 422 SOURCE_LIMIT_REACHED', async () => {
+      lugarParaFuentes.mockResolvedValue(0);
+
+      await expect(runResearch({ ...BASE, ...EN_EL_CURSO, topic: 'colorimetría', depth: 'normal' })).rejects.toMatchObject({
+        code: 'SOURCE_LIMIT_REACHED',
+        statusCode: 422
+      });
+      expect(groundedSearch).not.toHaveBeenCalled();
+    });
+
+    it('con poco lugar lee sólo las que entran, y dice cuántas quedaron afuera', async () => {
+      lugarParaFuentes.mockResolvedValue(3);
+      groundedSearch.mockResolvedValue(found(Array.from({ length: 20 }, (_, i) => ({ url: `https://a.com/${i}` }))));
+      fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+      const outcome = await runResearch({ ...BASE, ...EN_EL_CURSO, topic: 'colorimetría', depth: 'normal' });
+
+      expect(outcome.sources).toHaveLength(3);
+      expect(storeUrlDocument).toHaveBeenCalledTimes(3);
+      expect(outcome.leftOutByLimit).toBe(7);
+    });
+
+    it('si el curso se llena mientras lee, deja de leer y cuenta la que no entró como afuera, no como fallida', async () => {
+      groundedSearch.mockResolvedValue(found(Array.from({ length: 20 }, (_, i) => ({ url: `https://a.com/${i}` }))));
+      fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+      storeUrlDocument.mockImplementation(async () => {
+        if (storeUrlDocument.mock.calls.length > 2) {
+          throw Object.assign(new Error('This course already has 100 sources'), { code: 'SOURCE_LIMIT_REACHED' });
+        }
+
+        return { documentId: `src-${storeUrlDocument.mock.calls.length}` };
+      });
+
+      const outcome = await runResearch({ ...BASE, ...EN_EL_CURSO, topic: 'colorimetría', depth: 'quick' });
+
+      expect(outcome.sources).toHaveLength(2);
+      expect(outcome.leftOutByLimit).toBeGreaterThanOrEqual(1);
+      expect(outcome.failedCount).toBe(0);
+    });
+
+    it('sin curso (el asistente de creación) no hay tope que mirar', async () => {
+      groundedSearch.mockResolvedValue(found([{ url: 'https://a.com/1' }]));
+      fetchDocumentationUrl.mockImplementation(async ({ url }: { url: string }) => page(url));
+
+      const outcome = await runResearch({ ...BASE, topic: 'colorimetría', depth: 'quick' });
+
+      expect(lugarParaFuentes).not.toHaveBeenCalled();
+      expect(outcome.leftOutByLimit).toBe(0);
+    });
   });
 
   it('returns nothing to build on when the searches come back empty', async () => {

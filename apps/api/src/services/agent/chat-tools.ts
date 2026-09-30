@@ -7,7 +7,13 @@ import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { getExerciseSectionsByExerciseId } from '@cio/db/queries/exercise';
 import { QUESTION_TYPE_IDS as QUESTION_TYPE } from '@cio/question-types';
-import { bindPlanItem, confirmarItemDelPlan, readPlanRegistry, resolvePlanBinding } from '@cio/db/queries/agent';
+import {
+  bindPlanItem,
+  confirmarItemDelPlan,
+  getChatConversation,
+  readPlanRegistry,
+  resolvePlanBinding
+} from '@cio/db/queries/agent';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TLocale } from '@cio/db/types';
@@ -41,13 +47,33 @@ import {
 import type { RedisClient } from '@api/utils/redis/redis';
 import {
   SIN_VERIFICADOR,
+  citasDeLosAvisos,
+  fundamentoParaElMismoTexto,
   textoDeLeccion,
   type EstadoDelFundamento,
   type FuenteVista,
   type ResultadoDeFundamento,
   type Verificador
 } from '@api/services/agent/grounding';
-import { redactarTokens, textoParaTokens, verificarTokens } from '@api/services/agent/grounding-tokens';
+import {
+  redactarTokens,
+  textoParaTokens,
+  vaAlModelo,
+  verificarTokens,
+  type HallazgoDeToken,
+  type ReferenciasAmpliadas
+} from '@api/services/agent/grounding-tokens';
+import { palabrasDeLaDocente, textoDelItemDelPlan } from '@api/services/agent/alcance-de-tokens';
+import {
+  anotarDecisiones,
+  aplicarMarcas,
+  arrastrarDecisiones,
+  prepararParche,
+  ubicarEnBloques,
+  type BloqueParaMarcar,
+  type DecisionDelParche
+} from '@api/services/agent/marcas-del-rebote';
+import { guardiaDelRebote } from '@api/services/agent/guardia-del-rebote';
 import {
   anotarChequeo,
   crearRegistroDeAvisos,
@@ -279,6 +305,73 @@ async function asegurarIdsDeBloque(lessonId: string, locale: string, contenido: 
 }
 
 /**
+ * Un cuerpo de lección tal como se guarda.
+ *
+ * Los ids de bloque los pone el servidor, no el editor. Se estampan ACÁ, sobre
+ * el contenido ya normalizado y antes de guardar, así que toda lección que el
+ * asistente escribe nace direccionable. Antes los ponía sólo TipTap cuando el
+ * docente abría y guardaba, y hasta que eso pasara `replace_lesson_block` —el
+ * único camino que cambia un dato sin reescribir la lección entera— no existía
+ * para esa lección. Ver `lesson-blocks.ts`.
+ *
+ * La deduplicación de diagramas va antes de los ids: un diagrama que se va no
+ * tiene por qué gastar un nombre.
+ *
+ * Aparte de `writeLessonBody` porque la guardia del rebote tiene que comparar
+ * la corrección del escritor tal como se GUARDARÍA, no como llegó: si no, una
+ * diferencia de normalización se leería como un cambio de texto.
+ */
+function normalizarCuerpo(content: string, lessonTitle: string): string {
+  return asignarIdsDeBloque(
+    quitarDiagramasDuplicados(normalizeAgentLessonContent(content, lessonTitle), lessonTitle)
+  );
+}
+
+/**
+ * Los nombres, números y citas de una lección que no están en sus fuentes.
+ *
+ * En dos pasadas, y la segunda sólo si hace falta. La primera contra las
+ * fuentes que se pasan. Lo que quede se vuelve a buscar en el alcance ampliado
+ * —el pedido de la docente, el ítem del plan, las otras fuentes del curso—, y
+ * lo que aparece ahí sigue en la lista, con su rótulo, pero ya no vuelve al
+ * modelo (ver `RespaldoAmpliado` en `grounding-tokens.ts`, donde está lo que se
+ * midió). Una lección limpia no paga ni la lectura de la conversación ni la de
+ * las fuentes del curso.
+ *
+ * La lección entera (con lo marcado) viaja también, sólo para saber qué
+ * palabras escribe en minúscula; los candidatos salen del texto sin lo marcado,
+ * que ya está declarado.
+ */
+async function tokensDeLaLeccion(params: {
+  html: string;
+  fuentes: FuenteVista[];
+  cargarAmpliacion?: () => Promise<ReferenciasAmpliadas>;
+  /** Lo que el escritor decidió en el parche, para que el informe lo diga. */
+  parche?: { decisiones: DecisionDelParche[]; bloques: BloqueParaMarcar[] };
+}): Promise<HallazgoDeToken[]> {
+  if (params.fuentes.length === 0) return [];
+
+  const texto = textoParaTokens(quitarPasajesMarcados(params.html));
+  const textoCompleto = textoParaTokens(params.html);
+  let hallazgos = verificarTokens({ texto, textoCompleto, fuentes: params.fuentes });
+
+  if (hallazgos.length > 0 && params.cargarAmpliacion) {
+    const ampliacion = await params.cargarAmpliacion().catch((error: unknown) => {
+      // Sin el alcance ampliado el chequeo sigue siendo el de antes: más
+      // estricto, nunca más blando.
+      console.error('[fundamento] no se pudo cargar el alcance ampliado de los datos:', error);
+      return undefined;
+    });
+
+    if (ampliacion) hallazgos = verificarTokens({ texto, textoCompleto, fuentes: params.fuentes, ampliacion });
+  }
+
+  const ubicados = ubicarEnBloques(params.html, hallazgos);
+
+  return params.parche ? anotarDecisiones(ubicados, params.parche.decisiones, params.parche.bloques) : ubicados;
+}
+
+/**
  * Normalize, save and check one lesson body — the single path for it.
  *
  * Shared by `update_lesson_content` and by `create_lesson` when it is handed a
@@ -301,6 +394,18 @@ async function writeLessonBody(params: {
    * escribió. Se llama sólo si hace falta — ver `fuentes-para-contrastar.ts`.
    */
   cargarFuentesDelCurso?: () => Promise<FuenteVista[]>;
+  /**
+   * Dónde más buscar los datos que no están en las fuentes: el pedido de la
+   * docente, el ítem del plan, el resto del curso. Ver `tokensDeLaLeccion`.
+   */
+  cargarAmpliacion?: () => Promise<ReferenciasAmpliadas>;
+  /**
+   * El resultado del juez para una versión con el MISMO texto que ésta: se
+   * reusa y no se lo vuelve a llamar. Ver `fundamentoParaElMismoTexto`.
+   */
+  fundamentoPrevio?: ResultadoDeFundamento;
+  /** Lo que el escritor decidió en el parche, para que el informe lo diga. */
+  parche?: { decisiones: DecisionDelParche[]; bloques: BloqueParaMarcar[] };
   /** Lo que el escritor avisó que no pudo cubrir, si avisó algo. */
   notaDelEscritor?: string;
   /** Dónde anotar que esta lección cambió. Ver `round-ledger.ts`. */
@@ -316,25 +421,14 @@ async function writeLessonBody(params: {
   /** Si el chequeo de fundamento corrió, y si no, por qué. Ver `grounding.ts`. */
   groundingStatus: EstadoDelFundamento;
   groundingReason?: string;
-  /** Nombres y números que no están en las fuentes y que nadie marcó. Ver B2. */
+  /** Nombres y números que no están en ningún lado y que nadie marcó, como los lee el modelo. */
   unsupportedTokens: string[];
+  /** El resultado del juez entero: el rebote lo necesita para la guardia y para reusarlo. */
+  fundamento: ResultadoDeFundamento;
+  /** Todos los hallazgos de datos, con su alcance y su bloque: los del informe. */
+  tokenWarnings: HallazgoDeToken[];
 }> {
-  /**
-   * Los ids de bloque los pone el servidor, no el editor.
-   *
-   * Se estampan ACÁ, sobre el contenido ya normalizado y antes de guardar, así
-   * que toda lección que el asistente escribe nace direccionable. Antes los
-   * ponía sólo TipTap cuando el docente abría y guardaba, y hasta que eso
-   * pasara `replace_lesson_block` —el único camino que cambia un dato sin
-   * reescribir la lección entera— no existía para esa lección. Ver
-   * `lesson-blocks.ts`.
-   *
-   * La deduplicación de diagramas va antes de los ids: un diagrama que se va no
-   * tiene por qué gastar un nombre.
-   */
-  const normalizedContent = asignarIdsDeBloque(
-    quitarDiagramasDuplicados(normalizeAgentLessonContent(params.content, params.lessonTitle), params.lessonTitle)
-  );
+  const normalizedContent = normalizarCuerpo(params.content, params.lessonTitle);
 
   /**
    * La guardia de conservación, en el ÚNICO punto que guarda un cuerpo entero.
@@ -381,7 +475,12 @@ async function writeLessonBody(params: {
   // esta función. Los retoques quirúrgicos (`edit_lesson_content`,
   // `replace_lesson_block`) no pasan, y está bien: son de una frase, con el
   // docente mirando.
-  const fundamento: Promise<ResultadoDeFundamento> = params.verificarFundamento
+  //
+  // Con `fundamentoPrevio` no se sale a la red: el texto es el mismo que ya se
+  // juzgó y sólo cambiaron marcas. Ver `fundamentoParaElMismoTexto`.
+  const fundamento: Promise<ResultadoDeFundamento> = params.fundamentoPrevio
+    ? Promise.resolve(fundamentoParaElMismoTexto(params.fundamentoPrevio, normalizedContent))
+    : params.verificarFundamento
     ? params
         .verificarFundamento({
           lessonTitle: params.lessonTitle,
@@ -428,13 +527,12 @@ async function writeLessonBody(params: {
     deLaLeccion: params.fuentesDeLaLeccion,
     cargarDelCurso: params.cargarFuentesDelCurso
   });
-  const tokenWarnings =
-    contraste.fuentes.length > 0
-      ? verificarTokens({
-          texto: textoParaTokens(quitarPasajesMarcados(normalizedContent)),
-          fuentes: contraste.fuentes
-        })
-      : [];
+  const tokenWarnings = await tokensDeLaLeccion({
+    html: normalizedContent,
+    fuentes: contraste.fuentes,
+    cargarAmpliacion: params.cargarAmpliacion,
+    parche: params.parche
+  });
 
   /**
    * Lo que el escritor marcó como propio: pasajes que el material no sostiene y
@@ -514,9 +612,28 @@ async function writeLessonBody(params: {
     ...(chequeo.motivo ? { groundingReason: chequeo.motivo } : {}),
     // Sólo cuando hubo contra qué contrastar. Sin fuentes el chequeo no corrió,
     // y devolver una lista vacía se leería como «limpia», que es otra cosa.
-    unsupportedTokens: contraste.alcance !== 'none' ? redactarTokens(tokenWarnings) : []
+    unsupportedTokens: contraste.alcance !== 'none' ? redactarTokens(tokenWarnings) : [],
+    fundamento: chequeo,
+    tokenWarnings
   };
 }
+
+/**
+ * Lo que se le dice al constructor de los datos que quedaron sin respaldo
+ * después de `write_lesson`.
+ *
+ * Decía «Fix that now with edit_lesson_content», y en el mismo mensaje «Mark
+ * each one… with replace_lesson_block». Medido el 2026-09-29: el constructor
+ * siguió la primera, armó un fragmento que cruzaba un `<strong>`, la llamada
+ * falló, y después borró con la otra las viñetas de dos teclas que eran
+ * ciertas. No tenía el material delante: lo seguro para él era borrar.
+ *
+ * Cuando esto se dice, el escritor —que sí tenía el material— ya decidió sobre
+ * cada dato en el parche. Lo que queda no es una orden: es una lista para la
+ * docente, y el constructor no tiene nada que hacer con ella.
+ */
+const NOTA_DATOS_PARA_LA_DOCENTE =
+  'Some names or numbers could not be matched to the sources; they are listed in the lesson report for the teacher to review. Do not edit the lesson for this — move on.';
 
 /** The `note` that goes with whatever came back broken, or nothing. */
 function contentWarningFields(warnings: {
@@ -535,10 +652,17 @@ function contentWarningFields(warnings: {
    * juez no corrió. Ver `avisoDelJuezCaido`.
    */
   camino?: 'lesson' | 'block';
+  /**
+   * Los datos sin respaldo ya pasaron por el parche del escritor: lo que queda
+   * es para la docente y no una orden. Ver `NOTA_DATOS_PARA_LA_DOCENTE`.
+   */
+  datosSoloAlInforme?: boolean;
 }) {
   const visualWarnings = warnings.visualWarnings ?? [];
   const groundingWarnings = warnings.groundingWarnings ?? [];
   const unsupportedTokens = warnings.unsupportedTokens ?? [];
+  const datosAlInforme = warnings.datosSoloAlInforme === true && unsupportedTokens.length > 0;
+  const datosComoOrden = warnings.datosSoloAlInforme !== true && unsupportedTokens.length > 0;
   const notes: string[] = [];
 
   /**
@@ -556,15 +680,20 @@ function contentWarningFields(warnings: {
    * y pasos gastados en averiguarlo. Tras una edición por bloque no hay nada
    * que reescribir: la edición quedó guardada y lo que falta es decirlo.
    */
+  //
+  // Y tras una lección entera tampoco: decía «retry write_lesson later», y la
+  // lección YA está guardada. Reintentar es pagar otra vez escritor y juez para
+  // reemplazar una lección que no tiene nada malo que se sepa — y si el juez se
+  // cortó por tiempo, lo más probable es que se vuelva a cortar.
   const juezSeCayo = warnings.groundingStatus === 'failed';
   const avisoDelJuezCaido = !juezSeCayo
     ? ''
     : warnings.camino === 'block'
-      ? ` The source recheck of this lesson did NOT run (provider error: ${warnings.groundingReason ?? 'unknown'}). ` +
+      ? ` The source recheck of this lesson did NOT run (reason: ${warnings.groundingReason ?? 'unknown'}). ` +
         'Your edit is saved; the lesson stays unverified and any earlier source warning on it stays open. ' +
         'Tell the teacher. Do not rewrite the lesson for this.'
-      : ` The source check did NOT run for this lesson (provider error: ${warnings.groundingReason ?? 'unknown'}). ` +
-        'Its content is unverified: tell the teacher, and retry write_lesson later or check it against the source yourself.';
+      : ` The source check did NOT run for this lesson (reason: ${warnings.groundingReason ?? 'unknown'}). ` +
+        'The lesson IS saved; it just stays unverified. Tell the teacher. Do not rewrite it for this.';
 
   /**
    * «No corrió a propósito» también viaja CON su motivo.
@@ -586,22 +715,42 @@ function contentWarningFields(warnings: {
   // se ve la lección; éste es sobre si lo que dice es cierto, y si hay que
   // elegir uno solo para atender, es ése.
   if (groundingWarnings.length > 0) notes.push('parts of it are not supported by the sources');
-  if (unsupportedTokens.length > 0) notes.push('some names or numbers in it are neither in the sources nor marked');
+  if (datosComoOrden) notes.push('some names or numbers in it are in none of the sources and not marked');
   if (warnings.svgWarnings.length > 0) notes.push('the diagram(s) above will not render legibly');
   if (warnings.mathWarnings.length > 0) notes.push('the formula(s) above will not render as maths');
   if (visualWarnings.length > 0) notes.push('it has no diagram and no picture');
 
+  // Los datos que ya decidió el escritor no son un arreglo pendiente: viajan
+  // como cuenta, con la nota que dice que no hay nada que hacer.
+  const datosParaLaDocente = datosAlInforme ? { tokensListedForTeacher: unsupportedTokens.length } : {};
+
   if (notes.length === 0) {
     // Nada que arreglar, pero el estado del juez igual viaja: «sin avisos» y
     // «no se miró» no pueden llegar iguales.
-    if (juezSeCayo) return { ...estadoDelJuez, note: avisoDelJuezCaido.trim() };
+    const nota = [avisoDelJuezCaido.trim(), datosAlInforme ? NOTA_DATOS_PARA_LA_DOCENTE : '']
+      .filter(Boolean)
+      .join(' ');
 
-    return estadoDelJuez;
+    return nota ? { ...estadoDelJuez, ...datosParaLaDocente, note: nota } : estadoDelJuez;
   }
+
+  /**
+   * UNA herramienta para arreglar, y es la de por bloque.
+   *
+   * Decía «Fix that now with edit_lesson_content», que es la de repuesto: exige
+   * copiar el HTML textual y falla con cualquier etiqueta de por medio. Los
+   * datos sin respaldo tienen su propia frase y no entran acá.
+   */
+  const hayQueArreglar =
+    groundingWarnings.length > 0 ||
+    warnings.svgWarnings.length > 0 ||
+    warnings.mathWarnings.length > 0 ||
+    visualWarnings.length > 0;
 
   return {
     ...(groundingWarnings.length > 0 ? { groundingWarnings } : {}),
-    ...(unsupportedTokens.length > 0 ? { unsupportedTokens } : {}),
+    ...(datosComoOrden ? { unsupportedTokens } : {}),
+    ...datosParaLaDocente,
     ...(warnings.svgWarnings.length > 0 ? { svgWarnings: warnings.svgWarnings } : {}),
     ...(warnings.mathWarnings.length > 0 ? { mathWarnings: warnings.mathWarnings } : {}),
     ...(visualWarnings.length > 0 ? { visualWarnings } : {}),
@@ -610,61 +759,50 @@ function contentWarningFields(warnings: {
     // verificada.
     ...estadoDelJuez,
     note:
-      `The lesson was saved, but ${notes.join(', and ')}.${avisoDelJuezCaido} Fix that now with edit_lesson_content before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.` +
-      // La salida correcta para un token no es la misma que para lo demás: casi
-      // siempre es un ejemplo que el escritor inventó y no declaró, y borrarlo
-      // empeoraría la lección. Se dice cuál es, porque un aviso sin salida es un
-      // aviso que se aprende a ignorar.
-      //
-      // Y el orden de las salidas importa tanto como cuáles son. Antes empezaba
-      // por «marcalo… o borralo» y terminaba sin decir CÓMO: medido el
-      // 2026-09-22, el modelo entendió «rehacé la lección» y la reescribió
-      // entera dos veces, perdiendo tres ejemplos que ya estaban marcados. Acá
-      // se nombra primero la herramienta quirúrgica y se prohíbe la reescritura
-      // explícitamente.
-      (unsupportedTokens.length > 0
-        ? ' For the names/numbers: they are not in the sources and are not marked. Mark each one as an example you made up (data-ejemplo) with replace_lesson_block on that block, or as an unsupported claim (data-sin-fuente); delete it only if it is wrong. Never rewrite the lesson for this, and do not invent a source for it.'
-        : '')
+      `The lesson was saved, but ${notes.join(', and ')}.${avisoDelJuezCaido}` +
+      (hayQueArreglar
+        ? ` Fix that now with replace_lesson_block on the block concerned (take its blockId from get_lesson_content; a diagram has its own) before moving on${groundingWarnings.length > 0 ? ', starting with the grounding warnings' : ''}.`
+        : '') +
+      // La salida correcta para un dato no es la misma que para lo demás. Tras
+      // una edición por bloque quien escribió el bloque es el constructor, y
+      // sabe si el número es de un ejemplo suyo: se le dice cómo marcarlo. Lo
+      // que NO se le dice es «borralo si está mal», que él no puede verificar:
+      // medido el 2026-09-29, así borró dos teclas ciertas. Un dato correcto se
+      // queda como está y va al informe.
+      (datosComoOrden
+        ? ' For the names/numbers (each comes with its block): if one belongs to an example you made up, mark that block data-ejemplo with replace_lesson_block — same text, only the attribute added; if it states something about this organisation that no source says, mark it data-sin-fuente. If it is correct general knowledge of the subject, leave it exactly as it is: it stays listed in the lesson report for the teacher. Never delete or reword a correct fact for this, never rewrite the lesson, and do not invent a source for it.'
+        : '') +
+      (datosAlInforme ? ` ${NOTA_DATOS_PARA_LA_DOCENTE}` : '')
   };
 }
 
 /**
- * Lo que se le agrega al brief para que el escritor arregle lo que el servidor
+ * Lo que se le agrega al brief para que el escritor corrija lo que el JUEZ
  * encontró, sin rehacer la lección.
  *
- * «Keep everything else identical» es la frase que hace la diferencia: sin ella
- * el escritor entiende el pedido como una reescritura, devuelve otra lección
- * entera y el arreglo cuesta una tirada nueva de invenciones. Con ella, el
- * cambio típico es agregar un atributo.
+ * Sólo afirmaciones: los nombres y números sin respaldo ya no pasan por acá
+ * sino por el parche (`marcas-del-rebote.ts`), que no puede tocar el texto. Lo
+ * medido de la versión anterior —una consigna que para un dato cierto sólo
+ * ofrecía «sacalo o copiá lo que dice el material»— fue que el escritor borró
+ * las pestañas de la cinta, las teclas y el pedido de la docente, y pasó cifras
+ * al formato de la fuente.
+ *
+ * «Keep everything else identical» ya estaba y no alcanzó: ahora lo comprueba
+ * `guardiaDelRebote`, y la consigna lo dice para que el escritor lo sepa.
  */
-function briefDelRebote(written: { unsupportedTokens: string[]; groundingWarnings: string[] }): string {
-  const partes = ['IMPORTANT — the server checked what you just wrote and found problems. Fix ONLY these.'];
+function briefDelRebote(chequeo: ResultadoDeFundamento): string {
+  const lista =
+    chequeo.afirmaciones && chequeo.afirmaciones.length > 0
+      ? chequeo.afirmaciones.map((afirmacion) => `- "${afirmacion.cita}" — ${afirmacion.porque}`).join('\n')
+      : chequeo.avisos.map((aviso) => `- ${aviso}`).join('\n');
 
-  if (written.unsupportedTokens.length > 0) {
-    partes.push(
-      'These names/numbers are not in the source material and are not marked:\n' +
-        written.unsupportedTokens.map((token) => `- ${token}`).join('\n') +
-        '\nFor each one: if it belongs to an example you made up, mark the smallest element that carries it with ' +
-        'data-ejemplo; if it is a claim about the organisation the material does not state, mark it with ' +
-        'data-sin-fuente; if it is neither, remove it or replace it with what the material actually says. ' +
-        'Never invent a source for it.'
-    );
-  }
-
-  if (written.groundingWarnings.length > 0) {
-    partes.push(
-      'The grounding check reported:\n' +
-        written.groundingWarnings.map((aviso) => `- ${aviso}`).join('\n') +
-        '\nRewrite those passages so they say only what the material supports, mark them, or delete them.'
-    );
-  }
-
-  partes.push(
-    'Return the WHOLE lesson again, with everything else identical to what you just wrote — same structure, ' +
-      'same wording, same diagrams, same images. This is a correction, not a rewrite.'
-  );
-
-  return partes.join('\n\n');
+  return [
+    'IMPORTANT — the server checked what you just wrote against your source material and found claims it does not support. Fix ONLY these:',
+    lista,
+    'For each one: rewrite that sentence so it says only what the material supports (or, when the note says what is actually true, correct it to that), mark it with data-sin-fuente saying what the material lacks, or delete it.',
+    "Everything else stays EXACTLY as you wrote it: every other block word for word — the same names, the same numbers written the same way, the same marks, diagrams and images. A name or number inside those sentences that is correct general knowledge of the subject, or that comes from the teacher's request, stays exactly as it is. The server compares both versions and discards yours if anything outside those sentences changed.",
+    'Return the WHOLE lesson again. This is a correction, not a rewrite.'
+  ].join('\n\n');
 }
 
 /** Hasta dónde se recorta el motivo de un rebote: entra en una línea de log y en el informe. */
@@ -1112,6 +1250,148 @@ export function buildAgentTools(
     documentosDelCurso().then((documentos) => documentos.map(({ fileName, text }) => ({ fileName, text })));
 
   /**
+   * Los mensajes de la conversación: los guardados y los de esta ronda.
+   *
+   * De la base, con el `conversationId` de la ronda, porque los mensajes que
+   * llegan en el pedido pueden ser sólo los últimos; y los de la ronda también,
+   * porque el turno en curso todavía no está guardado. Una lectura por ronda y
+   * sólo si alguna herramienta la pide. Sin un id de conversación de verdad no
+   * se sale a la base: no hay nada que leer.
+   */
+  let mensajesPromesa: Promise<unknown[]> | null = null;
+  const mensajesDeLaConversacion = (): Promise<unknown[]> => {
+    mensajesPromesa ??= (
+      conversationId && esUuid(conversationId)
+        ? getChatConversation(conversationId, userId)
+            .then((fila) => (Array.isArray(fila?.messages) ? (fila.messages as unknown[]) : []))
+            .catch((error: unknown) => {
+              console.error('[fundamento] no se pudo leer la conversación para contrastar los datos:', error);
+              return [] as unknown[];
+            })
+        : Promise.resolve([] as unknown[])
+    ).then((guardados) => [...guardados, ...(Array.isArray(priorMessages) ? priorMessages : [])]);
+
+    return mensajesPromesa;
+  };
+
+  /**
+   * Dónde más buscar un dato que no está en las fuentes de la lección.
+   *
+   * Las palabras de la docente (sus mensajes, no los del asistente) y el ítem
+   * del plan que aprobó, buscado por el título de la lección o por el que el
+   * registro del plan guardó para su `planKey`. Con `conCurso`, además, todas
+   * las fuentes del curso — sólo cuando el contraste principal fue contra las
+   * de la lección; si ya fue contra el curso, sumarlas otra vez no agrega nada.
+   *
+   * Lo que se encuentra acá va al informe con su rótulo y no vuelve al modelo.
+   * Ver `RespaldoAmpliado` en `grounding-tokens.ts`.
+   */
+  async function referenciasAmpliadas(params: {
+    titulos: Array<string | null | undefined>;
+    planKey?: string;
+    conCurso: boolean;
+  }): Promise<ReferenciasAmpliadas> {
+    const mensajes = await mensajesDeLaConversacion();
+    const titulos = [...params.titulos];
+
+    if (params.planKey) {
+      const registroDelPlan = await readPlanRegistry(runScope).catch(() => []);
+
+      titulos.push(registroDelPlan.find((fila) => fila.key === params.planKey)?.title);
+    }
+
+    return {
+      pedido: palabrasDeLaDocente(mensajes),
+      plan: textoDelItemDelPlan(mensajes, titulos),
+      ...(params.conCurso ? { curso: await cargarFuentesDelCurso() } : {})
+    };
+  }
+
+  /**
+   * El informe de la lección, al día después de una edición por bloque.
+   *
+   * ── Qué se midió ─────────────────────────────────────────────────────────
+   *
+   * Producción, 2026-09-29: el informe se escribía sólo al guardar la lección
+   * entera. Tres lecciones seguían listando datos que un retoque posterior ya
+   * había sacado —una tecla, un «24 horas»— y la docente iba a ver como dudoso
+   * algo que ya no estaba.
+   *
+   * Es determinista y no sale a la red: los datos se vuelven a buscar con el
+   * MISMO alcance con que se escribió el informe (`sources`, o el curso entero
+   * si así se contrastó), más los rótulos del alcance ampliado. Mezclar el
+   * alcance del retoque —que no sabe las fuentes de la lección— con el del
+   * informe lo volvería incoherente. Las afirmaciones del juez no se tocan:
+   * volver a juzgarlas es otra llamada, y eso lo decide el rechequeo.
+   *
+   * Una lección sin informe (la escribió la docente) no gana uno por un
+   * retoque, y un informe que no se puede actualizar no falla la edición.
+   */
+  async function recalcularInforme(params: {
+    lessonId: string;
+    lessonTitle: string;
+    /** La lección completa YA guardada. */
+    contenido: string;
+    /** El informe que tenía, tal como se leyó. */
+    informe: unknown;
+  }): Promise<void> {
+    if (!params.informe || typeof params.informe !== 'object') return;
+
+    const informe = params.informe as Record<string, unknown>;
+
+    try {
+      const nombres = Array.isArray(informe.sources)
+        ? informe.sources.filter((nombre): nombre is string => typeof nombre === 'string' && nombre.trim().length > 0)
+        : [];
+      const contraCurso = informe.checkedAgainst === 'course';
+      let fuentes: FuenteVista[] = [];
+
+      if (contraCurso) {
+        fuentes = await cargarFuentesDelCurso();
+      } else if (nombres.length > 0) {
+        const delCurso = await documentosDelCurso();
+
+        fuentes = nombres
+          .map((nombre) => buscarFuente(nombre, delCurso))
+          .filter((fuente): fuente is FuenteParaBuscar => !!fuente)
+          .map(({ fileName, text }) => ({ fileName, text }));
+      }
+
+      const conTexto = fuentes.filter((fuente) => fuente.text.trim().length > 0);
+      const previos = Array.isArray(informe.tokenWarnings) ? (informe.tokenWarnings as HallazgoDeToken[]) : [];
+
+      // Las fuentes contra las que se escribió el informe ya no están
+      // (renombradas, borradas): no hay contra qué volver a buscar. Recalcular
+      // contra nada daba una lista vacía, y el informe se leía como limpio.
+      const sinContraQueBuscar = conTexto.length === 0 && (contraCurso || nombres.length > 0);
+
+      const tokenWarnings = sinContraQueBuscar
+        ? previos
+        : arrastrarDecisiones(
+            await tokensDeLaLeccion({
+              html: params.contenido,
+              fuentes: conTexto,
+              cargarAmpliacion: () => referenciasAmpliadas({ titulos: [params.lessonTitle], conCurso: !contraCurso })
+            }),
+            previos
+          );
+
+      await updateLessonQuery(params.lessonId, {
+        buildReport: {
+          ...informe,
+          tokenWarnings,
+          // Las marcas también pueden haber cambiado con el retoque.
+          unsupportedPassages: extraerPasajesSinFuente(params.contenido),
+          examples: extraerEjemplos(params.contenido),
+          revisedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('[lesson] no se pudo actualizar el informe tras la edición:', error);
+    }
+  }
+
+  /**
    * Lo que se vuelve a mirar después de una edición quirúrgica.
    *
    * Los dos tools que editan sin reescribir —`replace_lesson_block` y
@@ -1170,16 +1450,18 @@ export function buildAgentTools(
      *
      * El verificador con modelo mira afirmaciones; un bloque nuevo que trae un
      * teléfono o un nombre que no está en ninguna fuente pasa por debajo de él.
-     * Contra las fuentes del CURSO —no las de la lección, que acá no se saben— y
-     * sin lo que el escritor marcó.
+     * Contra las fuentes del CURSO —no las de la lección, que acá no se saben—,
+     * sin lo que el escritor marcó, y sin lo que dijo la docente o dice el plan:
+     * eso no es un invento, aunque ninguna fuente lo traiga.
      */
     const contraste = await fuentesParaContrastar({ cargarDelCurso: cargarFuentesDelCurso });
     const unsupportedTokens =
       contraste.alcance !== 'none'
         ? redactarTokens(
-            verificarTokens({
-              texto: textoParaTokens(quitarPasajesMarcados(params.contenido)),
-              fuentes: contraste.fuentes
+            await tokensDeLaLeccion({
+              html: params.contenido,
+              fuentes: contraste.fuentes,
+              cargarAmpliacion: () => referenciasAmpliadas({ titulos: [params.lessonTitle], conCurso: false })
             })
           )
         : [];
@@ -2171,7 +2453,9 @@ export function buildAgentTools(
                   isBuilding,
                   verificarFundamento,
                   avisosDeFundamento,
-                  cargarFuentesDelCurso
+                  cargarFuentesDelCurso,
+                  cargarAmpliacion: () =>
+                    referenciasAmpliadas({ titulos: [leccion.title], planKey: args.planKey, conCurso: false })
                 })
               : null;
 
@@ -2208,7 +2492,9 @@ export function buildAgentTools(
             isBuilding,
             verificarFundamento,
             avisosDeFundamento,
-            cargarFuentesDelCurso
+            cargarFuentesDelCurso,
+            cargarAmpliacion: () =>
+              referenciasAmpliadas({ titulos: [leccion.title], planKey: args.planKey, conCurso: false })
           });
 
           return {
@@ -2227,7 +2513,7 @@ export function buildAgentTools(
 
     write_lesson: tool({
       description:
-        'Write ONE lesson through a dedicated writer that sees only the brief for this lesson, the course outline and the sources you list. This is how a whole lesson gets written or rewritten from the course material — every lesson of an approved plan, and any single lesson the teacher asks you to write or rewrite in chat. You send a short brief plus the sources that carry it — never the lesson HTML — so your own context stays small. Pass sectionId + title + order + planKey to create a lesson, or lessonId to rewrite one. The result carries the same checks as any saved lesson (diagrams, formulas, and grounding against exactly the sources the writer saw) and, when there is one, a writerNote about what the writer could not cover: pass that note on to the teacher.',
+        'Write ONE lesson through a dedicated writer that sees only the brief for this lesson, the course outline and the sources you list. This is how a whole lesson gets written or rewritten from the course material — every lesson of an approved plan, and any single lesson the teacher asks you to write or rewrite in chat. You send a short brief plus the sources that carry it — never the lesson HTML — so your own context stays small. Pass sectionId + title + order + planKey to create a lesson, or lessonId to rewrite one. The result carries the same checks as any saved lesson (diagrams, formulas, and grounding against exactly the sources the writer saw) and, when there is one, a writerNote about what the writer could not cover: pass that note on to the teacher. Names and numbers the sources do not carry are settled by the writer itself (marked as its own example, or kept as general knowledge) and listed in the lesson report: do not edit the lesson for them.',
       inputSchema: writeLessonParam,
       execute: async (args) => {
         return executeAgentTool('write_lesson', { orgId, userId, courseId, args }, async () => {
@@ -2321,9 +2607,32 @@ export function buildAgentTools(
             };
           }
 
-          const guardar = (contenido: string, material: FuenteVista[], nota?: string) =>
+          /**
+           * Dónde más buscar un dato que no está en las fuentes de la lección:
+           * el pedido de la docente, el ítem del plan y el resto del curso.
+           * Una sola carga por lección, y sólo si algún dato hace falta.
+           */
+          let ampliacionPromesa: Promise<ReferenciasAmpliadas> | null = null;
+          const cargarAmpliacion = () =>
+            (ampliacionPromesa ??= referenciasAmpliadas({
+              titulos: [leccion.title, args.title],
+              planKey: args.planKey,
+              conCurso: true
+            }));
+
+          const guardar = (
+            contenido: string,
+            material: FuenteVista[],
+            nota?: string,
+            extra: {
+              fundamentoPrevio?: ResultadoDeFundamento;
+              parche?: Parameters<typeof writeLessonBody>[0]['parche'];
+            } = {}
+          ) =>
             writeLessonBody({
-              registro,
+              // El guardado del parche sólo agrega marcas a la lección que ya se
+              // anotó como escrita: anotarlo otra vez decía «Escribió X (2 veces)».
+              registro: extra.parche ? undefined : registro,
               lessonId: leccion.id,
               lessonTitle: leccion.title,
               locale,
@@ -2336,7 +2645,9 @@ export function buildAgentTools(
               verificarFundamento,
               avisosDeFundamento,
               fuentesDeLaLeccion: material,
-              notaDelEscritor: nota
+              cargarAmpliacion,
+              notaDelEscritor: nota,
+              ...extra
             });
 
           /**
@@ -2368,51 +2679,59 @@ export function buildAgentTools(
           }
 
           /**
-           * El rebote: si el servidor encontró algo, vuelve el escritor. UNA vez.
+           * El rebote por AVISOS DEL JUEZ: vuelve el escritor, UNA vez, y su
+           * corrección pasa por una guardia.
            *
-           * Quien tiene el material delante es él, no el constructor. Devolverle
-           * los hallazgos al constructor lo pone a arreglar una lección que nunca
-           * leyó, con las fuentes fuera de su contexto: lo medido es que en ese
-           * caso reescribe la lección entera «por las dudas», y cada reescritura
-           * es una oportunidad nueva de inventar.
+           * Quien tiene el material delante es él, no el constructor: devolverle
+           * una afirmación sin respaldo al constructor lo pone a arreglar una
+           * lección que nunca leyó. Una vez y no hasta que quede limpio: un
+           * tercer intento es otra llamada de escritor entera por un aviso que
+           * el docente ve en el informe.
            *
-           * Una vez y no hasta que quede limpio: el segundo intento es barato y
-           * suele alcanzar —casi siempre la respuesta correcta es marcar un
-           * ejemplo, que no cambia el texto—, y un tercero ya es gastar una
-           * llamada de escritor entera por un aviso que el docente puede ver en
-           * el informe. Si sigue habiendo hallazgos, la lección se guarda igual y
-           * vuelven como avisos.
+           * Pero una corrección de la lección entera puede tocar lo que nadie
+           * pidió. Medido el 2026-09-29: una lista de pestañas borrada entera por
+           * un solo dato señalado, cifras pasadas al formato de la fuente, el
+           * contexto de la docente reescrito. Así que la segunda versión se
+           * compara con la primera (`guardiaDelRebote`) y se tira si cambió un
+           * bloque que el juez no señaló o se llevó un dato que está en el
+           * pedido o en otra fuente del curso.
+           *
+           * Los nombres y números sin respaldo YA NO disparan esto: van por el
+           * parche de más abajo, que no puede tocar el texto.
            */
-          const hallazgos = [...written.unsupportedTokens, ...written.groundingWarnings];
           let writerRetried = false;
           /**
-           * La segunda versión se descartó por perder contenido, y por qué.
+           * La segunda versión se descartó, y por qué.
            *
-           * Es la excepción documentada de la guardia de conservación: acá NO se
-           * puede negar la escritura y devolver el error, porque ya hay una
-           * primera versión guardada. Negar de verdad sería dejar la lección con
-           * los avisos de la primera —que es lo correcto— y eso es justamente lo
-           * que pasa: la segunda se tira y la primera se queda.
+           * Acá NO se puede negar la escritura y devolver el error, porque ya
+           * hay una primera versión guardada. Negar de verdad es dejar la
+           * lección con los avisos de la primera —que es lo correcto— y eso es
+           * justamente lo que pasa: la segunda se tira y la primera se queda.
            */
           let reboteDescartado: string | undefined;
           /**
-           * Por QUÉ rebotó, escrito una sola vez y contado en dos lados.
-           *
-           * `writerRetried: true` decía que hubo rebote y nada más, así que no
-           * había forma de medir si los falsos positivos del chequeo de tokens
-           * (F1) se habían arreglado: en la corrida del 2026-09-22 rebotaron 5
-           * de 5 lecciones y el registro no dice por cuál hallazgo. Va al log
-           * —para poder contarlo sobre una corrida entera— y al resultado, que
-           * es lo que queda guardado en el informe de la ronda.
+           * Por QUÉ rebotó: entero en el log —para poder contarlo sobre una
+           * corrida— y recortado en el resultado, que es el informe de la ronda.
+           * El log se recortaba también, y así la investigación del 2026-09-29
+           * atribuyó causas leyendo tres de cinco hallazgos.
            */
-          const motivoDelRebote = recortarMotivo(hallazgos.join(' | '));
+          let motivoDelRebote: string | undefined;
 
-          if (hallazgos.length > 0) {
-            console.log(`[write_lesson] rebote «${leccion.title}»: ${motivoDelRebote}`);
+          if (written.fundamento.estado === 'ok' && written.groundingWarnings.length > 0) {
+            const citas =
+              written.fundamento.afirmaciones && written.fundamento.afirmaciones.length > 0
+                ? written.fundamento.afirmaciones.map((afirmacion) => afirmacion.cita)
+                : citasDeLosAvisos(written.groundingWarnings);
+            const motivo = (
+              citas.length > 0 ? citas.map((cita) => `«${cita}»`) : written.groundingWarnings
+            ).join(' | ');
+
+            motivoDelRebote = recortarMotivo(motivo);
+            console.log(`[write_lesson] rebote por el juez «${leccion.title}»: ${motivo.replace(/\s+/g, ' ')}`);
 
             const reintento = await escribirLeccion({
               lessonTitle: leccion.title,
-              brief: `${args.brief}\n\n${briefDelRebote(written)}`,
+              brief: `${args.brief}\n\n${briefDelRebote(written.fundamento)}`,
               locale,
               sources: args.sources,
               // Lo recién escrito, para que corrija en vez de empezar de nuevo.
@@ -2429,20 +2748,116 @@ export function buildAgentTools(
             // guardada, y borrarla porque el segundo intento se arrepintió
             // sería peor que quedarse con la que tiene avisos.
             if (reintento && !('faltaMaterial' in reintento)) {
-              try {
-                // Se guarda ANTES de adoptar la versión nueva: si la guardia la
-                // rechaza, `escrito` tiene que seguir siendo la primera, que es
-                // la que quedó en la base.
-                const segunda = await guardar(reintento.html, reintento.material, reintento.nota);
+              // Lo que no puede desaparecer: los datos de la primera versión que
+              // están en el pedido, el plan u otra fuente del curso.
+              const ampliacion = await cargarAmpliacion().catch(() => undefined);
+              const protegidos = ampliacion
+                ? verificarTokens({
+                    texto: textoParaTokens(quitarPasajesMarcados(written.normalizedContent)),
+                    textoCompleto: textoParaTokens(written.normalizedContent),
+                    fuentes: escrito.material,
+                    ampliacion,
+                    tope: Infinity
+                  })
+                    .filter((hallazgo) => hallazgo.respaldo)
+                    .map((hallazgo) => hallazgo.valor)
+                : [];
+              const veredicto = guardiaDelRebote({
+                antes: written.normalizedContent,
+                despues: normalizarCuerpo(reintento.html, leccion.title),
+                citas,
+                protegidos
+              });
 
-                escrito = reintento;
-                written = segunda;
-                writerRetried = true;
-              } catch (error) {
-                if (!(error instanceof PerdidaEstructural)) throw error;
+              if (!veredicto.conservar) {
+                reboteDescartado = `the second version was discarded: ${veredicto.motivo}`;
+                console.log(`[write_lesson] rebote descartado «${leccion.title}»: ${veredicto.motivo}`);
+              } else {
+                try {
+                  // Se guarda ANTES de adoptar la versión nueva: si la guardia
+                  // de conservación la rechaza, `escrito` tiene que seguir
+                  // siendo la primera, que es la que quedó en la base. Y si la
+                  // corrección sólo agregó marcas, el juez ya vio este texto.
+                  const segunda = await guardar(
+                    reintento.html,
+                    reintento.material,
+                    reintento.nota,
+                    veredicto.soloMarcas ? { fundamentoPrevio: written.fundamento } : {}
+                  );
 
-                reboteDescartado = `the second version was discarded: it dropped ${error.resumen} the first one had`;
-                console.log(`[write_lesson] rebote descartado «${leccion.title}»: ${error.resumen}`);
+                  escrito = reintento;
+                  written = segunda;
+                  writerRetried = true;
+                } catch (error) {
+                  if (!(error instanceof PerdidaEstructural)) throw error;
+
+                  reboteDescartado = `the second version was discarded: it dropped ${error.resumen} the first one had`;
+                  console.log(`[write_lesson] rebote descartado «${leccion.title}»: ${error.resumen}`);
+                }
+              }
+            }
+          }
+
+          /**
+           * El rebote por PARCHE: los nombres y números que no aparecen en
+           * ningún lado —ni en las fuentes de la lección, ni en el resto del
+           * curso, ni en el pedido de la docente, ni en el plan— vuelven al
+           * escritor como una pregunta por bloque, y el servidor pone la marca
+           * que él elija. El texto no se toca y el juez no se vuelve a llamar.
+           * Ver `marcas-del-rebote.ts`, donde está lo que se midió.
+           *
+           * Sobre la versión que quedó guardada, sea la primera o la corregida.
+           * Lo que quede después no vuelve al constructor como orden: va al
+           * informe, para la docente (`NOTA_DATOS_PARA_LA_DOCENTE`).
+           */
+          const pendientes = written.tokenWarnings.filter(vaAlModelo);
+          let tokenPatch: { marked: number; kept: number; left: number } | undefined;
+
+          if (pendientes.length > 0) {
+            // TODOS, sin recortar. Ver `motivoDelRebote`.
+            console.log(
+              `[write_lesson] datos sin respaldo «${leccion.title}»: ${pendientes.map((hallazgo) => `«${hallazgo.valor}»`).join(' | ')}`
+            );
+
+            const { bloques } = prepararParche(written.normalizedContent, pendientes);
+
+            if (escribirLeccion.marcarTokens && bloques.length > 0) {
+              // El marcador de la ronda no tira nunca, pero la garantía no
+              // puede depender de eso: la lección ya está guardada, y un error
+              // acá tumbaría la herramienta con la lección escrita.
+              const decisiones = await escribirLeccion
+                .marcarTokens({ lessonTitle: leccion.title, brief: args.brief, locale, bloques })
+                .catch((error: unknown) => {
+                  console.error(`[write_lesson] el parche de «${leccion.title}» falló:`, error);
+                  return [];
+                });
+              const { html: marcado, aplicadas } = aplicarMarcas(
+                written.normalizedContent,
+                decisiones,
+                bloques,
+                locale
+              );
+
+              if (aplicadas.length > 0) {
+                try {
+                  written = await guardar(marcado, escrito.material, escrito.nota, {
+                    fundamentoPrevio: written.fundamento,
+                    parche: { decisiones: aplicadas, bloques }
+                  });
+                } catch (error) {
+                  // Sólo se agregan atributos: perder una pieza acá sería un
+                  // error de este código, no del escritor. Queda la versión
+                  // que ya estaba guardada.
+                  if (!(error instanceof PerdidaEstructural)) throw error;
+
+                  console.error(`[write_lesson] el parche de «${leccion.title}» no se guardó: ${error.resumen}`);
+                }
+
+                tokenPatch = {
+                  marked: aplicadas.filter((decision) => decision.accion !== 'mantener').length,
+                  kept: aplicadas.filter((decision) => decision.accion === 'mantener').length,
+                  left: written.tokenWarnings.filter(vaAlModelo).length
+                };
               }
             }
           }
@@ -2464,7 +2879,8 @@ export function buildAgentTools(
             ...(escrito.nota ? { writerNote: escrito.nota } : {}),
             ...(writerRetried ? { writerRetried: true, writerRetryReason: motivoDelRebote } : {}),
             ...(reboteDescartado ? { writerRetried: false, writerRetryReason: reboteDescartado } : {}),
-            ...contentWarningFields(written)
+            ...(tokenPatch ? { tokenPatch } : {}),
+            ...contentWarningFields({ ...written, datosSoloAlInforme: true })
           };
         });
       }
@@ -2532,7 +2948,10 @@ export function buildAgentTools(
             avisosDeFundamento,
             // Nadie dice con qué fuentes se escribió este cuerpo: se contrasta
             // contra las del curso en vez de no contrastar.
-            cargarFuentesDelCurso
+            cargarFuentesDelCurso,
+            // Y un texto que la docente dictó trae sus propias palabras: ésas no
+            // son un invento aunque ninguna fuente las tenga.
+            cargarAmpliacion: () => referenciasAmpliadas({ titulos: [lesson.title], conCurso: false })
           });
 
           return {
@@ -2624,6 +3043,15 @@ export function buildAgentTools(
 
           // Anotado despues de guardar: el registro dice lo que paso.
           anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
+
+          // El informe que ve la docente, al día con lo que la lección dice
+          // ahora. Ver `recalcularInforme`.
+          await recalcularInforme({
+            lessonId,
+            lessonTitle: lesson.title,
+            contenido: updated,
+            informe: (lesson as { buildReport?: unknown }).buildReport
+          });
 
           // Si esta lección quedó marcada —o el plan mandó cambiarla— se la
           // vuelve a mirar ENTERA: la afirmación que el aviso señalaba suele
@@ -2744,6 +3172,14 @@ export function buildAgentTools(
 
           // Anotado despues de guardar: el registro dice lo que paso.
           anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
+
+          // El informe que ve la docente, al día. Ver `recalcularInforme`.
+          await recalcularInforme({
+            lessonId,
+            lessonTitle: lesson.title,
+            contenido: updated,
+            informe: (lesson as { buildReport?: unknown }).buildReport
+          });
 
           // Si esta lección quedó marcada —o el plan mandó cambiarla— se la
           // vuelve a mirar ENTERA. Es el caso que dejó pasar una afirmación sin
@@ -3146,6 +3582,24 @@ export function buildAgentTools(
           let exerciseTitle = args.title ?? '';
           let preguntasQueYaTiene = 0;
 
+          // Anti-duplicado, el mismo de `create_exercise`: la atadura del plan
+          // primero, y si no hay, la pieza equivalente de esa sección. Se mira
+          // dos veces: al empezar y justo antes de crear (ver más abajo).
+          const ejercicioYaConstruido = async (): Promise<string | null> => {
+            if (!args.title) return null;
+
+            return (
+              (await findBoundEntity(args.planKey, 'exercise')) ??
+              (sectionId
+                ? (piezaEquivalente(await getCourseContentItems(courseId), {
+                    tipo: 'exercise',
+                    sectionId,
+                    titulo: args.title
+                  })?.id ?? null)
+                : null)
+            );
+          };
+
           if (args.exerciseId) {
             exerciseId = await manijas.ejercicio(args.exerciseId);
             await verifyExerciseBelongsToCourse(exerciseId, courseId);
@@ -3160,17 +3614,7 @@ export function buildAgentTools(
               );
             }
 
-            // Anti-duplicado, el mismo de `create_exercise`: la atadura del
-            // plan primero, y si no hay, la pieza equivalente de esa sección.
-            const yaConstruido =
-              (await findBoundEntity(args.planKey, 'exercise')) ??
-              (sectionId
-                ? (piezaEquivalente(await getCourseContentItems(courseId), {
-                    tipo: 'exercise',
-                    sectionId,
-                    titulo: args.title
-                  })?.id ?? null)
-                : null);
+            const yaConstruido = await ejercicioYaConstruido();
 
             if (yaConstruido) {
               await recordBinding(args.planKey, yaConstruido);
@@ -3369,6 +3813,43 @@ export function buildAgentTools(
             }));
 
           let creado = false;
+
+          /**
+           * La atadura se vuelve a mirar JUSTO antes de crear.
+           *
+           * El escritor tarda de 9 a 15 s y el ejercicio se crea al final —a
+           * propósito: una cáscara sin preguntas contaría como construida—. En
+           * esa ventana otra ronda sobre el mismo ítem del plan pudo haberlo
+           * creado: medido el 2026-09-29, dos rondas se solaparon dos veces en
+           * la misma tarde. Mirar sólo al empezar dejaba la ventana abierta los
+           * quince segundos del escritor; mirando acá queda en milisegundos.
+           */
+          if (!exerciseId) {
+            const creadoPorOtra = await ejercicioYaConstruido();
+
+            if (creadoPorOtra) {
+              const existente = await getExercise(creadoPorOtra).catch(() => null);
+              const preguntas = existente?.questions?.length ?? 0;
+
+              if (preguntas > 0 && !args.blockTitle) {
+                return {
+                  exerciseId: creadoPorOtra,
+                  handle: await manijas.manijaDe(creadoPorOtra),
+                  title: existente?.title ?? args.title,
+                  added: 0,
+                  questionCount: preguntas,
+                  reused: true,
+                  note: `This exercise was built while these questions were being written (it already has ${preguntas} question(s)), so nothing was added. Treat it as built.`
+                };
+              }
+
+              await recordBinding(args.planKey, creadoPorOtra);
+
+              exerciseId = creadoPorOtra;
+              exerciseTitle = existente?.title ?? args.title ?? exerciseTitle;
+              preguntasQueYaTiene = preguntas;
+            }
+          }
 
           if (!exerciseId) {
             // Sin bloque, el ejercicio nace con sus preguntas adentro, en una
@@ -3884,6 +4365,11 @@ export function buildAgentTools(
             // que el plan manda retocar no necesita declarar de qué fuente sale:
             // salió de la que la escribió, y pedírselo devolvería una lista de
             // huérfanas que no se pueden arreglar sin reescribirlas.
+            //
+            // Las fuentes van CON su texto: además de ver si la fuente
+            // declarada existe, se mide si trata el tema. Una que sólo lo nombra
+            // en un temario no alcanza para escribir la lección, y la docente
+            // tiene que enterarse antes de aprobar. Ver `prosaDelTema`.
             const items = plan.sections
               .flatMap((section) => section.items)
               .filter((item) => (item.action ?? 'create') === 'create');
@@ -3895,6 +4381,15 @@ export function buildAgentTools(
                 sourcesAttached: fuentes.length,
                 lessonsWithSource: medida.cubiertas,
                 lessonsWithoutSource: medida.sinFuente,
+                ...(medida.debiles.length > 0
+                  ? {
+                      lessonsWithWeakSource: medida.debiles.map((debil) => ({
+                        lesson: debil.item,
+                        sources: debil.fuentes,
+                        charactersOnTopic: debil.prosa
+                      }))
+                    }
+                  : {}),
                 ...(medida.fuentesInexistentes.length > 0
                   ? { citedSourcesThatDoNotExist: medida.fuentesInexistentes }
                   : {}),
@@ -4187,16 +4682,47 @@ export function buildAgentTools(
 
     fetch_documentation_url: tool({
       description:
-        'Fetch a public documentation URL via Jina Reader. Returns markdown wrapped as untrusted external content plus same-origin links for follow-up fetches.',
+        'Fetch a public documentation URL via Jina Reader. Returns markdown wrapped as untrusted external content plus same-origin links for follow-up fetches. When the page is private (a sign-in screen) or has no readable text, the result says so with `readable: false`: do not retry that link — ask the teacher to upload the document instead.',
       inputSchema: fetchDocumentationUrlParam,
       execute: async (args) => {
         return executeAgentTool('fetch_documentation_url', { orgId, userId, courseId, args }, async () => {
-          return fetchDocumentationUrl({
-            url: args.url,
-            orgId,
-            courseId,
-            priorMessages
-          });
+          try {
+            return await fetchDocumentationUrl({
+              url: args.url,
+              orgId,
+              courseId,
+              priorMessages
+            });
+          } catch (error) {
+            /**
+             * Un muro de inicio de sesión o una página vacía no es un error
+             * para reintentar: es un documento que no se puede leer así.
+             *
+             * Medido en producción: la planilla privada de una docente entró
+             * como fuente del curso con la pantalla de «Sign in» adentro. Ahora
+             * la lectura lo detecta y tira un 422 con su código; acá se le
+             * explica al constructor qué hacer, en vez de pasarle el error
+             * crudo —que invita a probar de nuevo el mismo enlace—. Se devuelve
+             * como resultado y no como falla por lo mismo que la negativa del
+             * escritor: reintentar contra lo mismo no cambia nada.
+             */
+            if (
+              error instanceof AppError &&
+              (error.code === 'SOURCE_NEEDS_LOGIN' || error.code === 'SOURCE_UNREADABLE')
+            ) {
+              return {
+                url: args.url,
+                readable: false,
+                code: error.code,
+                note:
+                  error.code === 'SOURCE_NEEDS_LOGIN'
+                    ? 'This link did not return the document: it shows a sign-in screen (it is private or restricted to an organization), so nothing was read. Do not use it as material and do not try the same link again. Ask the teacher, in their language, to upload the document itself in Sources (a spreadsheet or a Google document can be downloaded as PDF), or to share it as "anyone with the link can view" and add it again.'
+                    : 'This page has no readable text, so nothing was read. Do not use it as material and do not try the same link again. If the teacher has this content as a file, ask them, in their language, to upload it in Sources.'
+              };
+            }
+
+            throw error;
+          }
         });
       }
     }),

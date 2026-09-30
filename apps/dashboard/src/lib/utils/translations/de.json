@@ -2207,6 +2207,18 @@
       "title": "Dieser Kurs konnte nicht geöffnet werden",
       "description": "Möglicherweise wurde er gelöscht oder du hast keinen Zugriff mehr. Wenn du glaubst, dass es ein Fehler ist, wende dich an die Administration deiner Organisation.",
       "action": "Zurück zu meinen Kursen"
+    },
+    "sources": {
+      "error_needs_login": "Diese Seite verlangt eine Anmeldung. Wenn es ein Google-Dokument ist, teilen Sie es mit „Jeder, der über den Link verfügt“ oder laden Sie es als PDF herunter und dann hoch.",
+      "error_unreadable": "Auf dieser Seite haben wir keinen brauchbaren Text gefunden.",
+      "snackbar_reread_unchanged": "Die Quelle hat sich nicht geändert",
+      "plan_notice": "{count, plural, one {Der Plan steht bereits und nutzt diese Quelle nicht. Wenn Sie sie nutzen möchten, bitten Sie den Assistenten, den Plan neu zu erstellen.} other {Der Plan steht bereits und nutzt diese Quellen nicht. Wenn Sie sie nutzen möchten, bitten Sie den Assistenten, den Plan neu zu erstellen.}}",
+      "plan_notice_action": "Plan neu erstellen lassen",
+      "plan_notice_dismiss": "Schließen",
+      "plan_notice_prompt": "{count, plural, one {Ich habe die Quelle {names} hinzugefügt. Erstelle den Plan neu, damit sie genutzt wird.} other {Ich habe die Quellen {names} hinzugefügt. Erstelle den Plan neu, damit sie genutzt werden.}}",
+      "error_source_limit": "Dieser Kurs hat bereits 100 Quellen: Lösche eine, bevor du eine weitere hinzufügst.",
+      "upload_failed": "Die Datei konnte nicht hochgeladen werden. Bitte versuche es erneut.",
+      "research_left_out_by_limit": "Der Kurs hat sein Limit von 100 Quellen erreicht: {count} Seiten aus der Recherche wurden nicht übernommen. Lösche eine Quelle, wenn du sie hinzufügen möchtest."
     }
   },
   "courses": {
@@ -3892,14 +3904,14 @@
     "new_chat": "Neuer Chat",
     "tokens_label": "Token",
     "implementing_course_plan": "Kursplan umsetzen",
-    "resume": "Lebenslauf",
+    "resume": "Weiter",
     "stopped_content_kept": "Angehalten. Erstellte Inhalte wurden beibehalten.",
     "mention_lesson": "Lektion",
     "mention_exercise": "Übung",
     "mention_section": "Abschnitt",
     "mention_no_results": "Kein passender Inhalt",
     "uploading_document": "Dokument wird hochgeladen...",
-    "agent_running_warning": "Die Änderungen werden im Kurs angezeigt, sobald der Agent fertig ist. Laden Sie die Seite nicht neu.",
+    "agent_running_warning": "Sie können diese Seite verlassen: Der Assistent beendet den laufenden Arbeitsschritt und speichert ihn. Ist der Kurs noch nicht fertig, tippen Sie nach Ihrer Rückkehr auf „Weiter“.",
     "agent_running_warning_dismiss": "Schließen",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "Arbeiter reagiert nicht",
         "body": "Dieser Lauf hat mehr als 30 Sekunden gewartet, ohne dass ein Arbeiter abgeholt wurde. Der Hintergrund-Worker ist möglicherweise nicht verfügbar oder wird neu gestartet."
       }
-    }
+    },
+    "error_timeout": "Das dauert länger als üblich. Die Anfrage läuft noch: Versuchen Sie es in ein paar Sekunden erneut.",
+    "error_stream_cut": "Die Verbindung zum Assistenten wurde unterbrochen. Was bereits erstellt wurde, ist gespeichert.",
+    "error_round_in_progress": "Der Assistent arbeitet noch in diesem Chat. Warten Sie, bis er fertig ist.",
+    "round_in_progress_notice": "Der Assistent arbeitet an diesem Kurs. Die Ansicht aktualisiert sich von selbst.",
+    "tool_interrupted": "Vor dem Ende abgebrochen. Prüfen Sie den Kurs: Was gespeichert werden konnte, ist gespeichert.",
+    "control_message": {
+      "plan_approved": "Plan genehmigt — wird erstellt",
+      "continue_build": "Erstellung fortsetzen"
+    },
+    "plan_screen": {
+      "no_source_title": "Einige Lektionen haben kein Material",
+      "no_source_body": "{count, plural, one {Für diese Lektion gibt es keine Kursquelle. Was möchten Sie damit tun?} other {Für diese # Lektionen gibt es keine Kursquelle. Was möchten Sie damit tun?}}",
+      "no_source_general": "Mit Allgemeinwissen schreiben",
+      "no_source_remove": "Aus dem Plan entfernen",
+      "no_source_cancel": "Abbrechen",
+      "no_source_remove_failed": "Sie lassen sich nicht entfernen, ohne den Plan unvollständig zu machen. Wählen Sie eine andere Option oder bitten Sie den Assistenten um Änderungen.",
+      "weak_source_hint": "Sie verweist auf {sources}, dort wird das Thema aber nur genannt."
+    },
+    "stopping": "Wird gestoppt…",
+    "stopping_notice": "Wird gestoppt: Der Assistent beendet, woran er gerade arbeitet, speichert es und hält an.",
+    "stop_not_delivered": "Wir konnten dem Assistenten nicht sagen, dass er anhalten soll: Er beendet diesen Arbeitsschritt und speichert ihn. Der Chat aktualisiert sich von selbst, sobald er fertig ist.",
+    "stopped_by_teacher": "Hier hast du den Assistenten gestoppt. Was er bereits erledigt hatte, wurde gespeichert.",
+    "error_timeout_chat": "Der Assistent arbeitet noch und braucht länger als üblich. Der Chat aktualisiert sich von selbst, sobald er fertig ist."
   },
   "widgets": {
     "heading": "Widgets",

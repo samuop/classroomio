@@ -148,34 +148,17 @@ function extraerMarcados(html: string, atributo: string): PasajeSinFuente[] {
 }
 
 /**
- * La lección sin lo que el escritor marcó, para contrastar sólo el resto.
+ * Los tramos de estos elementos, fusionados donde se solapan.
  *
- * Es la contracara de que las marcas existan. Un ejemplo inventado a propósito
- * y declarado como tal no puede seguir contando como un dato sin respaldo: si
- * contara, marcarlo no serviría de nada y el escritor aprendería que da igual
- * —y entonces las dos mitades del chequeo de fundamento estarían gritando por
- * lo mismo que el sistema le pidió que hiciera—.
- *
- * Lo que devuelve NO se guarda nunca: es la entrada de los dos chequeos y nada
- * más. Por eso puede permitirse cortar rangos sin cuidar el markup.
+ * Las listas de cada marca son de primer nivel cada una POR SEPARADO, así que
+ * un ejemplo adentro de un pasaje sin fuente aparece en las dos y sus tramos se
+ * solapan. Se fusionan antes de cortar: cortar dos veces el mismo tramo se
+ * comería texto que no estaba marcado.
  */
-export function quitarPasajesMarcados(html: string): string {
-  if (!html) return html;
-
-  const marcados = [
-    ...listElementsWithAttribute(html, ATRIBUTO_SIN_FUENTE),
-    ...listElementsWithAttribute(html, ATRIBUTO_EJEMPLO)
-  ].sort((a, b) => a.start - b.start);
-
-  if (marcados.length === 0) return html;
-
-  // Las dos listas son de primer nivel cada una POR SEPARADO, así que un ejemplo
-  // adentro de un pasaje sin fuente aparece en las dos y sus tramos se solapan.
-  // Se fusionan antes de cortar: cortar dos veces el mismo tramo se comería
-  // texto que no estaba marcado.
+function tramosFusionados(marcados: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> {
   const rangos: Array<{ start: number; end: number }> = [];
 
-  for (const marcado of marcados) {
+  for (const marcado of [...marcados].sort((a, b) => a.start - b.start)) {
     const ultimo = rangos[rangos.length - 1];
 
     if (ultimo && marcado.start < ultimo.end) {
@@ -186,6 +169,11 @@ export function quitarPasajesMarcados(html: string): string {
     rangos.push({ start: marcado.start, end: marcado.end });
   }
 
+  return rangos;
+}
+
+/** Corta los tramos, de atrás para adelante, dejando un espacio en cada hueco. */
+function cortarTramos(html: string, rangos: Array<{ start: number; end: number }>): string {
   let resultado = html;
 
   // De atrás para adelante: cortar de adelante correría los tramos que faltan.
@@ -193,6 +181,77 @@ export function quitarPasajesMarcados(html: string): string {
     // Un espacio y no nada: los dos chequeos aplanan el HTML a texto, y pegar
     // lo de antes con lo de después inventaría una palabra que nadie escribió.
     resultado = `${resultado.slice(0, rangos[i].start)} ${resultado.slice(rangos[i].end)}`;
+  }
+
+  return resultado;
+}
+
+/**
+ * La lección sin lo que el escritor marcó, para contrastar sólo el resto.
+ *
+ * Es la contracara de que las marcas existan. Un ejemplo inventado a propósito
+ * y declarado como tal no puede seguir contando como un dato sin respaldo: si
+ * contara, marcarlo no serviría de nada y el escritor aprendería que da igual.
+ *
+ * Es la entrada del chequeo de TOKENS. El juez con modelo ya no la usa: ve los
+ * ejemplos envueltos, ver `prepararParaElJuez`.
+ *
+ * Lo que devuelve NO se guarda nunca: es la entrada de un chequeo y nada más.
+ * Por eso puede permitirse cortar rangos sin cuidar el markup.
+ */
+export function quitarPasajesMarcados(html: string): string {
+  if (!html) return html;
+
+  const marcados = [
+    ...listElementsWithAttribute(html, ATRIBUTO_SIN_FUENTE),
+    ...listElementsWithAttribute(html, ATRIBUTO_EJEMPLO)
+  ];
+
+  if (marcados.length === 0) return html;
+
+  return cortarTramos(html, tramosFusionados(marcados));
+}
+
+/**
+ * La lección como la ve el juez con modelo: sin los pasajes sin fuente, y con
+ * los ejemplos A LA VISTA, envueltos como `[example: …]`.
+ *
+ * ── Por qué los ejemplos ya no desaparecen ───────────────────────────────────
+ *
+ * Medido en producción el 2026-09-29: para no rebotar, el escritor marcaba
+ * como ejemplo el párrafo o la lista ENTERA donde había un número inventado
+ * —un «24 horas», un «500 ml»—, y con la marca se iba del juez todo lo demás
+ * que decía ese bloque. En una lección, el 56 % del texto visible quedó fuera
+ * de toda verificación: una definición sacada casi textual de la fuente, una
+ * regla de alineación del programa, y un diagrama entero marcado por un solo
+ * número. La marca se había vuelto la forma de que el verificador no mirara.
+ *
+ * Envuelto, el juez sabe que los nombres y los números de ahí adentro son
+ * inventados a propósito —su instrucción le dice que no los marque— y sigue
+ * viendo la regla o la definición que el bloque afirma.
+ *
+ * Los pasajes `data-sin-fuente` sí se van: ya están declarados como huecos y
+ * aparecen en el informe; volver a marcarlos le enseñaría al escritor que
+ * declararlos no sirve.
+ */
+export function prepararParaElJuez(html: string): string {
+  if (!html) return html;
+
+  const sinFuente = listElementsWithAttribute(html, ATRIBUTO_SIN_FUENTE);
+  const sinHuecos = sinFuente.length > 0 ? cortarTramos(html, tramosFusionados(sinFuente)) : html;
+  const ejemplos = listElementsWithAttribute(sinHuecos, ATRIBUTO_EJEMPLO);
+
+  if (ejemplos.length === 0) return sinHuecos;
+
+  let resultado = sinHuecos;
+
+  // De atrás para adelante, por lo mismo que al cortar. Los ejemplos son de
+  // primer nivel entre sí (uno anidado en otro no se lista), así que no se
+  // solapan.
+  for (let i = ejemplos.length - 1; i >= 0; i -= 1) {
+    const { start, end } = ejemplos[i];
+
+    resultado = `${resultado.slice(0, start)} [example: ${resultado.slice(start, end)} ] ${resultado.slice(end)}`;
   }
 
   return resultado;

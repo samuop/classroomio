@@ -218,7 +218,9 @@ export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof
  * `getLatestImplementationPlan` busca hacia atrás el último plan aprobado, que
  * sigue vigente ronda tras ronda. Esto es otra pregunta: ¿el docente acaba de
  * apretar «Aprobar»? Lo dice el ÚLTIMO mensaje del docente, porque el de una
- * continuación («Continue implementing the plan…») no lleva la metadata.
+ * continuación («Seguí construyendo el plan desde donde quedó.», o el texto en
+ * inglés de las conversaciones viejas) no lleva la metadata. El texto no se
+ * compara nunca: la aprobación se reconoce por `metadata.plan`.
  *
  * De esto cuelga que el plan se ate y se sincronice una sola vez. Ver el bloque
  * `if (approvedPlan)` de `agent.ts`.

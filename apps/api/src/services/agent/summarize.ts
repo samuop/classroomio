@@ -1,5 +1,6 @@
-import { generateText } from 'ai';
-import { createModel, pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
+import { generateText, type LanguageModelUsage } from 'ai';
+import type { AIProvider } from '@cio/ai-assistant';
+import { createModel, pickAnyConfiguredProvider, resolveModelName } from '@cio/ai-assistant/providers';
 import { AppError } from '@api/utils/errors';
 
 const SUMMARIZE_SYSTEM_PROMPT = `You are summarizing a multi-turn course-creation chat so the assistant can pick up exactly where it left off in a new conversation.
@@ -191,21 +192,48 @@ const DOCUMENT_SUMMARY_SYSTEM_PROMPT = `You summarize an uploaded reference docu
 - Any explicit instructions, requirements, or constraints it states.
 Be specific with names and numbers. Do not add commentary or phrases like "the document says".`;
 
-const MAX_DOCUMENT_SUMMARY_INPUT_CHARS = 60_000;
+/** Cuánto de un documento lee su resumen. La cola de resúmenes no guarda más que esto. */
+export const MAX_DOCUMENT_SUMMARY_INPUT_CHARS = 60_000;
 const MAX_DOCUMENT_SUMMARY_OUTPUT_TOKENS = 700;
 
 /**
- * Generate a compact summary of an uploaded document. Throws AppError when no
- * provider is configured (caller falls back to a truncated excerpt).
+ * Tope de una llamada de resumen. Medidas: 3,5 a 4,5 s. El tope no es para el
+ * caso normal sino para el colgado: los resúmenes corren en una cola de pocos
+ * lugares (ver `resumenes-de-fuentes.ts`), y una llamada que no vuelve nunca
+ * ocupa uno de esos lugares para siempre.
  */
-export async function summarizeDocument(text: string): Promise<string> {
+const PLAZO_DEL_RESUMEN_MS = 90_000;
+
+export interface ResumenDeDocumento {
+  texto: string;
+  /** Lo que gastó la llamada, para cobrarla. */
+  usage: LanguageModelUsage;
+  /** El modelo que la atendió: el cupo se descuenta según cuál fue. */
+  modelName: string;
+  provider: AIProvider;
+}
+
+/**
+ * Resume un documento y dice cuánto costó.
+ *
+ * Existe aparte de `summarizeDocument` porque el resumen era una llamada al
+ * proveedor que no se cobraba: medido en producción, los 11 resúmenes de un
+ * curso y los 7 de otro no dejaron ni una fila en el consumo. Quien lo pide
+ * ahora recibe también el uso y el modelo, que es lo que `recordTokenUsage`
+ * necesita.
+ *
+ * Usa el modelo del entorno y no el de la empresa: es un resumen de
+ * orientación, y el más barato alcanza.
+ */
+export async function resumirDocumento(text: string): Promise<ResumenDeDocumento> {
   const providerConfig = pickAnyConfiguredProvider();
 
   if (!providerConfig) {
     throw new AppError('AI assistant is not configured', 'AI_NOT_CONFIGURED', 503);
   }
 
-  const model = createModel(providerConfig);
+  const modelName = providerConfig.model || resolveModelName(providerConfig.provider);
+  const model = createModel({ ...providerConfig, model: modelName });
   const input = truncate(text, MAX_DOCUMENT_SUMMARY_INPUT_CHARS);
 
   const result = await generateText({
@@ -213,8 +241,17 @@ export async function summarizeDocument(text: string): Promise<string> {
     system: DOCUMENT_SUMMARY_SYSTEM_PROMPT,
     prompt: `Document text:\n\n${input}\n\nReturn the compact brief described in the system prompt.`,
     maxOutputTokens: MAX_DOCUMENT_SUMMARY_OUTPUT_TOKENS,
-    maxRetries: 0
+    maxRetries: 0,
+    abortSignal: AbortSignal.timeout(PLAZO_DEL_RESUMEN_MS)
   });
 
-  return result.text.trim();
+  return { texto: result.text.trim(), usage: result.usage, modelName, provider: providerConfig.provider };
+}
+
+/**
+ * Generate a compact summary of an uploaded document. Throws AppError when no
+ * provider is configured (caller falls back to a truncated excerpt).
+ */
+export async function summarizeDocument(text: string): Promise<string> {
+  return (await resumirDocumento(text)).texto;
 }

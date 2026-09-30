@@ -2207,6 +2207,18 @@
       "title": "Não foi possível abrir este curso",
       "description": "Pode ter sido excluído ou você já não tem acesso. Se achar que é um erro, avise o administrador da sua organização.",
       "action": "Voltar aos meus cursos"
+    },
+    "sources": {
+      "error_needs_login": "Essa página pede para entrar na conta. Se for um documento do Google, compartilhe como \"Qualquer pessoa com o link\" ou baixe como PDF e envie.",
+      "error_unreadable": "Não encontramos texto útil nessa página.",
+      "snackbar_reread_unchanged": "A fonte não mudou",
+      "plan_notice": "{count, plural, one {O plano já está pronto e não usa esta fonte. Se quiser usá-la, peça ao assistente que refaça o plano.} other {O plano já está pronto e não usa estas fontes. Se quiser usá-las, peça ao assistente que refaça o plano.}}",
+      "plan_notice_action": "Pedir que refaça o plano",
+      "plan_notice_dismiss": "Fechar",
+      "plan_notice_prompt": "{count, plural, one {Adicionei a fonte {names}. Refaça o plano para usá-la.} other {Adicionei as fontes {names}. Refaça o plano para usá-las.}}",
+      "error_source_limit": "Este curso já tem 100 fontes: exclua alguma antes de adicionar outra.",
+      "upload_failed": "Não foi possível enviar o arquivo. Tente de novo.",
+      "research_left_out_by_limit": "O curso chegou ao limite de 100 fontes: {count} páginas da pesquisa ficaram de fora. Exclua alguma fonte se quiser adicioná-las."
     }
   },
   "courses": {
@@ -3892,14 +3904,14 @@
     "new_chat": "Novo bate-papo",
     "tokens_label": "fichas",
     "implementing_course_plan": "Implementando Plano de Curso",
-    "resume": "Currículo",
+    "resume": "Continuar",
     "stopped_content_kept": "Parado. O conteúdo criado foi mantido.",
     "mention_lesson": "Lição",
     "mention_exercise": "Exercício",
     "mention_section": "Seção",
     "mention_no_results": "Nenhum conteúdo correspondente",
     "uploading_document": "Carregando documento...",
-    "agent_running_warning": "As alterações aparecerão no curso assim que o agente terminar. Não recarregue a página.",
+    "agent_running_warning": "Você pode sair desta página: o assistente termina o lote de trabalho em andamento e o salva. Se o curso não ficar completo, ao voltar toque em «Continuar».",
     "agent_running_warning_dismiss": "Dispensar",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "O trabalhador não responde",
         "body": "Esta execução está aguardando há mais de 30 segundos sem nenhuma coleta de trabalhador. O trabalhador em segundo plano pode estar inativo ou reiniciando."
       }
-    }
+    },
+    "error_timeout": "Está demorando mais que o normal. O pedido continua em andamento: tente de novo em alguns segundos.",
+    "error_stream_cut": "A conexão com o assistente caiu. O que já foi criado ficou salvo.",
+    "error_round_in_progress": "O assistente ainda está trabalhando neste chat. Aguarde até terminar.",
+    "round_in_progress_notice": "O assistente está trabalhando neste curso. A tela se atualiza sozinha.",
+    "tool_interrupted": "Interrompido antes de terminar. Confira o curso: o que chegou a ser salvo ficou salvo.",
+    "control_message": {
+      "plan_approved": "Plano aprovado — construindo",
+      "continue_build": "Continuar a construção"
+    },
+    "plan_screen": {
+      "no_source_title": "Há aulas sem material",
+      "no_source_body": "{count, plural, one {Esta aula não tem nenhuma fonte do curso que a sustente. O que você quer fazer com ela?} other {Estas # aulas não têm nenhuma fonte do curso que as sustente. O que você quer fazer com elas?}}",
+      "no_source_general": "Escrevê-las com conhecimento geral",
+      "no_source_remove": "Tirá-las do plano",
+      "no_source_cancel": "Cancelar",
+      "no_source_remove_failed": "Não foi possível tirá-las sem deixar o plano incompleto. Escolha outra opção ou peça alterações ao assistente.",
+      "weak_source_hint": "Cita {sources}, mas ali o tema só é mencionado."
+    },
+    "stopping": "Parando…",
+    "stopping_notice": "Parando: o assistente termina o que está fazendo, salva e para.",
+    "stop_not_delivered": "Não conseguimos avisar o assistente para parar: ele vai terminar este lote de trabalho e salvá-lo. O chat se atualiza sozinho quando terminar.",
+    "stopped_by_teacher": "Você parou o assistente aqui. O que ele já tinha feito ficou salvo.",
+    "error_timeout_chat": "O assistente continua trabalhando e está demorando mais que o normal. O chat se atualiza sozinho quando terminar."
   },
   "widgets": {
     "heading": "Widgets",

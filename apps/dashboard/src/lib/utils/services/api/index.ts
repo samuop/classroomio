@@ -1,7 +1,7 @@
 import { type ApiClientConfig, ApiError, type RequestConfig } from './types';
 
 import { DEFAULT_CONFIG } from './constants';
-import { delay } from './utils';
+import { pedirConReintentos } from './intentos';
 import { hcWithType } from '@cio/api/rpc-types';
 import { get } from 'svelte/store';
 import { currentOrg } from '$lib/utils/store/org';
@@ -69,39 +69,6 @@ function toBase64Utf8(input: string): string {
   }
 
   return btoa(binary);
-}
-
-function mergeAbortSignals(...signals: Array<AbortSignal | null | undefined>) {
-  const activeSignals = signals.filter((signal): signal is AbortSignal => Boolean(signal));
-
-  if (activeSignals.length === 0) {
-    return undefined;
-  }
-
-  if (activeSignals.length === 1) {
-    return activeSignals[0];
-  }
-
-  const controller = new AbortController();
-
-  const abortWithSignal = (signal: AbortSignal) => {
-    if (controller.signal.aborted) {
-      return;
-    }
-
-    controller.abort(signal.reason);
-  };
-
-  for (const signal of activeSignals) {
-    if (signal.aborted) {
-      abortWithSignal(signal);
-      break;
-    }
-
-    signal.addEventListener('abort', () => abortWithSignal(signal), { once: true });
-  }
-
-  return controller.signal;
 }
 
 class ApiClient {
@@ -222,89 +189,22 @@ class ApiClient {
       headers.set('Content-Type', AGENT_CONTENT_TYPE);
     }
 
-    // Create abort controller for timeout
-    const timeoutController = new AbortController();
-    const timeoutId = setTimeout(() => timeoutController.abort(), timeout);
+    // El reloj y los reintentos viven en `intentos.ts`: ahí cada intento arma su
+    // propio reloj (antes el reintento de un 5xx corría sin ninguno).
+    const { signal, ...init } = fetchConfig;
 
-    const requestInit: RequestInit = {
-      ...fetchConfig,
-      headers,
-      body: requestBody,
-      signal: mergeAbortSignals(fetchConfig.signal, timeoutController.signal)
-    };
-
-    let lastError: Error | null = null;
-
-    // Retry logic with exponential backoff
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        const response = await this.config.customFetch(fullUrl, requestInit);
-
-        clearTimeout(timeoutId);
-
-        await this.config.onResponse(response);
-
-        if (response.ok) {
-          return response;
-        }
-
-        if (response.status === 401) {
-          await this.config.onAuthError();
-          throw new ApiError('Authentication failed', response.status, response.statusText, response);
-        }
-
-        if (response.status >= 400 && response.status < 500) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          throw new ApiError(errorText, response.status, response.statusText, response);
-        }
-
-        if (response.status >= 500) {
-          const error = new ApiError(response.statusText, response.status, response.statusText, response);
-
-          if (attempt === retries) {
-            throw error;
-          }
-
-          lastError = error;
-          await delay(this.config.retryDelay * Math.pow(2, attempt));
-          continue;
-        }
-
-        // Other status codes
-        throw new ApiError(`Unexpected status: ${response.statusText}`, response.status, response.statusText, response);
-      } catch (error) {
-        clearTimeout(timeoutId);
-
-        // Handle abort (timeout)
-        if (error instanceof Error && error.name === 'AbortError') {
-          if (!timeoutController.signal.aborted) {
-            throw error;
-          }
-
-          throw new ApiError('Request timeout', 408, 'Request Timeout');
-        }
-
-        // Handle network errors - retryable
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-          const networkError = new ApiError('Network error', 0, 'Network Error');
-
-          if (attempt === retries) {
-            await this.config.onNetworkError(networkError);
-            throw networkError;
-          }
-
-          lastError = networkError;
-          await delay(this.config.retryDelay * Math.pow(2, attempt));
-          continue;
-        }
-
-        // Re-throw non-retryable errors
-        throw error;
-      }
-    }
-
-    // If we get here, all retries failed
-    throw lastError || new ApiError('Request failed after all retries');
+    return pedirConReintentos({
+      fetch: (url, requestInit) => this.config.customFetch(url, requestInit),
+      url: fullUrl,
+      init: { ...init, headers, body: requestBody },
+      signal,
+      timeout,
+      retries,
+      retryDelay: this.config.retryDelay,
+      onResponse: (response) => this.config.onResponse(response),
+      onAuthError: () => this.config.onAuthError(),
+      onNetworkError: (error) => this.config.onNetworkError(error)
+    });
   }
 
   // Generic request method - handles all HTTP methods
@@ -333,6 +233,9 @@ export const classroomio = hcWithType(getRequestBaseUrl(), {
 
 // Utility functions for common use cases
 export const createApiClient = (config: ApiClientConfig) => new ApiClient(config);
+
+export { AI_REQUEST_TIMEOUT, AI_REQUEST_TIMEOUT_MAX, llamadaDeIA, opcionesDeIA } from './constants';
+export { MENSAJE_DE_TIEMPO_AGOTADO } from './intentos';
 
 // Re-export utility functions for convenience
 export {

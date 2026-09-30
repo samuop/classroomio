@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { type AIProviderConfig, createModel, resolveModelName } from '@cio/ai-assistant';
 import { etiquetasDeDiagrama } from '@api/services/agent/lesson-blocks';
 import { buildSourcePack } from '@api/services/agent/source-pack';
-import { quitarPasajesMarcados } from '@api/services/agent/unsupported-passages';
+import { prepararParaElJuez } from '@api/services/agent/unsupported-passages';
 import { recordTokenUsage } from '@api/services/agent/usage';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -69,6 +69,24 @@ export const PRESUPUESTO_FUENTES_TOKENS = 120_000;
 /** Largo mínimo de una cita para que valga la pena verificarla contra el texto. */
 const MIN_CARACTERES_CITA = 15;
 
+/**
+ * Cuánto se espera al juez antes de cortarlo.
+ *
+ * Su mediana medida es de 3 a 5 segundos todos los días, y sin tope una vez
+ * tardó 67: una sola lección se llevó 155 s de construcción esperando a un
+ * juez que devolvió cero avisos. Pasado esto la llamada se aborta y el estado
+ * queda `failed` con el motivo — la lección ya está guardada, así que cortar
+ * no pierde nada y esperar sí.
+ */
+export const TIEMPO_MAXIMO_JUEZ_MS = 25_000;
+
+/** ¿El error es el corte por tiempo que pidió quien llamó? */
+export function esCortePorTiempo(error: unknown): boolean {
+  const nombre = (error as { name?: string } | null)?.name;
+
+  return nombre === 'TimeoutError' || nombre === 'AbortError';
+}
+
 const Resultado = z.object({
   afirmaciones: z
     .array(
@@ -92,10 +110,12 @@ Flag a claim when ALL of these hold:
 - The sources do not state it, and it does not follow from what they state.
 
 Never flag:
-- General knowledge, definitions of common terms, or standard professional practice presented as such.
+- General knowledge, definitions of common terms, or standard professional practice presented as such — unless you are CERTAIN it is false (a rule about how a well-known tool or standard behaves that is not true). Then flag it, and say in \`porque\` what is actually true.
 - Pedagogical framing, transitions, summaries, questions to the reader, encouragement.
 - Anything the sources do support, even if the lesson words it differently, reorganises it, or gives it a clearer name.
-- Anything the lesson itself marks as an example, a hypothesis, or a gap ("this is an example", "confirm with your supervisor", "the material does not cover this").
+- Anything the lesson itself marks as a hypothesis or a gap ("confirm with your supervisor", "the material does not cover this").
+
+Text the writer marked as a made-up worked example arrives wrapped as [example: ...]. Its names, numbers, prices and dates are invented on purpose and declared as such: never flag those. But a general rule, a definition or a claim about how something works that the example states is still a claim — judge it like any other sentence.
 
 Read the diagrams too. Text extracted from a figure arrives marked as [diagram: ...]; an invented box in an org chart is exactly the kind of claim that matters here, and it is the one that started this.
 
@@ -208,11 +228,28 @@ export function redactarAviso(afirmaciones: AfirmacionSinRespaldo[]): string[] {
 
   const lista = afirmaciones.map((a, i) => `${i + 1}. "${a.cita}" — ${a.porque}`).join('\n');
 
+  // La herramienta que se nombra es la de por bloque. Decía «edit_lesson_content»,
+  // que es la de REPUESTO (exige copiar el HTML textual, y falla con cualquier
+  // etiqueta de por medio): medido, el constructor la siguió, falló contra un
+  // `<strong>`, y terminó borrando el bloque entero con la otra.
   return [
     `This lesson states things the course sources do not support:\n${lista}\n\n` +
-      `Fix this now with edit_lesson_content, before writing anything else. For each one: either rewrite it so it says only what the source actually supports, or delete it. Do NOT replace an unsupported claim with a different unsupported claim, and do NOT soften it into a vague version of itself.\n\n` +
+      `Fix each one now with replace_lesson_block on the block that carries it (take its blockId from get_lesson_content or from a search_lessons match; edit_lesson_content only for a lesson without block ids), before writing anything else. For each one: rewrite it so it says only what the source actually supports — or, when the note above says what is actually true, correct it to that — or delete it. Do NOT replace an unsupported claim with a different unsupported claim, and do NOT soften it into a vague version of itself. Leave every other sentence of the block exactly as it is.\n\n` +
       `If the material is genuinely missing and the lesson needs it to teach the topic, say so to the teacher and name the document you would need. There is no minimum length here: a shorter honest lesson plus a clear request is the correct outcome, and inventing the gap shut is not.`
   ];
+}
+
+/**
+ * Las citas de un aviso ya redactado, para cuando sólo se tiene el texto.
+ *
+ * El juez devuelve las afirmaciones estructuradas (`ResultadoDeFundamento.
+ * afirmaciones`), pero un verificador de otra procedencia puede traer sólo los
+ * avisos en prosa. La guardia del rebote necesita saber QUÉ frases se pidió
+ * cambiar para saber qué bloques pueden cambiar, y esto las rescata de la lista
+ * numerada que arma `redactarAviso`.
+ */
+export function citasDeLosAvisos(avisos: string[]): string[] {
+  return avisos.flatMap((aviso) => [...aviso.matchAll(/^\d+\. "(.+)" — /gm)].map((m) => m[1]));
 }
 
 /** Una fuente tal como la tuvo delante quien escribió. */
@@ -243,6 +280,14 @@ export interface ResultadoDeFundamento {
   estado: EstadoDelFundamento;
   /** Por qué no corrió. Sólo cuando `estado` no es `ok`. */
   motivo?: string;
+  /**
+   * Las mismas afirmaciones que `avisos`, sin redactar: la cita y el porqué.
+   *
+   * La guardia del rebote las necesita para saber qué bloques se pidió cambiar
+   * (los que contienen una cita) y cuáles tienen que volver idénticos. Sólo
+   * cuando hay alguna.
+   */
+  afirmaciones?: AfirmacionSinRespaldo[];
 }
 
 /** Lo que devuelve una ronda sin verificador: no corrió, y se dice. */
@@ -251,6 +296,34 @@ export const SIN_VERIFICADOR: ResultadoDeFundamento = {
   estado: 'skipped',
   motivo: 'the grounding check is off on this round'
 };
+
+/**
+ * El resultado del juez para una versión cuyo TEXTO no cambió: sólo se le
+ * agregaron marcas.
+ *
+ * ── Por qué no se lo vuelve a llamar ─────────────────────────────────────────
+ *
+ * Medido el 2026-09-29: el rebote pagaba un juez nuevo por cada lección aunque
+ * la corrección sólo hubiera agregado atributos, y ese segundo juez se llevaba
+ * la mitad del tiempo del rebote. Con el mismo texto el juez ve lo mismo, salvo
+ * lo que ahora quedó declarado:
+ *
+ *   - un pasaje marcado `data-sin-fuente` sale de lo que ve el juez, así que una
+ *     afirmación que caía ahí ya está declarada como hueco y se va;
+ *   - un ejemplo marcado sigue a la vista (`[example: …]`), así que lo que el
+ *     bloque afirmaba sigue en pie.
+ *
+ * Es la misma cuenta que hace el juez con su propia regla de la cita
+ * (`citaAparece`), sin salir a la red.
+ */
+export function fundamentoParaElMismoTexto(previo: ResultadoDeFundamento, contenido: string): ResultadoDeFundamento {
+  if (previo.estado !== 'ok' || !previo.afirmaciones?.length) return previo;
+
+  const texto = textoDeLeccion(prepararParaElJuez(contenido));
+  const siguen = previo.afirmaciones.filter((afirmacion) => citaAparece(afirmacion.cita, texto));
+
+  return { avisos: redactarAviso(siguen), estado: 'ok', ...(siguen.length > 0 ? { afirmaciones: siguen } : {}) };
+}
 
 export type Verificador = (params: {
   lessonTitle: string;
@@ -265,8 +338,8 @@ export type Verificador = (params: {
    * quiere encontrar.
    *
    * Vacío o ausente: se contrasta contra el paquete de fuentes del curso. Es el
-   * caso de una lección escrita "desde conocimiento general" con el acuerdo del
-   * docente: las prácticas generales presentadas como tales pasan, pero una
+   * caso de una lección escrita sin material asignado, desde el conocimiento
+   * general: las prácticas generales presentadas como tales pasan, pero una
    * política atribuida a ESTA empresa que ninguna fuente dice, no.
    */
   soloFuentes?: FuenteVista[];
@@ -313,6 +386,8 @@ export function crearVerificadorDeFundamento(params: {
   courseId: string;
   redis: RedisClient;
   providerConfig: AIProviderConfig;
+  /** Cuánto esperar al juez. Ver `TIEMPO_MAXIMO_JUEZ_MS`; los tests lo acortan. */
+  tiempoMaximoMs?: number;
 }): Verificador | undefined {
   if (!chequeoHabilitado()) return undefined;
 
@@ -336,13 +411,15 @@ export function crearVerificadorDeFundamento(params: {
     return fuentesPromesa;
   }
 
+  const tiempoMaximoMs = params.tiempoMaximoMs ?? TIEMPO_MAXIMO_JUEZ_MS;
+
   return async ({ lessonTitle, contenido, soloFuentes }) => {
-    // Lo que el escritor marcó —un ejemplo que inventó a propósito, un pasaje
-    // que declaró como propio— no entra: ya está declarado, y volver a marcarlo
-    // le enseñaría que marcar no sirve de nada. `citaAparece` se comprueba
-    // contra esta misma variable, así que el verificador no puede citar algo
-    // que no llegó a ver.
-    const texto = textoDeLeccion(quitarPasajesMarcados(contenido));
+    // Un pasaje que el escritor declaró como propio no entra: ya está declarado,
+    // y volver a marcarlo le enseñaría que declarar no sirve de nada. Un ejemplo
+    // marcado SÍ entra, envuelto: ver `prepararParaElJuez`. `citaAparece` se
+    // comprueba contra esta misma variable, así que el verificador no puede
+    // citar algo que no llegó a ver.
+    const texto = textoDeLeccion(prepararParaElJuez(contenido));
 
     // Una lección de dos frases no tiene afirmaciones que valga la pena
     // contrastar, y sigue costando el paquete de fuentes entero.
@@ -364,7 +441,9 @@ export function crearVerificadorDeFundamento(params: {
         schema: Resultado,
         system: INSTRUCCION,
         prompt: `${material}\n\n--- Lesson: ${lessonTitle} ---\n${texto}`,
-        maxRetries: 0
+        maxRetries: 0,
+        // Con tope: ver `TIEMPO_MAXIMO_JUEZ_MS`.
+        abortSignal: AbortSignal.timeout(tiempoMaximoMs)
       });
 
       // Se cobra: es una llamada al proveedor como cualquier otra, y si no se
@@ -397,12 +476,16 @@ export function crearVerificadorDeFundamento(params: {
           `${reales.length} con cita verificable${descartadas > 0 ? `, ${descartadas} descartada(s) por cita inexistente` : ''}`
       );
 
-      return { avisos: redactarAviso(reales), estado: 'ok' };
+      return { avisos: redactarAviso(reales), estado: 'ok', ...(reales.length > 0 ? { afirmaciones: reales } : {}) };
     } catch (error) {
       // Nunca puede tumbar la escritura de una lección: la lección queda
       // guardada igual. Lo que ya no pasa es que se guarde como si se hubiera
       // verificado — el motivo viaja al informe y de vuelta al modelo.
-      const motivo = error instanceof Error ? error.message : String(error);
+      const motivo = esCortePorTiempo(error)
+        ? `the check took longer than ${Math.round(tiempoMaximoMs / 1000)} s and was stopped`
+        : error instanceof Error
+          ? error.message
+          : String(error);
 
       console.error(`[grounding] no corrió para «${lessonTitle}»: ${motivo}`);
 

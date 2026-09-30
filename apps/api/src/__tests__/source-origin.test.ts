@@ -20,7 +20,27 @@ const getChatDocument = vi.fn();
 vi.mock('@cio/db/queries/agent', () => ({
   getChatDocument: (...args: unknown[]) => getChatDocument(...args),
   createChatDocument: (...args: unknown[]) => createChatDocument(...args),
-  findChatDocumentByContentHash: (...args: unknown[]) => findChatDocumentByContentHash(...args)
+  findChatDocumentByContentHash: (...args: unknown[]) => findChatDocumentByContentHash(...args),
+  // El tope de fuentes, con lugar de sobra: acá no se prueba.
+  contarFuentesDelCurso: vi.fn(async () => 0),
+  MAX_SOURCES_PER_COURSE: 100,
+  CODIGO_TOPE_DE_FUENTES: 'SOURCE_LIMIT_REACHED',
+  esTopeDeFuentes: (error: unknown) => (error as { code?: string } | null)?.code === 'SOURCE_LIMIT_REACHED'
+}));
+
+// Una página que el curso todavía no tiene: la búsqueda por dirección no
+// encuentra nada y se crea la fuente (el reemplazo se prueba en
+// fuente-web-releida.test.ts).
+vi.mock('@cio/db/queries/agent/fuentes-del-curso', () => ({
+  buscarFuentePorDireccion: vi.fn(async () => null),
+  reemplazarFuenteWeb: vi.fn(),
+  duenoDeFuente: vi.fn(async () => null)
+}));
+
+// El resumen se pide en segundo plano al crear la fuente; acá no interesa.
+vi.mock('@api/services/agent/resumenes-de-fuentes', () => ({
+  encolarResumen: vi.fn(),
+  leerResumenesGuardados: vi.fn(async () => new Map())
 }));
 
 vi.mock('@api/services/analytics/agent-events', () => ({

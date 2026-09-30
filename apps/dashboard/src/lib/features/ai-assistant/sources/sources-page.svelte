@@ -1,5 +1,9 @@
 <script lang="ts">
   import { sourcesApi } from '../api/sources.svelte';
+  import { leerEstadoDelPlanDelCurso } from '../api/plan-del-curso';
+  import { planSinTerminar } from '../utils/plan-del-curso.svelte';
+  import { claveDelErrorDeFuente } from '../utils/errores-del-chat';
+  import { openAiAssistant, setChatDraft } from '../utils/store';
   import SourceCard from './source-card.svelte';
   import UploadSourceDialog from './upload-source-dialog.svelte';
   import * as Page from '@cio/ui/base/page';
@@ -8,12 +12,23 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
+  import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
   import { onMount } from 'svelte';
   import { snackbar } from '$features/ui/snackbar/store';
 
   let { courseId }: { courseId: string } = $props();
 
   let uploadDialogOpen = $state(false);
+
+  /**
+   * Las fuentes recién agregadas que el plan armado no usa, o `null`.
+   *
+   * Cada lección del plan ya dice de qué fuentes sale, y el escritor recibe sólo
+   * esas: una fuente que llega después queda afuera de la construcción. Medido:
+   * una planilla agregada mientras el plan esperaba la aprobación no se usó, y
+   * nada lo dijo.
+   */
+  let fuentesFueraDelPlan = $state<string[] | null>(null);
 
   onMount(() => {
     void load();
@@ -38,10 +53,48 @@
   }
 
   async function handleUploaded(documentId: string) {
+    const antes = new Set(sourcesApi.sources.map((fuente) => fuente.id));
+
     await load();
-    if (!sourcesApi.error) {
-      snackbar.success(t.get('course.sources.snackbar_uploaded'));
+
+    if (sourcesApi.error) return;
+
+    snackbar.success(t.get('course.sources.snackbar_uploaded'));
+
+    // Las que entraron ahora (una investigación agrega varias). Si no hay
+    // ninguna nueva, la misma página se agregó dos veces y el servidor devolvió
+    // la que ya estaba.
+    const nuevas = sourcesApi.sources.filter((fuente) => !antes.has(fuente.id));
+    const agregadas = nuevas.length > 0 ? nuevas : sourcesApi.sources.filter((fuente) => fuente.id === documentId);
+
+    void avisarSiElPlanNoLasUsa(agregadas.map((fuente) => fuente.fileName));
+  }
+
+  async function avisarSiElPlanNoLasUsa(nombres: string[]) {
+    if (nombres.length === 0) return;
+
+    if (planSinTerminar(await leerEstadoDelPlanDelCurso(courseId))) {
+      fuentesFueraDelPlan = nombres;
     }
+  }
+
+  /**
+   * Abre el chat con el pedido escrito, para que la docente lo mande (o lo
+   * cambie). Viaja como pedido de cambios al plan: ver `ChatDraft.rehacerPlan`.
+   */
+  function pedirQueRehagaElPlan() {
+    if (!fuentesFueraDelPlan) return;
+
+    setChatDraft({
+      text: t.get('course.sources.plan_notice_prompt', {
+        count: fuentesFueraDelPlan.length,
+        names: fuentesFueraDelPlan.map((nombre) => `"${nombre}"`).join(', ')
+      }),
+      mode: 'append',
+      rehacerPlan: true
+    });
+    openAiAssistant();
+    fuentesFueraDelPlan = null;
   }
 
   async function handleDelete(documentId: string) {
@@ -53,13 +106,27 @@
     }
   }
 
+  /**
+   * El botón ↻: vuelve a leer la fuente de verdad (el archivo con el lector de
+   * hoy, o la página otra vez). «Fuente actualizada» sólo si el texto cambió:
+   * antes lo decía siempre, aunque no se hubiera releído nada.
+   */
   async function handleRefresh(documentId: string) {
-    const status = await sourcesApi.refreshCache(documentId);
-    if (status) {
-      snackbar.success(t.get('course.sources.snackbar_cache_refreshed'));
-    } else if (sourcesApi.error) {
-      snackbar.error(t.get('course.sources.snackbar_cache_refresh_failed'));
+    const relectura = await sourcesApi.releerFuente(documentId);
+
+    if (!relectura) {
+      snackbar.error(t.get(claveDelErrorDeFuente(sourcesApi.error, 'course.sources.snackbar_cache_refresh_failed')));
+      return;
     }
+
+    if (!relectura.changed) {
+      snackbar.info(t.get('course.sources.snackbar_reread_unchanged'));
+      return;
+    }
+
+    snackbar.success(t.get('course.sources.snackbar_cache_refreshed'));
+    // Cambió el texto: cambian las palabras y las páginas que muestra la tarjeta.
+    await sourcesApi.listSources(courseId);
   }
 </script>
 
@@ -81,7 +148,7 @@
         que es la única parte que le sirve.
       -->
       {#if sourcesApi.sources.length > 0 && sourcesApi.reconciling}
-        <span class="ui:text-border">·</span>
+        <span class="text-(--border)">·</span>
         <div class="ui:text-primary flex items-center gap-1.5">
           <LoaderIcon size={11} class="animate-spin" />
           <span>{$t('course.sources.reconciling')}</span>
@@ -93,6 +160,27 @@
       {$t('course.sources.upload_cta')}
     </Button>
   </div>
+
+  {#if fuentesFueraDelPlan}
+    <div
+      class="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm sm:flex-row sm:items-center"
+      role="status"
+      data-aviso-plan
+    >
+      <TriangleAlertIcon size={16} class="hidden shrink-0 text-amber-600 sm:block dark:text-amber-400" />
+      <p class="min-w-0 flex-1 text-pretty">
+        {$t('course.sources.plan_notice', { count: fuentesFueraDelPlan.length })}
+      </p>
+      <div class="flex shrink-0 gap-2">
+        <Button size="sm" variant="ghost" onclick={() => (fuentesFueraDelPlan = null)}>
+          {$t('course.sources.plan_notice_dismiss')}
+        </Button>
+        <Button size="sm" variant="outline" onclick={() => pedirQueRehagaElPlan()}>
+          {$t('course.sources.plan_notice_action')}
+        </Button>
+      </div>
+    </div>
+  {/if}
 
   {#if sourcesApi.isLoading && sourcesApi.sources.length === 0}
     <div class="flex items-center justify-center py-12">

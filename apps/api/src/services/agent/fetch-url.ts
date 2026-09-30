@@ -3,10 +3,40 @@ import { isIPv4, isIPv6 } from 'node:net';
 import { AppError } from '@api/utils/errors';
 import { env } from '@api/config/env';
 import { redis, logRedisUnavailableOnce } from '@api/utils/redis/redis';
+import { diagnosticarPagina, errorDePaginaSinContenido } from '@api/services/agent/pagina-sin-contenido';
 
 const JINA_READER_PREFIX = 'https://r.jina.ai/';
 const MAX_MARKDOWN_BYTES = 150 * 1024;
 const CACHE_TTL_SEC = 7 * 24 * 3600;
+
+/**
+ * Cuánto se guarda una página que el diagnóstico marcó (muro de inicio de
+ * sesión, error del sitio, página vacía).
+ *
+ * Con los 7 días de una página buena, el muro quedaba congelado: la docente
+ * compartía la planilla, la volvía a agregar y le volvía el mismo muro desde la
+ * caché. Diez minutos alcanzan para que un reintento inmediato —la
+ * investigación que se relanza, el agente que insiste con el mismo enlace— no
+ * vuelva a pagar la lectura, y no más.
+ */
+const CACHE_TTL_SIN_CONTENIDO_SEC = 10 * 60;
+
+/**
+ * Plazo de una lectura del lector.
+ *
+ * Sin plazo, una página colgada colgaba la investigación entera: su tope de 48 s
+ * sólo impedía empezar lecturas nuevas, y el navegador se iba a los 30 s con
+ * «Request timeout» mientras el servidor seguía esperando. Las lecturas medidas
+ * tardan de 1 a 10 s; 15 s es margen para un día malo.
+ */
+export const PLAZO_DE_LECTURA_MS = 15_000;
+
+/**
+ * Plazo cuando la lectura la pidió la docente a mano (Fuentes → Página web,
+ * «Volver a leer»): es una sola página y está esperando por ella, así que se le
+ * da más aire, sin pasar los 30 s que el panel espera por defecto.
+ */
+export const PLAZO_DE_LECTURA_A_MANO_MS = 25_000;
 
 export type FetchDocumentationUrlResult = {
   url: string;
@@ -227,6 +257,19 @@ async function redisSafeGet(key: string): Promise<string | null> {
   }
 }
 
+/** Una entrada de la caché que no se pueda leer cuenta como que no está: se vuelve a bajar. */
+function leerDeLaCache(raw: string | null): CachedFetchPayload | null {
+  if (!raw) return null;
+
+  try {
+    const cached = JSON.parse(raw) as CachedFetchPayload;
+
+    return typeof cached?.rawMarkdown === 'string' && typeof cached.url === 'string' ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
 async function redisSafeSet(key: string, value: string, ttlSec: number): Promise<void> {
   try {
     if (!redis.isOpen) {
@@ -239,7 +282,14 @@ async function redisSafeSet(key: string, value: string, ttlSec: number): Promise
   }
 }
 
-async function fetchMarkdownFromJina(url: string): Promise<{ markdown: string; status: number }> {
+function esVencimiento(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
+async function fetchMarkdownFromJina(
+  url: string,
+  opciones: { fresco: boolean; plazoMs: number }
+): Promise<{ markdown: string; status: number }> {
   const readerHref = `${JINA_READER_PREFIX}${url}`;
   const headers: Record<string, string> = {};
 
@@ -247,31 +297,55 @@ async function fetchMarkdownFromJina(url: string): Promise<{ markdown: string; s
     headers.Authorization = `Bearer ${env.JINA_API_KEY}`;
   }
 
+  // El lector también guarda lo que leyó. Una lectura fresca que se saltea
+  // NUESTRA caché y le pide al lector su copia vieja devolvería el mismo muro
+  // que la docente acaba de destrabar compartiendo el documento.
+  if (opciones.fresco) {
+    headers['X-No-Cache'] = 'true';
+  }
+
+  // El plazo cubre también la lectura del cuerpo: la señal corta el stream si
+  // la página manda las cabeceras y después se cuelga.
+  const plazo = AbortSignal.timeout(opciones.plazoMs);
+
   let response: Response;
+  let markdown: string;
 
   try {
     response = await fetch(readerHref, {
       headers,
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: plazo
     });
-  } catch {
+
+    const status = response.status;
+
+    if (!response.ok) {
+      console.info('[fetch_documentation_url]', { url, status, bytes: response.headers.get('content-length') });
+
+      throw new AppError(`Documentation fetch failed with status ${status}`, 'DOCUMENTATION_FETCH_FAILED', 502);
+    }
+
+    markdown = await response.text();
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+
+    if (esVencimiento(error) || plazo.aborted) {
+      console.info('[fetch_documentation_url]', { url, vencio: `${opciones.plazoMs} ms` });
+
+      throw new AppError(
+        `The page took longer than ${Math.round(opciones.plazoMs / 1000)} s to load`,
+        'DOCUMENTATION_FETCH_TIMEOUT',
+        504
+      );
+    }
+
     throw new AppError('Failed to reach documentation reader', 'DOCUMENTATION_FETCH_FAILED', 502);
   }
 
-  const status = response.status;
-  const bytesHint = response.headers.get('content-length');
+  console.info('[fetch_documentation_url]', { url, status: response.status, bytes: String(markdown.length) });
 
-  if (!response.ok) {
-    console.info('[fetch_documentation_url]', { url, status, bytes: bytesHint });
-
-    throw new AppError(`Documentation fetch failed with status ${status}`, 'DOCUMENTATION_FETCH_FAILED', 502);
-  }
-
-  const markdown = await response.text();
-
-  console.info('[fetch_documentation_url]', { url, status, bytes: String(markdown.length) });
-
-  return { markdown, status };
+  return { markdown, status: response.status };
 }
 
 export async function fetchDocumentationUrl(params: {
@@ -283,8 +357,19 @@ export async function fetchDocumentationUrl(params: {
    */
   courseId?: string;
   priorMessages: unknown[];
+  /**
+   * Leer la página de nuevo aunque esté en la caché, y reescribirla.
+   *
+   * Para cuando lo pide la docente a mano: si agrega una página es porque
+   * quiere lo que la página dice HOY. Con la caché de 7 días, la planilla que
+   * acababa de compartir le seguía devolviendo el muro de la primera vez.
+   */
+  fresco?: boolean;
+  /** Plazo de la lectura; por defecto `PLAZO_DE_LECTURA_MS`. */
+  plazoMs?: number;
 }): Promise<FetchDocumentationUrlResult> {
   const { url, orgId, courseId, priorMessages } = params;
+  const fresco = params.fresco === true;
 
   const normalizedUrl = assertFetchableDocumentationUrl(url);
   const normalizedHref = normalizedUrl.href;
@@ -304,28 +389,33 @@ export async function fetchDocumentationUrl(params: {
   const cacheKeyRaw = `${orgId}:${normalizedHref}`;
   const cacheKey = `agent:fetch_url:${createHash('sha256').update(cacheKeyRaw).digest('hex')}`;
 
-  const cachedRaw = await redisSafeGet(cacheKey);
+  const cached = fresco ? null : leerDeLaCache(await redisSafeGet(cacheKey));
 
-  if (cachedRaw) {
-    try {
-      const cached = JSON.parse(cachedRaw) as CachedFetchPayload;
-      const truncated = truncateMarkdown(cached.rawMarkdown);
+  if (cached) {
+    // El diagnóstico corre también sobre lo guardado: una entrada escrita antes
+    // de que existiera —con sus 7 días— puede ser un muro, y devolverla como
+    // página sería el mismo agujero por la puerta de atrás.
+    const diagnostico = diagnosticarPagina(cached.rawMarkdown);
 
-      return {
-        url: cached.url,
-        pageTitle: cached.pageTitle,
-        content: wrapUntrustedMarkdown(cached.url, truncated.text),
-        links: cached.links,
-        contentTokens: Math.ceil(truncated.text.length / 4),
-        fetchedAt: cached.fetchedAt,
-        cacheHit: true
-      };
-    } catch {
-      // fall through to refetch
-    }
+    if (diagnostico) throw errorDePaginaSinContenido(diagnostico, cached.url);
+
+    const truncated = truncateMarkdown(cached.rawMarkdown);
+
+    return {
+      url: cached.url,
+      pageTitle: cached.pageTitle,
+      content: wrapUntrustedMarkdown(cached.url, truncated.text),
+      links: cached.links,
+      contentTokens: Math.ceil(truncated.text.length / 4),
+      fetchedAt: cached.fetchedAt,
+      cacheHit: true
+    };
   }
 
-  const { markdown } = await fetchMarkdownFromJina(normalizedHref);
+  const { markdown } = await fetchMarkdownFromJina(normalizedHref, {
+    fresco,
+    plazoMs: params.plazoMs ?? PLAZO_DE_LECTURA_MS
+  });
   const truncated = truncateMarkdown(markdown);
   const pageTitle = guessPageTitle(truncated.text, normalizedHref);
   const links = extractSameOriginLinks(truncated.text, normalizedUrl);
@@ -339,7 +429,24 @@ export async function fetchDocumentationUrl(params: {
     fetchedAt
   };
 
-  await redisSafeSet(cacheKey, JSON.stringify(cachePayload), CACHE_TTL_SEC);
+  const diagnostico = diagnosticarPagina(truncated.text);
+
+  // Lo marcado se guarda igual, pero poco: ver CACHE_TTL_SIN_CONTENIDO_SEC.
+  await redisSafeSet(
+    cacheKey,
+    JSON.stringify(cachePayload),
+    diagnostico ? CACHE_TTL_SIN_CONTENIDO_SEC : CACHE_TTL_SEC
+  );
+
+  if (diagnostico) {
+    console.info('[fetch_documentation_url] sin contenido', {
+      url: normalizedHref,
+      code: diagnostico.code,
+      motivo: diagnostico.motivo
+    });
+
+    throw errorDePaginaSinContenido(diagnostico, normalizedHref);
+  }
 
   void courseId;
 

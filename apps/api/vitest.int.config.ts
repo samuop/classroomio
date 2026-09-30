@@ -3,14 +3,14 @@ import { defineConfig } from 'vitest/config';
 import { INTEGRATION_TESTS, testAlias } from './vitest.shared';
 
 /**
- * Tests de integración: los que necesitan un Postgres de verdad.
+ * Tests de integración: los que necesitan un Postgres o un Redis de verdad.
  *
  * Se corren con `pnpm test:db` y NO entran en `pnpm test`, que tiene que seguir
  * pasando en una máquina sin Docker.
  *
- * Levantar la base: `docker compose -f docker/docker-compose.yaml up -d postgres`
+ * Levantar los dos: `docker compose -f docker/docker-compose.yaml up -d postgres redis`
  * y `pnpm --filter @cio/db db:setup`. El `DATABASE_URL` sale de `apps/api/.env`,
- * que `@cio/db` carga solo con dotenv.
+ * que `@cio/db` carga solo con dotenv; Redis, de `REDIS_URL` o `localhost:6379`.
  */
 export default defineConfig({
   resolve: {

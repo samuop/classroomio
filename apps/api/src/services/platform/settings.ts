@@ -32,7 +32,12 @@ const FALLBACK_CHAT_MODEL_IDS = [
 
 export interface SelectableChatModel {
   id: string;
-  /** Cost units per token, against the Flash-Lite baseline. */
+  /**
+   * Cuánto más caro que la base (Flash-Lite) sale el modelo con la mezcla 80/20
+   * de entrada y salida, al precio de hoy. Es una referencia para elegir: el
+   * cupo se descuenta llamada por llamada con la entrada, la salida y la caché
+   * de cada modelo (`computeCostUnits`).
+   */
   multiplier: number;
   /**
    * False when nobody has priced this model and it is being counted at 1×. The

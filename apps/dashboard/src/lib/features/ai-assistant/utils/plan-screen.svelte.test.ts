@@ -68,4 +68,28 @@ describe('sincronizar la pantalla del plan desde un efecto', () => {
 
     expect(pantallaDelPlan.abierta).toBe(false);
   });
+
+  it('al cerrarse el chat se desconectan sus acciones y la pantalla se cierra', () => {
+    // Con las acciones en un `$state` profundo quedaban envueltas en un proxy, y
+    // la comparación de la desconexión (proxy contra objeto) daba siempre
+    // «distinto»: la pantalla seguía abierta, aprobando contra un chat muerto.
+    const desconectar = pantallaDelPlan.conectar({ aprobar: () => {}, pedirCambios: () => {} });
+    pantallaDelPlan.mostrar({ id: 'call-1', plan });
+
+    desconectar();
+
+    expect(pantallaDelPlan.acciones).toBeNull();
+    expect(pantallaDelPlan.abierta).toBe(false);
+  });
+
+  it('desconectar un chat viejo no suelta las acciones del que lo reemplazó', () => {
+    const desconectarViejo = pantallaDelPlan.conectar({ aprobar: () => {}, pedirCambios: () => {} });
+    const nuevas = { aprobar: () => {}, pedirCambios: () => {} };
+    const desconectarNuevo = pantallaDelPlan.conectar(nuevas);
+
+    desconectarViejo();
+
+    expect(pantallaDelPlan.acciones).toBe(nuevas);
+    desconectarNuevo();
+  });
 });

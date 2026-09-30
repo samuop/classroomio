@@ -28,6 +28,9 @@ export const SIN_FUENTE_ATTRIBUTE = 'data-sin-fuente';
  * `svgBlock` is absent for the same reason it is absent there — it renders by
  * handing ProseMirror the raw `<svg>`, bypassing attribute serialisation, so a
  * mark stamped on it could never reach storage.
+ *
+ * `table` for the same reason as in `Ejemplo`: tables carry spreadsheet data
+ * now, and a mark on one has to survive the first save.
  */
 const DEFAULT_TYPES = [
   'paragraph',
@@ -36,7 +39,8 @@ const DEFAULT_TYPES = [
   'bulletList',
   'orderedList',
   'listItem',
-  'codeBlock'
+  'codeBlock',
+  'table'
 ];
 
 export interface SinFuenteOptions {

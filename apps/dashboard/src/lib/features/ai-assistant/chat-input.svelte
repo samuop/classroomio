@@ -22,6 +22,7 @@
   import ContextIndicator from '$features/ai-assistant/context-indicator.svelte';
   import type { ContextUsage } from '$features/ai-assistant/utils/context-utils';
   import { imagenesDe, TIPOS_DE_IMAGEN, type AdjuntoDeImagen } from '$features/ai-assistant/utils/chat-attachments';
+  import { mensajeDelErrorDelChat } from '$features/ai-assistant/utils/errores-del-chat';
 
   interface UploadedDocument {
     id: string;
@@ -34,7 +35,24 @@
     isExhausted: boolean;
     isUploading: boolean;
     error: Error | null | undefined;
-    /** True when there is a last-sent message we can re-send with Retry. */
+    /**
+     * El stream de la ronda se cortó después de empezar. La ronda sigue en el
+     * servidor y lo creado quedó guardado: se dice eso, y no «revisá tu
+     * conexión», que culpaba a la docente de un corte del camino al servidor.
+     */
+    streamCut?: boolean;
+    /**
+     * El servidor tiene una ronda viva en esta conversación y el panel espera a
+     * que termine para recargarla. Mientras tanto no se puede mandar nada.
+     */
+    waitingForRound?: boolean;
+    /**
+     * La docente tocó «Detener» y el servidor recibió la orden: la ronda
+     * termina lo que está haciendo y cierra. Mientras tanto el botón no se
+     * vuelve a tocar y se dice qué está pasando.
+     */
+    stopping?: boolean;
+    /** Hay un turno que falló y se puede volver a pedir con «Reintentar». */
     canRetry?: boolean;
     mentionItems: MentionItem[];
     uploadedDocument: UploadedDocument | null;
@@ -66,6 +84,9 @@
     isExhausted,
     isUploading,
     error,
+    streamCut = false,
+    waitingForRound = false,
+    stopping = false,
     canRetry = false,
     mentionItems,
     uploadedDocument,
@@ -218,30 +239,18 @@
     return t.get('ai_assistant.mention_lesson');
   }
 
-  function getUserFriendlyErrorMessage(errorMessage: string): string {
-    const lowerMessage = errorMessage.toLowerCase();
-
-    if (lowerMessage.includes('quota exceeded') || lowerMessage.includes('rate limit')) {
-      const retryMatch = errorMessage.match(/retry in (\d+(?:\.\d+)?)/i);
-      const waitSeconds = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
-
-      return waitSeconds
-        ? t.get('ai_assistant.error_rate_limit_with_wait', { seconds: waitSeconds })
-        : t.get('ai_assistant.error_rate_limit');
-    }
-
-    if (lowerMessage.includes('context length') || lowerMessage.includes('too long')) {
-      return t.get('ai_assistant.error_context_too_long');
-    }
-
-    if (lowerMessage.includes('network') || lowerMessage.includes('connection')) {
-      return t.get('ai_assistant.error_network');
-    }
-
-    return errorMessage;
-  }
-
-  const displayErrorMessage = $derived(error ? getUserFriendlyErrorMessage(error.message) : null);
+  // Qué texto corresponde a cada error lo decide `mensajeDelErrorDelChat`, sin
+  // pantalla, para poder probarlo: un vencimiento, un 409 de conversación
+  // ocupada y un corte del stream tienen cada uno el suyo.
+  const mensajeDeError = $derived(mensajeDelErrorDelChat(error, { corte: streamCut }));
+  const displayErrorMessage = $derived(
+    !mensajeDeError
+      ? null
+      : 'clave' in mensajeDeError
+        ? $t(mensajeDeError.clave, mensajeDeError.valores ?? {})
+        : mensajeDeError.texto
+  );
+  const composerDisabled = $derived(isStreaming || isUploading || waitingForRound);
   const hasHeaderContent = $derived(attachments.length > 0 || isUploading || !!uploadedDocument);
 
   const iconButtonClass =
@@ -292,7 +301,17 @@
         {/if}
       </div>
     {:else}
-      {#if isStreaming && !agentRunningWarningDismissed && !isStudent}
+      {#if isStreaming && stopping}
+        <div
+          class="ui:text-muted-foreground mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs"
+          role="status"
+          aria-live="polite"
+          data-round-stopping
+        >
+          <LoaderIcon size={12} class="shrink-0 animate-spin" />
+          <span class="min-w-0 flex-1">{$t('ai_assistant.stopping_notice')}</span>
+        </div>
+      {:else if isStreaming && !agentRunningWarningDismissed && !isStudent}
         <div class="ui:text-muted-foreground mb-2 flex items-start gap-2 px-1 text-xs">
           <span class="min-w-0 flex-1">{$t('ai_assistant.agent_running_warning')}</span>
           <button
@@ -310,12 +329,14 @@
       {#if displayErrorMessage}
         <div
           class="mb-2 flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 sm:flex-row sm:items-center sm:justify-between sm:gap-3 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+          data-chat-error
         >
           <span class="min-w-0 flex-1">{displayErrorMessage}</span>
-          {#if onRetry && canRetry && !isStreaming}
+          {#if onRetry && canRetry && !isStreaming && !waitingForRound}
+            <!-- `() => onRetry()`: un `onclick` le pasa el MouseEvent a la función que reciba. -->
             <button
               type="button"
-              onclick={onRetry}
+              onclick={() => onRetry?.()}
               class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 dark:border-red-700 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
             >
               <RotateCwIcon size={12} />
@@ -325,13 +346,30 @@
         </div>
       {/if}
 
+      {#if waitingForRound}
+        <!--
+          La ronda sigue en el servidor aunque este panel haya perdido el stream
+          (o se haya abierto después). Se avisa y se espera: mandar algo ahora
+          sería una segunda ronda sobre la misma conversación.
+        -->
+        <div
+          class="ui:text-muted-foreground mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs"
+          role="status"
+          aria-live="polite"
+          data-round-in-progress
+        >
+          <LoaderIcon size={12} class="shrink-0 animate-spin" />
+          <span class="min-w-0 flex-1">{$t('ai_assistant.round_in_progress_notice')}</span>
+        </div>
+      {/if}
+
       <ChatTextarea
         bind:ref={chatTextareaRef}
         bind:value={inputValue}
         {mentionItems}
         onSubmit={onSend}
         placeholder={$t('ai_assistant.input_placeholder')}
-        disabled={isStreaming || isUploading}
+        disabled={composerDisabled}
         typeLabel={getTypeLabel}
         emptyMessage={t.get('ai_assistant.mention_no_results')}
         rows={2}
@@ -458,19 +496,25 @@
             <button
               type="button"
               onmousedown={(event) => event.preventDefault()}
-              onclick={onStop}
-              class="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--foreground) text-(--background) transition-opacity hover:opacity-85"
-              title={$t('ai_assistant.stop')}
-              aria-label={$t('ai_assistant.stop')}
+              onclick={() => onStop()}
+              disabled={stopping}
+              class="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--foreground) text-(--background) transition-opacity hover:opacity-85 disabled:pointer-events-none disabled:opacity-50"
+              title={stopping ? $t('ai_assistant.stopping') : $t('ai_assistant.stop')}
+              aria-label={stopping ? $t('ai_assistant.stopping') : $t('ai_assistant.stop')}
+              data-stop-button
             >
-              <SquareIcon size={11} class="fill-current" />
+              {#if stopping}
+                <LoaderIcon size={12} class="animate-spin" />
+              {:else}
+                <SquareIcon size={11} class="fill-current" />
+              {/if}
             </button>
           {:else}
             <button
               type="button"
               onmousedown={(event) => event.preventDefault()}
               onclick={() => onSend()}
-              disabled={!canSend}
+              disabled={!canSend || waitingForRound}
               class="flex size-8 shrink-0 items-center justify-center rounded-full bg-(--primary) text-(--primary-foreground) transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-30"
               title={$t('ai_assistant.send')}
               aria-label={$t('ai_assistant.send')}

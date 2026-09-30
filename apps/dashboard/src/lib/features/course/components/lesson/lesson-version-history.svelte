@@ -10,7 +10,7 @@
   import { courseApi } from '$features/course/api';
   import { SafeHtmlContent } from '@cio/ui/custom/safe-html-content';
   import { t } from '$lib/utils/functions/translations';
-  import { formatDisplayDateTime } from '$lib/utils/functions/date';
+  import { formatDisplayDateTime, instanteDelServidor } from '$lib/utils/functions/date';
 
   import { snackbar } from '$features/ui/snackbar/store';
   import type { TLocale } from '@cio/db/types';
@@ -60,8 +60,7 @@
 
   function formatTimestamp(timestamp: string | Date) {
     // El backend manda UTC sin sufijo; el helper lo pasa a hora argentina.
-    const raw = typeof timestamp === 'string' && !timestamp.endsWith('Z') ? `${timestamp}Z` : timestamp;
-    return formatDisplayDateTime(raw instanceof Date ? raw.toISOString() : raw);
+    return formatDisplayDateTime(instanteDelServidor(timestamp).toISOString());
   }
 
   function handleDrawerClose() {
@@ -115,7 +114,8 @@
         const toLessonHistory = (item: (typeof data)[number]): LessonHistory => ({
           old_content: item.oldContent ?? '',
           new_content: item.newContent ?? '',
-          timestamp: item.timestamp ? new Date(item.timestamp) : new Date(),
+          // Como UTC: leída con `new Date`, la hora del servidor quedaba 3 horas corrida.
+          timestamp: item.timestamp ? instanteDelServidor(item.timestamp) : new Date(),
           locale: (item.locale as TLocale) ?? 'en',
           lesson_id: item.lessonId ?? ''
         });
@@ -124,7 +124,7 @@
         for (const item of lessonHistory) existingTimestamps[versionKey(item.timestamp)] = true;
 
         const newEntries = data
-          .filter((item) => !existingTimestamps[versionKey(item.timestamp ?? 0)])
+          .filter((item) => !existingTimestamps[versionKey(instanteDelServidor(item.timestamp ?? 0))])
           .map(toLessonHistory);
         lessonHistory = removeDuplicate([...lessonHistory, ...newEntries]);
 

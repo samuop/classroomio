@@ -1,11 +1,13 @@
 <script lang="ts">
   import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
   import CheckIcon from '@lucide/svelte/icons/check';
+  import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
   import CircleIcon from '@lucide/svelte/icons/circle';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import ListChecksIcon from '@lucide/svelte/icons/list-checks';
   import LoaderIcon from '@lucide/svelte/icons/loader';
+  import PlayIcon from '@lucide/svelte/icons/play';
   import { renderMarkdown } from '$features/ai-assistant/utils/markdown';
   import {
     getMentionRoute,
@@ -32,6 +34,8 @@
     type ProgressStep
   } from '$features/ai-assistant/utils/tool-labels';
   import { idDelPlan } from '$features/ai-assistant/utils/plan-summary';
+  import { aprobacionVigente } from '$features/ai-assistant/utils/aprobacion';
+  import { mensajeDeControl } from '$features/ai-assistant/utils/mensajes-de-control';
   import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
   import type { PlanMostrado } from '$features/ai-assistant/utils/plan-screen.svelte';
   import { snackbar } from '$features/ui/snackbar/store';
@@ -277,6 +281,9 @@
       : []
   );
 
+  /** La ronda cerró por el «Detener» de la docente. Ver `stoppedByTeacher`. */
+  const stoppedByTeacher = $derived(message.role === 'assistant' && message.metadata?.stoppedByTeacher === true);
+
   const isStreamingThisMessage = $derived(isStreaming && isLast && message.role === 'assistant');
   const hasToolParts = $derived((message.parts ?? []).some((part) => isAgentToolPart(part)));
 
@@ -288,6 +295,7 @@
       hasToolParts ||
       writerNotes.length > 0 ||
       roundChanges.length > 0 ||
+      stoppedByTeacher ||
       showPlanProgress
   );
 
@@ -329,21 +337,25 @@
 
   const partsToRender = $derived(isStreamingThisMessage ? sampledParts : inlineParts);
 
-  // A plan is "already implemented" once a later user message requested its
-  // implementation.
+  /**
+   * El plan de este mensaje ya se aprobó: con una aprobación posterior que tuvo
+   * respuesta, o que está en vuelo. Una aprobación que falló no cuenta: la
+   * tarjeta vuelve a «Propuesto» y el botón de aprobar vuelve a estar. Ver
+   * `aprobacionVigente`.
+   */
   const planAlreadyImplemented = $derived.by(() => {
     const selfIndex = messages.indexOf(message);
     if (selfIndex < 0) return false;
 
-    for (let index = selfIndex + 1; index < messages.length; index += 1) {
-      const meta = messages[index]?.metadata as AiAssistantMessageMetadata | undefined;
-      if (messages[index]?.role === 'user' && meta?.plan?.action === 'implement_course_plan') {
-        return true;
-      }
-    }
-
-    return false;
+    return aprobacionVigente(messages, selfIndex, isStreaming) !== null;
   });
+
+  /**
+   * Si este mensaje es un gesto del docente —aprobar el plan, «Continuar»— y no
+   * algo que escribió. Se dibuja como una ficha: el texto fijo que viaja al
+   * modelo no es lo que la docente dijo. Ver `mensajes-de-control.ts`.
+   */
+  const control = $derived(mensajeDeControl(message));
 
   interface ImagenAdjunta {
     url: string;
@@ -421,7 +433,20 @@
       </div>
     {/if}
 
-    {#if inlineParts.length > 0}
+    {#if control}
+      <div
+        class="ui:text-muted-foreground inline-flex max-w-[85%] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium"
+        data-control={control}
+      >
+        {#if control === 'aprobacion'}
+          <CircleCheckIcon size={12} class="shrink-0 text-green-600 dark:text-green-400" />
+          {$t('ai_assistant.control_message.plan_approved')}
+        {:else}
+          <PlayIcon size={12} class="ui:text-primary shrink-0" />
+          {$t('ai_assistant.control_message.continue_build')}
+        {/if}
+      </div>
+    {:else if inlineParts.length > 0}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
       <div class="ui:bg-muted max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-sm" onclick={handleBubbleClick}>
         {#each inlineParts as part, partIndex (partIndex)}
@@ -568,6 +593,13 @@
           </div>
         {/if}
       {/each}
+
+      {#if stoppedByTeacher}
+        <!-- La ronda cerró por «Detener»: sin esto, un final sin texto parecía un corte. -->
+        <p class="ui:text-muted-foreground text-xs" data-stopped-by-teacher>
+          {$t('ai_assistant.stopped_by_teacher')}
+        </p>
+      {/if}
 
       {#if roundChanges.length > 0}
         <div class="rounded-xl border px-3 py-2">

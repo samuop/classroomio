@@ -63,6 +63,25 @@ export const formatDisplayDate = (date: string | number | Date | null | undefine
   return parsed.tz(DISPLAY_TIMEZONE).locale(activeDayjsLocale()).format('D [de] MMM [de] YYYY');
 };
 
+/**
+ * Un instante que el servidor manda sin zona, leído como UTC.
+ *
+ * Las columnas `timestamp` sin zona —la del historial de versiones, por
+ * ejemplo— llegan como "2026-09-29 18:51:23.123456", sin «Z» ni
+ * desplazamiento. `new Date` toma ese texto como hora LOCAL: en Argentina el
+ * instante quedaba 3 horas corrido y la lista mostraba la hora UTC como si
+ * fuera la de acá.
+ */
+export const instanteDelServidor = (valor: string | number | Date): Date => {
+  if (typeof valor !== 'string') return new Date(valor);
+
+  const texto = valor.trim();
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(texto)) return new Date(texto);
+
+  // Milisegundos y no microsegundos: más de tres decimales no es ISO.
+  return new Date(`${texto.replace(' ', 'T').replace(/(\.\d{3})\d+$/, '$1')}Z`);
+};
+
 /** Igual, con la hora: para registros donde el momento del día importa. */
 export const formatDisplayDateTime = (date: string | number | Date | null | undefined): string => {
   if (!date) return '';

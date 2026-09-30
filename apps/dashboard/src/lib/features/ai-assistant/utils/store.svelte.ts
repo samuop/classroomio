@@ -70,8 +70,13 @@ export function clearInitialChatTemplateAnswers() {
  * Pending composer action picked up by the chat component:
  * - `append` adds the text to whatever is already in the input (panel was open).
  * - `new` starts a fresh conversation and replaces the input (panel was closed).
+ *
+ * `rehacerPlan`: el texto le pide al asistente otro plan (lo escribe la pantalla
+ * de Fuentes cuando se agrega una fuente con un plan ya armado). Si la docente
+ * lo manda, viaja como pedido de cambios al plan, que es lo que obliga al
+ * servidor a devolver un plan nuevo en vez de una respuesta en prosa.
  */
-export type ChatDraft = { text: string; mode: 'append' | 'new' };
+export type ChatDraft = { text: string; mode: 'append' | 'new'; rehacerPlan?: boolean };
 
 export const chatDraft = writable<ChatDraft | null>(null);
 
@@ -84,28 +89,30 @@ export function setChatDraft(draft: ChatDraft) {
 }
 
 /**
- * The last user-typed text the agent actually tried to send. Module-level
- * (not tied to the chat component) so the empty-course view in
- * `lessons.svelte` can read it and offer a "Regenerate" button without
- * having to mount the chat panel first.
+ * Si el chat tiene un turno que falló y se puede volver a pedir.
+ *
+ * Lo escribe el chat; lo lee el botón «Regenerar» de la vista del curso vacío
+ * (`lessons.svelte`), que vive fuera del panel. Antes ese botón miraba «el
+ * último texto escrito», que sólo se actualizaba al escribir: después de
+ * aprobar un plan, regenerar mandaba como mensaje nuevo la descripción original
+ * del curso. Lo que se reintenta ahora es el turno que falló, y eso sólo existe
+ * en la memoria del chat abierto — por eso el chat lo apaga al cerrarse.
  */
-let lastSentTextState: string | null = $state(null);
+let reintentoDisponibleState = $state(false);
 
-export function getLastSentText(): string | null {
-  return lastSentTextState;
+export function hayReintentoDisponible(): boolean {
+  return reintentoDisponibleState;
 }
 
-export function setLastSentText(text: string | null) {
-  lastSentTextState = text;
+export function setReintentoDisponible(disponible: boolean) {
+  reintentoDisponibleState = disponible;
 }
 
 /**
  * Pending retry signal. Any component that can issue a retry (e.g. the chat
  * input's "Reintentar" button, or the empty-course "Regenerate" button) sets
  * this to `true`. The chat component subscribes and, when it sees the flag
- * flip, re-sends the saved `lastSentText` and clears the flag. The flag is
- * idempotent: if the chat isn't mounted when the retry is requested, it is
- * processed the next time the chat mounts.
+ * flip, retries the turn that failed and clears the flag.
  */
 let pendingRetryState = $state(false);
 

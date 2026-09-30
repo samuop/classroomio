@@ -1,6 +1,9 @@
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
-import { getCourseSourceText, getDocumentSummary } from '@api/services/agent/document';
+import { getCourseSourceText } from '@api/services/agent/document';
 import { esLecturaVisual } from '@api/services/agent/document-vision';
+import { extractoDeProsa } from '@api/services/agent/pagina-sin-contenido';
+import { encolarResumen, leerResumenesGuardados } from '@api/services/agent/resumenes-de-fuentes';
+import { computeContentHash } from '@api/utils/redis/key-generators';
 import type { RedisClient } from '@api/utils/redis/redis';
 
 /**
@@ -28,10 +31,10 @@ import type { RedisClient } from '@api/utils/redis/redis';
  *
  * ── Qué NO reemplaza ─────────────────────────────────────────────────────────
  *
- * Planificar y construir siguen recibiendo el material entero (`source-pack.ts`).
- * Para decidir un temario hay que haber leído todo, y para escribir la lección 9
- * sin repetir la 3 también. El índice es para los demás turnos, que son la
- * mayoría: editar, corregir, agregar una sección, contestar una pregunta.
+ * Planificar sigue recibiendo el material entero (`source-pack.ts`): para
+ * decidir un temario hay que haber leído todo. El índice es para los demás
+ * turnos —construir incluido, ver `decidirMaterial`—, que son la mayoría:
+ * construir, editar, corregir, agregar una sección, contestar una pregunta.
  */
 
 /** Cómo llegó a texto lo que el agente va a leer. */
@@ -45,6 +48,11 @@ export interface EntradaDelIndice {
   pageCount: number | null;
   comoSeLeyo: ComoSeLeyo;
   resumen: string | null;
+  /**
+   * Las primeras letras de prosa, mientras el resumen todavía no existe.
+   * `null` cuando hay resumen. Ver `buildSourceIndex`.
+   */
+  extracto: string | null;
 }
 
 export interface IndiceDeFuentes {
@@ -124,16 +132,26 @@ function describirLectura(entrada: EntradaDelIndice): string {
 }
 
 /**
- * Arma el índice de las fuentes de un curso.
+ * Arma el índice de las fuentes de un curso. No espera nunca al modelo.
  *
- * Los resúmenes salen de Redis cuando ya existen y se calculan una sola vez por
- * documento, así que el índice es barato de repetir. Una fuente cuyo resumen no
- * se pueda obtener entra igual, sin resumen: que el modelo sepa que existe vale
- * más que la descripción.
+ * Los resúmenes que ya existen se leen de Redis en un solo viaje. Los que faltan
+ * NO se calculan acá: la fuente entra con sus primeras letras de prosa
+ * («Begins:») y el resumen se pide en segundo plano (`encolarResumen`), así que
+ * el próximo turno ya lo tiene.
+ *
+ * Antes se calculaban acá, de a uno y con `await`, antes de que el chat mandara
+ * las cabeceras: medido en producción, 11 fuentes fueron 38 s de silencio y el
+ * navegador cortó a los 30 con «Request timeout», justo al aprobar el plan.
+ *
+ * `orgId` y `userId` son para cobrar los resúmenes que falten. Son opcionales
+ * para no romper a quien no los tenga: sin `orgId` se deduce del curso, y sin
+ * `userId` se atribuye a quien subió la fuente.
  */
 export async function buildSourceIndex(params: {
   courseId: string;
   redis: RedisClient;
+  orgId?: string;
+  userId?: string;
 }): Promise<IndiceDeFuentes> {
   let documents;
 
@@ -151,40 +169,66 @@ export async function buildSourceIndex(params: {
   // turno, produce los mismos bytes siempre — que es lo que la caché necesita.
   const ordenados = [...documents].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  const entries: EntradaDelIndice[] = [];
+  // El hash se calcula del texto y no se toma de la fila: es la misma cuenta que
+  // hace `getDocumentSummary`, y dos maneras de sacarlo serían dos claves para
+  // el mismo resumen.
+  const referencias = ordenados.map((doc) => ({ documentId: doc.id, contentHash: computeContentHash(doc.text) }));
 
-  for (const doc of ordenados) {
-    let resumen: string | null = null;
+  let guardados = new Map<string, string>();
 
-    try {
-      const bruto = await getDocumentSummary(doc.id, params.redis, () =>
-        getCourseSourceText(doc.id, params.courseId, params.redis)
-      );
-      resumen = bruto ? bruto.replace(/\s+/g, ' ').trim().slice(0, MAX_RESUMEN_CHARS) : null;
-    } catch (error) {
-      console.error(`[source-index] sin resumen para ${doc.id}:`, error);
+  try {
+    guardados = await leerResumenesGuardados(params.redis, referencias);
+  } catch (error) {
+    // Sin Redis el índice sale igual, con los extractos: que el modelo sepa qué
+    // fuentes existen vale más que la descripción de cada una.
+    console.error('[source-index] no se pudieron leer los resúmenes:', error);
+  }
+
+  const entries: EntradaDelIndice[] = ordenados.map((doc, i) => {
+    const bruto = guardados.get(doc.id);
+
+    if (!bruto) {
+      encolarResumen({
+        ...referencias[i],
+        texto: doc.text,
+        redis: params.redis,
+        consumo: { orgId: params.orgId, userId: params.userId ?? doc.userId, courseId: params.courseId }
+      });
     }
 
-    entries.push({
+    const resumen = bruto ? bruto.replace(/\s+/g, ' ').trim().slice(0, MAX_RESUMEN_CHARS) : null;
+
+    return {
       id: doc.id,
       fileName: doc.fileName,
       chars: doc.text.length,
       words: doc.wordCount,
       pageCount: doc.pageCount ?? null,
       comoSeLeyo: comoSeLeyo(doc),
-      resumen
-    });
-  }
+      resumen,
+      extracto: resumen ? null : extractoDeProsa(doc.text, MAX_RESUMEN_CHARS) || null
+    };
+  });
 
   const lineas = entries.map((e, i) => {
     const cabecera = `${i + 1}. "${e.fileName}" (id: ${e.id}) — ${describirLectura(e)}`;
 
-    return e.resumen ? `${cabecera}\n   About: ${e.resumen}` : cabecera;
+    if (e.resumen) return `${cabecera}\n   About: ${e.resumen}`;
+
+    // Otra etiqueta a propósito: son las primeras palabras del texto, no una
+    // descripción, y el modelo tiene que poder distinguirlas.
+    if (e.extracto) return `${cabecera}\n   Begins: ${e.extracto}`;
+
+    return cabecera;
   });
 
+  // La diferencia entre las dos etiquetas se le dice al modelo: un «Begins:» es
+  // el menú o el primer párrafo de la fuente, y tomarlo por una descripción de
+  // todo su contenido es decidir con la tapa del libro.
   const header =
     `## Course Sources — index (${entries.length})\n\n` +
     `The teacher's material for this course. This is the INDEX: it lists what exists, not what it says. ` +
+    `An "About:" line is a short summary of the source; a "Begins:" line is only its first words, shown while the summary is not ready — it does not tell you what the rest covers. ` +
     `Call \`read_source\` with an id to read one, and read the source BEFORE writing anything that claims to come from it. To find which source covers a topic, search first with search_document, then read only around what it finds.\n\n` +
     `If a lesson needs material that is not in this list, say so and name the document you would need. ` +
     `Do not fill the gap from general knowledge without telling the teacher you are doing it.\n\n`;

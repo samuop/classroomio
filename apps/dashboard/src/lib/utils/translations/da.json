@@ -2207,6 +2207,18 @@
       "title": "Vi kunne ikke åbne dette kursus",
       "description": "Det kan være slettet, eller du har måske ikke længere adgang. Hvis du mener, det er en fejl, så sig til til din organisations administrator.",
       "action": "Tilbage til mine kurser"
+    },
+    "sources": {
+      "error_needs_login": "Siden kræver login. Hvis det er et Google-dokument, så del det som \"Alle med linket\", eller download det som PDF og upload det.",
+      "error_unreadable": "Vi fandt ingen brugbar tekst på siden.",
+      "snackbar_reread_unchanged": "Kilden er ikke ændret",
+      "plan_notice": "{count, plural, one {Planen er allerede lavet og bruger ikke denne kilde. Hvis du vil bruge den, så bed assistenten om at lave planen om.} other {Planen er allerede lavet og bruger ikke disse kilder. Hvis du vil bruge dem, så bed assistenten om at lave planen om.}}",
+      "plan_notice_action": "Bed om en ny plan",
+      "plan_notice_dismiss": "Luk",
+      "plan_notice_prompt": "{count, plural, one {Jeg har tilføjet kilden {names}. Lav planen om, så den bliver brugt.} other {Jeg har tilføjet kilderne {names}. Lav planen om, så de bliver brugt.}}",
+      "error_source_limit": "Dette kursus har allerede 100 kilder: slet en, før du tilføjer en ny.",
+      "upload_failed": "Filen kunne ikke uploades. Prøv igen.",
+      "research_left_out_by_limit": "Kurset har nået grænsen på 100 kilder: {count} sider fra søgningen kom ikke med. Slet en kilde, hvis du vil tilføje dem."
     }
   },
   "courses": {
@@ -3899,7 +3911,7 @@
     "mention_section": "Sektion",
     "mention_no_results": "Intet matchende indhold",
     "uploading_document": "Uploader dokument...",
-    "agent_running_warning": "Ændringerne vises i kurset, når agenten er færdig. Genindlæs ikke siden.",
+    "agent_running_warning": "Du kan godt forlade siden: assistenten gør den igangværende arbejdsrunde færdig og gemmer den. Hvis kurset ikke er færdigt, så tryk på »Genoptag«, når du kommer tilbage.",
     "agent_running_warning_dismiss": "Afvis",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "Arbejder reagerer ikke",
         "body": "Denne kørsel har ventet i mere end 30 sekunder uden nogen afhentning af arbejderen. Baggrundsarbejderen er muligvis nede eller genstarter."
       }
-    }
+    },
+    "error_timeout": "Det tager længere tid end normalt. Forespørgslen kører stadig: prøv igen om et par sekunder.",
+    "error_stream_cut": "Forbindelsen til assistenten blev afbrudt. Det, der allerede er oprettet, er gemt.",
+    "error_round_in_progress": "Assistenten arbejder stadig i denne chat. Vent, til den er færdig.",
+    "round_in_progress_notice": "Assistenten arbejder på dette kursus. Visningen opdateres af sig selv.",
+    "tool_interrupted": "Afbrudt før den blev færdig. Tjek kurset: det, der nåede at blive gemt, er gemt.",
+    "control_message": {
+      "plan_approved": "Plan godkendt — bygges",
+      "continue_build": "Fortsæt opbygningen"
+    },
+    "plan_screen": {
+      "no_source_title": "Nogle lektioner mangler materiale",
+      "no_source_body": "{count, plural, one {Denne lektion har ingen kilde fra kurset bag sig. Hvad vil du gøre med den?} other {Disse # lektioner har ingen kilde fra kurset bag sig. Hvad vil du gøre med dem?}}",
+      "no_source_general": "Skriv dem ud fra generel viden",
+      "no_source_remove": "Fjern dem fra planen",
+      "no_source_cancel": "Annuller",
+      "no_source_remove_failed": "De kan ikke fjernes uden at gøre planen ufuldstændig. Vælg en anden mulighed, eller bed assistenten om ændringer.",
+      "weak_source_hint": "Den henviser til {sources}, men der nævnes emnet kun."
+    },
+    "stopping": "Stopper…",
+    "stopping_notice": "Stopper: assistenten gør det færdigt, den er i gang med, gemmer det og stopper.",
+    "stop_not_delivered": "Vi kunne ikke bede assistenten om at stoppe: den gør denne arbejdsrunde færdig og gemmer den. Chatten opdateres af sig selv, når den er færdig.",
+    "stopped_by_teacher": "Du stoppede assistenten her. Det, den allerede havde lavet, blev gemt.",
+    "error_timeout_chat": "Assistenten arbejder stadig, og det tager længere tid end normalt. Chatten opdateres af sig selv, når den er færdig."
   },
   "widgets": {
     "heading": "Widgets",

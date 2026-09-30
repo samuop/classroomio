@@ -42,7 +42,13 @@ class PantallaDelPlan {
   /** El agente está trabajando: aprobar o pedir cambios tiene que esperar. */
   ocupado = $state(false);
   progreso = $state.raw<AiAssistantPlanProgress | null>(null);
-  acciones = $state<AccionesDelPlan | null>(null);
+  /**
+   * Crudo por lo mismo que `mostrado`: la desconexión compara estas acciones con
+   * las que se conectaron, y un `$state` profundo las guardaba envueltas en un
+   * proxy, distinto del objeto original. La comparación daba siempre «distinto»
+   * y la pantalla seguía conectada a un chat que ya no estaba.
+   */
+  acciones = $state.raw<AccionesDelPlan | null>(null);
 
   get esVigente(): boolean {
     return !!this.mostrado && this.mostrado.id === this.vigenteId;

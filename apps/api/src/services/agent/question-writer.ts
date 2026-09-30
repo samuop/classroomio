@@ -8,6 +8,7 @@ import {
   type AIProviderConfig
 } from '@cio/ai-assistant';
 import { questionFields } from '@api/services/agent/agent-tool-schemas';
+import { esCortePorTiempo } from '@api/services/agent/grounding';
 import { recordTokenUsage } from '@api/services/agent/usage';
 
 /**
@@ -45,6 +46,16 @@ import { recordTokenUsage } from '@api/services/agent/usage';
  * se la dice, para que no pregunte sobre lo que no leyó.
  */
 export const PRESUPUESTO_LECCIONES_CHARS = 120_000;
+
+/**
+ * Cuánto se espera al escritor de preguntas antes de cortarlo.
+ *
+ * Las tandas medidas tardan de 9 a 15 s. Sin tope, una llamada colgada dejaba a
+ * `write_questions` esperando sin límite —y es la herramienta que crea el
+ * ejercicio AL FINAL, así que mientras espera, otra ronda sobre el mismo ítem
+ * puede crear el suyo—. Pasado esto se corta y no se crea nada.
+ */
+export const TIEMPO_MAXIMO_PREGUNTAS_MS = 90_000;
 
 export interface LeccionParaPreguntar {
   title: string;
@@ -211,7 +222,15 @@ export function crearEscritorDePreguntas(params: {
         `## This exercise\n\nTitle: ${exerciseTitle}\nWrite everything a learner reads in this language: ${locale}\nHow many questions: ${count}` +
           (brief ? `\n\nBrief:\n${brief}` : '')
       ].join('\n\n'),
-      maxRetries: 1
+      maxRetries: 1,
+      // Con tope, el reintento incluido: ver `TIEMPO_MAXIMO_PREGUNTAS_MS`.
+      abortSignal: AbortSignal.timeout(TIEMPO_MAXIMO_PREGUNTAS_MS)
+    }).catch((error: unknown) => {
+      if (esCortePorTiempo(error)) {
+        throw new Error(`it took longer than ${Math.round(TIEMPO_MAXIMO_PREGUNTAS_MS / 1000)} s and was stopped.`);
+      }
+
+      throw error;
     });
 
     await recordTokenUsage(

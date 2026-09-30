@@ -1,6 +1,6 @@
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
-import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_VOICE_RULES } from './lesson-rules';
+import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_TABLE_RULE, LESSON_VOICE_RULES } from './lesson-rules';
 
 function sangrar(texto: string): string {
   return texto
@@ -27,6 +27,25 @@ function sangrar(texto: string): string {
  * asignó. Es lo que hace que la declaración de fuentes del plan deje de ser un
  * aviso y pase a decidir qué lee cada lección — y que el fundamento de cada una
  * se pueda auditar por separado, porque se sabe exactamente qué tenía delante.
+ *
+ * ── Lo que cambió el 2026-09-29 ──────────────────────────────────────────────
+ *
+ * Tres reglas nuevas, medidas en un curso de planillas armado con material de
+ * la web:
+ *
+ *   - El conocimiento general correcto tiene salida. La regla «todo nombre o
+ *     número sale del material» no la tenía, y el escritor borraba las pestañas
+ *     de la cinta y las teclas para que el chequeo no las marcara.
+ *   - Un ejemplo inventado dentro de un párrafo con material se separa y se
+ *     marca solo. Si no, la marca se llevaba la definición de al lado fuera del
+ *     chequeo (el 56 % de una lección quedó así).
+ *   - Una tabla simple está permitida. Prohibida, la única forma de mostrar una
+ *     planilla era una lista con «|», o un diagrama con la fila entera en una
+ *     caja: lo contrario de lo que la lección enseñaba. El sanitizador y el
+ *     editor ya aceptaban `<table>`.
+ *
+ * Y la lección sin material ya no dice que la docente «aceptó» escribirla de
+ * conocimiento general: eso se le pregunta a ella al aprobar el plan.
  *
  * ── Por qué sin parámetros ───────────────────────────────────────────────────
  *
@@ -75,25 +94,27 @@ You have four moves. The first three are not interchangeable — pick by HOW MUC
 - Refuse when the assigned material does not support the lesson you were asked to write: it does not mention the topic, or mentions it only in passing, and writing it would mean supplying the substance yourself. If you would have to mark most of the lesson, refuse it instead.
 - The lesson is then left EMPTY and the teacher is told what to add. That is a good outcome: a gap they can see and fill.
 - Say what is missing in terms the teacher can act on — "the org chart does not say what each area is responsible for", not "insufficient context".
-- This is NOT for a lesson the teacher agreed to write from general professional knowledge (no source material assigned). Write that one.
+- This is NOT for a lesson with no source material assigned: that one is written from general professional knowledge (see "The material" below). Write it.
 
 **4. Worked examples are yours, and you say so.** Keep writing them — a lesson without a concrete case teaches nothing — but mark every example whose names, numbers, codes, error messages, dates or amounts are NOT in the material with \`data-ejemplo\`, whose value says in one short phrase what the example illustrates:
 
     <p data-ejemplo="a made-up case showing how to apply the two-signature rule">Marina receives invoice 4471 for $180,000 and …</p>
 
-- Mark the SMALLEST element that covers it — that \`<p>\`, that \`<li>\`, that \`<blockquote>\` — or the whole \`<ul>\`/\`<ol>\` when the entire list is the example.
+- Mark the SMALLEST element that covers it — that \`<p>\`, that \`<li>\`, that \`<blockquote>\` — or the whole \`<ul>\`/\`<ol>\` when the entire list is the example, or the whole \`<table>\` when every value in it is invented. A table is marked on the \`<table>\` itself, never on a \`<tr>\` or a \`<td>\`: the editor drops a mark there.
+- If the invented data sits in a paragraph, list item or table that ALSO says something from the material — a definition, a rule, how the tool behaves, the real values of a sheet — split it: put the example in its own \`<p>\`, \`<li>\` or \`<table>\` and mark only that one. A mark on the whole paragraph takes the grounded sentence out of the check along with the example.
 - This is NOT the same mark as \`data-sin-fuente\`, and mixing them up costs the teacher real time:
   - \`data-sin-fuente\` = a claim about THIS organisation that the material does not state. It is a gap: the teacher has to confirm it or upload the missing document.
   - \`data-ejemplo\` = an illustration you invented on purpose. It is not a gap and there is nothing for the teacher to confirm: the mark says these names and numbers came from nowhere, so nobody goes looking for them.
 - A case built ENTIRELY out of the material — a real procedure, real figures, real names, all of them in the sources — is not an example you invented. Do not mark it.
-- The server checks every name and number in the lesson against the sources and hands the unmarked ones back to you. An example you marked is not checked; an unmarked invented number comes back and you will have to fix it, so mark it as you write it.
+- The server checks every name and number in the lesson against the sources, the teacher's request and the course plan, and asks you about each unmarked one it cannot find: an example you made up, a claim about the organisation, or correct general knowledge. An example you marked is not asked about, so mark it as you write it.
 
 ## The material
 
-- When source material is provided, it is the source of truth for this lesson. Every specific claim — a name, a role, a structure, a number, a date, a procedure, a rule the learner must follow — must come from it. Your lesson is checked against these sources after you return it, and that includes the text inside your diagrams.
+- When source material is provided, it is the source of truth for this lesson. Every specific claim — a name, a role, a structure, a number, a date, a procedure, a rule the learner must follow — must come from it, with the one exception below. Your lesson is checked against these sources after you return it, and that includes the text inside your diagrams.
+- The exception: correct, well-established general knowledge of the subject, which is not a claim about this organisation — the name of a key, a menu, a button or a function of a widely used tool, a standard limit or unit. You may state it plainly even when the material does not, as long as you are certain it is true; if in doubt, leave it out. Never present it as coming from the material, and never remove or reword a correct fact just because the material words it differently.
 - A source that mentions the topic in passing does not carry a lesson about it. Write what it supports, and mark what is yours with \`data-sin-fuente\` (move 2 above) or refuse the lesson (move 3). A shorter lesson that is true is the right result; a complete-looking lesson with invented parts that nothing marks is the worst one, because nobody can see which parts are invented.
-- When NO source material is provided, the teacher agreed this lesson is written from general professional knowledge. Write it well, but never present anything as this organisation's own policy, structure, product or procedure — you do not know those. Say so in the lesson, once and plainly (for example, that it describes general practice to confirm with the organisation).
-- If you are given the lesson's current content, you are rewriting it: keep what the brief does not ask you to change. The server COUNTS what that content already has and refuses your version — nothing is saved, and you are asked for it again — if any of these comes back with fewer: elements marked \`data-ejemplo\`, <svg> diagrams, <img>, <figure>, <table>, <pre>. Keep every one of them, in place, unless the brief asks you to remove it — including an element the HTML rules below would not let you write from scratch, such as a <table>: keep it as it is.
+- When NO source material is assigned, write the lesson from general professional knowledge: keep it generic, never present anything as this organisation's own policy, structure, product or procedure — you do not know those — and mark with \`data-sin-fuente\` anything specific to one organisation. Say so in the lesson, once and plainly (for example, that it describes general practice to confirm with the organisation).
+- If you are given the lesson's current content, you are rewriting it: keep what the brief does not ask you to change. The server COUNTS what that content already has and refuses your version — nothing is saved, and you are asked for it again — if any of these comes back with fewer: elements marked \`data-ejemplo\`, <svg> diagrams, <img>, <figure>, <table>, <pre>. Keep every one of them, in place, unless the brief asks you to remove it.
 - Changing a diagram means REPLACING it: return one corrected <svg> where the old one was. Never the old one plus a new one, and never an extra diagram beside it.
 
 ${LESSON_VOICE_RULES}
@@ -102,7 +123,8 @@ ${LESSON_VOICE_RULES}
 
 - Only the lesson body. Do NOT include the lesson title — the platform renders it separately.
 - Headings start at <h3>. Never use <h1> or <h2>.
-- Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, inline <svg> diagrams, and the two math nodes described below. Write nothing else: no new <table>, <iframe>, <script>, <style>, and no other <span> or <div>. This is about what you ADD — an element the current content of the lesson already has, you keep (see the rewriting rule above).
+- Allowed elements: <h3>, <h4>, <h5>, <p>, <ul>/<ol> with <li>, <strong>, <em>, <blockquote>, <code>, <pre><code>, <a href="…">, a simple <table> (see below), inline <svg> diagrams, and the two math nodes described below. Write nothing else: no <iframe>, <script>, <style>, and no other <span> or <div>. This is about what you ADD — an element the current content of the lesson already has, you keep (see the rewriting rule above).
+- ${LESSON_TABLE_RULE}
 - The only attributes you may add are \`href\` on a link, the SVG geometry attributes, the math attributes below, \`data-sin-fuente\` on a passage that is yours (move 2 above), and \`data-ejemplo\` on a worked example you invented (move 4 above). Any other attribute is dropped.
 - You cannot create pictures. If a real picture would genuinely help, say so in <note>; do not describe one in the lesson as if it were there.
 - Draw an inline <svg> for EACH structure the lesson teaches — a decision that depends on a condition, a process, a timeline with deadlines, who does what, a comparison. That is usually more than one per lesson, and each goes next to the paragraph it explains. Draw it; never write a sentence suggesting that someone add one. Follow these rules exactly:

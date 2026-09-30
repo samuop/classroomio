@@ -115,6 +115,206 @@ describe('de qué está hecha la lección', () => {
     expect(container.textContent).toContain('distribución oficial');
   });
 
+  /**
+   * Un dato que no está en la fuente de la lección pero sí en otro lado.
+   *
+   * El caso medido: la tarjeta listaba «24 horas» como dato sin fuente, y lo
+   * había escrito la docente en su propio pedido. Sin el rótulo, la lista
+   * entera se lee como «datos inventados». Los hallazgos tienen la forma exacta
+   * que guarda la API (`HallazgoDeToken` de grounding-tokens.ts).
+   */
+  it('dice dónde apareció un dato que no está en la fuente de la lección', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Planilla de turnos.pdf'],
+          groundingWarnings: [],
+          tokenWarnings: [
+            {
+              tipo: 'numero',
+              valor: '24 horas',
+              contexto: '…abre las 24 horas…',
+              enDiagrama: false,
+              respaldo: 'pedido',
+              rotulo: 'está en tu pedido'
+            },
+            {
+              tipo: 'nombre',
+              valor: 'Turno Noche',
+              contexto: '…el Turno Noche cierra…',
+              enDiagrama: false,
+              respaldo: 'curso',
+              rotulo: 'figura en otra fuente del curso'
+            },
+            {
+              tipo: 'nombre',
+              valor: 'Caja Rápida',
+              contexto: '…la Caja Rápida…',
+              enDiagrama: false,
+              respaldo: 'plan',
+              rotulo: 'está en el plan'
+            },
+            { tipo: 'nombre', valor: 'Depósito Norte', contexto: '…en el Depósito Norte…', enDiagrama: false }
+          ]
+        }
+      }
+    });
+
+    const renglones = [...container.querySelectorAll('li')].map((li) => li.textContent ?? '');
+    const renglonDe = (valor: string) => renglones.find((r) => r.includes(valor)) ?? '';
+
+    expect(renglonDe('24 horas')).toContain('está en tu pedido');
+    expect(renglonDe('Turno Noche')).toContain('figura en otra fuente del curso');
+    expect(renglonDe('Caja Rápida')).toContain('está en el plan del curso');
+    // El que no está en ningún lado no gana un rótulo: ése es el que hay que mirar.
+    expect(container.querySelectorAll('[data-rotulo]').length).toBe(3);
+    expect(renglonDe('Depósito Norte')).not.toContain('·');
+  });
+
+  it('un código de respaldo que la pantalla no conoce muestra el rótulo que guardó la API', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: [],
+          groundingWarnings: [],
+          tokenWarnings: [
+            {
+              tipo: 'nombre',
+              valor: 'Manual Viejo',
+              contexto: '…',
+              enDiagrama: false,
+              respaldo: 'otro',
+              rotulo: 'figura en el manual anterior'
+            }
+          ]
+        }
+      }
+    });
+
+    expect(container.querySelector('[data-rotulo]')?.textContent).toContain('figura en el manual anterior');
+  });
+
+  it('lo que quien escribió da por conocimiento general va con su motivo', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Guía de la planilla.pdf'],
+          groundingWarnings: [],
+          tokenWarnings: [
+            {
+              tipo: 'nombre',
+              valor: 'Tab',
+              contexto: '…con Tab pasás a la celda de al lado…',
+              enDiagrama: false,
+              blockId: 'b-3',
+              decision: 'mantener',
+              rotulo: 'quien la escribió lo da por conocimiento general del tema',
+              motivo: 'es una tecla estándar del programa'
+            }
+          ]
+        }
+      }
+    });
+
+    expect(container.textContent).toContain('lo da por conocimiento general del tema');
+    expect(container.textContent).toContain('es una tecla estándar del programa');
+  });
+
+  /**
+   * Los rótulos de un diagrama, en una línea.
+   *
+   * Medido: una lección listaba cada caja de su diagrama —«Celda Activa»,
+   * «Cruce de Columna»…— en su propio renglón, con un contexto que repetía la
+   * etiqueta. Parecían varios errores y era un dibujo.
+   */
+  it('junta en una línea los rótulos de diagrama que nadie explicó', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Guía de la planilla.pdf'],
+          groundingWarnings: [],
+          tokenWarnings: [
+            { tipo: 'nombre', valor: 'Rubro', contexto: '…la columna Rubro…', enDiagrama: false },
+            { tipo: 'nombre', valor: 'Celda Activa', contexto: '[diagram: Celda Activa]', enDiagrama: true },
+            { tipo: 'nombre', valor: 'Cruce de Columna', contexto: '[diagram: Cruce de Columna]', enDiagrama: true },
+            {
+              tipo: 'nombre',
+              valor: 'Turno Mañana',
+              contexto: '[diagram: Turno Mañana]',
+              enDiagrama: true,
+              respaldo: 'curso',
+              rotulo: 'figura en otra fuente del curso'
+            }
+          ]
+        }
+      }
+    });
+
+    const linea = container.querySelector('[data-diagramas]');
+
+    expect(linea?.textContent).toContain('Celda Activa, Cruce de Columna');
+    // Uno por renglón: «Rubro», el del diagrama que trae rótulo, y la línea de los diagramas.
+    expect(linea?.parentElement?.querySelectorAll('li').length).toBe(3);
+    // El que trae rótulo no se esconde en la línea: su rótulo es lo que hay que leer.
+    expect(linea?.textContent).not.toContain('Turno Mañana');
+    expect(container.textContent).toContain('Turno Mañana');
+  });
+
+  /**
+   * Los ejemplos que quien escribió declaró inventados.
+   *
+   * Un ejemplo marcado queda fuera de los dos chequeos. Medido: la marca se
+   * llevaba a veces la definición de al lado, y nadie lo veía porque la lista
+   * `examples` se guardaba y no se mostraba.
+   */
+  it('muestra los ejemplos inventados, plegados, con para qué sirve cada uno', () => {
+    const largo = `Marina carga 120 alfajores a $ 950. ${'Después repite la carga con otro rubro. '.repeat(10)}`;
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: {
+          sources: ['Guía de la planilla.pdf'],
+          groundingWarnings: [],
+          examples: [
+            { texto: largo, porque: 'un caso inventado para practicar la carga de una fila' },
+            { texto: 'Juan anota 3 cajas de chicles.', porque: '' }
+          ]
+        }
+      }
+    });
+
+    const plegado = container.querySelector('details[data-ejemplos]');
+
+    expect(plegado).not.toBeNull();
+    expect(plegado?.querySelector('summary')?.textContent).toContain('2 ejemplos inventados a propósito');
+    expect(plegado?.textContent).toContain('un caso inventado para practicar la carga de una fila');
+    expect(plegado?.textContent).toContain('Juan anota 3 cajas de chicles.');
+    // Un párrafo entero no se copia completo: alcanza con reconocerlo.
+    expect(plegado?.textContent).toContain('Marina carga 120 alfajores');
+    expect(plegado?.textContent).not.toContain(largo.trim());
+    expect(plegado?.textContent).toContain('…');
+  });
+
+  it('un solo ejemplo se nombra en singular', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: { sources: [], groundingWarnings: [], examples: [{ texto: 'Un caso.', porque: 'para ver la regla' }] }
+      }
+    });
+
+    expect(container.querySelector('summary')?.textContent).toContain('Un ejemplo inventado a propósito');
+  });
+
+  it('aguanta ejemplos con la forma equivocada', () => {
+    const { container } = render(LessonBuildReport, {
+      props: {
+        report: { sources: [], groundingWarnings: [], examples: ['no es un objeto', null, { porque: 'sin texto' }] }
+      }
+    });
+
+    expect(container.querySelector('section')).not.toBeNull();
+    expect(container.querySelector('details')).toBeNull();
+  });
+
   it('aguanta un hallazgo de dato con la forma equivocada', () => {
     const { container } = render(LessonBuildReport, {
       props: {

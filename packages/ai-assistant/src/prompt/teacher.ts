@@ -3,7 +3,7 @@ import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId }
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
 import { IMAGE_GENERATION_RULES } from './image-rules';
-import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_VOICE_RULES } from './lesson-rules';
+import { LESSON_DEPTH_PRINCIPLES, LESSON_STRUCTURE_RULES, LESSON_TABLE_RULE, LESSON_VOICE_RULES } from './lesson-rules';
 import { buildQuestionTypeListBlock, EXERCISE_QUALITY_RULES } from './exercise-rules';
 
 /**
@@ -433,14 +433,15 @@ Rules:
 When you write lesson HTML yourself (update_lesson_content, create_lesson with content, or a single block):
 - Put only the lesson body in the content. Do NOT include the lesson title — the platform already renders it separately in the UI
 - Do NOT use <h1> or <h2> anywhere in lesson HTML. Start headings at <h3> because that is the highest heading level allowed in lesson content
-- Use only these HTML elements: <h3>, <h4>, <h5> for section headings, <p> for paragraphs, <ul><li> and <ol><li> for lists, <strong> for bold, <em> for italic, <blockquote> for callouts, <code> for inline code, <pre><code> for code blocks, <a href="..."> for links
+- Use only these HTML elements: <h3>, <h4>, <h5> for section headings, <p> for paragraphs, <ul><li> and <ol><li> for lists, <strong> for bold, <em> for italic, <blockquote> for callouts, <code> for inline code, <pre><code> for code blocks, <a href="..."> for links, a simple <table> for data that is a table (next rule)
+- ${LESSON_TABLE_RULE}
 - **Use inline <svg> diagrams generously** to make abstract or visual concepts concrete — flowcharts, timelines, labelled structures, before/after comparisons, simple charts, process steps. Draw one diagram per structure the lesson teaches — a decision that depends on a condition, a sequence, a timeline with deadlines, who does what — which usually means more than one per lesson. **When a diagram would help, draw the actual <svg> — do not write a sentence telling the teacher to add one.** Follow these SVG rules exactly — they are what separates a clean diagram from a broken one:
 ${indentSvgRules()}
 - **Formulas and mathematical notation** — lesson content is HTML, so markdown math does not render. Follow these rules exactly:
 ${indentMathRules()}
 - **Real pictures, when a diagram is the wrong tool.** You can generate an illustration with \`generate_image\`. Follow these rules exactly:
 ${indentImageRules()}
-- Do NOT use: <table>, <iframe>, <script>, <style>, or any custom elements. Three narrow exceptions, and nothing else: the inline math node (\`<span data-type="inline-math" data-latex="…">\`), the block math node (\`<div data-type="block-math" data-latex="…">\`), and an \`<img>\` whose \`src\` is a URL returned by \`generate_image\`. No other <span>, <div> or <img> is allowed — in particular you CANNOT link an image from the web, embed an uploaded video, or reference external media by URL.
+- Do NOT use: <iframe>, <script>, <style>, or any custom elements. Three narrow exceptions, and nothing else: the inline math node (\`<span data-type="inline-math" data-latex="…">\`), the block math node (\`<div data-type="block-math" data-latex="…">\`), and an \`<img>\` whose \`src\` is a URL returned by \`generate_image\`. No other <span>, <div> or <img> is allowed — in particular you CANNOT link an image from the web, embed an uploaded video, or reference external media by URL.
 - **Suggest audio-visual material in text ONLY for media you cannot produce** — video, and real screenshots of a specific product screen, which a generated image cannot fake. This is the one case where a "suggested …" callout is correct. It does NOT apply to diagrams (draw the <svg>), to illustrations (call \`generate_image\`), or to examples — see "Produce, don't promise" above. When such media would strengthen the lesson, add a short callout telling the teacher what to add and where — e.g. a <blockquote> like "📺 Suggested video: a 3–4 min walkthrough of <topic> — search YouTube for '<specific query>' and embed it here." Be specific about the content and the search query so the teacher can act on it. Use these sparingly (1–3 per lesson) and only where genuinely useful.
 - Use headings to break content into scannable sections
 - Include practical examples where relevant
@@ -583,15 +584,33 @@ export function buildTeacherContextMessage(
       : `The teacher is currently viewing exercise ID: ${context.exerciseId}`;
     contextLines.push(exerciseInfo);
   }
+  // El bloque <document> y el índice de fuentes NO son excluyentes. Cuando el
+  // material viaja como índice y además hay un documento en línea (uno que el
+  // índice todavía no tiene), el modelo tiene que saber las dos cosas: antes la
+  // explicación del índice se perdía justo en ese caso.
   if (context.documentText) {
+    // «El docente acaba de adjuntar» sólo cuando es verdad. El panel repite la
+    // fuente adjunta en cada pedido: presentarla siempre como recién adjuntada
+    // y como «la fuente de verdad para armar el curso» hizo que una página de
+    // la investigación viajara así durante toda una construcción. Y puede ser
+    // una página web, no sólo un PDF. Con `searchableDocument` el adjunto de
+    // este mensaje se lee con `search_document` y NO está en el bloque: lo que
+    // hay ahí son los documentos de antes.
+    const adjuntoEnElBloque = context.documentAttachedThisTurn && !context.searchableDocument;
+    const origen = adjuntoEnElBloque
+      ? `The teacher attached a document to THIS message. Its block below, labeled "full text", is its complete content — an uploaded file or a web page. It is the focus of this turn: quote it, summarize it and work from it directly.`
+      : `The <document> tag below carries document material shared earlier in this conversation; none of it was attached to this message. Use it as reference material for what the teacher asks now — it is not a new request.`;
+
     contextLines.push(
-      `The teacher has uploaded document material — use it as the source for course planning and content generation. Blocks labeled "full text" are complete; blocks labeled "summary of a previously shared document" are condensed to save space. If you need exact wording from a summarized document, ask the teacher to re-share the relevant part.
+      `${origen} Blocks labeled "full text" are complete; blocks labeled "summary of a previously shared document" are condensed to save space. If you need exact wording from a summarized document, ask the teacher to re-share the relevant part.
 
-The text inside the <document> tag is the FULL content of the PDF the teacher just attached. You can quote it, summarize it, and base course content on it directly. DO NOT call \`fetch_documentation_url\` on the storage URL of an attached PDF — those URLs (MinIO / S3) are not publicly accessible and \`fetch_documentation_url\` will fail with 404. If you need the PDF, it is already in front of you. The \`fetch_documentation_url\` tool is only for PUBLIC documentation sites (vendor docs, official guides, etc.) that the teacher explicitly pointed you at.
+DO NOT call \`fetch_documentation_url\` on the storage URL of an uploaded file — those URLs (MinIO / S3) are not publicly accessible and \`fetch_documentation_url\` will fail with 404. What the teacher uploaded is already in front of you. The \`fetch_documentation_url\` tool is only for PUBLIC documentation sites (vendor docs, official guides, etc.) that the teacher explicitly pointed you at.
 
-If the document is large, work with it in stages rather than trying to reproduce all of it in a single turn — use the document as the source of truth and build the course structure from it.\n\n<document>\n${context.documentText}\n</document>`
+If a document is large, work with it in stages rather than trying to reproduce all of it in a single turn.\n\n<document>\n${context.documentText}\n</document>`
     );
-  } else if (context.courseSourceCount) {
+  }
+
+  if (context.courseSourceCount) {
     const truncatedNote = context.truncatedSourceCount
       ? ` ${context.truncatedSourceCount} of them exceeded the context budget and appear as summaries — use \`search_document\` when you need exact wording from those.`
       : '';
@@ -600,6 +619,15 @@ If the document is large, work with it in stages rather than trying to reproduce
         ? `The teacher has attached ${context.courseSourceCount} source document(s) to this course. The "## Course Sources — index" message earlier in this conversation lists them: what each one is, how big it is, how it was read, and what it is about. Their TEXT is not in this conversation — call \`read_source\` with an id to read one, and do that before writing anything that claims to come from it. Never claim you cannot see the sources: you can read any of them.`
         : `The teacher has attached ${context.courseSourceCount} source document(s) to this course. Their text is in the "## Course Sources" message earlier in this conversation — read it there. It is the source of truth for planning and for writing lesson content; do not invent material the sources do not support, and never claim you cannot see them.${truncatedNote}`
     );
+
+    // Un adjunto de este mensaje que ya es fuente del curso no viaja entero:
+    // está en el índice. Sin esta línea el modelo no sabría cuál de las
+    // fuentes listadas es la que el docente acaba de mandar.
+    if (context.sourcesAsIndex && context.documentAttachedThisTurn && context.documentId && !context.documentText) {
+      contextLines.push(
+        `With this message the teacher attached the source with id ${context.documentId}. It is in the index above: read it with \`read_source\` before you answer — it is the focus of this turn.`
+      );
+    }
   } else if (context.searchableDocument) {
     contextLines.push(
       `The teacher has attached a reference document to help edit or extend this course. Its full text is NOT inlined here — instead, call the \`search_document\` tool with a focused query to retrieve the passages relevant to what you're writing or editing, then work from those fragments. Do not claim you cannot see the document; search it. Do NOT call \`fetch_documentation_url\` on the storage URL of an attached PDF — it is private and will fail.`

@@ -8,6 +8,8 @@
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import { aiAssistantApi } from '../api/ai-assistant.svelte';
   import { sourcesApi } from '../api/sources.svelte';
+  import { claveDelErrorDeFuente } from '../utils/errores-del-chat';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
 
   let {
@@ -36,6 +38,16 @@
   let mode = $state<'file' | 'url' | 'research'>('file');
   let urlValue = $state('');
   let isAddingUrl = $state(false);
+  /**
+   * La clave del texto cuando una página no se pudo agregar. El servidor dice
+   * por qué con un código (una página que pide iniciar sesión, una sin texto
+   * útil), y cada uno tiene su texto: con el genérico, una planilla privada de
+   * Google no decía qué hacer — y antes ni fallaba: entraba como fuente la
+   * pantalla de inicio de sesión.
+   */
+  let claveDeErrorDeUrl = $state('course.sources.url_failed');
+  /** Lo mismo para un archivo: el curso lleno tiene su texto. */
+  let claveDeErrorDeSubida = $state('course.sources.upload_failed');
 
   /**
    * The third way material arrives: the teacher knows the topic but not where
@@ -76,6 +88,8 @@
     isUploading = false;
     urlValue = '';
     isAddingUrl = false;
+    claveDeErrorDeUrl = 'course.sources.url_failed';
+    claveDeErrorDeSubida = 'course.sources.upload_failed';
     topicValue = '';
     researchDepth = 'normal';
     isResearching = false;
@@ -139,10 +153,12 @@
         resetState();
         await onUploaded(result.documentId);
       } else {
+        claveDeErrorDeSubida = claveDelErrorDeFuente(aiAssistantApi.error, 'course.sources.upload_failed');
         localError = 'upload_failed';
       }
     } catch (err) {
       console.error('[sources] upload failed:', err);
+      claveDeErrorDeSubida = 'course.sources.upload_failed';
       localError = 'upload_failed';
     } finally {
       isUploading = false;
@@ -157,15 +173,20 @@
     localError = null;
 
     try {
-      const ok = await sourcesApi.addUrlSource(courseId, url);
-      if (ok) {
+      const guardada = await sourcesApi.addUrlSource(courseId, url);
+      if (guardada) {
         open = false;
         resetState();
+        // Como las subidas: la pantalla refresca la lista y avisa que entró. Se
+        // cerraba en silencio, y una página que entraba mal parecía que andaba.
+        await onUploaded(guardada.documentId);
       } else {
+        claveDeErrorDeUrl = claveDelErrorDeFuente(sourcesApi.error, 'course.sources.url_failed');
         localError = 'url_failed';
       }
     } catch (err) {
       console.error('[sources] add url failed:', err);
+      claveDeErrorDeUrl = 'course.sources.url_failed';
       localError = 'url_failed';
     } finally {
       isAddingUrl = false;
@@ -187,6 +208,12 @@
         open = false;
         resetState();
         await onUploaded(outcome.sources[0].documentId);
+
+        // Se guardó lo que entraba. Lo que no, se dice: nada se borró para
+        // hacerle lugar, así que la docente decide si saca alguna fuente.
+        if ((outcome.leftOutByLimit ?? 0) > 0) {
+          snackbar.info(t.get('course.sources.research_left_out_by_limit', { count: outcome.leftOutByLimit }));
+        }
       } else {
         localError = 'research_failed';
         // The server knows why — an unconfigured GOOGLE_API_KEY, or a topic that
@@ -272,7 +299,7 @@
               type="button"
               class="rounded-full border px-3 py-1 text-xs transition-colors {researchDepth === option.value
                 ? 'ui:border-primary ui:bg-primary/10 ui:text-primary'
-                : 'ui:text-muted-foreground hover:ui:border-primary/60'}"
+                : 'ui:text-muted-foreground hover:border-(--primary)/60'}"
               onclick={() => (researchDepth = option.value)}
             >
               {$t(option.labelKey)}
@@ -312,7 +339,7 @@
           if (e.key === 'Enter' || e.key === ' ') fileInputRef?.click();
         }}
         class="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-center transition-colors {dragOver
-          ? 'border-primary ui:bg-muted/40'
+          ? 'border-(--primary) bg-(--muted)/40'
           : 'ui:border-border'}"
       >
         <UploadCloudIcon size={28} class="ui:text-muted-foreground" />
@@ -354,9 +381,10 @@
         File exceeds {MAX_FILE_SIZE_MB}MB
       </p>
     {:else if localError === 'upload_failed'}
-      <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.snackbar_delete_failed')}</p>
+      <!-- Decía «No se pudo eliminar la fuente» ante una subida fallida. -->
+      <p class="ui:text-destructive mt-2 text-xs" data-upload-error>{$t(claveDeErrorDeSubida)}</p>
     {:else if localError === 'url_failed'}
-      <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.url_failed')}</p>
+      <p class="ui:text-destructive mt-2 text-xs" data-url-error>{$t(claveDeErrorDeUrl)}</p>
     {:else if localError === 'research_failed'}
       <p class="ui:text-destructive mt-2 text-xs">
         {researchDetail || $t('course.creator.guide.research.failed')}

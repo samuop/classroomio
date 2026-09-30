@@ -7,12 +7,20 @@ import {
 } from '@api/services/agent/web-search';
 import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
 import {
+  errorDeTopeDeFuentes,
+  esTopeDeFuentes,
+  lugarParaFuentes,
   storeDraftDocument,
   storeUrlDocument,
   URL_SOURCE_MIME_TYPE,
   type ParsedDocument
 } from '@api/services/agent/document';
+import { diagnosticarFuente } from '@api/services/agent/pagina-sin-contenido';
 import type { RedisClient } from '@api/utils/redis/redis';
+
+// Vivían acá; ahora son del detector compartido. Se reexportan para no romper
+// a quien los importaba de la investigación.
+export { isUnreadablePage, readableProseLength } from '@api/services/agent/pagina-sin-contenido';
 
 /**
  * Research depth, chosen by the teacher on the course wizard.
@@ -62,68 +70,33 @@ const ANGLES_PER_DEPTH: Record<ResearchDepth, number> = {
 /**
  * How many pages we read at once.
  *
- * Measured: nine pages at a concurrency of 5 took 60.7s, and production Nginx
- * has no `proxy_read_timeout` so the default 60s applies — the request was
- * already at the edge of a 504, and a deep run would have sailed past it. The
- * reader is slow per page, so the only lever is width. Jina's paid tiers allow
- * hundreds of requests a minute; 8 is comfortable and still polite.
+ * Measured: nine pages at a concurrency of 5 took 60.7s. The reader is slow per
+ * page, so the only lever is width. Jina's paid tiers allow hundreds of requests
+ * a minute; 8 is comfortable and still polite.
  */
 const FETCH_CONCURRENCY = 8;
 
 /**
- * Hard stop for the whole harvest, under Nginx's 60s.
+ * Hard stop for the whole harvest, searching included.
  *
- * Whatever has been read by then is returned instead of the request dying at the
- * gateway: eight pages in hand beat a 504 and nothing. Deep runs are the case
- * that hits this, which is why the depth control says "~20 pages" rather than
- * promising exactly twenty.
+ * Whatever has been read by then is returned instead of the request dying on
+ * the way back: eight pages in hand beat a timeout and nothing. Deep runs are
+ * the case that hits this, which is why the depth control says "~20 pages"
+ * rather than promising exactly twenty.
+ *
+ * Los límites de hoy, de afuera hacia adentro: Cloudflare corta a los 100 s si
+ * no llegaron las cabeceras (acá no llegan hasta el final, así que ése es el
+ * techo real), Nginx da 120 s al dashboard y 300 s a la API, y el navegador
+ * espera lo que el panel le pida. Un comentario anterior decía que Nginx
+ * cortaba a los 60 s; ya no es así, y el que mordía era el navegador, a los 30.
  *
  * It covers the WHOLE run, searching included, and that is what changed when
- * discovery moved to grounding. Jina answered a search in about a second, so a
- * reading-only budget was close enough to the truth; a grounded call is the model
- * running seven searches and writing a survey, measured at 13s, plus a second or
- * two resolving the redirects. Kept as a reading-only budget it would have added
- * ~15s on top of 45 and put deep runs past Nginx's 60s — a 504 that would have
- * looked like a research bug rather than a clock.
+ * discovery moved to grounding: a grounded call is the model running several
+ * searches and writing a survey, measured at 13-22 s. And it is a real ceiling
+ * now: `readPages` returns when it runs out, without waiting for a read that is
+ * still hanging (each read also has its own `PLAZO_DE_LECTURA_MS`).
  */
 const RESEARCH_DEADLINE_MS = 48_000;
-
-/** A page that adds nothing but noise to a course. */
-const MIN_USEFUL_CHARS = 400;
-
-/**
- * Whether a fetched page carries prose or just furniture.
- *
- * Two failures look like success to the reader and were both observed on the
- * first real run:
- *
- *  - Jina returns 200 with `Warning: Target URL returned error 401` and then the
- *    page chrome, so a YouTube video became a "source" made of comment counts.
- *  - A login wall is a genuine page: Facebook and Instagram both came back as
- *    5-22 KB of "Log in / Sign Up" and navigation links.
- *
- * Length alone cannot tell these apart from an article — the Instagram reel was
- * larger than three of the good sources. What separates them is that almost all
- * of their bytes are links, so the prose left after stripping markdown link
- * syntax is what gets measured.
- */
-export function readableProseLength(markdown: string): number {
-  return markdown
-    .replace(/<external_untrusted_document[^>]*>|<\/external_untrusted_document>/g, '')
-    .replace(/!?\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/^\s*(Title|URL Source|Markdown Content|Published Time):.*$/gim, '')
-    .replace(/\s+/g, ' ')
-    .trim().length;
-}
-
-export function isUnreadablePage(markdown: string): boolean {
-  if (/Warning:\s*Target URL returned error\s*\d+/i.test(markdown)) {
-    return true;
-  }
-
-  return readableProseLength(markdown) < MIN_USEFUL_CHARS;
-}
 
 export interface ResearchSource {
   documentId: string;
@@ -138,6 +111,13 @@ export interface ResearchOutcome {
   sources: ResearchSource[];
   /** Pages that were found but could not be read. Reported, never fatal. */
   failedCount: number;
+  /**
+   * Páginas que esta profundidad iba a traer y quedaron afuera porque el curso
+   * llegó a su tope de fuentes. Se guardan las que entran y se avisa cuántas
+   * no: ninguna fuente se borra para hacerles lugar. 0 sin curso (el asistente
+   * de creación investiga antes de que el curso exista).
+   */
+  leftOutByLimit: number;
 }
 
 /**
@@ -298,15 +278,33 @@ async function readPages(
   budget: number,
   deadline: number,
   params: { orgId: string; courseId?: string; conversationId?: string; userId: string; redis: RedisClient }
-): Promise<{ sources: ResearchSource[]; failedCount: number; timedOut: boolean }> {
+): Promise<{ sources: ResearchSource[]; failedCount: number; timedOut: boolean; sinLugar: number }> {
   const sources: ResearchSource[] = [];
   let failedCount = 0;
   let timedOut = false;
   let next = 0;
   let inFlight = 0;
 
+  /**
+   * Páginas leídas que no se guardaron porque el curso se llenó mientras
+   * tanto (otra alta ganó el último lugar). Con la primera se deja de leer:
+   * las que siguieran tampoco entrarían.
+   */
+  let sinLugar = 0;
+
+  /**
+   * Se levanta cuando vence el plazo y la respuesta ya se armó con lo que había.
+   *
+   * Una lectura que llega después no se guarda: la docente ya recibió la lista,
+   * y una fuente que aparece sola en el panel —o un borrador que nadie va a
+   * promover— es peor que una página menos.
+   */
+  let cerrado = false;
+
   async function worker() {
     for (;;) {
+      if (cerrado || sinLugar > 0) return;
+
       if (Date.now() >= deadline) {
         timedOut = true;
 
@@ -350,9 +348,15 @@ async function readPages(
           priorMessages: []
         });
 
-        if (isUnreadablePage(page.content)) {
-          throw new Error(`no readable content at ${result.url}`);
+        // El mismo criterio que la ruta de Fuentes: un muro de inicio de sesión,
+        // un error del sitio o una página hecha sólo de enlaces no son material.
+        const diagnostico = diagnosticarFuente(page.content);
+
+        if (diagnostico) {
+          throw new Error(`${diagnostico.code} at ${result.url}: ${diagnostico.motivo}`);
         }
+
+        if (cerrado) return;
 
         const parsed = toParsedDocument(page);
         const documentId = await persistPage(page, parsed, params);
@@ -364,8 +368,13 @@ async function readPages(
           chars: parsed.text.length
         });
       } catch (error) {
-        failedCount += 1;
-        console.info('[research] page skipped:', error instanceof Error ? error.message : error);
+        if (esTopeDeFuentes(error)) {
+          sinLugar += 1;
+          console.info(`[research] page left out: the course is at its source limit (${result.url})`);
+        } else {
+          failedCount += 1;
+          console.info('[research] page skipped:', error instanceof Error ? error.message : error);
+        }
       } finally {
         inFlight -= 1;
       }
@@ -374,9 +383,27 @@ async function readPages(
 
   const workers = Math.max(1, Math.min(FETCH_CONCURRENCY, budget, results.length));
 
-  await Promise.all(Array.from({ length: workers }, worker));
+  // El plazo es un techo de verdad: al vencer se contesta con lo que haya, sin
+  // esperar una lectura que siga colgada. Antes el tope sólo impedía EMPEZAR
+  // lecturas, y una página lenta estiraba la investigación más allá de lo que el
+  // navegador estaba dispuesto a esperar.
+  let reloj: ReturnType<typeof setTimeout> | undefined;
 
-  return { sources: sources.slice(0, budget), failedCount, timedOut };
+  const vence = new Promise<'vencio'>((resolve) => {
+    reloj = setTimeout(() => resolve('vencio'), Math.max(0, deadline - Date.now()));
+  });
+
+  const final = await Promise.race([
+    Promise.all(Array.from({ length: workers }, worker)).then(() => 'terminaron' as const),
+    vence
+  ]);
+
+  clearTimeout(reloj);
+  cerrado = true;
+
+  if (final === 'vencio') timedOut = true;
+
+  return { sources: sources.slice(0, budget), failedCount, timedOut, sinLugar };
 }
 
 /**
@@ -408,8 +435,20 @@ export async function runResearch(params: {
   brief?: ResearchBrief;
 }): Promise<ResearchOutcome> {
   const { topic, depth, brief } = params;
-  const pageBudget = PAGES_PER_DEPTH[depth];
+  const pedidas = PAGES_PER_DEPTH[depth];
   const angles = RESEARCH_ANGLES.slice(0, ANGLES_PER_DEPTH[depth]);
+
+  /**
+   * En un curso que ya existe, las páginas son fuentes del curso y cuentan para
+   * su tope. Con el curso lleno no se busca nada (422 SOURCE_LIMIT_REACHED, sin
+   * gastar búsquedas); con poco lugar se leen sólo las que entran, y se avisa
+   * cuántas de las que pide esta profundidad quedaron afuera.
+   */
+  const lugar = params.courseId && params.conversationId ? await lugarParaFuentes(params.courseId) : Infinity;
+
+  if (lugar <= 0) throw errorDeTopeDeFuentes();
+
+  const pageBudget = Math.min(pedidas, lugar);
 
   // One clock for searching AND reading. Started here, before the first search,
   // so the seconds grounding spends come out of the same budget the reader draws
@@ -443,10 +482,14 @@ export async function runResearch(params: {
   );
 
   if (candidates.length === 0) {
-    return { queries, sources: [], failedCount: 0 };
+    return { queries, sources: [], failedCount: 0, leftOutByLimit: 0 };
   }
 
-  const { sources, failedCount, timedOut } = await readPages(candidates, pageBudget, deadline, params);
+  const { sources, failedCount, timedOut, sinLugar } = await readPages(candidates, pageBudget, deadline, params);
+
+  // Lo que la profundidad pedía y no tuvo lugar: lo que se recortó de entrada,
+  // más lo que se leyó y no entró porque el curso se llenó mientras tanto.
+  const leftOutByLimit = pedidas - pageBudget + sinLugar;
 
   console.info('[research] done', {
     topic: topic.slice(0, 80),
@@ -454,8 +497,9 @@ export async function runResearch(params: {
     queries: queries.length,
     kept: sources.length,
     failed: failedCount,
+    leftOutByLimit,
     timedOut
   });
 
-  return { queries, sources, failedCount };
+  return { queries, sources, failedCount, leftOutByLimit };
 }

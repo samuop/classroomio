@@ -7,8 +7,14 @@
   import FileQuestionIcon from '@lucide/svelte/icons/file-question';
   import LoaderIcon from '@lucide/svelte/icons/loader';
   import { Button } from '@cio/ui/base/button';
+  import * as Dialog from '@cio/ui/base/dialog';
   import { t } from '$lib/utils/functions/translations';
   import { pantallaDelPlan } from '$features/ai-assistant/utils/plan-screen.svelte';
+  import {
+    leccionesSinFuente,
+    quitarLeccionesSinFuente,
+    type LeccionSinFuente
+  } from '$features/ai-assistant/utils/lecciones-sin-fuente';
   import {
     confirmacionesSobreElPlan,
     contarPlan,
@@ -107,14 +113,57 @@
     pidiendoCambios = false;
   }
 
+  /**
+   * Las lecciones sin fuente que la docente tiene que decidir antes de aprobar,
+   * o `null` si no hay nada que preguntar.
+   *
+   * El servidor las marca al armar el plan y antes sólo le pedía al agente que
+   * preguntara. Medido: preguntó, la docente no contestó, tocó aprobar, y la
+   * construcción arrancó igual. Ahora la pregunta está en el botón.
+   */
+  let sinFuente = $state<LeccionSinFuente[] | null>(null);
+  let noSePudoQuitar = $state(false);
+
   function aprobar() {
-    if (!borrador || ocupado || !pantallaDelPlan.acciones) return;
+    if (!borrador || !mostrado || ocupado || !pantallaDelPlan.acciones) return;
+
+    const pendientes = leccionesSinFuente(mostrado.plan, borrador);
+
+    if (pendientes.length > 0) {
+      noSePudoQuitar = false;
+      sinFuente = pendientes;
+      return;
+    }
 
     pantallaDelPlan.acciones.aprobar(borrador);
   }
 
+  /** Aprueba como está: esas lecciones se escriben con conocimiento general. */
+  function aprobarConConocimientoGeneral() {
+    if (!borrador || !pantallaDelPlan.acciones) return;
+
+    sinFuente = null;
+    pantallaDelPlan.acciones.aprobar(borrador);
+  }
+
+  /** Aprueba el plan sin esas lecciones, si el plan que queda es válido. */
+  function aprobarSinEsasLecciones() {
+    if (!borrador || !sinFuente || !pantallaDelPlan.acciones) return;
+
+    const resultado = quitarLeccionesSinFuente(borrador, sinFuente);
+
+    if (!resultado.ok) {
+      noSePudoQuitar = true;
+      return;
+    }
+
+    sinFuente = null;
+    pantallaDelPlan.acciones.aprobar(resultado.plan);
+  }
+
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && !pidiendoCambios) pantallaDelPlan.cerrar();
+    // Con la pregunta de las lecciones sin fuente abierta, Escape cierra sólo esa.
+    if (event.key === 'Escape' && !pidiendoCambios && !sinFuente) pantallaDelPlan.cerrar();
   }
 
   const etiquetaDeEstado: Record<EstadoDelItem, string> = {
@@ -501,7 +550,7 @@
                 <Button variant="outline" size="sm" disabled={ocupado} onclick={() => (pidiendoCambios = true)}>
                   {$t('ai_assistant.plan_screen.request_changes')}
                 </Button>
-                <Button size="sm" disabled={ocupado || !pantallaDelPlan.acciones} onclick={aprobar}>
+                <Button size="sm" disabled={ocupado || !pantallaDelPlan.acciones} onclick={() => aprobar()}>
                   {$t('ai_assistant.plan_screen.approve')}
                 </Button>
               </div>
@@ -511,4 +560,57 @@
       </footer>
     {/if}
   </section>
+
+  <!--
+    La pregunta sobre las lecciones sin material, en el momento de decidir. Las
+    tres respuestas son las tres que el servidor le pedía al agente ofrecer; la
+    de subir el material que falta es cancelar e ir a Fuentes.
+  -->
+  <Dialog.Root
+    open={sinFuente !== null}
+    onOpenChange={(abierto) => {
+      if (!abierto) sinFuente = null;
+    }}
+  >
+    <Dialog.Content>
+      <Dialog.Header>
+        <Dialog.Title>{$t('ai_assistant.plan_screen.no_source_title')}</Dialog.Title>
+        <Dialog.Description>
+          {$t('ai_assistant.plan_screen.no_source_body', { count: sinFuente?.length ?? 0 })}
+        </Dialog.Description>
+      </Dialog.Header>
+
+      <ul class="flex list-disc flex-col gap-1 pl-5 text-sm" data-lecciones-sin-fuente>
+        {#each sinFuente ?? [] as leccion (`${leccion.seccion}.${leccion.item}`)}
+          <li>
+            {leccion.titulo}
+            {#if leccion.fuentesDebiles}
+              <!-- Cita una fuente, pero esa fuente sólo nombra el tema: no alcanza para escribirla. -->
+              <span class="ui:text-muted-foreground block text-xs" data-fuente-debil>
+                {$t('ai_assistant.plan_screen.weak_source_hint', {
+                  sources: leccion.fuentesDebiles.join(', ') || '—'
+                })}
+              </span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+
+      {#if noSePudoQuitar}
+        <p class="text-xs text-red-600 dark:text-red-400">{$t('ai_assistant.plan_screen.no_source_remove_failed')}</p>
+      {/if}
+
+      <Dialog.Footer class="ui:gap-2">
+        <Button variant="ghost" onclick={() => (sinFuente = null)}>
+          {$t('ai_assistant.plan_screen.no_source_cancel')}
+        </Button>
+        <Button variant="outline" onclick={() => aprobarSinEsasLecciones()}>
+          {$t('ai_assistant.plan_screen.no_source_remove')}
+        </Button>
+        <Button onclick={() => aprobarConConocimientoGeneral()}>
+          {$t('ai_assistant.plan_screen.no_source_general')}
+        </Button>
+      </Dialog.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
 {/if}

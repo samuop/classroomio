@@ -545,8 +545,22 @@ export function validateLessonMath(content: string): string[] {
   // diagram is therefore GUARANTEED to reach the learner as raw source — and
   // since the source is far longer than the formula it denotes, it overruns the
   // box it was measured for. Unicode is the only thing that renders in an SVG.
+  //
+  // Se mira el TEXTO de cada etiqueta, no el markup del svg, y un par de `$`
+  // cuenta sólo si lo de adentro parece una fórmula — el mismo criterio que la
+  // rama de texto de arriba. Medido el 2026-09-29: un diagrama con dos precios
+  // («$ 950,00 | 120 … $ 25,00») salía como LaTeX, porque entre un `$` y el
+  // siguiente quedaban el cierre de un `<text>` y los atributos del próximo,
+  // con sus `=` y sus `/`. El constructor gastó un paso en buscar una fórmula
+  // que no existía.
   const svgLatex = [...content.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)].filter((match) =>
-    /\$[^$]{1,120}\$|\\\(|\\\[|\\[a-zA-Z]{2,}|[_^]\{/.test(match[0])
+    [...match[0].matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+      .map((etiqueta) => etiqueta[1].replace(/<[^>]+>/g, ' '))
+      .some(
+        (texto) =>
+          /\\\(|\\\[|\\[a-zA-Z]{2,}|[_^]\{/.test(texto) ||
+          [...texto.matchAll(/\$([^$]{1,120})\$/g)].some((par) => looksLikeMath(par[1]))
+      )
   );
 
   if (svgLatex.length > 0) {
@@ -632,7 +646,11 @@ export function validateLessonVisuals(content: string): string[] {
   if (/<svg\b/i.test(content) || /<img\b/i.test(content)) return [];
 
   return [
-    'This lesson is all prose — not one diagram and not one picture. A learner facing an unbroken wall of text skims it. Add at least one visual now with edit_lesson_content: draw an inline <svg> for anything with structure in it (a process, a comparison, a relationship, a sequence of steps — this is free and the teacher can edit it afterwards), or call generate_image for a scene, a human situation or a visual metaphor that a diagram cannot carry. Pick the one the material actually calls for; do not add a decorative figure.'
+    // Con la misma herramienta que la nota de arreglos (`replace_lesson_block`):
+    // decía «with edit_lesson_content», y el mismo resultado llevaba dos órdenes
+    // que se contradecían. Para agregar un dibujo no hay «bloque a cambiar»:
+    // se reemplaza el párrafo que explica la idea por ese párrafo más el <svg>.
+    'This lesson is all prose — not one diagram and not one picture. A learner facing an unbroken wall of text skims it. Add at least one visual now with replace_lesson_block: take the paragraph that explains the idea and replace it with that same paragraph followed by an inline <svg>, for anything with structure in it (a process, a comparison, a relationship, a sequence of steps — this is free and the teacher can edit it afterwards); or call generate_image for a scene, a human situation or a visual metaphor that a diagram cannot carry. Pick the one the material actually calls for; do not add a decorative figure.'
   ];
 }
 

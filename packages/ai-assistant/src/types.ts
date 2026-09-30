@@ -45,6 +45,17 @@ export interface AgentContext {
   documentId?: string;
   documentText?: string;
   /**
+   * El documento de `documentId` llegó con ESTE mensaje del docente, y no quedó
+   * pegado de uno anterior.
+   *
+   * Es lo único que autoriza a decirle al modelo «el docente acaba de adjuntar
+   * esto». El panel repite la fuente adjunta en cada pedido, y medido el
+   * 2026-09-29: una página de la investigación viajó durante toda una
+   * construcción presentada como «el PDF que el docente acaba de adjuntar… la
+   * fuente de verdad», sin que nadie la hubiera adjuntado en esa ronda.
+   */
+  documentAttachedThisTurn?: boolean;
+  /**
    * True when a document is attached but served via RAG (search_document) instead
    * of inline — edit/extend mode on an already-built course. The agent must call
    * search_document to read from it, since documentText is intentionally omitted.
@@ -382,6 +393,17 @@ export interface AgentStatus {
    * otherwise, instead of accepting an image the model would silently ignore.
    */
   imageInput: boolean;
+  /**
+   * La ronda del chat que esta persona tiene viva en este curso, o `null`.
+   *
+   * Una ronda termina en el servidor aunque el navegador se vaya, y ahí se
+   * guarda la conversación entera. El panel que perdió el stream (un corte de
+   * red, una recarga) no vuelve a guardar lo que tenía a medias: espera a que
+   * la ronda de su conversación deje de figurar acá y recarga la conversación
+   * guardada. Mientras figura, un pedido nuevo sobre esa conversación recibe
+   * 409 `AGENT_ROUND_IN_PROGRESS`.
+   */
+  activeRound: { conversationId: string; startedAt: string } | null;
 }
 
 /**

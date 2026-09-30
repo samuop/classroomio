@@ -223,7 +223,7 @@
     "mention_section": "Sección",
     "mention_no_results": "No hay contenido coincidente",
     "uploading_document": "Subiendo documento...",
-    "agent_running_warning": "Los cambios van a aparecer en el curso cuando el agente termine. No recargues la página.",
+    "agent_running_warning": "Podés salir de esta página: el asistente termina la tanda de trabajo en curso y la guarda. Si el curso no quedó completo, al volver tocá «Continuar».",
     "agent_running_warning_dismiss": "Descartar",
     "quick_action": {
       "upload_document_course": "Subir un documento para crear un curso",
@@ -508,8 +508,29 @@
       "new_lessons": "{count, plural, one {# lección nueva} other {# lecciones nuevas}}",
       "rewrites": "{count, plural, one {# se reescribe} other {# se reescriben}}",
       "edits": "{count, plural, one {# se retoca} other {# se retocan}}",
-      "left_as_is_count": "{count, plural, one {# se deja como está} other {# se dejan como están}}"
-    }
+      "left_as_is_count": "{count, plural, one {# se deja como está} other {# se dejan como están}}",
+      "no_source_title": "Hay lecciones sin material",
+      "no_source_body": "{count, plural, one {Esta lección no tiene ninguna fuente del curso que la respalde. ¿Qué querés hacer con ella?} other {Estas # lecciones no tienen ninguna fuente del curso que las respalde. ¿Qué querés hacer con ellas?}}",
+      "no_source_general": "Escribirlas con conocimiento general",
+      "no_source_remove": "Sacarlas del plan",
+      "no_source_cancel": "Cancelar",
+      "no_source_remove_failed": "No se pudieron sacar sin dejar el plan incompleto. Elegí otra opción o pedile cambios al asistente.",
+      "weak_source_hint": "Cita {sources}, pero ahí sólo se nombra el tema."
+    },
+    "error_timeout": "Está tardando más de lo normal. El pedido sigue en proceso: probá de nuevo en unos segundos.",
+    "error_stream_cut": "Se cortó la conexión con el asistente. Lo que ya se creó quedó guardado.",
+    "error_round_in_progress": "El asistente todavía está trabajando en este chat. Esperá a que termine.",
+    "round_in_progress_notice": "El asistente está trabajando en este curso. Se actualiza solo.",
+    "tool_interrupted": "Se cortó antes de terminar. Revisá el curso: lo que llegó a guardarse quedó guardado.",
+    "control_message": {
+      "plan_approved": "Plan aprobado — construyendo",
+      "continue_build": "Continuar la construcción"
+    },
+    "stopping": "Deteniendo…",
+    "stopping_notice": "Deteniendo: el asistente termina lo que está haciendo, lo guarda y se detiene.",
+    "stop_not_delivered": "No pudimos avisarle al asistente que se detenga: va a terminar esta tanda de trabajo y guardarla. El chat se actualiza solo cuando termine.",
+    "stopped_by_teacher": "Detuviste al asistente acá. Lo que ya hizo quedó guardado.",
+    "error_timeout_chat": "El asistente sigue trabajando y está tardando más de lo normal. El chat se actualiza solo cuando termine."
   },
   "analytics": {
     "title": "Analítica",
@@ -2608,7 +2629,16 @@
           "round_changes": "Lo que el asistente cambió en esta vuelta",
           "unsupported_passages": "Pasajes que la fuente no dice, declarados por quien escribió",
           "unsupported_passages_hint": "Estos pasajes los escribió el modelo, no salieron del material. Revisalos, o subí lo que falta y pedí que se rehagan.",
-          "writer_note": "Aviso de quien la escribió:"
+          "writer_note": "Aviso de quien la escribió:",
+          "token_backing": {
+            "pedido": "está en tu pedido",
+            "plan": "está en el plan del curso",
+            "curso": "figura en otra fuente del curso"
+          },
+          "token_kept": "quien la escribió lo da por conocimiento general del tema",
+          "tokens_in_diagrams": "En los diagramas:",
+          "examples": "{count, plural, one {Un ejemplo inventado a propósito, declarado por quien escribió} other {# ejemplos inventados a propósito, declarados por quien escribió}}",
+          "examples_hint": "Sus nombres y números no salen del material, y está bien: no hay nada que confirmar. Fijate sólo que ninguno se haya llevado una definición o una regla del tema, porque lo que está marcado como ejemplo no se verifica."
         }
       },
       "news_feed": {
@@ -3068,7 +3098,17 @@
       "read_inline": "Es chica: cuando el asistente la necesita, la lee entera.",
       "read_cacheable": "Es grande: cuando el asistente la lee entera, el proveedor puede servirla desde su caché.",
       "read_cached": "El proveedor la está sirviendo desde su caché.",
-      "read_over_limit": "Pasa el máximo de material del curso: el asistente lee sólo una parte."
+      "read_over_limit": "Pasa el máximo de material del curso: el asistente lee sólo una parte.",
+      "error_needs_login": "Esa página pide iniciar sesión. Si es un documento de Google, compartilo como \"Cualquier persona con el enlace\" o descargalo como PDF y subilo.",
+      "error_unreadable": "No encontramos texto útil en esa página.",
+      "snackbar_reread_unchanged": "La fuente no cambió",
+      "plan_notice": "{count, plural, one {El plan ya está armado y no usa esta fuente. Si querés usarla, pedile al asistente que rehaga el plan.} other {El plan ya está armado y no usa estas fuentes. Si querés usarlas, pedile al asistente que rehaga el plan.}}",
+      "plan_notice_action": "Pedirle que rehaga el plan",
+      "plan_notice_dismiss": "Cerrar",
+      "plan_notice_prompt": "{count, plural, one {Agregué la fuente {names}. Rehacé el plan para usarla.} other {Agregué las fuentes {names}. Rehacé el plan para usarlas.}}",
+      "error_source_limit": "Este curso ya tiene 100 fuentes: borrá alguna antes de agregar otra.",
+      "upload_failed": "No se pudo subir el archivo. Intentá de nuevo.",
+      "research_left_out_by_limit": "El curso llegó al tope de 100 fuentes: {count} páginas de la investigación quedaron afuera. Borrá alguna fuente si querés sumarlas."
     },
     "load_error": {
       "title": "No pudimos abrir este curso",

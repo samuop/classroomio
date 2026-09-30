@@ -1,4 +1,4 @@
-import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
+import { AI_REQUEST_TIMEOUT, BaseApiWithErrors, classroomio, llamadaDeIA } from '$lib/utils/services/api';
 import type {
   CourseSectionWithLessons,
   CreateCourseSectionRequest,
@@ -718,15 +718,18 @@ export class LessonApi extends BaseApiWithErrors {
 
     await this.execute<RegenerateDiagramRequest>({
       requestFn: () =>
-        classroomio.agent.lessons[':lessonId'].diagram.$post({
-          param: { lessonId: params.lessonId },
-          json: {
-            courseId: params.courseId,
-            locale: params.locale,
-            index: params.index,
-            instruction: params.instruction
-          }
-        }),
+        classroomio.agent.lessons[':lessonId'].diagram.$post(
+          {
+            param: { lessonId: params.lessonId },
+            json: {
+              courseId: params.courseId,
+              locale: params.locale,
+              index: params.index,
+              instruction: params.instruction
+            }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.image)
+        ),
       logContext: 'regenerating lesson diagram',
       onSuccess: (result) => {
         const data = result.data as { content: string; warnings: string[] };
@@ -763,15 +766,18 @@ export class LessonApi extends BaseApiWithErrors {
 
     await this.execute<RegenerateImageRequest>({
       requestFn: () =>
-        classroomio.agent.lessons[':lessonId'].image.$post({
-          param: { lessonId: params.lessonId },
-          json: {
-            courseId: params.courseId,
-            locale: params.locale,
-            index: params.index,
-            instruction: params.instruction
-          }
-        }),
+        classroomio.agent.lessons[':lessonId'].image.$post(
+          {
+            param: { lessonId: params.lessonId },
+            json: {
+              courseId: params.courseId,
+              locale: params.locale,
+              index: params.index,
+              instruction: params.instruction
+            }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.image)
+        ),
       logContext: 'regenerating lesson image',
       onSuccess: (result) => {
         this.updateTranslation(params.lessonId, params.locale, (result.data as { content: string }).content);
@@ -800,15 +806,18 @@ export class LessonApi extends BaseApiWithErrors {
 
     await this.execute<DiagramToImageRequest>({
       requestFn: () =>
-        classroomio.agent.lessons[':lessonId']['diagram-to-image'].$post({
-          param: { lessonId: params.lessonId },
-          json: {
-            courseId: params.courseId,
-            locale: params.locale,
-            index: params.index,
-            subject: params.subject
-          }
-        }),
+        classroomio.agent.lessons[':lessonId']['diagram-to-image'].$post(
+          {
+            param: { lessonId: params.lessonId },
+            json: {
+              courseId: params.courseId,
+              locale: params.locale,
+              index: params.index,
+              subject: params.subject
+            }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.image)
+        ),
       logContext: 'replacing a diagram with an image',
       onSuccess: (result) => {
         this.updateTranslation(params.lessonId, params.locale, (result.data as { content: string }).content);

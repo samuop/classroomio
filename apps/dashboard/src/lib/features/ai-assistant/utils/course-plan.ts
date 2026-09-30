@@ -22,6 +22,26 @@ export interface CoursePlanSectionItem {
    * el docente VEA qué queda afuera y con qué motivo.
    */
   skip?: boolean;
+  /** Las fuentes del curso de las que sale la lección, declaradas por el agente. */
+  sources?: string[];
+}
+
+/**
+ * Lo que el servidor midió al armar el plan: qué lecciones tienen material
+ * atrás y cuáles no. Sólo viene cuando hay algo que decir.
+ */
+export interface CoursePlanCoverage {
+  sourcesAttached: number;
+  lessonsWithSource: number;
+  /** Los títulos de las lecciones sin ninguna fuente real detrás. */
+  lessonsWithoutSource: string[];
+  /**
+   * Las lecciones que citan una fuente que apenas nombra el tema (un temario,
+   * un índice). Para el servidor valen como lecciones sin material.
+   */
+  lessonsWithWeakSource?: Array<{ lesson: string; sources: string[]; charactersOnTopic: number }>;
+  citedSourcesThatDoNotExist?: Array<{ item: string; declarada: string }>;
+  note?: string;
 }
 
 export interface CoursePlanSection {
@@ -42,4 +62,6 @@ export interface CoursePlan {
    */
   scope?: 'course' | 'changes';
   sections: CoursePlanSection[];
+  /** Ausente cuando todo el plan tiene material, o el curso no tiene fuentes. */
+  coverage?: CoursePlanCoverage;
 }

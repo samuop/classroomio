@@ -28,6 +28,7 @@ import {
 } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
 import {
+  exigirLugarParaUnaPagina,
   fuenteConLecturaVieja,
   getCourseSourceText,
   releerFuente,
@@ -36,7 +37,8 @@ import {
 } from '@api/services/agent/document';
 import { getAssetsByIds } from '@cio/db/queries/assets/assets';
 import { generateDocumentDownloadPresignedUrls } from '@api/utils/s3';
-import { fetchDocumentationUrl } from '@api/services/agent/fetch-url';
+import { fetchDocumentationUrl, PLAZO_DE_LECTURA_A_MANO_MS } from '@api/services/agent/fetch-url';
+import { diagnosticarFuente, errorDePaginaSinContenido } from '@api/services/agent/pagina-sin-contenido';
 
 /**
  * Sources / documents sub-router.
@@ -204,14 +206,19 @@ export const agentDocumentsRouter = new Hono()
    * POST /agent/documents/url
    *
    * Add a web page as a course source. Fetches the page through the same reader
-   * `fetch_documentation_url` uses (so the 7-day Jina cache is shared) and stores
-   * the markdown as an ai_chat_document.
+   * `fetch_documentation_url` uses and stores the markdown as an ai_chat_document.
    *
    * This exists because a URL used to reach the model only as a tool result inside
    * the chat transcript, and build mode drops the transcript wholesale — the page
    * disappeared at precisely the moment the course was being written from it.
    * Persisted as a source it lands in the Sources panel and in the cached source
    * pack, exactly like an uploaded PDF.
+   *
+   * Lo que no es una página se rechaza con 422 y un `code` que el panel traduce:
+   * SOURCE_NEEDS_LOGIN (un muro de inicio de sesión o un documento privado) o
+   * SOURCE_UNREADABLE (sin texto que sirva). Antes se guardaba cualquier cosa que
+   * el lector devolviera con 200, y así entró como fuente la pantalla de inicio
+   * de sesión de una planilla privada, con el diálogo cerrándose como si nada.
    */
   .post(
     '/url',
@@ -230,22 +237,45 @@ export const agentDocumentsRouter = new Hono()
           throw new AppError('Not authorized for this course', 'COURSE_FORBIDDEN', 403);
         }
 
-        // Added from the Sources panel, where there may be no conversation yet.
-        // ai_chat_document.conversation_id is NOT NULL, so give it the same hidden
-        // "Course sources" conversation an upload from that panel gets.
-        if (!conversationId) {
-          const created = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
-          conversationId = created.id;
-        } else {
+        if (conversationId) {
           const conversation = await getChatConversation(conversationId, user.id);
           if (!conversation || conversation.courseId !== courseId) {
             throw new AppError('Conversation not found', 'CONVERSATION_NOT_FOUND', 404);
           }
         }
 
-        // `priorMessages: []` — a teacher deliberately adding a source is not the
-        // runaway-agent case the per-conversation fetch limit guards against.
-        const page = await fetchDocumentationUrl({ url, orgId, courseId, priorMessages: [] });
+        // Con el curso lleno no se lee nada: 422 SOURCE_LIMIT_REACHED. Una
+        // dirección que ya es fuente sí pasa, porque se relee en su lugar.
+        await exigirLugarParaUnaPagina(courseId, url);
+
+        const page = await fetchDocumentationUrl({
+          url,
+          orgId,
+          courseId,
+          // A teacher deliberately adding a source is not the runaway-agent case
+          // the per-conversation fetch limit guards against.
+          priorMessages: [],
+          // Lo pide la docente a mano: quiere lo que la página dice HOY. Con la
+          // caché de 7 días, la planilla que acababa de compartir le seguía
+          // devolviendo el muro de la primera vez.
+          fresco: true,
+          plazoMs: PLAZO_DE_LECTURA_A_MANO_MS
+        });
+
+        // La lectura ya frena los muros y los errores del sitio; guardarla como
+        // FUENTE pide además prosa (una portada de puros enlaces no es material).
+        const diagnostico = diagnosticarFuente(page.content);
+
+        if (diagnostico) throw errorDePaginaSinContenido(diagnostico, page.url);
+
+        // Added from the Sources panel, where there may be no conversation yet.
+        // ai_chat_document.conversation_id is NOT NULL, so it goes to the hidden
+        // sources conversation — reused, not a new one per page. Después de leer
+        // y no antes: una página rechazada no tiene por qué abrir nada.
+        if (!conversationId) {
+          const created = await createChatConversation(courseId, user.id, SOURCES_CONVERSATION_TITLE);
+          conversationId = created.id;
+        }
 
         const stored = await storeUrlDocument({
           url,
@@ -411,14 +441,20 @@ export const agentDocumentsRouter = new Hono()
   /**
    * POST /agent/documents/:documentId/reread
    *
-   * Vuelve a leer el archivo original con el lector de hoy.
+   * Vuelve a leer el original: el archivo con el lector de hoy, o la página web
+   * bajándola de nuevo, fresca.
    *
    * Existe porque el texto de una fuente se extrae UNA vez, al subirla, y es
    * lo unico que el agente conoce del documento: cuando el lector mejora, lo
    * ya subido se queda con la lectura vieja para siempre. Medido: un
    * organigrama subido tres horas antes de que se desplegara la lectura por
    * vision quedo con 104 caracteres — el pie de pagina — y una seccion entera
-   * se escribio sin el.
+   * se escribio sin el. Para una pagina es la salida del muro: la docente
+   * comparte la planilla y la relee, sin cache de por medio.
+   *
+   * Devuelve `{ changed, wordCount, before, after, pageCount }`. Una pagina que
+   * vuelve como muro o sin texto responde 422 (SOURCE_NEEDS_LOGIN o
+   * SOURCE_UNREADABLE) y la fuente queda como estaba.
    *
    * Lo pide el docente, no corre solo: releer gasta (baja el archivo y puede
    * mirar cada pagina con el modelo) y reemplaza el texto que el curso ya esta
@@ -432,6 +468,7 @@ export const agentDocumentsRouter = new Hono()
     async (c) => {
       try {
         const user = c.get('user')!;
+        const orgId = c.req.header('cio-org-id');
         const { documentId } = c.req.valid('param');
 
         const courseId = await getChatDocumentCourseId(documentId);
@@ -444,7 +481,7 @@ export const agentDocumentsRouter = new Hono()
           throw new AppError('Document not found', 'DOCUMENT_NOT_FOUND', 404);
         }
 
-        const resultado = await releerFuente({ documentId, courseId, redis });
+        const resultado = await releerFuente({ documentId, courseId, redis, orgId, userId: user.id });
 
         return c.json({ success: true as const, data: resultado });
       } catch (error) {

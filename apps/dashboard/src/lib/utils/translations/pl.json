@@ -2207,6 +2207,18 @@
       "title": "Nie udało się otworzyć tego kursu",
       "description": "Mógł zostać usunięty lub nie masz już do niego dostępu. Jeśli uważasz, że to pomyłka, powiadom administratora swojej organizacji.",
       "action": "Wróć do moich kursów"
+    },
+    "sources": {
+      "error_needs_login": "Ta strona wymaga zalogowania. Jeśli to dokument Google, udostępnij go opcją „Każdy, kto ma link” albo pobierz jako PDF i prześlij.",
+      "error_unreadable": "Nie znaleźliśmy na tej stronie przydatnego tekstu.",
+      "snackbar_reread_unchanged": "Źródło się nie zmieniło",
+      "plan_notice": "{count, plural, one {Plan jest już gotowy i nie korzysta z tego źródła. Jeśli chcesz go użyć, poproś asystenta o przygotowanie planu od nowa.} other {Plan jest już gotowy i nie korzysta z tych źródeł. Jeśli chcesz ich użyć, poproś asystenta o przygotowanie planu od nowa.}}",
+      "plan_notice_action": "Poproś o nowy plan",
+      "plan_notice_dismiss": "Zamknij",
+      "plan_notice_prompt": "{count, plural, one {Dodałem źródło {names}. Przygotuj plan od nowa, żeby z niego korzystać.} other {Dodałem źródła {names}. Przygotuj plan od nowa, żeby z nich korzystać.}}",
+      "error_source_limit": "Ten kurs ma już 100 źródeł: usuń któreś, zanim dodasz kolejne.",
+      "upload_failed": "Nie udało się przesłać pliku. Spróbuj ponownie.",
+      "research_left_out_by_limit": "Kurs osiągnął limit 100 źródeł: {count} stron z wyszukiwania nie zostało dodanych. Usuń któreś źródło, jeśli chcesz je dodać."
     }
   },
   "courses": {
@@ -3899,7 +3911,7 @@
     "mention_section": "Sekcja",
     "mention_no_results": "Brak pasującej treści",
     "uploading_document": "Przesyłanie dokumentu...",
-    "agent_running_warning": "Zmiany pojawią się w kursie po zakończeniu działania agenta. Nie przeładowuj strony.",
+    "agent_running_warning": "Możesz opuścić tę stronę: asystent dokończy bieżącą porcję pracy i ją zapisze. Jeśli kurs nie jest gotowy, po powrocie kliknij „Wznów”.",
     "agent_running_warning_dismiss": "Zamknij",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "Pracownik nie odpowiada",
         "body": "Ten przebieg czekał ponad 30 sekund bez odbioru pracownika. Proces roboczy działający w tle może być wyłączony lub uruchamiany ponownie."
       }
-    }
+    },
+    "error_timeout": "Trwa to dłużej niż zwykle. Żądanie jest nadal przetwarzane: spróbuj ponownie za kilka sekund.",
+    "error_stream_cut": "Połączenie z asystentem zostało przerwane. To, co już zostało utworzone, jest zapisane.",
+    "error_round_in_progress": "Asystent nadal pracuje w tym czacie. Poczekaj, aż skończy.",
+    "round_in_progress_notice": "Asystent pracuje nad tym kursem. Widok odświeży się sam.",
+    "tool_interrupted": "Przerwano przed zakończeniem. Sprawdź kurs: to, co zdążyło się zapisać, jest zapisane.",
+    "control_message": {
+      "plan_approved": "Plan zatwierdzony — trwa tworzenie",
+      "continue_build": "Kontynuuj tworzenie"
+    },
+    "plan_screen": {
+      "no_source_title": "Niektóre lekcje nie mają materiałów",
+      "no_source_body": "{count, plural, one {Ta lekcja nie ma żadnego źródła z kursu, które by ją wspierało. Co chcesz z nią zrobić?} other {Te lekcje (#) nie mają żadnego źródła z kursu, które by je wspierało. Co chcesz z nimi zrobić?}}",
+      "no_source_general": "Napisz je na podstawie wiedzy ogólnej",
+      "no_source_remove": "Usuń je z planu",
+      "no_source_cancel": "Anuluj",
+      "no_source_remove_failed": "Nie można ich usunąć bez pozostawienia niepełnego planu. Wybierz inną opcję albo poproś asystenta o zmiany.",
+      "weak_source_hint": "Powołuje się na {sources}, ale tam temat jest tylko wymieniony."
+    },
+    "stopping": "Zatrzymywanie…",
+    "stopping_notice": "Zatrzymywanie: asystent kończy to, co właśnie robi, zapisuje to i się zatrzymuje.",
+    "stop_not_delivered": "Nie udało się przekazać asystentowi polecenia zatrzymania: dokończy tę porcję pracy i ją zapisze. Czat odświeży się sam po zakończeniu.",
+    "stopped_by_teacher": "Tutaj zatrzymano asystenta. To, co już zrobił, zostało zapisane.",
+    "error_timeout_chat": "Asystent nadal pracuje i trwa to dłużej niż zwykle. Czat odświeży się sam po zakończeniu."
   },
   "widgets": {
     "heading": "Widżety",

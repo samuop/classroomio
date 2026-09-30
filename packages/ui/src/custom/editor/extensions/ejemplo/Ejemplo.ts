@@ -32,6 +32,11 @@ export const EJEMPLO_ATTRIBUTE = 'data-ejemplo';
  * `svgBlock` is absent for the same reason it is absent there — it renders by
  * handing ProseMirror the raw `<svg>`, bypassing attribute serialisation, so a
  * mark stamped on it could never reach storage.
+ *
+ * `table` is here because data that IS a table goes in a `<table>` now (see
+ * `LESSON_TABLE_RULE`): a spreadsheet of invented products and prices is the
+ * most common example in a spreadsheet course, and without the attribute on the
+ * table node the mark was dropped on the first save.
  */
 const DEFAULT_TYPES = [
   'paragraph',
@@ -40,7 +45,8 @@ const DEFAULT_TYPES = [
   'bulletList',
   'orderedList',
   'listItem',
-  'codeBlock'
+  'codeBlock',
+  'table'
 ];
 
 export interface EjemploOptions {

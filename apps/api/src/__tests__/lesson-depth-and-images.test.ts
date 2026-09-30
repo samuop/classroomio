@@ -74,7 +74,10 @@ describe('validateLessonVisuals', () => {
     const warnings = validateLessonVisuals(lessonOf(900));
 
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('edit_lesson_content');
+    // La misma herramienta que la nota de arreglos del resultado: decía
+    // edit_lesson_content, y el mismo resultado daba dos órdenes contradictorias.
+    expect(warnings[0]).toContain('replace_lesson_block');
+    expect(warnings[0]).not.toContain('edit_lesson_content');
   });
 
   it('offers the free option first, so the floor is not a bill', () => {

@@ -12,10 +12,12 @@ import {
   convertToModelMessages,
   pruneMessages,
   InvalidToolInputError,
-  NoSuchToolError
+  NoSuchToolError,
+  type UIMessage
 } from 'ai';
 import {
   ZAgentChatBody,
+  ZAgentChatStopBody,
   ZAgentGenerateCourseTitleBody,
   ZAgentGenerateTextBody,
   ZAgentResearchBody,
@@ -52,7 +54,24 @@ import {
   getDocumentText,
   SOURCES_CONVERSATION_TITLE
 } from '@api/services/agent/document';
-import { createChatConversation } from '@api/services/agent/chat-history';
+import { createChatConversation, saveChatMessages } from '@api/services/agent/chat-history';
+import {
+  RONDA_EN_CURSO,
+  leerRondaViva,
+  pedirQueSeDetenga,
+  responderRonda,
+  tomarCandadoDeRonda,
+  type CandadoDeRonda
+} from '@api/services/agent/ronda-viva';
+import { crearConsumoDeLaRonda } from '@api/services/agent/consumo-de-la-ronda';
+import { documentosEnLineaConIndice, esAdjuntoDeEsteMensaje } from '@api/services/agent/adjunto-del-turno';
+import {
+  avisoDeFuentesFueraDelPlan,
+  fuentesFueraDelPlan,
+  momentoDeLaRondaAnterior,
+  momentoDelPlan
+} from '@api/services/agent/fuentes-fuera-del-plan';
+import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { recordObservedCacheHit, resolveDocumentCache } from '@api/services/agent/document-cache';
 import { buildSourcePack } from '@api/services/agent/source-pack';
 import { buildSourceIndex, decidirMaterial } from '@api/services/agent/source-index';
@@ -166,7 +185,7 @@ const agentCoreRouter = new Hono()
     try {
       const user = c.get('user')!;
       const orgId = c.req.header('cio-org-id')!;
-      const { courseId } = c.req.valid('query');
+      const { courseId, conversationId } = c.req.valid('query');
 
       const providerConfig = pickAnyConfiguredProvider();
       if (!providerConfig) {
@@ -176,7 +195,9 @@ const agentCoreRouter = new Hono()
           usage: { used: 0, allowance: 0, creditBalance: 0, remaining: 0 },
           tutor: { enabled: false, capRemaining: null, cap: null, enforced: false },
           contextWindow: resolveAgentContextBudget(),
-          imageInput: false
+          imageInput: false,
+          // Sin proveedor no corre ninguna ronda.
+          activeRound: null
         };
 
         return c.json({ success: true, data: status });
@@ -192,6 +213,11 @@ const agentCoreRouter = new Hono()
           ? await getStudentTutorStatus(orgId, courseId, user.id)
           : { enabled: true, cap: null, capRemaining: null, enforced: false };
 
+      // La ronda que esta persona tiene viva en este curso. El panel que perdió
+      // el stream espera a que su conversación deje de figurar acá para
+      // recargarla: para entonces el servidor ya la guardó. Ver `ronda-viva.ts`.
+      const activeRound = await leerRondaViva({ redis, courseId, userId: user.id, conversationId });
+
       const status: AgentStatus = {
         enabled: true,
         role,
@@ -203,7 +229,8 @@ const agentCoreRouter = new Hono()
           role === AgentRole.TEACHER &&
           (providerConfig.provider === AIProvider.GOOGLE ||
             providerConfig.provider === AIProvider.ANTHROPIC ||
-            providerConfig.provider === AIProvider.OPENAI)
+            providerConfig.provider === AIProvider.OPENAI),
+        activeRound
       };
 
       return c.json({ success: true, data: status });
@@ -591,6 +618,17 @@ const agentCoreRouter = new Hono()
     const user = c.get('user')!;
     const orgId = c.req.header('cio-org-id')!;
 
+    /**
+     * El candado de la conversación mientras lo tiene ESTE pedido.
+     *
+     * Cuando la respuesta sale, pasa a la ronda (`responderRonda`), que lo
+     * suelta al terminar. Si el pedido muere antes —un error en el trabajo
+     * previo—, lo suelta el `finally` de abajo: un candado huérfano trabaría la
+     * conversación hasta que venza.
+     */
+    let candado: CandadoDeRonda | undefined;
+    let candadoEntregadoALaRonda = false;
+
     try {
       const { courseId, conversationId, messages, context } = c.req.valid('json');
 
@@ -634,6 +672,30 @@ const agentCoreRouter = new Hono()
         if (!conversation || conversation.courseId !== courseId) {
           throw new AppError('Conversation not found for this course', 'CONVERSATION_NOT_FOUND', 404);
         }
+
+        /**
+         * Una sola ronda viva por conversación.
+         *
+         * Medido el 2026-09-29: un reintento arrancó mientras la ronda anterior
+         * seguía escribiendo una lección, y el pedido que el navegador había
+         * abandonado siguió trabajando en paralelo con su reintento. Ahora la
+         * ronda termina en el servidor aunque el navegador se vaya, así que el
+         * segundo pedido tiene que esperar a que termine: el panel lo sabe por
+         * `activeRound` en `/agent/status`.
+         *
+         * Se toma ANTES del trabajo previo (el índice de fuentes, el ancla del
+         * plan) y no al abrir el stream: ese tramo puede tardar, y es justo el
+         * tramo en que el navegador corta y el docente reintenta.
+         */
+        const tomado = await tomarCandadoDeRonda({ redis, conversationId, courseId, userId: user.id });
+
+        if (!tomado) {
+          console.warn(`[agent.chat] pedido rechazado: la conversación ${conversationId} ya tiene una ronda viva`);
+
+          return c.json(RONDA_EN_CURSO, 409);
+        }
+
+        candado = tomado;
       }
 
       const isOrgPaid = role === AgentRole.TEACHER ? await isOrgOnPaidPlan(orgId) : false;
@@ -645,6 +707,29 @@ const agentCoreRouter = new Hono()
 
       if (role === AgentRole.TEACHER) {
         await enforceTokenBalance(orgId);
+      }
+
+      /**
+       * Lo que mandó el docente queda guardado desde ya, antes del trabajo
+       * previo y del modelo.
+       *
+       * El panel que pierde la ronda —un corte, un error— ya no guarda lo que
+       * tenía: espera a que la ronda deje de estar viva y recarga la
+       * conversación del servidor. Si la ronda muere antes de su final (un
+       * error en el trabajo previo, un reinicio del servidor a mitad de
+       * camino), sin esto el último mensaje del docente desaparecería de la
+       * pantalla. Al terminar, `responderRonda` guarda la conversación entera
+       * encima de esto.
+       *
+       * DESPUÉS del cupo y de la política del tutor: un pedido rechazado (402,
+       * tope del alumno) no llegó a ser un turno, y guardarlo hacía que el
+       * panel diera por «recargada» la conversación y borrara el aviso del
+       * rechazo.
+       */
+      if (conversationId && candado) {
+        await saveChatMessages(conversationId, user.id, messages).catch((error: unknown) => {
+          console.error(`[agent.chat] no se pudo guardar el pedido de la conversación ${conversationId}:`, error);
+        });
       }
 
       const documentIds = collectDocumentIds(messages, context?.documentId);
@@ -829,8 +914,12 @@ const agentCoreRouter = new Hono()
       // El estado intermedio que faltaba: saber qué material hay sin cargarlo.
       // Un agente que ve el listado puede decir "para esto necesito el manual de
       // higiene y no lo tenés subido"; uno que no ve nada sólo puede adivinar.
+      // `orgId` y `userId` para que los resúmenes que falten se cobren a quien
+      // corresponde (ver `buildSourceIndex`).
       const sourceIndex =
-        formaDelMaterial === 'indice' ? await buildSourceIndex({ courseId, redis }) : undefined;
+        formaDelMaterial === 'indice'
+          ? await buildSourceIndex({ courseId, redis, orgId, userId: user.id })
+          : undefined;
 
       // Con el índice, los documentos adjuntados en mensajes ANTERIORES ya están
       // en él: se promovieron a fuentes del curso (ver `promoteDraftDocuments`
@@ -838,10 +927,22 @@ const agentCoreRouter = new Hono()
       // duplicaba, y encima el bloque <document> le gana al índice en el prompt:
       // le decía al modelo que tenía el texto completo "del PDF que el docente
       // acaba de adjuntar" cuando lo que tenía eran resúmenes, y le ocultaba que
-      // podía leerlos con `read_source`. Sólo el adjunto de ESTE mensaje entra
-      // entero, porque es el foco del turno.
+      // podía leerlos con `read_source`.
+      //
+      // Y `context.documentId` tampoco entra si ya es fuente del curso. El panel
+      // lo repite en CADA pedido mientras la fuente siga adjunta: medido el
+      // 2026-09-29, una página de la investigación viajó entera en cada paso de
+      // una construcción —unas 4.700 fichas por paso— presentada como el PDF
+      // recién adjuntado. Si es fuente, está en el índice y se lee con
+      // `read_source`; sólo lo que el índice no tiene se carga entero. Ver
+      // `adjunto-del-turno.ts`.
       const documentosEnLinea =
-        formaDelMaterial === 'indice' ? (context?.documentId ? [context.documentId] : []) : documentIds;
+        formaDelMaterial === 'indice'
+          ? documentosEnLineaConIndice({
+              documentId: context?.documentId,
+              idsDelIndice: sourceIndex?.entries.map((entrada) => entrada.id) ?? []
+            })
+          : documentIds;
 
       const documentText =
         !useSourcePack && documentosEnLinea.length > 0
@@ -905,6 +1006,10 @@ const agentCoreRouter = new Hono()
         exerciseTitle,
         documentId: context?.documentId,
         documentText,
+        // Lo único que autoriza a decirle al modelo «el docente acaba de
+        // adjuntar esto»: que el documento llegó con ESTE mensaje y con ninguno
+        // anterior. Ver `esAdjuntoDeEsteMensaje`.
+        documentAttachedThisTurn: esAdjuntoDeEsteMensaje(messages, context?.documentId),
         searchableDocument: !!searchableDocumentId,
         courseSourceCount: sourcePack?.entries.length ?? sourceIndex?.entries.length,
         truncatedSourceCount: sourcePack?.truncatedCount,
@@ -1162,6 +1267,51 @@ const agentCoreRouter = new Hono()
       // ronda movió el plan?». `planProgress` se pisa durante la ronda; esto no.
       const completadasAntesDeLaRonda = planProgress?.completed;
 
+      /**
+       * Las fuentes que el docente agregó después del plan y que el plan no usa.
+       *
+       * Medido el 2026-09-29: una fuente agregada entre que el agente armó el
+       * plan y que el docente lo aprobó quedó afuera de toda la construcción,
+       * sin aviso. El escritor carga sólo las fuentes que el plan le asigna a
+       * cada lección, y la aprobación manda el plan como estaba.
+       *
+       * Va junto al ancla y sólo mientras quede algo por construir: con el plan
+       * terminado, «seguí construyendo sin ellas» ya no dice nada, y el pedido
+       * que venga sobre la fuente nueva se atiende como cualquier otro.
+       */
+      const quedaPorConstruir =
+        !planProgress || planProgress.pendingCount > 0 || planProgress.emptyCount > 0;
+
+      if (teacherPromptMode === 'build' && approvedPlan && quedaPorConstruir) {
+        try {
+          const fuentesDelCurso = await listCourseSources(courseId);
+          const fueraDelPlan = fuentesFueraDelPlan({
+            plan: approvedPlan,
+            fuentes: fuentesDelCurso.map((fuente) => ({
+              id: fuente.id,
+              fileName: fuente.fileName,
+              createdAt: fuente.createdAt
+            })),
+            planArmadoEn: momentoDelPlan(messages),
+            // Una sola vez por fuente: la ronda anterior ya avisó de las que
+            // existían cuando terminó.
+            avisadasHasta: momentoDeLaRondaAnterior(messages)
+          });
+          const aviso = avisoDeFuentesFueraDelPlan(fueraDelPlan);
+
+          if (aviso) {
+            contextMessageText = contextMessageText ? `${contextMessageText}\n\n${aviso}` : aviso;
+            console.log(
+              `[agent.chat] ${fueraDelPlan.length} fuente(s) agregada(s) después del plan que el plan no usa: ` +
+                fueraDelPlan.map((fuente) => fuente.id).join(', ')
+            );
+          }
+        } catch (err) {
+          // Es un aviso: si la base falla, la ronda sigue sin él.
+          console.error('[agent.chat] no se pudieron comparar las fuentes con el plan:', err);
+        }
+      }
+
       // Material-cap notice (policy: 400k cached tokens per course). Tell the model
       // so it warns the instructor, in the conversation's language, that no more
       // source material fits this course and a separate course is the way forward.
@@ -1317,6 +1467,12 @@ const agentCoreRouter = new Hono()
       let lastStepInputTokens: number | undefined;
       let finishReason: string | undefined;
       /**
+       * La docente tocó «Detener» y la ronda cerró por eso: la escribe la
+       * condición de corte de `stopWhen` y la lee la metadata del mensaje, para
+       * que la pantalla diga «Detenido» y no lo confunda con un final normal.
+       */
+      let detenidaPorLaDocente = false;
+      /**
        * Si el plan todavía tiene ítems sin hacer, para que `messageMetadata`
        * —que es SÍNCRONA— pueda ofrecerle «Continuar» al docente aunque el
        * modelo haya dicho que terminó.
@@ -1431,10 +1587,13 @@ const agentCoreRouter = new Hono()
       // discovery/chat transcript is dead weight and can distract the builder,
       // so we run it with an ISOLATED context: just the context message (which
       // already carries the approved plan + Plan-Progress + TODO anchors — the
-      // real source of truth) plus the single latest user turn (the "Implement
-      // this plan." / "continue" instruction). This keeps the builder focused
-      // and stops the build from ever polluting or being polluted by the main
-      // conversation history. Same streamText/response, so the UI is unchanged.
+      // real source of truth) plus the single latest user turn (the approval —
+      // «Construí el curso según el plan aprobado.» — or the continuation —
+      // «Seguí construyendo el plan desde donde quedó.»; the server never
+      // compares those texts, it recognizes the approval by `metadata.plan`).
+      // This keeps the builder focused and stops the build from ever polluting
+      // or being polluted by the main conversation history. Same
+      // streamText/response, so the UI is unchanged.
       //
       // Every other mode (plan, single-lesson edit, student) keeps the full
       // trimmed transcript, since those ARE conversational.
@@ -1680,6 +1839,30 @@ const agentCoreRouter = new Hono()
         console.log(`[agent.chat] extended thinking enabled phase=${teacherPromptMode} budget=${thinkingBudget}`);
       }
 
+      /**
+       * El modelo que realmente se llamó, resuelto con la MISMA función que
+       * lo eligió (`createModel` hace `config.model || resolveModelName(...)`).
+       *
+       * Antes acá decía `providerConfig.model || providerConfig.provider`, y
+       * cuando no había modelo configurado guardaba el nombre del PROVEEDOR:
+       * quedaron filas cuyo "modelo" era `google` o `minimax`. Ninguno está
+       * en la tabla de multiplicadores, así que caían al 1× "no medido" en
+       * silencio — 49 de las 53 llamadas de agosto 2026.
+       */
+      const modeloReal = providerConfig.model || resolveModelName(providerConfig.provider);
+
+      /**
+       * El consumo del constructor, paso por paso. Ver `consumo-de-la-ronda.ts`.
+       *
+       * Se registraba una fila por ronda en `onFinish`, y tres rondas cortadas
+       * el 2026-09-29 —unos 26 pasos— no dejaron ninguna. Ahora cada paso deja
+       * la suya en `onStepFinish`, y `onFinish` ya no registra: no hay manera
+       * de contar un paso dos veces.
+       */
+      const consumo = crearConsumoDeLaRonda((uso) =>
+        recordTokenUsage(orgId, user.id, courseId, uso, modeloReal, providerConfig.provider)
+      );
+
       const result = streamText({
         model,
         maxRetries: 2,
@@ -1759,7 +1942,30 @@ const agentCoreRouter = new Hono()
         tools: agentTools,
         ...(activeToolNames ? { activeTools: activeToolNames as any } : {}),
         ...(providerOptions ? { providerOptions } : {}),
-        stopWhen: stepCountIs(maxStepsForRound),
+        /**
+         * Dos formas de cerrar la ronda entre un paso y el siguiente: el tope de
+         * pasos, y el «Detener» de la docente.
+         *
+         * «Detener» NO corta en el acto: `stopWhen` se evalúa cuando el paso
+         * terminó (la herramienta en curso devolvió y guardó), así que lo que se
+         * estaba escribiendo queda entero, y la ronda cierra normal —se guarda la
+         * conversación y el consumo ya quedó registrado paso por paso—. Irse de
+         * la pantalla no llega acá: la ronda sigue hasta su final (`ronda-viva.ts`).
+         */
+        stopWhen: [
+          stepCountIs(maxStepsForRound),
+          async () => {
+            if (!candado || !(await candado.pidieronDetener())) return false;
+
+            if (!detenidaPorLaDocente) {
+              console.log(`[agent.chat] «Detener» de la docente: la ronda de ${conversationId} cierra tras el paso en curso`);
+            }
+
+            detenidaPorLaDocente = true;
+
+            return true;
+          }
+        ],
         /**
          * Los enlaces del chat, resueltos antes de que el texto salga.
          *
@@ -1871,9 +2077,25 @@ const agentCoreRouter = new Hono()
           // `recalcularProgresoDelPlan`.
           finishReason = step.finishReason;
 
+          // Se cobra apenas el proveedor lo informa. Nunca tira.
+          await consumo.alTerminarPaso(step.usage);
+
           if (pasoPudoCambiarElCurso(step.toolCalls.map((call) => call.toolName))) {
             await recalcularProgresoDelPlan();
           }
+        },
+        /**
+         * Hoy ninguna ronda se aborta: no hay `abortSignal`, porque la ronda
+         * termina en el servidor aunque el navegador se vaya (ver
+         * `ronda-viva.ts`), y «Detener» la cierra entre dos pasos por `stopWhen`,
+         * sin abortar. Si algún día se agrega uno, o un tope de tiempo, que
+         * quede escrito qué se cortó y cuánto se llegó a cobrar.
+         */
+        onAbort: ({ steps }) => {
+          console.warn(
+            `[agent.chat] ronda abortada phase=${teacherPromptMode} steps=${steps.length} ` +
+              `pasosCobrados=${consumo.pasosRegistrados}`
+          );
         },
         onFinish: async ({ totalUsage, finishReason: resultFinishReason, steps }) => {
           completedStepCount = steps.length;
@@ -1889,7 +2111,7 @@ const agentCoreRouter = new Hono()
           console.log(
             `[agent.chat] phase=${teacherPromptMode} finish=${resultFinishReason} steps=${steps.length} ` +
               `toolsOffered=${activeToolNames?.length ?? 'all'} toolCalls=[${toolCalls.join(', ') || 'NONE'}] ` +
-              `docInline=${hasInlineDocumentContext}`
+              `docInline=${hasInlineDocumentContext} pasosCobrados=${consumo.pasosRegistrados}`
           );
 
           // Enlaces del resumen a contenido que no existe. El dashboard los
@@ -1916,28 +2138,15 @@ const agentCoreRouter = new Hono()
           // metadata del mensaje ya salió. Lo hace `onStepFinish` — ver
           // `recalcularProgresoDelPlan`.
 
-          /**
-           * El modelo que realmente se llamó, resuelto con la MISMA función que
-           * lo eligió (`createModel` hace `config.model || resolveModelName(...)`).
-           *
-           * Antes acá decía `providerConfig.model || providerConfig.provider`, y
-           * cuando no había modelo configurado guardaba el nombre del PROVEEDOR:
-           * quedaron filas cuyo "modelo" era `google` o `minimax`. Ninguno está
-           * en la tabla de multiplicadores, así que caían al 1× "no medido" en
-           * silencio — 49 de las 53 llamadas de agosto 2026.
-           */
-          const modeloReal = providerConfig.model || resolveModelName(providerConfig.provider);
-
+          // El total de la ronda, sólo para los logs y las métricas de abajo: el
+          // consumo ya quedó registrado paso por paso en `onStepFinish`.
           const inputTokens = totalUsage?.inputTokens ?? 0;
           const outputTokens = totalUsage?.outputTokens ?? 0;
-          // Trust the provider's own total — do NOT recompute as input+output,
-          // which can diverge from what the API actually billed.
-          const reportedTotal = totalUsage?.totalTokens ?? inputTokens + outputTokens;
 
           // Detailed breakdown (provider-agnostic in AI SDK v7): reasoning is a
           // subset of output; cacheRead/cacheWrite are subsets of input. Populated
-          // for Anthropic AND Gemini — recorded per row for cost analytics and to
-          // measure the explicit-cache savings (Capa 2b).
+          // for Anthropic AND Gemini — each step's row carries its own share (see
+          // `usoDelPaso`) for cost analytics and to measure the cache savings.
           const inputDetails = totalUsage?.inputTokenDetails;
           const outputDetails = totalUsage?.outputTokenDetails;
           const cacheRead = inputDetails?.cacheReadTokens ?? 0;
@@ -2003,23 +2212,9 @@ const agentCoreRouter = new Hono()
             ).catch((err) => console.error('[agent.chat] recordObservedCacheHit failed:', err));
           }
 
-          if (totalUsage) {
-            await recordTokenUsage(
-              orgId,
-              user.id,
-              courseId,
-              {
-                promptTokens: inputTokens,
-                completionTokens: outputTokens,
-                totalTokens: reportedTotal,
-                reasoningTokens: reasoning || undefined,
-                cacheReadTokens: cacheRead || undefined,
-                cacheWriteTokens: cacheWrite || undefined
-              },
-              modeloReal,
-              providerConfig.provider
-            );
-          }
+          // Acá ya NO se registra el consumo: lo hizo `onStepFinish`, paso por
+          // paso (ver `crearConsumoDeLaRonda`). Registrarlo también con el total
+          // de la ronda lo cobraría dos veces.
 
           if (role === AgentRole.STUDENT) {
             await incrementStudentTutorCount(orgId, user.id, courseId);
@@ -2037,7 +2232,31 @@ const agentCoreRouter = new Hono()
         }
       });
 
-      return result.toUIMessageStreamResponse({
+      /**
+       * La respuesta: con latido, leída por el servidor hasta el final, guardada
+       * al terminar y con el candado soltado recién después. Ver `ronda-viva.ts`.
+       *
+       * Antes era `result.toUIMessageStreamResponse(...)` a secas, y eso dejaba
+       * tres agujeros medidos el 2026-09-29: sin un byte mientras corría una
+       * herramienta, el proxy cortó la ronda a los 120 s; cortada la conexión,
+       * la ronda quedaba colgada entre dos pasos, sin `onFinish` (ni consumo ni
+       * log de cierre); y la conversación sólo la guardaba el navegador, así
+       * que un corte la dejaba congelada en el paso en curso.
+       *
+       * Las opciones de abajo (`onError`, `messageMetadata`) son las mismas de
+       * antes, y las cabeceras las pone `createUIMessageStreamResponse` igual
+       * que `toUIMessageStreamResponse`.
+       */
+      const respuesta = responderRonda({
+        resultado: result,
+        mensajesOriginales: messages as UIMessage[],
+        // Sin conversación (el primer mensaje de un chat nuevo) no hay dónde
+        // guardar: la crea y la guarda el cliente, como siempre.
+        guardar: conversationId
+          ? (mensajes) => saveChatMessages(conversationId, user.id, mensajes)
+          : undefined,
+        candado,
+        etiqueta: conversationId,
         // Without this, the AI SDK's default handler (`() => 'An error occurred.'`)
         // replaces every in-stream failure with that string and logs NOTHING —
         // the actual cause is discarded, so a broken tool call is invisible in
@@ -2083,6 +2302,10 @@ const agentCoreRouter = new Hono()
           return {
             // Cuánto trabajó la ronda, para el «Trabajó 59 s» del panel.
             durationMs: Date.now() - startTime,
+            // Cuándo terminó. Es el sello con el que una ronda de construcción
+            // sabe qué fuentes llegaron DESPUÉS del plan que se aprobó: el del
+            // mensaje que propuso ese plan. Ver `momentoDelPlan`.
+            finishedAt: new Date().toISOString(),
             tokenUsage: {
               // Reported verbatim by the provider (AI SDK v7) — never recomputed.
               promptTokens: part.totalUsage.inputTokens,
@@ -2118,6 +2341,8 @@ const agentCoreRouter = new Hono()
              * comprobable, que es lo unico que se puede garantizar.
              */
             roundChanges: lineasDelRegistro(registroDeRonda),
+            // La ronda cerró por el «Detener» de la docente, no por su cuenta.
+            ...(detenidaPorLaDocente ? { stoppedByTeacher: true } : {}),
             planProgress: checklistProgress
               ? {
                   total: checklistProgress.total,
@@ -2128,8 +2353,8 @@ const agentCoreRouter = new Hono()
                 }
               : undefined,
             // Teacher-only. Every `continuation` reason drives the same UI
-            // affordance, and that affordance sends "Continue implementing the
-            // plan from where you left off" — a build instruction. A learner has
+            // affordance, and that affordance sends «Seguí construyendo el plan
+            // desde donde quedó.» — a build instruction. A learner has
             // no plan to implement, so offering it would be nonsense in their
             // chat, and the round that ends at the cap should simply end.
             //
@@ -2169,6 +2394,11 @@ const agentCoreRouter = new Hono()
           };
         }
       });
+
+      // De acá en más el candado es de la ronda: lo suelta ella al terminar.
+      candadoEntregadoALaRonda = true;
+
+      return respuesta;
     } catch (error) {
       trackAgentEvent(AgentEvent.CHAT_ERROR, {
         orgId,
@@ -2182,6 +2412,40 @@ const agentCoreRouter = new Hono()
 
       console.error('Agent chat error:', error);
       return c.json({ success: false, error: 'Failed to process chat message', code: 'INTERNAL_ERROR' }, 500);
+    } finally {
+      // El pedido murió antes de que la ronda arrancara: el candado no puede
+      // quedar tomado hasta que venza.
+      if (candado && !candadoEntregadoALaRonda) await candado.soltar();
+    }
+  })
+  /**
+   * «Detener»: la orden de la docente de cerrar la ronda viva de su conversación.
+   *
+   * No corta en el acto: la ronda termina el paso en curso (lo que se estaba
+   * escribiendo queda guardado), no arranca el siguiente y cierra normal. Ver
+   * `pedirQueSeDetenga` y el `stopWhen` de `/chat`. Sólo la dueña de la
+   * conversación puede pedirlo.
+   *
+   * `stop`: `pedido` (la ronda va a cerrar), `sin-ronda` (ya había terminado) o
+   * `sin-redis` (no hay dónde dejar la orden: la ronda sigue hasta su final, y
+   * la pantalla lo avisa).
+   */
+  .post('/chat/stop', authMiddleware, orgMemberMiddleware, zValidator('json', ZAgentChatStopBody), async (c) => {
+    try {
+      const user = c.get('user')!;
+      const { courseId, conversationId } = c.req.valid('json');
+
+      const conversation = await getChatConversation(conversationId, user.id);
+
+      if (!conversation || conversation.courseId !== courseId) {
+        throw new AppError('Conversation not found for this course', 'CONVERSATION_NOT_FOUND', 404);
+      }
+
+      const stop = await pedirQueSeDetenga({ redis, conversationId });
+
+      return c.json({ success: true as const, data: { stop } });
+    } catch (error) {
+      return handleError(c, error, 'Failed to stop the round');
     }
   });
 

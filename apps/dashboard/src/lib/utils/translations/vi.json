@@ -2207,6 +2207,18 @@
       "title": "Không thể mở khóa học này",
       "description": "Khóa học có thể đã bị xóa hoặc bạn không còn quyền truy cập. Nếu bạn cho rằng đây là nhầm lẫn, hãy báo cho quản trị viên tổ chức của bạn.",
       "action": "Quay lại khóa học của tôi"
+    },
+    "sources": {
+      "error_needs_login": "Trang đó yêu cầu đăng nhập. Nếu là tài liệu Google, hãy chia sẻ ở chế độ \"Bất kỳ ai có đường liên kết\" hoặc tải xuống dưới dạng PDF rồi tải lên.",
+      "error_unreadable": "Chúng tôi không tìm thấy nội dung hữu ích trên trang đó.",
+      "snackbar_reread_unchanged": "Nguồn không thay đổi",
+      "plan_notice": "{count, plural, =1 {Kế hoạch đã được lập và không dùng nguồn này. Nếu muốn dùng, hãy nhờ trợ lý lập lại kế hoạch.} other {Kế hoạch đã được lập và không dùng các nguồn này. Nếu muốn dùng, hãy nhờ trợ lý lập lại kế hoạch.}}",
+      "plan_notice_action": "Nhờ lập lại kế hoạch",
+      "plan_notice_dismiss": "Đóng",
+      "plan_notice_prompt": "{count, plural, =1 {Tôi đã thêm nguồn {names}. Hãy lập lại kế hoạch để dùng nguồn này.} other {Tôi đã thêm các nguồn {names}. Hãy lập lại kế hoạch để dùng các nguồn này.}}",
+      "error_source_limit": "Khóa học này đã có 100 nguồn: hãy xóa bớt một nguồn trước khi thêm nguồn khác.",
+      "upload_failed": "Không thể tải tệp lên. Vui lòng thử lại.",
+      "research_left_out_by_limit": "Khóa học đã đạt giới hạn 100 nguồn: {count} trang từ lượt tìm kiếm không được thêm. Hãy xóa bớt một nguồn nếu muốn thêm chúng."
     }
   },
   "courses": {
@@ -3899,7 +3911,7 @@
     "mention_section": "Phần",
     "mention_no_results": "Không có nội dung phù hợp",
     "uploading_document": "Đang tải tài liệu lên...",
-    "agent_running_warning": "Những thay đổi sẽ xuất hiện trong khóa học sau khi tác nhân hoàn tất. Đừng tải lại trang.",
+    "agent_running_warning": "Bạn có thể rời trang này: trợ lý sẽ hoàn tất phần việc đang làm và lưu lại. Nếu khóa học chưa xong, khi quay lại hãy bấm “Tiếp tục”.",
     "agent_running_warning_dismiss": "Đóng",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "Công nhân không phản hồi",
         "body": "Lần chạy này đã chờ hơn 30 giây mà không có công nhân đón. Nhân viên chạy nền có thể không hoạt động hoặc đang khởi động lại."
       }
-    }
+    },
+    "error_timeout": "Việc này mất nhiều thời gian hơn bình thường. Yêu cầu vẫn đang được xử lý: vui lòng thử lại sau vài giây.",
+    "error_stream_cut": "Kết nối với trợ lý đã bị ngắt. Những gì đã tạo đều đã được lưu.",
+    "error_round_in_progress": "Trợ lý vẫn đang làm việc trong cuộc trò chuyện này. Vui lòng đợi đến khi xong.",
+    "round_in_progress_notice": "Trợ lý đang làm việc với khóa học này. Màn hình sẽ tự cập nhật.",
+    "tool_interrupted": "Bị ngắt trước khi hoàn tất. Hãy kiểm tra khóa học: những gì kịp lưu đều đã được lưu.",
+    "control_message": {
+      "plan_approved": "Đã duyệt kế hoạch — đang xây dựng",
+      "continue_build": "Tiếp tục xây dựng"
+    },
+    "plan_screen": {
+      "no_source_title": "Một số bài học không có tài liệu",
+      "no_source_body": "{count, plural, =1 {Bài học này không có nguồn nào của khóa học hỗ trợ. Bạn muốn làm gì với nó?} other {# bài học này không có nguồn nào của khóa học hỗ trợ. Bạn muốn làm gì với chúng?}}",
+      "no_source_general": "Viết bằng kiến thức chung",
+      "no_source_remove": "Bỏ khỏi kế hoạch",
+      "no_source_cancel": "Hủy",
+      "no_source_remove_failed": "Không thể bỏ chúng mà không làm kế hoạch thiếu sót. Hãy chọn cách khác hoặc nhờ trợ lý thay đổi.",
+      "weak_source_hint": "Bài có trích {sources}, nhưng ở đó chỉ nêu tên chủ đề."
+    },
+    "stopping": "Đang dừng…",
+    "stopping_notice": "Đang dừng: trợ lý hoàn tất việc đang làm, lưu lại rồi dừng.",
+    "stop_not_delivered": "Không thể báo trợ lý dừng lại: trợ lý sẽ hoàn tất phần việc này và lưu lại. Cuộc trò chuyện sẽ tự cập nhật khi xong.",
+    "stopped_by_teacher": "Bạn đã dừng trợ lý ở đây. Những gì trợ lý đã làm đều được lưu.",
+    "error_timeout_chat": "Trợ lý vẫn đang làm việc và mất nhiều thời gian hơn bình thường. Cuộc trò chuyện sẽ tự cập nhật khi xong."
   },
   "widgets": {
     "heading": "Widget",

@@ -2,7 +2,8 @@ import { generateText } from 'ai';
 import { buildLessonWriterPrompt, createModel, resolveModelName, type AIProviderConfig } from '@cio/ai-assistant';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { getCourseSourceText } from '@api/services/agent/document';
-import type { FuenteVista } from '@api/services/agent/grounding';
+import { esCortePorTiempo, type FuenteVista } from '@api/services/agent/grounding';
+import { crearMarcadorDeTokens, type MarcadorDeTokens } from '@api/services/agent/marcas-del-rebote';
 import { buscarFuente } from '@api/services/agent/plan-coverage';
 import { recordTokenUsage } from '@api/services/agent/usage';
 import type { RedisClient } from '@api/utils/redis/redis';
@@ -46,6 +47,30 @@ export const PRESUPUESTO_MATERIAL_CHARS = 160_000;
 
 /** Largo máximo de la descripción de cada ítem en el temario. */
 const MAX_DESCRIPCION_TEMARIO = 300;
+
+/**
+ * Cuánto se espera al escritor antes de cortarlo.
+ *
+ * Una lección medida tarda entre 11 y 30 s. Sin tope, una llamada colgada del
+ * proveedor dejaba la herramienta esperando sin límite mientras el navegador
+ * ya había soltado la ronda. Pasado esto se corta y la herramienta dice que no
+ * se pudo escribir, con la lección como estaba.
+ */
+export const TIEMPO_MAXIMO_ESCRITOR_MS = 90_000;
+
+/**
+ * Lo que lee el escritor cuando la lección no tiene material asignado.
+ *
+ * Decía «The teacher agreed this lesson is written from general professional
+ * knowledge», y eso no siempre era cierto: medido el 2026-09-29, el aviso de
+ * cobertura le preguntó a la docente qué hacer con dos lecciones sin material,
+ * ella aprobó el plan sin contestar, y el escritor iba a recibir un acuerdo
+ * que nadie dio. Qué hacer con esas lecciones se le pregunta a la docente al
+ * aprobar el plan, en el panel; acá sólo se describe la situación y cómo
+ * escribir en ella.
+ */
+export const SIN_MATERIAL_ASIGNADO =
+  'None. No source material is assigned to this lesson: write it from general professional knowledge, keep it generic, and mark with data-sin-fuente anything specific to one organisation (its own policy, structure, product, figures or procedure).';
 
 export interface MaterialDeLeccion {
   texto: string;
@@ -204,13 +229,25 @@ export interface LeccionSinMaterial {
 
 export type ResultadoEscritor = LeccionEscrita | LeccionSinMaterial;
 
-export type EscritorDeLecciones = (params: {
+export type EscritorDeLecciones = ((params: {
   lessonTitle: string;
   brief: string;
   locale: string;
   sources: string[];
   contenidoActual?: string;
-}) => Promise<ResultadoEscritor>;
+}) => Promise<ResultadoEscritor>) & {
+  /**
+   * El rebote por parche: el mismo escritor decide qué es cada dato que el
+   * chequeo no encontró, y el servidor sólo pone la marca. Ver
+   * `marcas-del-rebote.ts`.
+   *
+   * Va colgado del escritor y no como otra opción de la ronda porque es el
+   * mismo sub-agente, con el mismo modelo: así, donde se arma un escritor, el
+   * parche viene con él. Ausente (un escritor armado a mano), los datos van al
+   * informe sin marcar.
+   */
+  marcarTokens?: MarcadorDeTokens;
+};
 
 /**
  * Arma el escritor para una ronda del agente.
@@ -235,7 +272,13 @@ export function crearEscritorDeLecciones(params: {
   const model = createModel({ ...params.providerConfig, model: modelName });
   const system = buildLessonWriterPrompt();
 
-  return async ({ lessonTitle, brief, locale, sources, contenidoActual }) => {
+  const escribir = async ({
+    lessonTitle,
+    brief,
+    locale,
+    sources,
+    contenidoActual
+  }: Parameters<EscritorDeLecciones>[0]): Promise<ResultadoEscritor> => {
     const documentos = sources.length > 0 ? await listCourseSources(params.courseId) : [];
 
     const material: FuenteVista[] = [];
@@ -260,10 +303,9 @@ export function crearEscritorDeLecciones(params: {
     }
 
     // Se declararon fuentes y no apareció NINGUNA. Seguir sería escribir la
-    // lección sin material y decirle al escritor que el docente eligió
-    // conocimiento general — o sea, convertir en silencio una lección que debía
-    // estar fundada en una que no lo está. Es exactamente el fallo que todo esto
-    // vino a cerrar.
+    // lección sin material, desde el conocimiento general — o sea, convertir en
+    // silencio una lección que debía estar fundada en una que no lo está. Es
+    // exactamente el fallo que todo esto vino a cerrar.
     if (sources.length > 0 && material.length === 0) {
       const reales = documentos.map((d) => `"${d.fileName}"`).join(', ') || '(none)';
       throw new Error(
@@ -281,7 +323,7 @@ export function crearEscritorDeLecciones(params: {
         (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : ''),
       armado.texto
         ? `## Source material for this lesson\n\n${armado.texto}`
-        : '## Source material for this lesson\n\nNone. The teacher agreed this lesson is written from general professional knowledge.',
+        : `## Source material for this lesson\n\n${SIN_MATERIAL_ASIGNADO}`,
       `## This lesson\n\nTitle: ${lessonTitle}\nWrite it in this language: ${locale}\n\nBrief:\n${brief}`,
       contenidoActual ? `## Current content of this lesson (you are rewriting it)\n\n${contenidoActual}` : ''
     ].filter(Boolean);
@@ -297,7 +339,17 @@ export function crearEscritorDeLecciones(params: {
       // contra el mismo tope. Cortarla a mitad es lo que `extraerLeccion` ataja,
       // pero mejor que no pase.
       maxOutputTokens: 32_768,
-      maxRetries: 1
+      maxRetries: 1,
+      // Con tope, el reintento incluido: ver `TIEMPO_MAXIMO_ESCRITOR_MS`.
+      abortSignal: AbortSignal.timeout(TIEMPO_MAXIMO_ESCRITOR_MS)
+    }).catch((error: unknown) => {
+      if (esCortePorTiempo(error)) {
+        throw new Error(
+          `it took longer than ${Math.round(TIEMPO_MAXIMO_ESCRITOR_MS / 1000)} s and was stopped, so nothing was saved.`
+        );
+      }
+
+      throw error;
     });
 
     // Se cobra como cualquier llamada al proveedor: sin esto el consumo del mes
@@ -355,4 +407,17 @@ export function crearEscritorDeLecciones(params: {
       recortadas: armado.recortadas
     };
   };
+
+  // El parche viaja con el escritor: mismo modelo, misma cuenta de consumo.
+  // Ver `EscritorDeLecciones.marcarTokens`.
+  return Object.assign(escribir, {
+    marcarTokens: crearMarcadorDeTokens({
+      orgId: params.orgId,
+      userId: params.userId,
+      courseId: params.courseId,
+      providerConfig: params.providerConfig,
+      model,
+      modelName
+    })
+  });
 }

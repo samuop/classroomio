@@ -3365,7 +3365,16 @@
           "round_changes": "What the assistant changed in this round",
           "unsupported_passages": "Passages the source does not state, declared by the writer",
           "unsupported_passages_hint": "The model wrote these passages itself — they did not come from the material. Review them, or upload what is missing and ask for them to be rewritten.",
-          "writer_note": "Note from the writer:"
+          "writer_note": "Note from the writer:",
+          "token_backing": {
+            "pedido": "it is in your request",
+            "plan": "it is in the course plan",
+            "curso": "it appears in another course source"
+          },
+          "token_kept": "the writer treats it as general knowledge of the subject",
+          "tokens_in_diagrams": "In the diagrams:",
+          "examples": "{count, plural, one {One example made up on purpose, declared by the writer} other {# examples made up on purpose, declared by the writer}}",
+          "examples_hint": "Their names and numbers do not come from the material, and that is fine: there is nothing to confirm. Just check that none of them took a definition or a rule of the subject with it, because what is marked as an example is not checked."
         }
       },
       "attendance": {
@@ -4183,7 +4192,17 @@
       "read_inline": "It's small: when the assistant needs it, it reads all of it.",
       "read_cacheable": "It's large: when the assistant reads all of it, the provider can serve it from its cache.",
       "read_cached": "The provider is serving it from its cache.",
-      "read_over_limit": "Past the course's material limit: the assistant only reads part of it."
+      "read_over_limit": "Past the course's material limit: the assistant only reads part of it.",
+      "error_needs_login": "That page asks you to sign in. If it's a Google document, share it as \"Anyone with the link\" or download it as a PDF and upload it.",
+      "error_unreadable": "We couldn't find useful text on that page.",
+      "snackbar_reread_unchanged": "The source didn't change",
+      "plan_notice": "{count, plural, one {The plan is already built and doesn't use this source. If you want to use it, ask the assistant to redo the plan.} other {The plan is already built and doesn't use these sources. If you want to use them, ask the assistant to redo the plan.}}",
+      "plan_notice_action": "Ask it to redo the plan",
+      "plan_notice_dismiss": "Close",
+      "plan_notice_prompt": "{count, plural, one {I added the source {names}. Redo the plan to use it.} other {I added the sources {names}. Redo the plan to use them.}}",
+      "error_source_limit": "This course already has 100 sources: delete one before adding another.",
+      "upload_failed": "The file could not be uploaded. Please try again.",
+      "research_left_out_by_limit": "The course reached its limit of 100 sources: {count} pages from the research were left out. Delete a source if you want to add them."
     },
     "load_error": {
       "title": "We couldn't open this course",
@@ -5287,7 +5306,7 @@
     "mention_section": "Section",
     "mention_no_results": "No matching content",
     "uploading_document": "Uploading document...",
-    "agent_running_warning": "The changes will appear in the course once the agent is done. Don't reload the page.",
+    "agent_running_warning": "You can leave this page: the assistant finishes the current batch of work and saves it. If the course isn't complete, press “Continue” when you come back.",
     "agent_running_warning_dismiss": "Dismiss",
     "error_rate_limit": "The AI service is busy. Try again in a moment.",
     "error_rate_limit_with_wait": "The AI service is busy. Try again in {seconds} seconds.",
@@ -5379,8 +5398,29 @@
       "new_lessons": "{count, plural, one {# new lesson} other {# new lessons}}",
       "rewrites": "{count, plural, one {# rewritten} other {# rewritten}}",
       "edits": "{count, plural, one {# edited} other {# edited}}",
-      "left_as_is_count": "{count, plural, one {# left as is} other {# left as is}}"
-    }
+      "left_as_is_count": "{count, plural, one {# left as is} other {# left as is}}",
+      "no_source_title": "Some lessons have no material",
+      "no_source_body": "{count, plural, one {This lesson has no course source to back it. What do you want to do with it?} other {These # lessons have no course source to back them. What do you want to do with them?}}",
+      "no_source_general": "Write them from general knowledge",
+      "no_source_remove": "Remove them from the plan",
+      "no_source_cancel": "Cancel",
+      "no_source_remove_failed": "They can't be removed without leaving the plan incomplete. Choose another option or ask the assistant for changes.",
+      "weak_source_hint": "It cites {sources}, but that only names the topic."
+    },
+    "error_timeout": "This is taking longer than usual. Your request is still running: try again in a few seconds.",
+    "error_stream_cut": "The connection to the assistant was cut. Everything already created was saved.",
+    "error_round_in_progress": "The assistant is still working in this chat. Wait for it to finish.",
+    "round_in_progress_notice": "The assistant is working on this course. This updates on its own.",
+    "tool_interrupted": "Cut off before finishing. Check the course: whatever got saved is there.",
+    "control_message": {
+      "plan_approved": "Plan approved — building",
+      "continue_build": "Continue building"
+    },
+    "stopping": "Stopping…",
+    "stopping_notice": "Stopping: the assistant finishes what it is doing, saves it and stops.",
+    "stop_not_delivered": "We couldn't tell the assistant to stop: it will finish this batch of work and save it. The chat updates on its own when it's done.",
+    "stopped_by_teacher": "You stopped the assistant here. What it had already done was saved.",
+    "error_timeout_chat": "The assistant is still working and it's taking longer than usual. The chat updates on its own when it's done."
   },
   "side_panel": {
     "close_aria": "Close panel",

@@ -18,7 +18,7 @@
   import { t } from '$lib/utils/functions/translations';
   import { getCourseContent } from '$features/course/utils/content';
   import { ContentType } from '@cio/utils/constants/content';
-  import { getLastSentText, requestRetry } from '$features/ai-assistant/utils/store';
+  import { hayReintentoDisponible, requestRetry } from '$features/ai-assistant/utils/store';
 
   interface Props {
     courseId: string;
@@ -167,12 +167,13 @@
     icon={BookOpenIcon}
     variant="page"
   />
-  {#if getLastSentText()}
+  <!-- Reintenta el turno que falló en el chat, no «el último texto escrito»: ver `hayReintentoDisponible`. -->
+  {#if hayReintentoDisponible()}
     <div class="mt-4 flex justify-center">
       <Button
         variant="default"
         size="sm"
-        onclick={requestRetry}
+        onclick={() => requestRetry()}
         title={$t('course.navItem.lessons.regenerate_tooltip')}
       >
         <RotateCwIcon size={14} class="mr-1.5" />

@@ -15,14 +15,17 @@ import type { FuenteVista } from '@api/services/agent/grounding';
  *
  * ── Las tres respuestas, y por qué «ninguna» y «no se sabe» son distintas ───
  *
- * - Hay fuentes de la lección → contra esas. Es lo más estricto: un dato que
- *   está en OTRA fuente del curso igual se marca, porque no es lo que tuvo
- *   delante quien escribió.
+ * - Hay fuentes de la lección → contra esas. Es lo más estricto: el juez con
+ *   modelo contrasta sólo contra lo que tuvo delante quien escribió. Los
+ *   nombres, números y citas que no aparezcan ahí se buscan después en el
+ *   alcance ampliado —el resto del curso, el pedido de la docente, el plan— y
+ *   lo que se encuentra va al informe con su rótulo, sin volver al modelo (ver
+ *   `tokensDeLaLeccion` en `chat-tools.ts`).
  * - No se sabe con cuáles se escribió (`undefined`) → contra todas las del
  *   curso. Es más blando —un número que aparece en cualquier taller pasa—, pero
  *   caza lo que no está en ninguno, que es la invención medida.
- * - Se declaró que NINGUNA (`[]`) → no se contrasta. Es una lección que el
- *   docente aceptó escribir desde conocimiento general; marcar cada dato contra
+ * - Se declaró que NINGUNA (`[]`) → no se contrasta. Es una lección escrita sin
+ *   material asignado, desde el conocimiento general; marcar cada dato contra
  *   material que a propósito no la sostiene sería el aviso que se aprende a
  *   ignorar.
  *

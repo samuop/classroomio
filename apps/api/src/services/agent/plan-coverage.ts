@@ -33,16 +33,149 @@
  * pasar es que se decida sin él. El servidor marca; preguntar es del agente.
  */
 
-/** Una fuente del curso, como la ve el contraste. */
+import { terminosDeBusqueda, tramosDeBusqueda } from '@api/services/agent/source-search';
+
+/**
+ * Una fuente del curso, como la ve el contraste.
+ *
+ * Con `text`, además de ver si la fuente declarada EXISTE se mide si trata el
+ * tema: ver `prosaDelTema`. Sin texto (una fila que no lo trajo) se contrasta
+ * sólo el nombre, como antes.
+ */
 export interface FuenteDelCurso {
   id: string;
   fileName: string;
+  text?: string | null;
 }
 
 export interface ItemDelPlan {
   type: 'lesson' | 'exercise';
   title: string;
+  /** Lo que la lección tiene que enseñar: junto con el título, es lo que se busca en la fuente. */
+  description?: string;
   sources?: string[];
+}
+
+/**
+ * Cuánta prosa sobre el tema tiene que traer la fuente declarada para que la
+ * lección se pueda escribir desde ella.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-09-29. El chequeo daba por cubierta toda lección que nombrara
+ * una fuente existente. Las dos lecciones de tablas dinámicas —un objetivo que
+ * la docente pidió con todas las letras— citaban el temario de un curso ajeno,
+ * que nombra el tema en un renglón («3.6. Tablas dinámicas») y nada más. El
+ * agente le dijo que con su material cubría 11 de 13 lecciones y sólo le
+ * preguntó por las otras dos.
+ *
+ * Lo que se cuenta es PROSA —oraciones de ocho palabras o más—, no renglones de
+ * un temario, títulos ni listas de enlaces. Quinientos caracteres son dos o
+ * tres oraciones: lo mínimo para que el escritor tenga algo que enseñar y no
+ * sólo un título que desarrollar de memoria. Calibrado con ese mismo curso:
+ * las nueve lecciones con una fuente que de verdad las trata daban entre 559 y
+ * 9465 caracteres; las dos del temario, 127 y 0; y el temario contrastado
+ * contra CUALQUIERA de las trece lecciones del plan, 444 como máximo.
+ */
+export const PROSA_MINIMA_DEL_TEMA = 500;
+
+/** Palabras que hacen falta para que un tramo cuente como oración y no como título. */
+const PALABRAS_DE_UNA_ORACION = 8;
+
+/**
+ * El texto de una fuente partido en oraciones, títulos y renglones de lista.
+ *
+ * Parte también por los números de un temario («3.1. … 3.2. …»), por las celdas
+ * de una tabla y por las viñetas: un temario aplanado en una celda es una sola
+ * línea larguísima, y medida entera pasaría por prosa. Los enlaces se van antes
+ * de contar: una bibliografía son renglones enormes hechos de direcciones.
+ */
+function oracionesDe(texto: string): string[] {
+  return texto
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\bhttps?:\/\/\S+/gi, ' ')
+    .split(/\n|\||•|(?:^|\s)[-*+]\s|(?<=[.!?;])\s+|\s(?=\d+(?:\.\d+)+\.?\s)/)
+    .map((tramo) => tramo.replace(/^[\s#>*+\-\d.)]+/, '').trim())
+    .filter(Boolean);
+}
+
+/**
+ * Cuántos caracteres de prosa sobre el tema de una lección traen sus fuentes.
+ *
+ * El tema son los términos del título y de la descripción del ítem, y la
+ * búsqueda es la de `source-search.ts` —los mismos términos
+ * (`terminosDeBusqueda`), los mismos tramos (`tramosDeBusqueda`), la misma
+ * coincidencia por raíz—: un tramo trata el tema si nombra dos términos. Lo que
+ * no se usa es `buscarEnFuentes` entera, porque se queda con tres pasajes por
+ * fuente: sirve para orientar al agente, y para MEDIR dejaba corta a una guía
+ * que enseña el tema en cinco párrafos.
+ *
+ * De esos tramos se cuentan las oraciones que nombran un término del TÍTULO, o
+ * dos cualesquiera. Pedir siempre dos dejaba afuera la prosa buena: medido, las
+ * oraciones de una página de ayuda sobre la Autosuma nombran «Autosuma» y nada
+ * más de la consigna.
+ */
+export function prosaDelTema(item: { title: string; description?: string }, fuentes: FuenteDelCurso[]): number {
+  const conTexto = fuentes.filter(
+    (fuente): fuente is FuenteDelCurso & { text: string } =>
+      typeof fuente.text === 'string' && fuente.text.trim().length > 0
+  );
+
+  if (conTexto.length === 0) return 0;
+
+  const terminos = terminosDeBusqueda([item.title, item.description ?? ''].join(' '));
+  const delTitulo = terminosDeBusqueda(item.title);
+
+  if (terminos.length === 0) return 0;
+
+  const plegar = (texto: string) => texto.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  const palabrasDe = (texto: string) => plegar(texto).split(/[^a-z0-9]+/).filter(Boolean);
+  // La misma coincidencia que `buscarEnFuentes`: el número exacto, la palabra
+  // por su raíz para que el singular encuentre el plural.
+  const cuantos = (palabras: string[], lista: string[]) =>
+    lista.filter((termino) => {
+      const raiz = termino.length <= 4 ? termino : termino.slice(0, Math.max(4, Math.ceil(termino.length * 0.7)));
+
+      return palabras.some((palabra) => (/^\d+$/.test(termino) ? palabra === termino : palabra.startsWith(raiz)));
+    }).length;
+  const minimo = Math.min(2, terminos.length);
+  const nombra = (oracion: string) => {
+    const palabras = palabrasDe(oracion);
+
+    return cuantos(palabras, delTitulo) >= 1 || cuantos(palabras, terminos) >= minimo;
+  };
+
+  const contadas = new Set<string>();
+  let prosa = 0;
+
+  for (const fuente of conTexto) {
+    const lineas = fuente.text.split('\n');
+
+    for (const tramo of tramosDeBusqueda(lineas)) {
+      const texto = lineas.slice(tramo.desde - 1, tramo.hasta).join('\n');
+
+      // El tramo trata el tema si nombra dos términos, como en la búsqueda.
+      if (cuantos(palabrasDe(texto), terminos) < minimo) continue;
+
+      for (const oracion of oracionesDe(texto)) {
+        const palabras = oracion.split(/\s+/).filter((palabra) => /\p{L}/u.test(palabra));
+
+        if (palabras.length < PALABRAS_DE_UNA_ORACION) continue;
+        if (!nombra(oracion)) continue;
+
+        // La misma oración repetida en dos fuentes (una diapositiva copiada mes
+        // a mes), o en dos tramos que se pisan, cuenta una vez.
+        const clave = plegar(oracion).replace(/\s+/g, ' ');
+
+        if (contadas.has(clave)) continue;
+
+        contadas.add(clave);
+        prosa += oracion.length;
+      }
+    }
+  }
+
+  return prosa;
 }
 
 export interface Cobertura {
@@ -57,10 +190,19 @@ export interface Cobertura {
    * campo entero.
    */
   sinDeclarar: boolean;
-  /** Lecciones que declararon al menos una fuente real. */
+  /** Lecciones que declararon al menos una fuente real que trata el tema. */
   cubiertas: number;
   /** Lecciones que no declararon ninguna fuente. */
   sinFuente: string[];
+  /**
+   * Lecciones cuya fuente declarada existe pero apenas nombra el tema: menos de
+   * `PROSA_MINIMA_DEL_TEMA` caracteres de prosa sobre él. Sólo se mide cuando
+   * las fuentes traen su texto.
+   *
+   * Aparte de `sinFuente` porque el agente tiene que poder decir cuál es la
+   * fuente y qué le falta: «cita el temario, que sólo lo nombra».
+   */
+  debiles: Array<{ item: string; fuentes: string[]; prosa: number }>;
   /**
    * Lecciones que declararon una fuente que el curso no tiene, con el nombre
    * inventado. Se separa de `sinFuente` a propósito: no declarar nada es un
@@ -151,6 +293,7 @@ export function medirCobertura(items: ItemDelPlan[], fuentes: FuenteDelCurso[]):
 
   const sinFuente: string[] = [];
   const fuentesInexistentes: Array<{ item: string; declarada: string }> = [];
+  const debiles: Cobertura['debiles'] = [];
   let cubiertas = 0;
 
   for (const leccion of lecciones) {
@@ -167,11 +310,40 @@ export function medirCobertura(items: ItemDelPlan[], fuentes: FuenteDelCurso[]):
       fuentesInexistentes.push({ item: leccion.title, declarada: inventada });
     }
 
-    if (reales.length > 0) cubiertas += 1;
-    else sinFuente.push(leccion.title);
+    if (reales.length === 0) {
+      sinFuente.push(leccion.title);
+      continue;
+    }
+
+    /**
+     * Que la fuente exista no dice que trate el tema: se mide.
+     *
+     * Sólo cuando las fuentes trajeron su texto. Sin texto no hay qué medir, y
+     * marcarla débil por eso sería inventar una conclusión.
+     */
+    const elegidas = [
+      ...new Map(
+        reales
+          .map((d) => buscarFuente(d, fuentes))
+          .filter((f): f is FuenteDelCurso => !!f)
+          .map((f) => [f.id, f] as const)
+      ).values()
+    ];
+    const conTexto = elegidas.filter((f) => typeof f.text === 'string' && f.text.trim().length > 0);
+
+    if (conTexto.length > 0) {
+      const prosa = prosaDelTema(leccion, conTexto);
+
+      if (prosa < PROSA_MINIMA_DEL_TEMA) {
+        debiles.push({ item: leccion.title, fuentes: elegidas.map((f) => f.fileName), prosa });
+        continue;
+      }
+    }
+
+    cubiertas += 1;
   }
 
-  return { sinDeclarar, cubiertas, sinFuente, fuentesInexistentes };
+  return { sinDeclarar, cubiertas, sinFuente, debiles, fuentesInexistentes };
 }
 
 /**
@@ -198,7 +370,11 @@ export function avisoDeCobertura(cobertura: Cobertura, totalFuentes: number): st
     );
   }
 
-  if (cobertura.sinFuente.length === 0 && cobertura.fuentesInexistentes.length === 0) return undefined;
+  const debiles = cobertura.debiles ?? [];
+
+  if (cobertura.sinFuente.length === 0 && cobertura.fuentesInexistentes.length === 0 && debiles.length === 0) {
+    return undefined;
+  }
 
   const partes: string[] = [];
 
@@ -209,11 +385,36 @@ export function avisoDeCobertura(cobertura: Cobertura, totalFuentes: number): st
     );
   }
 
-  if (cobertura.sinFuente.length > 0) {
-    const lista = cobertura.sinFuente.map((t) => `"${t}"`).join(', ');
+  if (cobertura.sinFuente.length > 0 || debiles.length > 0) {
+    const total = cobertura.sinFuente.length + debiles.length + cobertura.cubiertas;
+    const huecos: string[] = [];
+
+    if (cobertura.sinFuente.length > 0) {
+      const lista = cobertura.sinFuente.map((t) => `"${t}"`).join(', ');
+
+      huecos.push(
+        `${cobertura.sinFuente.length} of ${total} planned lessons have no source material behind them: ${lista}.`
+      );
+    }
+
+    // La fuente débil se nombra, con lo que tiene: es lo que la docente necesita
+    // para decidir, y lo que el agente no ve si sólo mira los nombres.
+    if (debiles.length > 0) {
+      const lista = debiles
+        .map(
+          (d) =>
+            `"${d.item}" cites ${d.fuentes.map((f) => `"${f}"`).join(', ')}, which has about ${d.prosa} characters of text on the topic`
+        )
+        .join('; ');
+
+      huecos.push(
+        `${debiles.length} of ${total} planned lessons cite a source that only mentions their topic — a syllabus line, a heading or a list, not enough to teach it from: ${lista}. Treat them as lessons without material.`
+      );
+    }
+
     partes.push(
-      `${cobertura.sinFuente.length} of ${cobertura.sinFuente.length + cobertura.cubiertas} planned lessons have no source material behind them: ${lista}.\n\n` +
-        `Do NOT start building yet. Tell the teacher plainly which lessons the uploaded material does not cover, and ask what they want for those — in their language, as a normal sentence, not a list of options dressed up as a menu. The three real answers are: (a) upload the document that covers them, (b) drop them from the plan, or (c) have you write them from general professional knowledge, which you will then mark as such in the lesson.\n\n` +
+      `${huecos.join('\n\n')}\n\n` +
+        `Do NOT start building yet. Tell the teacher plainly which lessons the uploaded material does not cover (for a weak source, name it and say it only mentions the topic), and ask what they want for those — in their language, as a normal sentence, not a list of options dressed up as a menu. The three real answers are: (a) upload the document that covers them, (b) drop them from the plan, or (c) have you write them from general professional knowledge, which you will then mark as such in the lesson.\n\n` +
         `Say it as the useful observation it is ("con el material que subiste puedo escribir 2 de las 7 lecciones bien; para las otras 5 necesitaría el manual de procedimientos"), and then wait for their answer. Guessing which one they want is the failure this check exists to prevent.`
     );
   }

@@ -49,10 +49,23 @@ export type TAgentUploadQuery = z.infer<typeof ZAgentUploadQuery>;
 // ─── GET /agent/status ───────────────────────────────────────────────────────
 
 export const ZAgentStatusQuery = z.object({
-  courseId: ZAgentCourseId
+  courseId: ZAgentCourseId,
+  // Con la conversación, `activeRound` contesta por la ronda de ESA
+  // conversación: el panel que espera la suya no se confunde con otra ronda
+  // viva del mismo curso (otra pestaña, otro chat).
+  conversationId: z.string().uuid().optional()
 });
 
 export type TAgentStatusQuery = z.infer<typeof ZAgentStatusQuery>;
+
+// ─── POST /agent/chat/stop ───────────────────────────────────────────────────
+
+export const ZAgentChatStopBody = z.object({
+  courseId: ZAgentCourseId,
+  conversationId: z.string().uuid()
+});
+
+export type TAgentChatStopBody = z.infer<typeof ZAgentChatStopBody>;
 
 // ─── POST /agent/credits ─────────────────────────────────────────────────────
 

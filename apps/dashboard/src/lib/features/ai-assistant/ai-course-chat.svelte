@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import ChatHeader from '$features/ai-assistant/chat-header.svelte';
   import ChatMessageList from '$features/ai-assistant/chat-message-list.svelte';
@@ -29,8 +29,7 @@
     clearInitialChatTemplateId,
     clearInitialChatDocumentIds,
     clearInitialChatTemplateAnswers,
-    getLastSentText,
-    setLastSentText,
+    setReintentoDisponible,
     consumeRetry
   } from '$features/ai-assistant/utils/store';
   import { get } from 'svelte/store';
@@ -62,7 +61,26 @@
   import type { CoursePlan } from '$features/ai-assistant/utils/course-plan';
   import type { NombrarPorId } from '$features/ai-assistant/utils/tool-labels';
   import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
-  import { getRequestBaseUrl, apiClient } from '$lib/utils/services/api';
+  import { AI_REQUEST_TIMEOUT, getRequestBaseUrl, apiClient, opcionesDeIA } from '$lib/utils/services/api';
+  import { reportIncident } from '$lib/utils/services/audit/report-incident';
+  import { aprobacionVigente, estadoDelPlan, ultimoTurnoDelDocente } from '$features/ai-assistant/utils/aprobacion';
+  import {
+    mensajeDeControl,
+    textoDelMensaje,
+    TEXTO_DE_APROBACION,
+    TEXTO_DE_CONTINUACION
+  } from '$features/ai-assistant/utils/mensajes-de-control';
+  import {
+    cerrarHerramientasColgadas,
+    clasificarFinDeRonda,
+    conversacionTrasLaRonda,
+    esperarFinDeRonda,
+    hayQueEsperarAlServidor,
+    laLocalTieneMasQueElServidor,
+    laRecargaResuelveElError
+  } from '$features/ai-assistant/utils/ronda-cortada';
+  import { claveDelErrorDeFuente, esRondaEnCurso } from '$features/ai-assistant/utils/errores-del-chat';
+  import { claveDeConversacionActiva, planDelCurso } from '$features/ai-assistant/utils/plan-del-curso.svelte';
   import { PUBLIC_IS_SELFHOSTED } from '$env/static/public';
   import { t } from '$lib/utils/functions/translations';
   import { aiAssistantApi } from '$features/ai-assistant/api/ai-assistant.svelte';
@@ -93,8 +111,6 @@
   /** Completed-step thresholds already refreshed for this streaming session */
   let agentMutationProgressThresholdsTriggered = new SvelteSet<number>();
   let lastSeenStreamingFlag = false;
-
-  const CONTINUE_IMPLEMENTATION_PROMPT = 'Continue implementing the plan from where you left off.';
 
   /**
    * Automatic build continuation. Starts OFF: only approving a plan or pressing
@@ -130,19 +146,55 @@
   let activeConversationId: string | null = $state(null);
 
   /**
-   * The last user-typed text the agent actually tried to send. Backed by a
-   * module-level store (`setLastSentText` / `getLastSentText`) so other
-   * components — notably the empty-course "Regenerate" button in
-   * `lessons.svelte` — can read the same value and even issue a retry via
-   * `requestRetry()` without needing the chat panel to be mounted.
+   * La conversación cuya ronda sigue viva en el servidor mientras este panel la
+   * espera: la de un stream que se cortó, la de un pedido rechazado con 409, o
+   * la que ya estaba trabajando cuando se abrió el panel. Mientras dura, no se
+   * puede mandar nada (sería una segunda ronda sobre la misma conversación) y al
+   * terminar se recarga lo que el servidor guardó.
    */
-  const lastSentText: string | null = $derived(getLastSentText());
+  let rondaEnCurso = $state<string | null>(null);
+  const esperandoRonda = $derived(rondaEnCurso !== null && rondaEnCurso === activeConversationId);
+
+  /**
+   * El stream de la última ronda se cortó después de empezar. Se avisa con su
+   * propio texto hasta que la conversación recargada trae el turno completo.
+   */
+  let avisoDeCorte = $state(false);
+
+  /**
+   * La docente tocó «Detener» y el servidor recibió la orden: la ronda termina
+   * el paso en curso y cierra. Dura hasta que termina el stream.
+   */
+  let deteniendo = $state(false);
+
+  /**
+   * Llegaron las cabeceras del pedido en curso: el servidor aceptó el turno y la
+   * ronda arrancó. Es lo que distingue un corte del stream (la ronda sigue en el
+   * servidor) de un pedido que falló antes de llegar. Lo escribe el `fetch` del
+   * transporte.
+   */
+  let respuestaIniciada = false;
+
+  /** El panel se cerró: nada de lo que quedó esperando tiene que seguir. */
+  let destruido = false;
+
+  onDestroy(() => {
+    destruido = true;
+    // El turno que falló vive en la memoria de este panel: sin él, «Regenerar»
+    // no tiene qué reintentar.
+    setReintentoDisponible(false);
+  });
+
+  /**
+   * «Rehacé el plan» escrito desde la pantalla de Fuentes: si la docente lo
+   * manda, viaja como pedido de cambios al plan. Ver `ChatDraft.rehacerPlan`.
+   */
+  let borradorPideRehacerPlan = $state(false);
 
   /**
    * When another component (e.g. `lessons.svelte`) calls `requestRetry()`,
-   * the flag flips to `true`. This effect consumes it and re-sends the
-   * last text, so a "Regenerate" button on the empty course view works
-   * even before the user has opened the chat.
+   * the flag flips to `true`. This effect consumes it and retries the turn
+   * that failed.
    */
   $effect(() => {
     if (consumeRetry()) {
@@ -156,7 +208,7 @@
   const tokenUsage = $derived(aiAssistantApi.status?.usage ?? null);
 
   function getStorageKey(courseId: string) {
-    return `ai-chat-active-${courseId}`;
+    return claveDeConversacionActiva(courseId);
   }
 
   function getActiveConversationId(courseId: string): string | null {
@@ -198,7 +250,142 @@
         chat.messages = loadedMessages;
       }
       setActiveConversationId(courseId, conversationId);
+
+      // Una ronda de esta conversación puede seguir en el servidor: la que este
+      // mismo panel perdió al recargar, o la que otra pestaña dejó andando. Lo
+      // guardado es de antes de esa ronda; se avisa y se espera a que termine.
+      void esperarRondaDelServidor(conversationId, { recargarAunqueNoSiga: false, limpiarErrorSiTrae: true });
     }
+  }
+
+  /**
+   * La conversación guardada por el servidor, puesta en el panel si trae el
+   * turno completo. Ver `conversacionTrasLaRonda`.
+   *
+   * Devuelve qué pasó: `trajo` si la reemplazó; `guardar-la-local` si lo
+   * guardado no trae la respuesta a medias que el panel muestra (ver
+   * `laLocalTieneMasQueElServidor`); `nada` en lo demás. No pisa nada si
+   * mientras cargaba cambió la conversación, se cerró el panel, o arrancó otra
+   * ronda.
+   */
+  async function recargarConversacion(conversationId: string): Promise<'trajo' | 'guardar-la-local' | 'nada'> {
+    const firma = (mensajes: AiAssistantMessage[]) => `${mensajes.length}:${mensajes.at(-1)?.id ?? ''}`;
+    const antes = firma(chat.messages as AiAssistantMessage[]);
+
+    await aiAssistantApi.loadConversation(conversationId);
+
+    const guardada = aiAssistantApi.currentConversation;
+
+    if (destruido || isStreaming || activeConversationId !== conversationId) return 'nada';
+    if (!guardada || guardada.id !== conversationId) return 'nada';
+
+    const local = chat.messages as AiAssistantMessage[];
+
+    if (firma(local) !== antes) return 'nada';
+
+    const servidor = conIdsUnicos((guardada.messages ?? []) as AiAssistantMessage[]);
+    const resultado = conversacionTrasLaRonda(local, servidor);
+
+    if (resultado === local) return laLocalTieneMasQueElServidor(local, servidor) ? 'guardar-la-local' : 'nada';
+
+    chat.messages = resultado;
+
+    return 'trajo';
+  }
+
+  /**
+   * Espera a que la ronda de la conversación termine en el servidor y recarga
+   * lo que guardó (contrato con la API: la ronda termina y se guarda aunque el
+   * navegador se vaya).
+   *
+   * Pregunta enseguida: si no hay ronda viva no se avisa nada. Mientras la hay,
+   * el panel dice que el asistente está trabajando, no deja mandar, y refresca
+   * el curso cada tanto para que lo construido vaya apareciendo.
+   *
+   * @param recargarAunqueNoSiga recargar aunque la ronda ya no esté viva en la
+   *   primera pregunta. Después de un pedido que falló hace falta: la ronda pudo
+   *   haber terminado entre el corte y la pregunta. Al abrir una conversación
+   *   recién cargada, no.
+   * @param limpiarErrorSiTrae sacar la banda de error si la recarga trae el
+   *   turno completo. Sólo cuando el error era del camino (un corte, el reloj
+   *   del navegador) y no de la ronda: ver `laRecargaResuelveElError`.
+   * @param guardarLaParcial guardar la respuesta a medias si el servidor no la
+   *   tiene. Sólo tras un corte o un fallo, donde el proceso del servidor pudo
+   *   morir; tras un «Detener» que no llegó la ronda sigue y guarda ella.
+   */
+  async function esperarRondaDelServidor(
+    conversationId: string | null,
+    opciones: { recargarAunqueNoSiga: boolean; limpiarErrorSiTrae?: boolean; guardarLaParcial?: boolean }
+  ): Promise<void> {
+    const curso = courseId;
+
+    if (!conversationId || !curso || destruido) return;
+
+    let seVioViva = false;
+
+    const resultado = await esperarFinDeRonda({
+      conversationId,
+      // Por ESTA conversación: otra ronda viva del curso no es la suya.
+      leerRondaViva: () => aiAssistantApi.leerRondaViva(curso, conversationId),
+      alSeguirViva: (vuelta) => {
+        seVioViva = true;
+        rondaEnCurso = conversationId;
+
+        if (vuelta % 5 === 0) refrescarCurso();
+      },
+      // Si este panel arrancó su propia ronda, la ronda viva es esa: la sigue su
+      // stream, no esta espera.
+      cancelada: () => destruido || isStreaming || courseId !== curso || activeConversationId !== conversationId
+    });
+
+    if (resultado === 'cancelada') {
+      if (rondaEnCurso === conversationId) rondaEnCurso = null;
+      return;
+    }
+
+    if (!seVioViva && !opciones.recargarAunqueNoSiga) {
+      // Sin ronda viva, una herramienta que quedó «trabajando» en lo guardado —
+      // una ronda cortada que un panel anterior guardó así— no va a terminar
+      // nunca: se muestra cerrada en vez de girar para siempre.
+      cerrarHerramientasSinTerminar();
+      return;
+    }
+
+    // `rondaEnCurso` se suelta DESPUÉS de recargar: en el medio, un mensaje nuevo
+    // quedaría pisado por la conversación que llega del servidor.
+    const recarga = await recargarConversacion(conversationId);
+    const trajoElTurno = recarga === 'trajo';
+
+    if (rondaEnCurso === conversationId) rondaEnCurso = null;
+
+    cerrarHerramientasSinTerminar();
+    refreshCourseStateAfterChat();
+
+    // La ronda ya murió y el servidor no guardó lo que la pantalla muestra (se
+    // reinició a mitad de camino): se guarda la parcial, con lo colgado ya
+    // cerrado, para que no desaparezca al recargar la página. Con la ronda
+    // muerta no hay guardado del servidor que pisar.
+    if (recarga === 'guardar-la-local' && opciones.guardarLaParcial) {
+      void aiAssistantApi.saveMessages(conversationId, chat.messages as AiAssistantMessage[]);
+    }
+
+    if (trajoElTurno) avisoDeCorte = false;
+
+    // La ronda ya no está viva: el aviso de un 409 («todavía está trabajando»)
+    // deja de ser cierto aunque lo guardado no haya traído esta conversación.
+    // Cualquier otro error se queda con su «Reintentar», salvo que fuera del
+    // camino y la recarga haya traído el turno que el servidor sí terminó.
+    if ((trajoElTurno && opciones.limpiarErrorSiTrae) || esRondaEnCurso(chat.error)) chat.clearError();
+  }
+
+  /** Ver `cerrarHerramientasColgadas`. Nunca durante una ronda propia. */
+  function cerrarHerramientasSinTerminar() {
+    if (isStreaming) return;
+
+    const mensajes = chat.messages as AiAssistantMessage[];
+    const cerrados = cerrarHerramientasColgadas(mensajes, t.get('ai_assistant.tool_interrupted'));
+
+    if (cerrados !== mensajes) chat.messages = cerrados;
   }
 
   async function startNewChat() {
@@ -300,7 +487,7 @@
     }
   }
 
-  function refreshCourseStateAfterChat() {
+  function refrescarCurso() {
     const profileId = $profile.id;
 
     // Force refetch course data so new sections/lessons/exercises show in the UI
@@ -317,6 +504,10 @@
     if (courseId && currentExerciseId) {
       void refreshExercisePageData(courseId, currentExerciseId);
     }
+  }
+
+  function refreshCourseStateAfterChat() {
+    refrescarCurso();
 
     // Refresh usage meter
     if (courseId) {
@@ -383,23 +574,82 @@
           locale: page.params?.lessonId ? lessonApi.currentLocale : $profile.locale
         }
       }),
-      fetch: (input, init) => apiClient.request(input, init)
+      fetch: async (input, init) => {
+        respuestaIniciada = false;
+
+        // Su propio reloj hasta las cabeceras (una red de seguridad: la espera
+        // real es la del stream, que este reloj no mide) y SIN reintento
+        // automático: reenviar este POST ante un 502 arrancaba otra ronda.
+        const respuesta = await apiClient.request(input, { ...init, ...opcionesDeIA(AI_REQUEST_TIMEOUT.chat) });
+
+        respuestaIniciada = true;
+
+        return respuesta;
+      }
     }),
-    onFinish: () => {
-      // Keep course sources attached; only one-off per-message uploads are
-      // cleared. The backend injects the FULL document text only for the id in
-      // `context.documentId` — everything else in history degrades to a short
-      // summary. Clearing unconditionally meant the material vanished after
-      // turn 1, so by the time the teacher finished the discovery form the
-      // agent was asked to plan "from the apuntes" with no apuntes in context.
-      // Re-sending is cheap now: the provider serves the block from cache
-      // (measured: 110,464 cached-read tokens on a plan turn).
-      if (uploadedDocument?.origin !== 'course_source') {
+    onFinish: ({ isAbort, isDisconnect, isError, finishReason }) => {
+      const conversationId = activeConversationId;
+      const fin = clasificarFinDeRonda({
+        isAbort,
+        isDisconnect,
+        isError,
+        finishReason,
+        respuestaIniciada,
+        error: chat.error
+      });
+
+      // El adjunto viaja con el turno que lo llevó, y nada más. Una fuente del
+      // curso quedaba pegada y salía como `context.documentId` en CADA pedido:
+      // en construcción el servidor la cargaba entera, presentada como «el PDF
+      // que el docente acaba de adjuntar» (medido: una página ajena de la
+      // investigación viajó en cada paso de una construcción). Después del
+      // primer turno ya es fuente del curso y le llega al agente con las demás.
+      // Si el pedido no llegó a arrancar, se conserva para el reintento.
+      if (respuestaIniciada) {
         uploadedDocument = null;
       }
 
       refreshCourseStateAfterChat();
-      void persistFinishedChat(chat.messages as AiAssistantMessage[], activeConversationId);
+      deteniendo = false;
+
+      if (fin === 'completa') {
+        void persistFinishedChat(chat.messages as AiAssistantMessage[], conversationId);
+        return;
+      }
+
+      // Lo que quedó «trabajando» no va a devolver nada por este stream.
+      cerrarHerramientasSinTerminar();
+
+      // Detenida, cortada, fallida o rechazada: NO se guarda nada a medias. El
+      // servidor termina la ronda y guarda la conversación entera; se espera a
+      // que la ronda deje de estar viva y se recarga eso (contrato con la API).
+      // Guardar lo parcial acá pisaba lo completo si la ronda terminaba justo
+      // mientras viajaba el guardado.
+      if (fin === 'rechazada') devolverMensajeRechazado();
+
+      // Un error con estado antes de las cabeceras es la respuesta del servidor:
+      // no hay ronda que esperar, y la banda de error se queda como está.
+      if (!hayQueEsperarAlServidor(fin, { respuestaIniciada, error: chat.error })) return;
+
+      if (fin === 'cortada') {
+        avisoDeCorte = true;
+        // El corte llega cuando el cliente de la API ya devolvió la respuesta,
+        // así que nadie más lo ve: sin este reporte no quedaba rastro.
+        reportIncident({
+          kind: 'REQUEST_FAILED',
+          message: 'Stream cut',
+          route: '/agent/chat',
+          method: 'POST',
+          status: 0,
+          ...(conversationId ? { metadata: { conversationId } } : {})
+        });
+      }
+
+      void esperarRondaDelServidor(conversationId, {
+        recargarAunqueNoSiga: true,
+        limpiarErrorSiTrae: laRecargaResuelveElError(fin, chat.error),
+        guardarLaParcial: fin === 'cortada' || fin === 'fallida'
+      });
     },
     onError: () => {
       // A failed round must not be retried automatically — that is how a single
@@ -407,6 +657,34 @@
       freno = { ...freno, habilitada: false };
     }
   });
+
+  /**
+   * El servidor rechazó el pedido con 409: esa conversación ya tiene una ronda
+   * viva (otra pestaña, o una ronda que este panel dio por cortada y sigue).
+   *
+   * El mensaje no se procesó ni se va a procesar: se saca de la conversación, y
+   * si era algo que la docente escribió, vuelve al compositor para que lo mande
+   * cuando la ronda termine. No se reintenta solo.
+   */
+  function devolverMensajeRechazado() {
+    const mensajes = chat.messages as AiAssistantMessage[];
+    const rechazado = mensajes.at(-1);
+
+    if (rechazado?.role !== 'user') return;
+
+    chat.messages = mensajes.slice(0, -1);
+
+    const metadata = rechazado.metadata;
+    const escrito = !mensajeDeControl(rechazado) && !metadata?.template && !metadata?.discovery && !metadata?.plan;
+    const texto = textoDelMensaje(rechazado);
+
+    if (escrito && texto && !inputValue.trim()) inputValue = texto;
+  }
+
+  /** Nada sale mientras hay una ronda en curso: la propia, o una viva en el servidor. */
+  function puedeMandarAhora(): boolean {
+    return !isStreaming && !esperandoRonda;
+  }
 
   function buildTemplateAnswersSummary(
     templateId: CourseTemplateId,
@@ -464,7 +742,7 @@
     // Las imágenes viajan con lo que el docente escribió, nunca con un reintento
     // armado desde otra tarjeta. Una imagen sola alcanza para mandar.
     const archivos = override === undefined ? partesDeArchivo(adjuntos) : [];
-    if (chat.status === 'streaming') return;
+    if (!puedeMandarAhora()) return;
     if (override === undefined ? !puedeEnviar(text, adjuntos) : !text) return;
     if (!courseId) return;
 
@@ -481,20 +759,12 @@
       uploadedDocument = { id: wizardDocumentIds[0], name: 'document', origin: 'course_source' };
     }
 
-    // Auto-adopt the most-recently-uploaded source from the Sources panel when
-    // the chat was opened directly on the course (no draft was passed in from
-    // the home page wizard). The Sources panel is the canonical place where
-    // sources are managed; the chat input no longer has a per-message file
-    // upload for in-course chats.
-    //
-    // Deliberately NOT gated on `isFirstMessage`: the attachment lives in
-    // component state, so a page reload mid-conversation resets it to null and
-    // a first-message-only rule would never re-attach the source for the rest
-    // of the chat — the exact hole that starved the plan phase of its material.
-    if (!uploadedDocument && pendingInitialDocumentIds.length === 0 && sourcesApi.sources.length > 0) {
-      const latest = sourcesApi.sources[0];
-      uploadedDocument = { id: latest.id, name: latest.fileName, origin: 'course_source' };
-    }
+    // Ya NO se adopta sola la fuente más nueva del panel de Fuentes. Viajaba como
+    // `context.documentId` en cada pedido, y en construcción el servidor la
+    // cargaba entera como «el PDF que el docente acaba de adjuntar»; después de
+    // recargar, la elegida era la última agregada —medido: la pantalla de inicio
+    // de sesión de una planilla privada—. Las fuentes del curso le llegan al
+    // agente todas, en el paquete de fuentes o en el índice, sin adjuntarlas.
 
     const messageAttachment = uploadedDocument
       ? {
@@ -528,6 +798,17 @@
       metadata.template = templateMeta;
     }
 
+    // «Rehacé el plan», escrito desde Fuentes: viaja como pedido de cambios al
+    // plan, que obliga al servidor a devolver un plan nuevo. Sólo lo consume lo
+    // que la docente manda del compositor, no una continuación automática.
+    if (override === undefined) {
+      if (borradorPideRehacerPlan && planVigente) {
+        metadata.plan = { action: 'request_plan_changes' };
+      }
+
+      borradorPideRehacerPlan = false;
+    }
+
     const conversationId = await ensureActiveConversation(courseId);
     if (!conversationId) return;
 
@@ -547,7 +828,7 @@
       limpiarAdjuntos();
     }
 
-    if (text) setLastSentText(text);
+    avisoDeCorte = false;
 
     const extra = Object.keys(metadata).length > 0 ? { metadata } : {};
 
@@ -559,17 +840,38 @@
   }
 
   /**
-   * Re-sends the last user message. Used by the error banner's "Retry"
-   * button so the user can recover from a transient failure (rate limit,
-   * network blip, server restart) without retyping the prompt. No-op when
-   * there is nothing to retry or the agent is currently streaming.
+   * «Reintentar»: vuelve a pedir el turno que falló, el mismo, sin agregar una
+   * copia.
+   *
+   * Antes reenviaba «el último texto escrito» como un mensaje nuevo. Ese valor
+   * sólo lo actualizaba lo que se escribía a mano, así que después de aprobar el
+   * plan reintentar mandaba otra vez la descripción original del curso, y el
+   * mensaje que había fallado quedaba sin respuesta en la conversación.
+   *
+   * `regenerate()` del SDK reenvía la conversación tal como está: si el último
+   * mensaje es el del docente, lo vuelve a pedir con su texto, sus partes y su
+   * metadata (la aprobación viaja con su `metadata.plan`); si hay una respuesta
+   * cortada después, la saca primero.
+   *
+   * Un 409 no se reintenta: la conversación tiene otra ronda viva y el panel ya
+   * la está esperando.
    */
   async function handleRetry() {
-    const text = getLastSentText();
-    if (!text) return;
-    if (chat.status === 'streaming') return;
-    setLastSentText(null);
-    await handleSend(text);
+    if (!puedeReintentar) return;
+
+    const turno = ultimoTurnoDelDocente(chat.messages as AiAssistantMessage[]);
+
+    if (!turno) return;
+
+    // El error apagó la continuación automática. Reintentar una aprobación es
+    // volver a aprobar, y reintentar «Continuar» es volver a elegir construir:
+    // los dos la encienden, como el gesto original.
+    if (turno.control === 'aprobacion') resetAutoContinue();
+    else if (turno.control === 'continuacion') freno = { ...freno, habilitada: true };
+
+    avisoDeCorte = false;
+
+    await chat.regenerate();
   }
 
   async function handleSubmitTemplateAnswers(payload: {
@@ -577,7 +879,7 @@
     answers: Record<string, string>;
     fields: TemplateFormField[];
   }) {
-    if (!courseId || chat.status === 'streaming') {
+    if (!courseId || !puedeMandarAhora()) {
       return;
     }
 
@@ -597,7 +899,7 @@
   }
 
   async function handleSkipTemplateForm(payload: { templateId: CourseTemplateId }) {
-    if (!courseId || chat.status === 'streaming') {
+    if (!courseId || !puedeMandarAhora()) {
       return;
     }
 
@@ -651,7 +953,7 @@
     answers: Record<string, string>;
     fields: TemplateFormField[];
   }) {
-    if (!courseId || chat.status === 'streaming') {
+    if (!courseId || !puedeMandarAhora()) {
       return;
     }
 
@@ -671,7 +973,7 @@
   }
 
   async function handleSkipDiscoveryForm(payload: { formId: string }) {
-    if (!courseId || chat.status === 'streaming') {
+    if (!courseId || !puedeMandarAhora()) {
       return;
     }
 
@@ -718,7 +1020,12 @@
       // sticky — widening it here would also change the chip's lifecycle in the
       // home-page wizard chat, which is not what this fix is about.
       uploadedDocument = { id: result.documentId, name: result.fileName, origin: 'one_off' };
+      return;
     }
+
+    // Fallaba en silencio: el archivo no aparecía y nada decía por qué. El
+    // curso lleno tiene su propio texto (ver `claveDelErrorDeFuente`).
+    snackbar.error(t.get(claveDelErrorDeFuente(aiAssistantApi.error, 'course.sources.upload_failed')));
   }
 
   function handleRemoveDocument() {
@@ -843,10 +1150,50 @@
     void handleSend();
   }
 
-  function handleStop() {
+  /**
+   * «Detener»: la orden al servidor de cerrar la ronda después del paso en curso.
+   *
+   * Antes cortaba el stream y nada más. Desde que la ronda termina en el
+   * servidor aunque el navegador se vaya, eso ya no frenaba nada: el servidor
+   * seguía escribiendo lecciones y cobrando hasta el tope de pasos, el panel
+   * quedaba trabado esperándolo, y encima guardaba lo parcial por encima de lo
+   * que el servidor guardaba entero.
+   *
+   * Ahora manda la orden y NO corta el stream: lo que se estaba haciendo termina
+   * y se ve llegar, la ronda cierra sola y el final es un final normal. Si la
+   * orden no se pudo dejar (sin Redis, sin red), corta el stream como antes,
+   * avisa que la ronda va a terminar igual, y espera a que el servidor la guarde.
+   */
+  async function handleStop() {
     // Stopping is also the teacher's opt-out of the automatic build: without this
     // the effect below would immediately start the next round.
     freno = { ...freno, habilitada: false };
+
+    if (deteniendo) return;
+
+    const conversationId = activeConversationId;
+    const curso = courseId;
+
+    if (!conversationId || !curso) {
+      chat.stop();
+      return;
+    }
+
+    deteniendo = true;
+
+    const orden = await aiAssistantApi.detenerRonda(curso, conversationId);
+
+    // La ronda cierra sola después del paso en curso; el stream termina con ella.
+    if (orden === 'pedido') return;
+
+    deteniendo = false;
+
+    if (!isStreaming || activeConversationId !== conversationId) return;
+
+    // `sin-ronda`: la ronda justo terminó, o todavía no había arrancado en el
+    // servidor. No hay nada que avisar: el corte de abajo alcanza.
+    if (orden !== 'sin-ronda') snackbar.error(t.get('ai_assistant.stop_not_delivered'));
+
     chat.stop();
   }
 
@@ -863,7 +1210,7 @@
    * so re-entering the build cannot duplicate it.
    */
   function handleRetryStep(step: ProgressStep) {
-    if (chat.status === 'streaming') return;
+    if (!puedeMandarAhora()) return;
     if (!step.toolName) return;
 
     const detail = step.errorText ? ` El error fue: "${step.errorText}".` : '';
@@ -877,7 +1224,7 @@
   }
 
   async function handleImplementPlan(editedPlan: unknown) {
-    if (chat.status === 'streaming') return;
+    if (!puedeMandarAhora()) return;
     if (!courseId) return;
 
     const conversationId = await ensureActiveConversation(courseId);
@@ -887,9 +1234,23 @@
     // previous one so it can run to completion on its own.
     resetAutoContinue();
     inputValue = '';
+    avisoDeCorte = false;
 
+    // Una aprobación anterior que falló (es el último mensaje: no tuvo respuesta)
+    // se reemplaza por ésta, que puede traer ediciones. Apilarlas dejaba en la
+    // conversación una aprobación sin responder por cada intento.
+    const ultimo = chat.messages.at(-1) as AiAssistantMessage | undefined;
+
+    if (ultimo && mensajeDeControl(ultimo) === 'aprobacion') {
+      chat.messages = chat.messages.slice(0, -1);
+    }
+
+    // El texto es del contrato con la API, en castellano: el servidor reconoce
+    // la aprobación por `metadata.plan`, y el subagente de construcción lee el
+    // texto como su orden. La pantalla lo dibuja como una ficha, no como algo
+    // que la docente escribió.
     chat.sendMessage({
-      text: 'Implement this plan.',
+      text: TEXTO_DE_APROBACION,
       metadata: {
         plan: {
           action: 'implement_course_plan',
@@ -910,7 +1271,7 @@
    * modelo a veces contestaba «acá está el plan ajustado» sin ningún plan.
    */
   async function handleRequestPlanChanges(texto: string) {
-    if (chat.status === 'streaming' || !courseId) return;
+    if (!puedeMandarAhora() || !courseId) return;
 
     const conversationId = await ensureActiveConversation(courseId);
     if (!conversationId) return;
@@ -922,11 +1283,14 @@
   }
 
   function handleResume() {
+    if (!puedeMandarAhora()) return;
+
     // Pressing "Continue" is the teacher choosing to build: it turns the
     // automatic continuation on for the rounds that follow.
     freno = { ...freno, habilitada: true };
-    inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
-    void handleSend();
+    // Como texto armado y no por el compositor: lo que la docente tenía a medio
+    // escribir (y sus imágenes) no se pisa ni viaja con la continuación.
+    void handleSend(TEXTO_DE_CONTINUACION);
   }
 
   /**
@@ -951,7 +1315,7 @@
   }
 
   $effect(() => {
-    if (isStreaming) return;
+    if (isStreaming || esperandoRonda) return;
 
     const messages = chat.messages as AiAssistantMessage[];
     const decision = decidirContinuacion(freno, messages[messages.length - 1]);
@@ -964,8 +1328,7 @@
     }
 
     freno = decision.freno;
-    inputValue = CONTINUE_IMPLEMENTATION_PROMPT;
-    void handleSend();
+    void handleSend(TEXTO_DE_CONTINUACION);
   });
 
   /**
@@ -1158,24 +1521,24 @@
    * El docente puede editar títulos y descripciones antes de aprobar, y lo que se
    * construye es esa versión editada: es la que tiene que verse después, y la que
    * el servidor usa para medir el avance.
+   *
+   * Una aprobación cuenta si tuvo respuesta o si está en vuelo. Una que falló
+   * —medido: un vencimiento antes de que el servidor contestara— dejaba el plan
+   * «Aprobado» sin construir nada y sin el botón de aprobar, también después de
+   * recargar. Ver `aprobacionVigente`.
    */
   const planAprobado = $derived.by((): CoursePlan | null => {
     if (!planVigente) return null;
 
     const mensajes = chat.messages as AiAssistantMessage[];
     const desde = mensajes.findIndex((mensaje) => mensaje.id === planVigente.messageId);
+    const aprobacion = aprobacionVigente(mensajes, desde, isStreaming);
 
-    for (let indice = mensajes.length - 1; indice > desde; indice -= 1) {
-      const plan = mensajes[indice]?.role === 'user' ? mensajes[indice].metadata?.plan : undefined;
+    if (!aprobacion) return null;
 
-      if (plan?.action === 'implement_course_plan') {
-        const aprobado = plan.payload as CoursePlan | undefined;
+    const aprobado = aprobacion.payload as CoursePlan | undefined;
 
-        return aprobado && Array.isArray(aprobado.sections) ? aprobado : planVigente.plan;
-      }
-    }
-
-    return null;
+    return aprobado && Array.isArray(aprobado.sections) ? aprobado : planVigente.plan;
   });
 
   const ultimoProgreso = $derived.by(() => {
@@ -1194,9 +1557,34 @@
     pantallaDelPlan.sincronizar({
       vigente: planVigente ? { id: planVigente.id, plan: planAprobado ?? planVigente.plan } : null,
       aprobado: !!planAprobado,
-      ocupado: isStreaming,
+      // Con una ronda viva en el servidor tampoco se aprueba ni se piden
+      // cambios: el pedido volvería con 409.
+      ocupado: isStreaming || esperandoRonda,
       progreso: ultimoProgreso
     });
+  });
+
+  // Para la pantalla de Fuentes: una fuente nueva con un plan ya armado queda
+  // afuera de la construcción, y ahí se avisa. Ver `plan-del-curso.svelte.ts`.
+  $effect(() => {
+    planDelCurso.sincronizar(courseId ?? null, estadoDelPlan(chat.messages as AiAssistantMessage[], isStreaming));
+  });
+
+  /**
+   * Hay un turno que falló y se puede volver a pedir: la ronda terminó con error
+   * o se cortó, no hay otra ronda en curso, y no fue un 409 (ahí la
+   * conversación tiene otra ronda viva y el panel la espera).
+   */
+  const puedeReintentar = $derived(
+    !isStreaming &&
+      !esperandoRonda &&
+      (chat.status === 'error' || avisoDeCorte) &&
+      !esRondaEnCurso(chat.error) &&
+      ultimoTurnoDelDocente(chat.messages as AiAssistantMessage[]) !== null
+  );
+
+  $effect(() => {
+    setReintentoDisponible(puedeReintentar);
   });
 
   /**
@@ -1246,7 +1634,7 @@
    * contenido de la lección, y eso lo lee el agente.
    */
   function handleUseImageInLesson(url: string) {
-    if (chat.status === 'streaming') return;
+    if (!puedeMandarAhora()) return;
 
     void handleSend(t.get('ai_assistant.attachments.use_in_lesson_prompt', { url }));
   }
@@ -1452,6 +1840,7 @@
       void startNewChat().then(() =>
         tick().then(() => {
           inputValue = `${draft.text}\n\n`;
+          borradorPideRehacerPlan = !!draft.rehacerPlan;
         })
       );
 
@@ -1462,7 +1851,14 @@
       const existing = inputValue.trimEnd();
 
       inputValue = existing ? `${draft.text}\n\n${existing}` : `${draft.text}\n\n`;
+      borradorPideRehacerPlan = !!draft.rehacerPlan;
     });
+  });
+
+  // Si la docente borra el pedido de «rehacé el plan», lo que escriba después es
+  // otra cosa: deja de viajar como pedido de cambios.
+  $effect(() => {
+    if (!inputValue.trim()) borradorPideRehacerPlan = false;
   });
 </script>
 
@@ -1499,7 +1895,7 @@
     {isStreaming}
     {isStudent}
     {courseId}
-    resumeState={planExecutionState}
+    resumeState={esperandoRonda ? null : planExecutionState}
     {quickActions}
     onQuickAction={handleQuickAction}
     latestPlanId={planVigente?.id ?? null}
@@ -1549,7 +1945,10 @@
       {tutorBlocked}
       focusSignal={focusInputSignal}
       error={chat.error}
-      canRetry={!!lastSentText && !isStreaming}
+      streamCut={avisoDeCorte}
+      waitingForRound={esperandoRonda}
+      stopping={deteniendo}
+      canRetry={puedeReintentar}
       contextUsage={showContextIndicator ? contextUsage : undefined}
       onSend={handleSend}
       onRetry={handleRetry}

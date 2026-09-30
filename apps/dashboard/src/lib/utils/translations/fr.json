@@ -2207,6 +2207,18 @@
       "title": "Impossible d'ouvrir ce cours",
       "description": "Il a peut-être été supprimé, ou vous n'y avez plus accès. Si vous pensez qu'il s'agit d'une erreur, prévenez l'administrateur de votre organisation.",
       "action": "Retour à mes cours"
+    },
+    "sources": {
+      "error_needs_login": "Cette page demande de se connecter. S'il s'agit d'un document Google, partagez-le avec « Tous les utilisateurs disposant du lien » ou téléchargez-le en PDF et importez-le.",
+      "error_unreadable": "Nous n'avons trouvé aucun texte utile sur cette page.",
+      "snackbar_reread_unchanged": "La source n'a pas changé",
+      "plan_notice": "{count, plural, one {Le plan est déjà prêt et n'utilise pas cette source. Pour l'utiliser, demandez à l'assistant de refaire le plan.} other {Le plan est déjà prêt et n'utilise pas ces sources. Pour les utiliser, demandez à l'assistant de refaire le plan.}}",
+      "plan_notice_action": "Lui demander de refaire le plan",
+      "plan_notice_dismiss": "Fermer",
+      "plan_notice_prompt": "{count, plural, one {J'ai ajouté la source {names}. Refais le plan pour l'utiliser.} other {J'ai ajouté les sources {names}. Refais le plan pour les utiliser.}}",
+      "error_source_limit": "Ce cours a déjà 100 sources : supprimez-en une avant d'en ajouter une autre.",
+      "upload_failed": "Le fichier n'a pas pu être envoyé. Réessayez.",
+      "research_left_out_by_limit": "Le cours a atteint sa limite de 100 sources : {count} pages de la recherche ont été laissées de côté. Supprimez une source si vous voulez les ajouter."
     }
   },
   "courses": {
@@ -3892,14 +3904,14 @@
     "new_chat": "Nouvelle discussion",
     "tokens_label": "jetons",
     "implementing_course_plan": "Mise en œuvre du plan de cours",
-    "resume": "CV",
+    "resume": "Continuer",
     "stopped_content_kept": "Arrêté. Le contenu créé a été conservé.",
     "mention_lesson": "Leçon",
     "mention_exercise": "Exercice",
     "mention_section": "Section",
     "mention_no_results": "Aucun contenu correspondant",
     "uploading_document": "Téléchargement du document...",
-    "agent_running_warning": "Les modifications apparaîtront dans le cours une fois que l'agent aura terminé. Ne rechargez pas la page.",
+    "agent_running_warning": "Vous pouvez quitter cette page : l'assistant termine la série de tâches en cours et l'enregistre. Si le cours n'est pas complet, appuyez sur « Continuer » à votre retour.",
     "agent_running_warning_dismiss": "Fermer",
     "quick_action": {
       "upload_document_course": "Upload a document to create a course",
@@ -4060,7 +4072,30 @@
         "title": "Le travailleur ne répond pas",
         "body": "Cette exécution attend depuis plus de 30 secondes sans qu'aucun travailleur ne soit récupéré. Le travailleur en arrière-plan est peut-être en panne ou redémarre."
       }
-    }
+    },
+    "error_timeout": "Cela prend plus de temps que d'habitude. La demande est toujours en cours : réessayez dans quelques secondes.",
+    "error_stream_cut": "La connexion avec l'assistant a été coupée. Ce qui a déjà été créé est enregistré.",
+    "error_round_in_progress": "L'assistant travaille encore dans ce chat. Attendez qu'il ait terminé.",
+    "round_in_progress_notice": "L'assistant travaille sur ce cours. L'affichage se met à jour tout seul.",
+    "tool_interrupted": "Interrompu avant la fin. Vérifiez le cours : ce qui a pu être enregistré l'est.",
+    "control_message": {
+      "plan_approved": "Plan approuvé — en construction",
+      "continue_build": "Continuer la construction"
+    },
+    "plan_screen": {
+      "no_source_title": "Des leçons n'ont pas de matériel",
+      "no_source_body": "{count, plural, one {Cette leçon n'a aucune source du cours pour l'appuyer. Que voulez-vous en faire ?} other {Ces # leçons n'ont aucune source du cours pour les appuyer. Que voulez-vous en faire ?}}",
+      "no_source_general": "Les écrire avec des connaissances générales",
+      "no_source_remove": "Les retirer du plan",
+      "no_source_cancel": "Annuler",
+      "no_source_remove_failed": "Impossible de les retirer sans laisser le plan incomplet. Choisissez une autre option ou demandez des modifications à l'assistant.",
+      "weak_source_hint": "Elle cite {sources}, mais le sujet n'y est que mentionné."
+    },
+    "stopping": "Arrêt en cours…",
+    "stopping_notice": "Arrêt en cours : l'assistant termine ce qu'il est en train de faire, l'enregistre et s'arrête.",
+    "stop_not_delivered": "Impossible de demander à l'assistant de s'arrêter : il va terminer cette série de tâches et l'enregistrer. Le chat se mettra à jour tout seul à la fin.",
+    "stopped_by_teacher": "Vous avez arrêté l'assistant ici. Ce qu'il avait déjà fait a été enregistré.",
+    "error_timeout_chat": "L'assistant travaille encore et cela prend plus de temps que d'habitude. Le chat se mettra à jour tout seul à la fin."
   },
   "widgets": {
     "heading": "Widgets",

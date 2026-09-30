@@ -209,9 +209,28 @@ describe('las reglas son las mismas que las del constructor', () => {
     }
     expect(escritor).toMatch(/refuses your version/);
     expect(escritor).toMatch(/Changing a diagram means REPLACING it/);
-    // Y la regla de HTML ya no le prohíbe CONSERVAR la tabla que ya estaba.
-    expect(escritor).toContain('no new <table>');
+    // Y la regla de HTML no le prohíbe la tabla que ya estaba: desde el
+    // 2026-09-29 puede escribir una simple, así que conservarla no choca con
+    // ninguna otra regla.
+    expect(escritor).toContain('a simple <table>');
+    expect(escritor).not.toMatch(/no (new )?<table>/);
     expect(escritor).not.toContain('keep every <img> exactly where it is.');
+  });
+
+  /**
+   * La tabla, para los dos o para ninguno.
+   *
+   * El escritor puede escribir una tabla simple desde el 2026-09-29. El
+   * constructor también escribe y reemplaza bloques, y `replace_lesson_block`
+   * le exige conservar las tablas del bloque que cambia: con el «Do NOT use:
+   * <table>» viejo en su prompt, la tabla que dejó el escritor quedaba trabada
+   * entre las dos reglas, y la salida fácil era la lista con «|».
+   */
+  it('los dos pueden escribir una tabla simple, y ninguno la prohíbe', () => {
+    for (const prompt of [escritor, constructor]) {
+      expect(prompt).toContain('goes in a simple <table>');
+      expect(prompt).not.toMatch(/Do NOT use: <table>/);
+    }
   });
 
   it('el escritor sabe que no puede hablar con el docente y usa la nota', () => {

@@ -50,23 +50,94 @@
    * contexto y no sueltos: medido, uno de cada cinco es un dato bien dicho de
    * otra manera, y sin el contexto el docente no puede descartarlo de un
    * vistazo.
+   *
+   * Desde el 2026-09-29 un dato puede traer además DÓNDE se lo encontró fuera
+   * de las fuentes de la lección —en el pedido del docente, en el plan, en otra
+   * fuente del curso— o que quien escribió lo da por conocimiento general. Sin
+   * ese rótulo la lista entera se leía como «datos inventados»: medido en un
+   * curso real, eran las palabras del propio pedido y las teclas del programa.
+   * El rótulo se traduce acá por su código (`respaldo`, `decision`); el texto
+   * que guarda el servidor (`rotulo`) queda sólo para un código que esta
+   * pantalla todavía no conozca.
    */
+  type Respaldo = 'pedido' | 'plan' | 'curso';
+  const esRespaldo = (valor: unknown): valor is Respaldo => valor === 'pedido' || valor === 'plan' || valor === 'curso';
+
   interface Token {
     valor: string;
     contexto: string;
+    enDiagrama: boolean;
+    respaldo: Respaldo | null;
+    /** Quien escribió decidió dejarlo: lo da por conocimiento general. */
+    mantenido: boolean;
+    rotulo: string;
+    motivo: string;
   }
+
+  const texto = (valor: unknown): string => (typeof valor === 'string' ? valor : '');
 
   const tokens = $derived(
     Array.isArray(report?.tokenWarnings)
       ? (report.tokenWarnings as unknown[])
           .filter((t): t is Record<string, unknown> => typeof t === 'object' && t !== null)
-          .map((t) => ({
-            valor: typeof t.valor === 'string' ? t.valor : '',
-            contexto: typeof t.contexto === 'string' ? t.contexto : ''
-          }))
-          .filter((t: Token) => t.valor.length > 0)
+          .map(
+            (t): Token => ({
+              valor: texto(t.valor),
+              contexto: texto(t.contexto),
+              enDiagrama: t.enDiagrama === true,
+              respaldo: esRespaldo(t.respaldo) ? t.respaldo : null,
+              mantenido: t.decision === 'mantener',
+              rotulo: texto(t.rotulo).trim(),
+              motivo: texto(t.motivo).trim()
+            })
+          )
+          .filter((t) => t.valor.length > 0)
       : []
   );
+
+  /** Lo que el docente lee al lado del dato: dónde apareció, o qué decidió quien escribió. */
+  function rotuloDe(token: Token): string {
+    if (token.respaldo) return $t(`course.navItem.lessons.build_report.token_backing.${token.respaldo}`);
+    if (token.mantenido) return $t('course.navItem.lessons.build_report.token_kept');
+
+    return token.rotulo;
+  }
+
+  /**
+   * Los rótulos de un diagrama que nadie explicó van juntos, en una línea.
+   *
+   * Sueltos, cada caja del dibujo ocupaba un renglón con un «contexto» que es
+   * la misma etiqueta: diez renglones para un solo diagrama, y la lista parecía
+   * diez errores. Uno que sí trae rótulo sigue en la lista, porque su rótulo es
+   * justamente lo que hay que leer.
+   */
+  const tokensEnLista = $derived(tokens.filter((token) => !token.enDiagrama || rotuloDe(token) !== ''));
+  const tokensDeDiagrama = $derived(
+    tokens.filter((token) => token.enDiagrama && rotuloDe(token) === '').map((token) => token.valor)
+  );
+
+  /**
+   * Los ejemplos que quien escribió inventó a propósito, y lo declaró.
+   *
+   * No hay nada que confirmar en ellos —la marca dice que esos nombres y
+   * números no salen de ningún lado—, pero sí algo que mirar: un ejemplo marcado
+   * queda fuera de los dos chequeos, y medido en un curso real, la marca se
+   * llevaba a veces la definición de al lado. Por eso van a la vista, plegados y
+   * al final de lo que declaró quien escribió.
+   */
+  const ejemplos = $derived(
+    Array.isArray(report?.examples)
+      ? (report.examples as unknown[])
+          .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
+          .map((e) => ({ texto: texto(e.texto).trim(), porque: texto(e.porque).trim() }))
+          .filter((e) => e.texto.length > 0)
+      : []
+  );
+
+  /** Un ejemplo puede ser un párrafo entero: alcanza con reconocerlo. */
+  const MAX_TEXTO_DE_EJEMPLO = 200;
+  const recortar = (valor: string): string =>
+    valor.length > MAX_TEXTO_DE_EJEMPLO ? `${valor.slice(0, MAX_TEXTO_DE_EJEMPLO).trimEnd()}…` : valor;
 
   /**
    * Los pasajes que quien escribió marcó como propios.
@@ -147,6 +218,27 @@
       </div>
     {/if}
 
+    {#if ejemplos.length > 0}
+      <details class="mt-3" data-ejemplos>
+        <summary class="text-gray-700 dark:text-gray-300 cursor-pointer text-xs font-semibold">
+          {$t('course.navItem.lessons.build_report.examples', { count: ejemplos.length })}
+        </summary>
+        <p class="text-gray-500 dark:text-gray-400 mt-1 text-xs">
+          {$t('course.navItem.lessons.build_report.examples_hint')}
+        </p>
+        <ul class="mt-2 space-y-2">
+          {#each ejemplos as ejemplo, indice (indice)}
+            <li class="border-gray-300 dark:border-neutral-600 border-s-2 ps-2 text-xs">
+              <p class="text-gray-700 dark:text-gray-300">{recortar(ejemplo.texto)}</p>
+              {#if ejemplo.porque}
+                <p class="text-gray-500 dark:text-gray-400 mt-0.5 italic">{ejemplo.porque}</p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </details>
+    {/if}
+
     {#if sinRespaldo.length > 0}
       <div class="mt-3">
         <p class="text-xs font-semibold text-red-700 dark:text-red-400">
@@ -166,14 +258,27 @@
           {$t('course.navItem.lessons.build_report.tokens')}
         </p>
         <ul class="text-gray-700 dark:text-gray-300 mt-1 space-y-1 text-xs">
-          {#each tokens as token (token.valor)}
+          {#each tokensEnLista as token, indice (indice)}
+            {@const rotulo = rotuloDe(token)}
             <li>
               <span class="font-semibold">{token.valor}</span>
               {#if token.contexto}
                 <span class="text-gray-500 dark:text-gray-400">— {token.contexto}</span>
               {/if}
+              {#if rotulo}
+                <span class="text-green-700 dark:text-green-400" data-rotulo>· {rotulo}</span>
+              {/if}
+              {#if token.mantenido && token.motivo}
+                <span class="text-gray-500 dark:text-gray-400 italic">({token.motivo})</span>
+              {/if}
             </li>
           {/each}
+          {#if tokensDeDiagrama.length > 0}
+            <li data-diagramas>
+              <span class="font-semibold">{$t('course.navItem.lessons.build_report.tokens_in_diagrams')}</span>
+              {tokensDeDiagrama.join(', ')}
+            </li>
+          {/if}
         </ul>
       </div>
     {/if}

@@ -5,14 +5,12 @@ import { decidirSiMirar, leerDocumentoConVision } from '@api/services/agent/docu
 /**
  * Title of the hidden conversation every course source lands in.
  *
- * A constant because four call sites created it by repeating the literal, and
- * they have to agree: a typo in one of them opens a SECOND hidden conversation,
- * splitting a course's sources across two of them where the panel only shows
- * one. It is user-visible — the assistant panel prints it as the conversation
- * name — so it is written in the interface language, like the rest of the
- * strings this backend hands to the UI.
+ * Vive en el paquete de la base desde que la base tiene que reconocerla —para
+ * no listarla en el historial, reusarla en vez de abrir otra y mudar a ella las
+ * fuentes de un chat que se borra—. Se reexporta acá para que los que ya la
+ * importaban de este módulo no cambien.
  */
-export const SOURCES_CONVERSATION_TITLE = 'Fuentes del curso';
+export { SOURCES_CONVERSATION_TITLE } from '@cio/db/queries/agent/chat-history';
 import {
   MAX_DOCUMENT_TEXT_LENGTH,
   MAX_AGENT_DOCUMENT_SIZE,
@@ -20,17 +18,26 @@ import {
   SUPPORTED_DOCUMENT_TYPES
 } from '@cio/ai-assistant';
 import type { DocumentUploadResult } from '@cio/ai-assistant';
-import { agentDocumentKey, agentDocumentSummaryKey, computeContentHash } from '@api/utils/redis/key-generators';
-import { summarizeDocument } from '@api/services/agent/summarize';
+import { agentDocumentKey, computeContentHash } from '@api/utils/redis/key-generators';
+import { encolarResumen, leerResumenesGuardados, type ConsumoDelResumen } from '@api/services/agent/resumenes-de-fuentes';
+import { fetchDocumentationUrl, PLAZO_DE_LECTURA_A_MANO_MS } from '@api/services/agent/fetch-url';
+import { diagnosticarFuente, errorDePaginaSinContenido, esNombreDeMuro } from '@api/services/agent/pagina-sin-contenido';
 import { trackAgentEvent, AgentEvent } from '@api/utils/tinybird';
 import type { RedisClient } from '@api/utils/redis/redis';
 import {
   actualizarLecturaDeFuente,
+  CODIGO_TOPE_DE_FUENTES,
+  contarFuentesDelCurso,
   createChatDocument,
+  esTopeDeFuentes,
   getChatDocument,
   getCourseSource,
-  findChatDocumentByContentHash
+  findChatDocumentByContentHash,
+  MAX_SOURCES_PER_COURSE,
+  type ChatDocumentRecord
 } from '@cio/db/queries/agent';
+import { buscarFuentePorDireccion, reemplazarFuenteWeb } from '@cio/db/queries/agent/fuentes-del-curso';
+import { getCourseOrganizationId } from '@cio/db/queries/tag';
 import { generateFileKey } from '@api/utils/upload';
 import { getFromS3, uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
@@ -50,6 +57,58 @@ import { getAssetsByIds } from '@cio/db/queries/assets';
  * `fuenteConLecturaVieja` puede señalarlo y `releerFuente` rehacerlo.
  */
 export const EXTRACTOR_VERSION = 1;
+
+/**
+ * El 422 que ve la docente cuando el curso ya tiene todas las fuentes que puede
+ * tener. El panel lo traduce por el `code`. Ver `MAX_SOURCES_PER_COURSE`: una
+ * fuente nunca se borra sola para hacerle lugar a otra.
+ */
+export function errorDeTopeDeFuentes(): AppError {
+  return new AppError(
+    `This course already has ${MAX_SOURCES_PER_COURSE} sources: delete one before adding another`,
+    CODIGO_TOPE_DE_FUENTES,
+    422
+  );
+}
+
+/** Si un error es el rechazo del tope, el de la base o el 422 de acá. */
+export { esTopeDeFuentes };
+
+/** Cuántas fuentes más entran en el curso. */
+export async function lugarParaFuentes(courseId: string): Promise<number> {
+  return Math.max(0, MAX_SOURCES_PER_COURSE - (await contarFuentesDelCurso(courseId)));
+}
+
+/**
+ * Rechaza una fuente nueva ANTES de gastar en ella: subir el archivo al
+ * almacenamiento o leer la página. El alta vuelve a mirar el tope adentro de su
+ * transacción (`createChatDocument`); esto es para no gastar de balde.
+ */
+export async function exigirLugarParaUnaFuente(courseId: string): Promise<void> {
+  if ((await lugarParaFuentes(courseId)) <= 0) throw errorDeTopeDeFuentes();
+}
+
+/**
+ * Lo mismo para una página, con una excepción: si esa dirección ya es fuente
+ * del curso, agregarla otra vez la relee en su lugar y no ocupa uno nuevo.
+ */
+export async function exigirLugarParaUnaPagina(courseId: string, url: string): Promise<void> {
+  if ((await lugarParaFuentes(courseId)) > 0) return;
+  if (await buscarFuentePorDireccion(courseId, direccionesPosibles(url))) return;
+
+  throw errorDeTopeDeFuentes();
+}
+
+/** El alta de una fuente, con el tope convertido en el 422 que ve la docente. */
+async function crearFuente(record: Parameters<typeof createChatDocument>[0]): Promise<void> {
+  try {
+    await createChatDocument(record);
+  } catch (error) {
+    if (esTopeDeFuentes(error)) throw errorDeTopeDeFuentes();
+
+    throw error;
+  }
+}
 
 /**
  * ¿A esta fuente le conviene una lectura nueva?
@@ -303,7 +362,8 @@ export async function storeDraftDocument(
  */
 export async function promoteDraftDocuments(
   documentIds: string[],
-  params: { userId: string; courseId: string; conversationId: string },
+  /** `orgId` es para cobrar el resumen de cada fuente promovida; sin él se deduce del curso. */
+  params: { userId: string; courseId: string; conversationId: string; orgId?: string },
   redis: RedisClient
 ): Promise<number> {
   let promoted = 0;
@@ -334,7 +394,7 @@ export async function promoteDraftDocuments(
       const existing = await findChatDocumentByContentHash(params.courseId, contentHash);
       if (existing) continue;
 
-      await createChatDocument({
+      await crearFuente({
         id: documentId,
         conversationId: params.conversationId,
         courseId: params.courseId,
@@ -350,9 +410,27 @@ export async function promoteDraftDocuments(
         extractorVersion: draft.assetId ? EXTRACTOR_VERSION : 0
       });
 
+      // El resumen se pide acá, cuando la fuente nace, y no cuando el índice lo
+      // necesita: así el primer turno de construcción ya lo encuentra hecho.
+      encolarResumen({
+        documentId,
+        contentHash,
+        texto: draft.text,
+        redis,
+        consumo: { orgId: params.orgId, userId: params.userId, courseId: params.courseId }
+      });
+
       promoted += 1;
       console.log(`[agent.documents] promoted draft ${documentId} to source of course ${params.courseId}`);
     } catch (error) {
+      // `esTopeDeFuentes` reconoce también el 422 de `crearFuente`: lleva el mismo `code`.
+      if (esTopeDeFuentes(error)) {
+        // Un curso recién creado no llega al tope con sus borradores; si pasa,
+        // que quede escrito cuál no entró.
+        console.warn(`[agent.documents] draft ${documentId} not promoted: course ${params.courseId} is at its source limit`);
+        continue;
+      }
+
       console.warn(`[agent.documents] could not promote draft ${documentId}:`, error);
     }
   }
@@ -410,6 +488,10 @@ export async function parseAndStoreDocument(
     };
   }
 
+  // Antes de subir el original: un archivo que no va a entrar no tiene por qué
+  // quedar en el almacenamiento.
+  await exigirLugarParaUnaFuente(courseId);
+
   const documentId = nanoid();
 
   const asset = await storeOriginalFile({ file, buffer, mimeType, orgId, userId, conversationId });
@@ -426,7 +508,7 @@ export async function parseAndStoreDocument(
     { EX: DOCUMENT_REDIS_TTL }
   );
 
-  await createChatDocument({
+  await crearFuente({
     id: documentId,
     conversationId,
     courseId,
@@ -440,6 +522,11 @@ export async function parseAndStoreDocument(
     pageCount,
     extractorVersion: EXTRACTOR_VERSION
   });
+
+  // Sin `orgId`: el de la cabecera puede ser el de la consultora mirando el
+  // curso de una empresa cliente, y el resumen es consumo del curso. Lo deduce
+  // `resumenes-de-fuentes` a partir del curso.
+  encolarResumen({ documentId, contentHash, texto: extractedText, redis, consumo: { userId, courseId } });
 
   trackAgentEvent(AgentEvent.DOCUMENT_UPLOADED, {
     orgId,
@@ -465,6 +552,87 @@ export async function parseAndStoreDocument(
 /** MIME type used for sources captured from a web page (Jina returns markdown). */
 export const URL_SOURCE_MIME_TYPE = 'text/markdown';
 
+/** Una página leída, lista para guardarse como fuente. */
+interface PaginaComoFuente {
+  text: string;
+  truncated: boolean;
+  wordCount: number;
+  fileName: string;
+  contentHash: string;
+}
+
+function prepararPaginaWeb(params: { url: string; pageTitle: string; markdown: string }): PaginaComoFuente {
+  const text = params.markdown.slice(0, MAX_DOCUMENT_TEXT_LENGTH);
+  // Title first, falling back to the URL, so the Sources list is readable. The
+  // equality guard avoids "es.wikipedia.org (es.wikipedia.org)" when the title
+  // could not be extracted and already degraded to the hostname.
+  const hostname = new URL(params.url).hostname;
+  const title = params.pageTitle?.trim();
+
+  return {
+    text,
+    truncated: params.markdown.length > MAX_DOCUMENT_TEXT_LENGTH,
+    wordCount: text.split(/\s+/).filter(Boolean).length,
+    fileName: title ? (title === hostname ? params.url : `${title} (${hostname})`) : params.url,
+    contentHash: computeContentHash(text)
+  };
+}
+
+/**
+ * Las formas en que puede estar guardada una misma dirección.
+ *
+ * La ruta de Fuentes guarda la dirección tal como la pegó la docente y la
+ * investigación la guarda normalizada (`new URL().href`): buscar sólo una de
+ * las dos haría que la misma página, agregada por los dos caminos, no se
+ * reconozca.
+ */
+function direccionesPosibles(url: string): string[] {
+  try {
+    return [...new Set([url, new URL(url).href])];
+  } catch {
+    return [url];
+  }
+}
+
+/**
+ * Pone la lectura nueva de una página en la fuente que ya existía.
+ *
+ * Misma fuente —mismo id, mismo lugar en el panel, mismas lecciones que la
+ * citan—, texto nuevo. El nombre NO cambia: el plan aprobado declara sus
+ * fuentes por nombre, y si el título de la página cambió, la lección perdía su
+ * fuente sin aviso (el escritor no recibía el material y la cobertura la daba
+ * por inexistente). La excepción es un nombre de muro: una fuente que se guardó
+ * como «Google Sheets: Sign-in» y ahora se leyó bien no puede seguir llamándose
+ * así.
+ *
+ * Devuelve el nombre con que quedó.
+ */
+async function reemplazarLecturaWeb(
+  documentId: string,
+  nombreActual: string,
+  pagina: PaginaComoFuente,
+  redis: RedisClient,
+  consumo: ConsumoDelResumen
+): Promise<string> {
+  const fileName = esNombreDeMuro(nombreActual) ? pagina.fileName : nombreActual;
+
+  await reemplazarFuenteWeb(documentId, {
+    text: pagina.text,
+    fileName,
+    wordCount: pagina.wordCount,
+    contentHash: pagina.contentHash
+  });
+
+  // La copia caliente del texto describe la lectura vieja. El resumen viejo no
+  // hace falta borrarlo: su clave lleva el hash del texto anterior, así que
+  // nadie lo va a encontrar para el texto nuevo.
+  await redis.del(agentDocumentKey(documentId));
+
+  encolarResumen({ documentId, contentHash: pagina.contentHash, texto: pagina.text, redis, consumo });
+
+  return fileName;
+}
+
 /**
  * Persist a fetched web page as a course source, alongside uploaded PDFs.
  *
@@ -474,9 +642,15 @@ export const URL_SOURCE_MIME_TYPE = 'text/markdown';
  * document instead, it shows up in the Sources panel, joins the cached source
  * pack, and survives the build.
  *
- * There is no S3 asset (`assetId: null`): the original lives at its URL. Dedup is
- * by content hash within the course, so re-adding the same page is a no-op and two
- * teachers adding it share one cache entry.
+ * There is no S3 asset (`assetId: null`): the original lives at its URL.
+ *
+ * Una página que el curso ya tiene —la misma dirección— no se duplica: si el
+ * texto es el mismo se devuelve la que estaba (`reused`), y si cambió se le
+ * reemplaza el texto (`replaced`). Antes la comparación era sólo por el texto,
+ * así que volver a agregar una página que había cambiado creaba una segunda
+ * fuente, y volver a agregar el muro de una planilla recién compartida devolvía
+ * el mismo muro como si nada. Entre páginas DISTINTAS con el mismo texto sigue
+ * valiendo la comparación por hash.
  */
 export async function storeUrlDocument(params: {
   url: string;
@@ -487,19 +661,46 @@ export async function storeUrlDocument(params: {
   courseId: string;
   conversationId: string;
   redis: RedisClient;
-}): Promise<DocumentUploadResult & { reused: boolean }> {
+}): Promise<DocumentUploadResult & { reused: boolean; replaced: boolean }> {
   const { url, pageTitle, markdown, orgId, userId, courseId, conversationId, redis } = params;
 
-  const text = markdown.slice(0, MAX_DOCUMENT_TEXT_LENGTH);
-  const truncated = markdown.length > MAX_DOCUMENT_TEXT_LENGTH;
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  // Title first, falling back to the URL, so the Sources list is readable. The
-  // equality guard avoids "es.wikipedia.org (es.wikipedia.org)" when the title
-  // could not be extracted and already degraded to the hostname.
-  const hostname = new URL(url).hostname;
-  const title = pageTitle?.trim();
-  const fileName = title ? (title === hostname ? url : `${title} (${hostname})`) : url;
-  const contentHash = computeContentHash(text);
+  const pagina = prepararPaginaWeb({ url, pageTitle, markdown });
+  const { text, truncated, wordCount, fileName, contentHash } = pagina;
+
+  const mismaDireccion = await buscarFuentePorDireccion(courseId, direccionesPosibles(url));
+
+  if (mismaDireccion) {
+    if (hashDeLaFuente(mismaDireccion) === contentHash) {
+      return {
+        documentId: mismaDireccion.id,
+        fileName: mismaDireccion.fileName,
+        mimeType: mismaDireccion.mimeType,
+        pageCount: mismaDireccion.pageCount,
+        wordCount: mismaDireccion.wordCount,
+        textPreview: text.slice(0, 500),
+        truncated,
+        reused: true,
+        replaced: false
+      };
+    }
+
+    const nombre = await reemplazarLecturaWeb(mismaDireccion.id, mismaDireccion.fileName, pagina, redis, {
+      userId,
+      courseId
+    });
+
+    return {
+      documentId: mismaDireccion.id,
+      fileName: nombre,
+      mimeType: URL_SOURCE_MIME_TYPE,
+      pageCount: null,
+      wordCount,
+      textPreview: text.slice(0, 500),
+      truncated,
+      reused: false,
+      replaced: true
+    };
+  }
 
   const existing = await findChatDocumentByContentHash(courseId, contentHash);
   if (existing) {
@@ -511,9 +712,12 @@ export async function storeUrlDocument(params: {
       wordCount: existing.wordCount,
       textPreview: text.slice(0, 500),
       truncated,
-      reused: true
+      reused: true,
+      replaced: false
     };
   }
+
+  await exigirLugarParaUnaFuente(courseId);
 
   const documentId = nanoid();
 
@@ -529,7 +733,7 @@ export async function storeUrlDocument(params: {
     { EX: DOCUMENT_REDIS_TTL }
   );
 
-  await createChatDocument({
+  await crearFuente({
     id: documentId,
     conversationId,
     courseId,
@@ -546,6 +750,10 @@ export async function storeUrlDocument(params: {
     wordCount,
     pageCount: null
   });
+
+  // El resumen nace con la fuente, en segundo plano: el índice del próximo
+  // turno lo encuentra hecho en vez de pedirlo él.
+  encolarResumen({ documentId, contentHash, texto: text, redis, consumo: { userId, courseId } });
 
   trackAgentEvent(AgentEvent.DOCUMENT_UPLOADED, {
     orgId,
@@ -565,7 +773,8 @@ export async function storeUrlDocument(params: {
     wordCount,
     textPreview: text.slice(0, 500),
     truncated,
-    reused: false
+    reused: false,
+    replaced: false
   };
 }
 
@@ -651,6 +860,19 @@ export async function getCourseSourceText(
   return record.text;
 }
 
+/** Lo que devuelve una relectura (`POST /agent/documents/:id/reread`). */
+export interface RelecturaDeFuente {
+  /**
+   * Si el texto cambió. Sin cambio el resumen sigue valiendo, y una página web
+   * ni se toca; un archivo igual se guarda, para registrar la versión del lector.
+   */
+  changed: boolean;
+  before: number;
+  after: number;
+  pageCount: number | null;
+  wordCount: number;
+}
+
 /**
  * Vuelve a leer una fuente desde su archivo original, con el lector de hoy.
  *
@@ -668,22 +890,32 @@ export async function getCourseSourceText(
  *
  * No crea una fuente nueva: reemplaza el texto de la que ya está. El curso que
  * la cita, su lugar en el panel y su original siguen siendo los mismos.
+ *
+ * Una página web se relee bajándola de nuevo, fresca (ver `releerPaginaWeb`).
+ * Antes se rechazaba con «se relee agregándola de nuevo», que era justo lo que
+ * la caché de 7 días impedía: la planilla recién compartida seguía volviendo
+ * como el muro de inicio de sesión de la primera vez.
  */
 export async function releerFuente(params: {
   documentId: string;
   courseId: string;
   redis: RedisClient;
-}): Promise<{ before: number; after: number; pageCount: number | null; wordCount: number }> {
+  /**
+   * La empresa desde la que se pide. Sólo la usa una página web: la caché del
+   * lector es por empresa. Sin ella se deduce del curso.
+   */
+  orgId?: string;
+  /** Quién la pidió: se le cobra el resumen del texto nuevo. */
+  userId?: string;
+}): Promise<RelecturaDeFuente> {
   const doc = await getCourseSource(params.documentId, params.courseId);
 
   if (!doc) throw new AppError('Source not found in this course', 'DOCUMENT_NOT_FOUND', 404);
 
+  if (!doc.assetId && doc.sourceUrl) return releerPaginaWeb(doc, doc.sourceUrl, params);
+
   if (!doc.assetId) {
-    throw new AppError(
-      'This source has no stored file to re-read. A web page is re-read by adding it again.',
-      'SOURCE_HAS_NO_FILE',
-      400
-    );
+    throw new AppError('This source has no stored file nor web address to re-read', 'SOURCE_HAS_NO_FILE', 400);
   }
 
   const [asset] = await getAssetsByIds([doc.assetId]);
@@ -701,30 +933,115 @@ export async function releerFuente(params: {
   const bytes = Buffer.from(await descarga.data.Body.transformToByteArray());
   const archivo = new File([bytes], doc.fileName, { type: doc.mimeType });
   const leido = await parseDocument(archivo);
+  const contentHash = computeContentHash(leido.text);
+  const changed = contentHash !== hashDeLaFuente(doc);
 
+  // Se guarda aunque el texto sea el mismo: la versión del lector sí cambió, y
+  // es lo que deja de marcarla como «leída con un lector viejo».
   await actualizarLecturaDeFuente(params.documentId, {
     text: leido.text,
     wordCount: leido.wordCount,
     pageCount: leido.pageCount,
-    contentHash: computeContentHash(leido.text),
+    contentHash,
     extractorVersion: EXTRACTOR_VERSION
   });
 
-  // La copia caliente y el resumen quedaron describiendo el texto viejo. Se
-  // borran los dos: dejar el resumen sería peor que no tenerlo, porque describe
-  // con seguridad un contenido que ya no está.
-  await params.redis.del(agentDocumentKey(params.documentId));
-  await params.redis.del(agentDocumentSummaryKey(params.documentId));
+  if (changed) {
+    // La copia caliente describe el texto viejo. El resumen viejo no hace falta
+    // borrarlo —su clave lleva el hash del texto anterior—; se pide el nuevo.
+    await params.redis.del(agentDocumentKey(params.documentId));
 
-  return { before: doc.text.length, after: leido.text.length, pageCount: leido.pageCount, wordCount: leido.wordCount };
+    encolarResumen({
+      documentId: params.documentId,
+      contentHash,
+      texto: leido.text,
+      redis: params.redis,
+      consumo: { userId: params.userId, courseId: params.courseId }
+    });
+  }
+
+  return {
+    changed,
+    before: doc.text.length,
+    after: leido.text.length,
+    pageCount: leido.pageCount,
+    wordCount: leido.wordCount
+  };
+}
+
+/** El hash con que se guardó el texto de una fuente; las filas viejas no lo tienen y se calcula. */
+function hashDeLaFuente(doc: Pick<ChatDocumentRecord, 'contentHash' | 'text'>): string {
+  return doc.contentHash || computeContentHash(doc.text);
+}
+
+/**
+ * Relee una página web: la baja fresca, la revisa y, si cambió, la reemplaza.
+ *
+ * Fresca quiere decir que no sale de ninguna caché —ni la nuestra ni la del
+ * lector— y que lo leído queda como la nueva copia guardada. Lo que no sirve
+ * como fuente (un muro de inicio de sesión, un error del sitio, una página de
+ * puros enlaces) se rechaza con 422 y la fuente queda como estaba: reemplazar
+ * una lectura buena por un muro sería peor que no releer.
+ */
+async function releerPaginaWeb(
+  doc: ChatDocumentRecord,
+  direccion: string,
+  params: { courseId: string; redis: RedisClient; orgId?: string; userId?: string }
+): Promise<RelecturaDeFuente> {
+  const orgId = params.orgId || (await getCourseOrganizationId(params.courseId));
+
+  if (!orgId) throw new AppError('Course not found', 'COURSE_NOT_FOUND', 404);
+
+  const page = await fetchDocumentationUrl({
+    url: direccion,
+    orgId,
+    courseId: params.courseId,
+    // Una relectura pedida por la docente no es el agente dando vueltas: el
+    // tope de lecturas por conversación no aplica, igual que en Fuentes.
+    priorMessages: [],
+    fresco: true,
+    plazoMs: PLAZO_DE_LECTURA_A_MANO_MS
+  });
+
+  const diagnostico = diagnosticarFuente(page.content);
+
+  if (diagnostico) throw errorDePaginaSinContenido(diagnostico, direccion);
+
+  const pagina = prepararPaginaWeb({ url: direccion, pageTitle: page.pageTitle, markdown: page.content });
+  const changed = pagina.contentHash !== hashDeLaFuente(doc);
+
+  if (changed) {
+    await reemplazarLecturaWeb(doc.id, doc.fileName, pagina, params.redis, {
+      userId: params.userId,
+      courseId: params.courseId
+    });
+  }
+
+  return {
+    changed,
+    before: doc.text.length,
+    after: changed ? pagina.text.length : doc.text.length,
+    pageCount: null,
+    wordCount: changed ? pagina.wordCount : doc.wordCount
+  };
 }
 
 const DOCUMENT_SUMMARY_EXCERPT_CHARS = 1_500;
 
 /**
- * Lazily generated, Redis-cached short summary of a document, injected on
- * follow-up turns instead of the full text. Falls back to a truncated excerpt
- * on no-provider / generation failure. Never throws — must not block the chat.
+ * El resumen corto de un documento, sin esperar nunca al modelo.
+ *
+ * Lo usan el paquete de fuentes (para lo que no entra en el presupuesto) y el
+ * contexto de los documentos de turnos anteriores, y los dos corren ANTES de
+ * que el chat mande las cabeceras: esperar acá una llamada al modelo era dejar
+ * al navegador sin respuesta, que es como se llegó a los 38 s y al «Request
+ * timeout». Si el resumen ya existe se devuelve; si no, se pide en segundo
+ * plano (`encolarResumen`) y este turno se arregla con el principio del texto.
+ * El próximo ya lo encuentra.
+ *
+ * El texto se lee primero, y no el resumen, porque la clave del resumen lleva
+ * el hash del texto: así un resumen nunca describe una versión vieja. De paso,
+ * quien no puede leer el documento tampoco recibe su resumen.
  */
 export async function getDocumentSummary(
   documentId: string,
@@ -735,29 +1052,28 @@ export async function getDocumentSummary(
    * y el paquete leen lo del curso. Con un `userId` adentro, esta función
    * elegía por ellos — y elegía mal para dos de los tres.
    */
-  leerTexto: () => Promise<string | null>
+  leerTexto: () => Promise<string | null>,
+  /** A quién cobrarle el resumen si hay que generarlo; sin esto, a quien subió la fuente. */
+  consumo?: ConsumoDelResumen
 ): Promise<string | null> {
-  const cached = await redis.get(agentDocumentSummaryKey(documentId));
-
-  if (cached) return cached;
-
   const text = await leerTexto();
 
   if (!text) return null;
 
+  const contentHash = computeContentHash(text);
+
   try {
-    const summary = await summarizeDocument(text);
+    const guardado = (await leerResumenesGuardados(redis, [{ documentId, contentHash }])).get(documentId);
 
-    if (summary) {
-      await redis.set(agentDocumentSummaryKey(documentId), summary, { EX: DOCUMENT_REDIS_TTL });
-
-      return summary;
-    }
-  } catch {
-    // Fall through to excerpt — never block the chat on a summary failure.
+    if (guardado) return guardado;
+  } catch (error) {
+    console.error(`[agent.documents] no se pudo leer el resumen de ${documentId}:`, error);
   }
 
-  // Excerpt fallback (NOT cached, so a real summary can replace it next turn).
+  encolarResumen({ documentId, contentHash, texto: text, redis, consumo });
+
+  // Mientras tanto, el principio del texto: mejor que nada, y no se guarda, así
+  // que el resumen de verdad lo reemplaza apenas exista.
   return text.slice(0, DOCUMENT_SUMMARY_EXCERPT_CHARS);
 }
 

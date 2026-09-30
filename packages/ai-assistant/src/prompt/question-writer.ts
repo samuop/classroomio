@@ -33,6 +33,14 @@ import { EXERCISE_QUALITY_RULES } from './exercise-rules';
  * como `numericAnswer`, un campo con nombre y tipo, y el servidor la vuelca a
  * `settings` antes de validar.
  *
+ * ── Por qué dice el voseo con todas las letras ───────────────────────────────
+ *
+ * Las lecciones lo aprenden de los ejemplos de su prompt («vas a calcular…»,
+ * «fijate que…»), y este prompt no los tiene: medido el 2026-09-29, un
+ * cuestionario salió con «(Selecciona todas las opciones correctas)» al lado de
+ * otro con «Seleccioná», en el mismo curso. Una regla explícita cuesta una
+ * línea y no depende de que el modelo la deduzca.
+ *
  * ── Por qué recibe la lista de tipos ─────────────────────────────────────────
  *
  * Los tipos premium dependen del plan de la organización, así que el bloque se
@@ -69,6 +77,8 @@ ${questionTypeListBlock}
 - **A RADIO, CHECKBOX or TRUE_FALSE question that comes back without options is discarded** — the learner would have nothing to choose from, so the server refuses it, exactly as it does with a NUMERIC that has no \`numericAnswer\`. Every question of those three types carries its \`options\` array, filled.
 
 Write the questions, the options and everything a learner reads in the course language you are given — the same language the lessons are written in.
+
+In Spanish, address the learner with the Argentine voseo, the same register as the lessons: «Seleccioná todas las opciones correctas», «Elegí la respuesta», «Indicá», «Marcá», «Completá», «tenés», «podés». Never the tú forms («Selecciona», «Elige», «tienes») and never usted («Seleccione»). Instructions in parentheses count too: «(Seleccioná todas las que correspondan)».
 
 ${EXERCISE_QUALITY_RULES}
 

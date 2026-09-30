@@ -97,6 +97,40 @@ export function textoParaTokens(html: string): string {
 
 export type TipoDeHallazgo = 'numero' | 'nombre' | 'cita';
 
+/**
+ * Dónde apareció un token que NO está en las fuentes de la lección.
+ *
+ * ── Por qué hay un segundo alcance ───────────────────────────────────────────
+ *
+ * Medido en producción el 2026-09-29, en un curso de planillas: el chequeo
+ * buscaba sólo en las una o dos fuentes que el plan le había asignado a cada
+ * lección, y así marcaba como inventado el «24 hs» que la docente escribió en
+ * su propio pedido (el público eran vendedores de un comercio que no cierra),
+ * y las teclas y pestañas del programa que
+ * figuraban en OTRAS tres fuentes del mismo curso. El rebote hizo lo único que
+ * la consigna le dejaba —borrarlos o copiar el formato de la fuente— y el curso
+ * perdió hechos ciertos.
+ *
+ * Un nombre que está en el pedido de la docente, en el plan que aprobó o en
+ * cualquier fuente del curso no es un invento: el invento que esto persigue
+ * («Arlux», «4471», un teléfono) no aparece en ninguno de esos lugares. Lo que
+ * se encuentra acá va al informe con su rótulo y NO vuelve al modelo.
+ *
+ * El orden es el de la lista: si está en el pedido, eso es lo que le sirve
+ * saber a la docente, aunque también figure en una fuente.
+ */
+export type RespaldoAmpliado = 'pedido' | 'plan' | 'curso';
+
+/** Lo que lee la docente al lado de cada token encontrado fuera de la lección. */
+export const ROTULO_DE_RESPALDO: Record<RespaldoAmpliado, string> = {
+  pedido: 'está en tu pedido',
+  plan: 'está en el plan',
+  curso: 'figura en otra fuente del curso'
+};
+
+/** Qué decidió el escritor sobre un token en el parche del rebote. Ver `marcas-del-rebote.ts`. */
+export type DecisionSobreToken = 'ejemplo' | 'sin-fuente' | 'mantener';
+
 export interface HallazgoDeToken {
   tipo: TipoDeHallazgo;
   /** El token tal como aparece en la lección. */
@@ -115,6 +149,40 @@ export interface HallazgoDeToken {
    * ya marcados.
    */
   enDiagrama: boolean;
+  /** No está en las fuentes de la lección pero sí acá. Ausente = en ningún lado. */
+  respaldo?: RespaldoAmpliado;
+  /** El rótulo que lee la docente: el de `respaldo`, o el de lo que decidió el escritor. */
+  rotulo?: string;
+  /**
+   * Va al informe y NO al modelo.
+   *
+   * Es el caso de una cita que empieza en minúscula: «más aireada», «en vez
+   * de», «hacer solamente mi parte». Son muletillas, la forma normal de
+   * escribir con voz rioplatense, y nunca van a estar en una fuente — el
+   * rebote las borraba una por una. Se siguen mostrando porque una minúscula
+   * también puede ser el nombre real de un estado de un procedimiento
+   * («observado»), y eso lo juzga la docente, no el modelo.
+   */
+  soloInforme?: boolean;
+  /** El bloque de la lección donde está, cuando se sabe: es lo que se marca. */
+  blockId?: string;
+  /** Lo que decidió el escritor en el parche del rebote. */
+  decision?: DecisionSobreToken;
+  /** Por qué, en palabras del escritor, para la docente. */
+  motivo?: string;
+}
+
+/**
+ * Los lugares, además de las fuentes de la lección, donde un token no es un
+ * invento. Ver `RespaldoAmpliado`.
+ */
+export interface ReferenciasAmpliadas {
+  /** Lo que la docente escribió en la conversación. */
+  pedido?: string;
+  /** El título y la descripción del ítem aprobado del plan. */
+  plan?: string;
+  /** Todas las fuentes del curso. */
+  curso?: FuenteParaTokens[];
 }
 
 /**
@@ -129,13 +197,17 @@ export interface HallazgoDeToken {
 export const MAX_HALLAZGOS = 20;
 
 /**
- * Cuántos hallazgos vuelven al MODELO.
+ * Cuántos hallazgos vuelven al CONSTRUCTOR.
  *
  * Cinco, igual que el verificador con modelo, y por el mismo motivo: alcanzan
  * para que entienda que el problema es sistemático sin convertir el resultado de
  * la herramienta en un informe. Con más, el aviso pesa más que la lección que
  * está escribiendo y lo que hace es reescribirla entera — que es exactamente la
  * salida que no queremos.
+ *
+ * El parche del rebote (`marcas-del-rebote.ts`) NO usa este tope: ahí van todos,
+ * porque la única respuesta posible es poner una marca y no hay texto que se
+ * pueda perder.
  */
 export const MAX_TOKENS_AL_MODELO = 5;
 
@@ -162,7 +234,92 @@ function normalizar(texto: string): string {
 
 /** Los dígitos de un número, sin separadores de miles ni decimales. */
 function soloDigitos(numero: string): string {
-  return numero.replace(/[.,\s]/g, '');
+  return numero.replace(/\D/g, '');
+}
+
+/**
+ * Una cifra tal como se escribe: agrupada de a tres, o corrida.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Sólo se reconocían los miles con PUNTO. Una fuente que decía «1,048,576
+ * filas» quedaba partida en «1,048» y «576», así que el «1.048.576» correcto de
+ * una lección en castellano no aparecía y rebotaba — y el rebote lo empujó a
+ * escribir «1,048,576», que en Argentina se lee «uno coma cero cuarenta y
+ * ocho». El chequeo castigaba el formato bien escrito y premiaba el otro.
+ *
+ * Ahora un grupo de miles puede ir separado por punto, coma, espacio, espacio
+ * duro o espacio fino — «1.048.576», «1,048,576», «1 048 576» son el mismo
+ * número —, siempre con el MISMO separador entre grupos y con el primer grupo
+ * sin cero adelante («0,125» es un decimal, no ciento veinticinco). Después
+ * pueden venir uno o dos decimales con el otro separador («1.500,50»).
+ *
+ * Lo que no es agrupado es un número corrido con decimales opcionales: «150.50»
+ * y «25,00» son precios con centavos, no quince mil ni dos mil quinientos.
+ */
+const CIFRA = String.raw`(?:[1-9]\d{0,2}(?<sep>[.,\u0020\u00a0\u2009\u202f])\d{3}(?:\k<sep>\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d+)?)(?!\d)`;
+
+/**
+ * El valor de una cifra, comparable entre formatos: «1.048.576», «1,048,576» y
+ * «1 048 576» valen "1048576"; «150.50» vale "150.5"; «25,00» vale "25".
+ *
+ * Como texto y no como `number`: un teléfono de trece dígitos se compara igual,
+ * sin redondeos.
+ */
+export function valorDeCifra(escrito: string): string {
+  const texto = escrito.replace(/[\u00a0\u2009\u202f]/g, ' ').trim();
+  const agrupado = texto.match(/^([1-9]\d{0,2})([., ])(\d{3}(?:\2\d{3})*)(?:[.,](\d{1,2}))?$/);
+
+  let entero: string;
+  let decimales: string;
+
+  if (agrupado) {
+    entero = agrupado[1] + agrupado[3].replace(/\D/g, '');
+    decimales = agrupado[4] ?? '';
+  } else {
+    const partes = texto.match(/^(\d+)(?:[.,](\d+))?$/);
+
+    if (!partes) return soloDigitos(texto);
+
+    entero = partes[1];
+    decimales = partes[2] ?? '';
+  }
+
+  entero = entero.replace(/^0+(?=\d)/, '');
+  decimales = decimales.replace(/0+$/, '');
+
+  return decimales ? `${entero}.${decimales}` : entero;
+}
+
+/**
+ * Los números de un texto de referencia, en sus dos lecturas.
+ *
+ * - La de la cifra entera: «1 048 576» → 1048576, «1,5» → 1.5.
+ * - La de las partes: cada tramo de dígitos suelto, «1 048 576» → 1, 48 y 576.
+ *
+ * Las dos a la vez, del lado de la fuente, porque la fuente no se elige: un
+ * teléfono «4555 7000» no es un número agrupado y sus partes sí son datos. Lo
+ * que NO se hace es comparar por subcadena: «45 °C» no está respaldado por un
+ * «4555» cualquiera, que es el falso negativo que este chequeo ya tuvo.
+ *
+ * `digitos` son las cifras como tiras de dígitos, para reconocer un número largo
+ * que la fuente trae pegado dentro de otro (un teléfono dentro de un enlace).
+ */
+function numerosDe(texto: string): { valores: Set<string>; digitos: Set<string> } {
+  const valores = new Set<string>();
+  const digitos = new Set<string>();
+
+  for (const m of texto.matchAll(new RegExp(CIFRA, 'gu'))) {
+    valores.add(valorDeCifra(m[0]));
+    digitos.add(soloDigitos(m[0]));
+  }
+
+  for (const m of texto.matchAll(/\d+/g)) {
+    valores.add(valorDeCifra(m[0]));
+    digitos.add(m[0]);
+  }
+
+  return { valores, digitos };
 }
 
 /**
@@ -199,11 +356,104 @@ const UNIDADES =
  *
  * Lo que `\b` sí hacía bien se conserva: la unidad no puede ser el comienzo de
  * una palabra más larga («10 gramos» no es «10 g»).
+ *
+ * La cifra es `CIFRA`: agrupada con cualquier separador de miles, o corrida con
+ * decimales. Ver ahí lo que se midió.
  */
-const NUMERO = new RegExp(
-  String.raw`(\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?)\s*(${UNIDADES})?(?![\p{L}\p{N}])`,
-  'giu'
-);
+const NUMERO = new RegExp(String.raw`(?<cifra>${CIFRA})\s*(?<unidad>${UNIDADES})?(?![\p{L}\p{N}])`, 'giu');
+
+/**
+ * La forma comparable de una unidad: «hs», «hora» y «horas» son la misma.
+ *
+ * Hace falta para ampliar el alcance sin abrir la puerta a los inventos. Un
+ * número del pedido o de otra fuente respalda al de la lección sólo si dice lo
+ * mismo CON la misma unidad: comparar sólo los dígitos contra el curso entero
+ * dejaba pasar «45 °C» por un «45 personas» de cualquier taller — medido, con
+ * once fuentes quedaban respaldados 65 de los enteros del 1 al 100.
+ */
+const UNIDADES_EQUIVALENTES: Array<[RegExp, string]> = [
+  [/^%$/, '%'],
+  [/^°c$/, '°c'],
+  [/^°f$/, '°f'],
+  [/^°$/, '°'],
+  [/^km2$/, 'km2'],
+  [/^(?:m2|m²)$/, 'm2'],
+  [/^m3$/, 'm3'],
+  [/^km$/, 'km'],
+  [/^cm$/, 'cm'],
+  [/^mm$/, 'mm'],
+  [/^kg$/, 'kg'],
+  [/^(?:grs|gr|g)$/, 'g'],
+  [/^tn$/, 'tn'],
+  [/^(?:lts|lt|litros?|l)$/, 'l'],
+  [/^ml$/, 'ml'],
+  [/^(?:hs|horas?|h)$/, 'h'],
+  [/^minutos?$/, 'min'],
+  [/^segundos?$/, 's'],
+  [/^dias?$/, 'dia'],
+  [/^semanas?$/, 'semana'],
+  [/^mes(?:es)?$/, 'mes'],
+  [/^anos?$/, 'ano'],
+  [/^(?:usd|dolares?)$/, 'usd'],
+  [/^(?:ars|pesos?)$/, 'ars'],
+  [/^eur$/, 'eur'],
+  [/^personas?$/, 'persona'],
+  [/^habitantes?$/, 'habitante'],
+  [/^empleados?$/, 'empleado'],
+  [/^sucursal(?:es)?$/, 'sucursal'],
+  [/^puntos?$/, 'punto']
+];
+
+function unidadCanonica(unidad: string): string {
+  const plana = unidad.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+  return UNIDADES_EQUIVALENTES.find(([forma]) => forma.test(plana))?.[1] ?? plana;
+}
+
+/** «45°» y «45 °C» son el mismo dato; «45 °C» y «45 °F», no. */
+function unidadesCompatibles(a: string, b: string): boolean {
+  if (a === b) return true;
+
+  return (a === '°' && b.startsWith('°')) || (b === '°' && a.startsWith('°'));
+}
+
+/** Los números de un texto de referencia con su unidad, para ampliar el alcance. */
+function numerosConUnidad(texto: string): Array<{ valor: string; unidad: string | null; escrito: string }> {
+  return [...texto.matchAll(NUMERO)].map((m) => ({
+    valor: valorDeCifra(m.groups?.cifra ?? m[0]),
+    unidad: m.groups?.unidad ? unidadCanonica(m.groups.unidad) : null,
+    escrito: m.groups?.cifra ?? m[0]
+  }));
+}
+
+/** Una cifra escrita con separador de miles: «2.024», «10 000». Un año no se escribe así. */
+const CON_SEPARADOR_DE_MILES = /\d[.,\s]\d{3}(?!\d)/;
+
+/** Un año tal como se escribe: cuatro cifras pegadas, de 1800 a 2099. */
+const ANIO = /^(?:1[89]|20)\d{2}$/;
+
+/**
+ * Si un número de una referencia respalda al de la lección.
+ *
+ * Mismo valor, y la unidad tiene que acompañar: con unidad, una compatible; SIN
+ * unidad, también sin unidad. Antes un número sin unidad de la lección quedaba
+ * respaldado por el mismo valor con cualquier unidad o por un año: un «2.024
+ * productos» inventado lo respaldaba el 2024 de cualquier fuente del curso.
+ */
+function respaldaAlNumero(
+  deLaReferencia: { valor: string; unidad: string | null; escrito: string },
+  deLaLeccion: { valor: string; unidad: string | null; escrito: string }
+): boolean {
+  if (deLaReferencia.valor !== deLaLeccion.valor) return false;
+
+  if (deLaLeccion.unidad !== null) {
+    return deLaReferencia.unidad !== null && unidadesCompatibles(deLaReferencia.unidad, deLaLeccion.unidad);
+  }
+
+  if (deLaReferencia.unidad !== null) return false;
+
+  return !(CON_SEPARADOR_DE_MILES.test(deLaLeccion.escrito) && ANIO.test(deLaReferencia.escrito.trim()));
+}
 
 /** Desde cuánto un número sin unidad ya es un dato por su tamaño. */
 const MAGNITUD_MINIMA = 1000;
@@ -488,11 +738,49 @@ export function extraerSiglas(texto: string): Candidato[] {
  * que estaba bien.
  */
 export function extraerCitas(texto: string): Candidato[] {
-  const entrecomillado = /[«"“]([^«»"“”]{8,90})[»"”]/g;
   const encontradas: Candidato[] = [];
 
-  for (const m of texto.matchAll(entrecomillado)) {
-    const valor = m[1].trim();
+  /**
+   * Las comillas se emparejan de izquierda a derecha, y un par se consume
+   * ENTERO antes de buscar el siguiente.
+   *
+   * Con una expresión regular sola, un par demasiado corto para contar dejaba
+   * su comilla de CIERRE libre, y la búsqueda arrancaba ahí y la emparejaba con
+   * la apertura del par siguiente. Medido: en `" Tarde " en vez de "Tarde"` el
+   * primer par tiene siete caracteres, así que la «cita» reportada fue
+   * «en vez de» — el texto que está justamente AFUERA de las comillas.
+   */
+  const CIERRES: Record<string, string> = { '«': '»', '“': '”"', '"': '"”' };
+  let i = 0;
+
+  while (i < texto.length) {
+    const cierres = CIERRES[texto[i]];
+
+    if (!cierres) {
+      i += 1;
+      continue;
+    }
+
+    let fin = -1;
+
+    for (let j = i + 1; j < texto.length; j += 1) {
+      if (cierres.includes(texto[j])) {
+        fin = j;
+        break;
+      }
+    }
+
+    // Una comilla que no cierra no es una cita: se saltea y se sigue buscando.
+    // Cortar acá —como hacía— apagaba el chequeo de citas para el resto de la
+    // lección con una sola comilla recta suelta (una pulgada, «24"», o el signo
+    // explicado en el texto), y dejaba pasar la «sección» inventada de después.
+    if (fin === -1) {
+      i += 1;
+      continue;
+    }
+
+    const dentro = texto.slice(i + 1, fin);
+    const valor = dentro.trim();
 
     // Sólo lo que tiene forma de NOMBRE de algo —una sección, un programa, un
     // título—, no una frase entre comillas.
@@ -503,9 +791,15 @@ export function extraerCitas(texto: string): Candidato[] {
     // Las citas que sí importaban eran cortas y eran nombres: la lección
     // remitía a una sección «SOBRE NOSOTROS» que en la fuente se llama de otra
     // manera, y el lector que va a verificar no encuentra nada.
-    if (valor.split(/\s+/).length > MAX_PALABRAS_CITA) continue;
+    const cuenta =
+      dentro.length >= 8 &&
+      dentro.length <= 90 &&
+      !/[«»"“”]/.test(dentro) &&
+      valor.split(/\s+/).length <= MAX_PALABRAS_CITA;
 
-    encontradas.push({ valor, indice: (m.index ?? 0) + 1 });
+    if (cuenta) encontradas.push({ valor, indice: i + 1 + dentro.indexOf(valor) });
+
+    i = fin + 1;
   }
 
   return encontradas;
@@ -572,6 +866,20 @@ function contexto(texto: string, indice: number, largo: number): string {
 export function verificarTokens(params: {
   texto: string;
   fuentes: FuenteParaTokens[];
+  /**
+   * La lección entera, CON lo marcado adentro, aplanada igual que `texto`.
+   *
+   * Sirve sólo para una cosa: saber qué palabras la lección escribe también en
+   * minúscula. Se calculaba sobre `texto`, que ya viene sin lo marcado, y eso
+   * se medía mal: en una lección, la única «rubro» en minúscula quedó adentro de
+   * un `<li>` marcado como ejemplo, y «Rubro» en mayúscula pasó a leerse como
+   * un nombre propio sin respaldo — el constructor terminó cambiándolo por
+   * «Categoría». Los candidatos se siguen sacando de `texto`: lo marcado ya
+   * está declarado y no se vuelve a contar.
+   */
+  textoCompleto?: string;
+  /** Dónde más buscar lo que no está en `fuentes`. Ver `RespaldoAmpliado`. */
+  ampliacion?: ReferenciasAmpliadas;
   /** Sólo para medir: `Infinity` devuelve todo, para poder contar sin el corte. */
   tope?: number;
 }): HallazgoDeToken[] {
@@ -597,21 +905,56 @@ export function verificarTokens(params: {
    * justamente uno de los datos que se repetía veintiuna veces en la sección.
    * Con los límites de palabra el cotejo dice lo que se quería preguntar.
    */
+  const conBordes = (textoPlano: string) => ` ${normalizar(textoPlano)} `;
   const materialConBordes = ` ${material} `;
-  const apareceEnFuente = (valor: string) => materialConBordes.includes(` ${normalizar(valor)} `);
+  const apareceEn = (donde: string, valor: string) => donde.includes(` ${normalizar(valor)} `);
+  const apareceEnFuente = (valor: string) => apareceEn(materialConBordes, valor);
 
   /**
-   * Los números de la fuente, como conjunto exacto.
+   * Los números de la fuente, como conjunto exacto de VALORES.
    *
    * Buscarlos como subcadena del texto daba un falso NEGATIVO silencioso: la
    * fuente traía un teléfono «4555 7000» y la lección afirmaba «45 °C», que
    * pasaba porque «45» está dentro de «4555». Un chequeo de datos que se rompe
    * justo con los datos es peor que no tenerlo, así que se comparan números
-   * contra números y no cadenas contra cadenas.
+   * contra números y no cadenas contra cadenas — y por valor, no por dígitos:
+   * «1.048.576» es «1,048,576», y «150.50» no es «15050». Ver `CIFRA`.
    */
-  const numerosDeLaFuente = new Set(
-    [...crudo.matchAll(/\d{1,3}(?:\.\d{3})+|\d+(?:[.,]\d+)?/g)].map((m) => soloDigitos(m[0]))
-  );
+  const numerosDeLaFuente = numerosDe(crudo);
+
+  /**
+   * El alcance ampliado, preparado una sola vez.
+   *
+   * Los nombres y las citas se buscan como en las fuentes de la lección. Los
+   * números, por valor Y unidad: ver `UNIDADES_EQUIVALENTES`, donde está medido
+   * por qué ampliar comparando sólo dígitos dejaría pasar los inventos.
+   */
+  const ampliadas = (['pedido', 'plan', 'curso'] as const)
+    .map((respaldo) => {
+      const ampliacion = params.ampliacion;
+      const textoDeReferencia =
+        respaldo === 'curso'
+          ? (ampliacion?.curso ?? []).map((f) => f.text).join(' ')
+          : (ampliacion?.[respaldo] ?? '');
+
+      return { respaldo, texto: textoDeReferencia };
+    })
+    .filter((referencia) => referencia.texto.trim().length > 0)
+    .map((referencia) => ({
+      respaldo: referencia.respaldo,
+      conBordes: conBordes(referencia.texto),
+      numeros: numerosConUnidad(referencia.texto)
+    }));
+
+  const respaldoDeNombre = (valor: string): RespaldoAmpliado | undefined =>
+    ampliadas.find((referencia) => apareceEn(referencia.conBordes, valor))?.respaldo;
+
+  const respaldoDeNumero = (deLaLeccion: {
+    valor: string;
+    unidad: string | null;
+    escrito: string;
+  }): RespaldoAmpliado | undefined =>
+    ampliadas.find((referencia) => referencia.numeros.some((n) => respaldaAlNumero(n, deLaLeccion)))?.respaldo;
 
   /**
    * Las palabras que la lección escribe TAMBIÉN en minúscula.
@@ -622,16 +965,25 @@ export function verificarTokens(params: {
    * servicio» y «radio de cobertura» dos párrafos más arriba: si el texto la
    * usa en minúscula, la mayúscula era del formato, no del nombre. Una marca
    * inventada como «Arlux» nunca aparece en minúscula, y por eso sobrevive.
+   *
+   * Sobre la lección ENTERA (`textoCompleto`), marcados incluidos: ver ahí.
    */
   const enMinuscula = new Set(
-    [...texto.matchAll(/(?<!\p{L})(\p{Ll}[\p{L}]*)/gu)].map((m) => normalizar(m[1])).filter(Boolean)
+    [...(params.textoCompleto ?? texto).matchAll(/(?<!\p{L})(\p{Ll}[\p{L}]*)/gu)]
+      .map((m) => normalizar(m[1]))
+      .filter(Boolean)
   );
 
   const diagramas = tramosDeDiagrama(texto);
   const hallazgos: HallazgoDeToken[] = [];
   const registrados: string[] = [];
 
-  function registrar(tipo: TipoDeHallazgo, valor: string, indice: number) {
+  function registrar(
+    tipo: TipoDeHallazgo,
+    valor: string,
+    indice: number,
+    extra: { respaldo?: RespaldoAmpliado; soloInforme?: boolean } = {}
+  ) {
     const clave = normalizar(valor);
 
     // Contención en los dos sentidos, y no igualdad: «SOBRE NOSOTROS» salía tres
@@ -644,20 +996,27 @@ export function verificarTokens(params: {
       tipo,
       valor,
       contexto: contexto(texto, indice, valor.length),
-      enDiagrama: diagramas.some(([desde, hasta]) => indice >= desde && indice < hasta)
+      enDiagrama: diagramas.some(([desde, hasta]) => indice >= desde && indice < hasta),
+      ...(extra.respaldo ? { respaldo: extra.respaldo, rotulo: ROTULO_DE_RESPALDO[extra.respaldo] } : {}),
+      ...(extra.soloInforme ? { soloInforme: true } : {})
     });
   }
 
   for (const m of texto.matchAll(NUMERO)) {
-    const escrito = m[1];
-    const unidad = m[2];
+    const escrito = m.groups?.cifra ?? m[0];
+    const unidad = m.groups?.unidad;
     const indice = m.index ?? 0;
-    const magnitud = Number.parseFloat(soloDigitos(escrito));
+    const valor = valorDeCifra(escrito);
+
+    // La magnitud respeta el decimal: «150.50» es un precio de ciento
+    // cincuenta, no un dato de quince mil. Con los dígitos pelados, todo precio
+    // con centavos pasaba el umbral y rebotaba («950,00», «25,00»).
+    const magnitud = Number.parseFloat(valor);
 
     const esDato = Boolean(unidad) || (Number.isFinite(magnitud) && magnitud >= MAGNITUD_MINIMA);
     if (!esDato) continue;
 
-    const buscado = soloDigitos(escrito);
+    if (numerosDeLaFuente.valores.has(valor)) continue;
 
     /**
      * Un teléfono no se escribe igual en los dos lados.
@@ -667,14 +1026,20 @@ export function verificarTokens(params: {
      * la lección de inventar el teléfono que copió bien. Por eso un número
      * largo también vale si es parte de un número de la fuente — largo, para
      * que «45» no se cuele dentro de un «4555» cualquiera, que es exactamente
-     * el falso negativo que este chequeo ya tuvo una vez.
+     * el falso negativo que este chequeo ya tuvo una vez. Sólo enteros: un
+     * decimal no es un pedazo de un teléfono.
      */
+    const digitos = soloDigitos(escrito);
     const esParteDeUnoDeLaFuente =
-      buscado.length >= 5 && [...numerosDeLaFuente].some((n) => n.length > buscado.length && n.includes(buscado));
+      !valor.includes('.') &&
+      digitos.length >= 5 &&
+      [...numerosDeLaFuente.digitos].some((n) => n.length > digitos.length && n.includes(digitos));
 
-    if (numerosDeLaFuente.has(buscado) || esParteDeUnoDeLaFuente) continue;
+    if (esParteDeUnoDeLaFuente) continue;
 
-    registrar('numero', unidad ? `${escrito} ${unidad}` : escrito, indice);
+    registrar('numero', unidad ? `${escrito} ${unidad}` : escrito, indice, {
+      respaldo: respaldoDeNumero({ valor, unidad: unidad ? unidadCanonica(unidad) : null, escrito })
+    });
   }
 
   for (const candidato of [...extraerNombres(texto), ...extraerSiglas(texto)]) {
@@ -700,7 +1065,9 @@ export function verificarTokens(params: {
     if (nombre.length === 0) continue;
     if (apareceEnFuente(nombre)) continue;
 
-    registrar('nombre', nombre, candidato.indice + candidato.valor.indexOf(nombre));
+    registrar('nombre', nombre, candidato.indice + candidato.valor.indexOf(nombre), {
+      respaldo: respaldoDeNombre(candidato.valor) ?? respaldoDeNombre(nombre)
+    });
   }
 
   for (const candidato of extraerCitas(texto)) {
@@ -709,10 +1076,19 @@ export function verificarTokens(params: {
     if (buscado.length < 8) continue;
     if (apareceEnFuente(buscado)) continue;
 
-    registrar('cita', candidato.valor, candidato.indice);
+    registrar('cita', candidato.valor, candidato.indice, {
+      respaldo: respaldoDeNombre(candidato.valor),
+      // Una cita que arranca en minúscula es una frase, no el nombre de algo:
+      // va al informe y no al modelo. Ver `HallazgoDeToken.soloInforme`.
+      soloInforme: /^\p{Ll}/u.test(candidato.valor)
+    });
   }
 
-  return Number.isFinite(tope) ? hallazgos.slice(0, tope) : hallazgos;
+  // Lo que no está en ningún lado va primero: es lo que importa, y el tope no
+  // puede dejarlo afuera por lo que sí estaba en el pedido o en otra fuente.
+  const ordenados = [...hallazgos.filter((h) => !h.respaldo), ...hallazgos.filter((h) => h.respaldo)];
+
+  return Number.isFinite(tope) ? ordenados.slice(0, tope) : ordenados;
 }
 
 /**
@@ -739,22 +1115,33 @@ export function verificarTokens(params: {
  * Lo que se cae: nombres y citas dentro de un `[diagram: …]`. Una etiqueta en
  * mayúscula no es un nombre propio, y aunque lo fuera no hay ningún elemento
  * HTML adentro del SVG al que ponerle `data-ejemplo`.
+ *
+ * Y tampoco va lo que ya tiene dueño: lo que figura en el pedido, el plan u
+ * otra fuente del curso (no es un invento), las citas en minúscula (son frases,
+ * no nombres) y lo que el escritor ya decidió mantener. Todo eso queda en el
+ * informe, con su rótulo, para la docente.
  */
-function vaAlModelo(hallazgo: HallazgoDeToken): boolean {
+export function vaAlModelo(hallazgo: HallazgoDeToken): boolean {
+  if (hallazgo.respaldo || hallazgo.soloInforme || hallazgo.decision === 'mantener') return false;
+
   return hallazgo.tipo === 'numero' || !hallazgo.enDiagrama;
 }
 
 /**
- * Los hallazgos tal como los lee el modelo: «valor» — contexto.
+ * Los hallazgos tal como los lee el modelo: «valor» (bloque) — contexto.
  *
  * Con el contexto y no pelados. Un aviso que dice sólo «4471» lo manda a buscar
  * el número por toda la lección; con el tramo que lo rodea sabe cuál de los tres
  * párrafos tiene que tocar, y puede decidir en el acto si es un ejemplo suyo o
- * un dato que creyó copiar.
+ * un dato que creyó copiar. Con el bloque, además, la herramienta que lo marca
+ * (`replace_lesson_block`) ya tiene el id que necesita.
  */
 export function redactarTokens(hallazgos: HallazgoDeToken[], tope = MAX_TOKENS_AL_MODELO): string[] {
   return hallazgos
     .filter(vaAlModelo)
     .slice(0, tope)
-    .map((hallazgo) => `«${hallazgo.valor}» — ${hallazgo.contexto}`);
+    .map(
+      (hallazgo) =>
+        `«${hallazgo.valor}»${hallazgo.blockId ? ` (block ${hallazgo.blockId})` : ''} — ${hallazgo.contexto}`
+    );
 }

@@ -13,14 +13,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getChatDocument = vi.fn();
 const createChatDocument = vi.fn();
 const findChatDocumentByContentHash = vi.fn();
+const encolarResumen = vi.fn();
 
 vi.mock('@cio/db/queries/agent', () => ({
   getChatDocument: (...args: unknown[]) => getChatDocument(...args),
   createChatDocument: (...args: unknown[]) => createChatDocument(...args),
-  findChatDocumentByContentHash: (...args: unknown[]) => findChatDocumentByContentHash(...args)
+  findChatDocumentByContentHash: (...args: unknown[]) => findChatDocumentByContentHash(...args),
+  // El tope de fuentes, con lugar de sobra: acá no se prueba.
+  contarFuentesDelCurso: vi.fn(async () => 0),
+  MAX_SOURCES_PER_COURSE: 100,
+  CODIGO_TOPE_DE_FUENTES: 'SOURCE_LIMIT_REACHED',
+  esTopeDeFuentes: (error: unknown) => (error as { code?: string } | null)?.code === 'SOURCE_LIMIT_REACHED'
+}));
+
+vi.mock('@api/services/agent/resumenes-de-fuentes', () => ({
+  encolarResumen: (...args: unknown[]) => encolarResumen(...args),
+  leerResumenesGuardados: vi.fn(async () => new Map())
 }));
 
 const { promoteDraftDocuments } = await import('@api/services/agent/document');
+const { computeContentHash } = await import('@api/utils/redis/key-generators');
 
 const OWNER = { userId: 'teacher-1', courseId: 'course-1', conversationId: 'conv-1' };
 
@@ -70,6 +82,30 @@ describe('promoteDraftDocuments', () => {
     );
   });
 
+  it('pide el resumen de la fuente al promoverla, en segundo plano', async () => {
+    // Medido en producción: el primer turno de construcción resumía las fuentes
+    // de a una antes de contestar, 38 s con 11 fuentes. Pedido acá, ese turno
+    // ya lo encuentra hecho.
+    await promoteDraftDocuments(['doc-1'], OWNER, redisWith({ 'doc-1': draft }));
+
+    expect(encolarResumen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: 'doc-1',
+        contentHash: computeContentHash(draft.text),
+        texto: draft.text,
+        consumo: { orgId: undefined, userId: 'teacher-1', courseId: 'course-1' }
+      })
+    );
+  });
+
+  it('no pide resúmenes de lo que no promovió', async () => {
+    findChatDocumentByContentHash.mockResolvedValue({ id: 'other' });
+
+    await promoteDraftDocuments(['doc-1'], OWNER, redisWith({ 'doc-1': draft }));
+
+    expect(encolarResumen).not.toHaveBeenCalled();
+  });
+
   it('keeps the id, so the reference already sent to the model stays valid', async () => {
     await promoteDraftDocuments(['doc-1'], OWNER, redisWith({ 'doc-1': draft }));
 
@@ -117,5 +153,18 @@ describe('promoteDraftDocuments', () => {
 
     expect(promoted).toBe(1);
     expect(createChatDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it('un borrador que no entra por el tope del curso no tira el turno, y lo deja escrito', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    createChatDocument.mockRejectedValueOnce(
+      Object.assign(new Error('This course already has 100 sources'), { code: 'SOURCE_LIMIT_REACHED' })
+    );
+
+    const promoted = await promoteDraftDocuments(['doc-1'], OWNER, redisWith({ 'doc-1': draft }));
+
+    expect(promoted).toBe(0);
+    expect(aviso).toHaveBeenCalledWith(expect.stringContaining('source limit'));
+    aviso.mockRestore();
   });
 });

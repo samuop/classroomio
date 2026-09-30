@@ -1,4 +1,4 @@
-import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
+import { AI_REQUEST_TIMEOUT, BaseApiWithErrors, classroomio, llamadaDeIA } from '$lib/utils/services/api';
 import type {
   AddUrlSourceRequest,
   CourseSource,
@@ -6,9 +6,16 @@ import type {
   DeleteCourseSourceRequest,
   DocumentCacheStatus,
   GetCacheStatusRequest,
-  RefreshCacheRequest,
+  RereadSourceRequest,
   ReconcileSourcesRequest
 } from '../utils/types';
+
+/** Lo que devuelve volver a leer una fuente. Ver `releerFuente`. */
+export interface RelecturaDeFuente {
+  /** Si el texto cambió: sólo entonces hay algo nuevo que avisar. */
+  changed: boolean;
+  wordCount: number;
+}
 
 export interface ReconcileSummary {
   totalDocuments: number;
@@ -66,50 +73,72 @@ class SourcesApi extends BaseApiWithErrors {
    * up in this list and rides in the cached source pack. Pasting a URL into the
    * chat instead only put it in the transcript — which build mode discards, so the
    * page was gone by the time the course got written.
+   *
+   * Devuelve el documento guardado, o `null`. Si falla, `error` guarda el cuerpo
+   * de la respuesta: ahí viene el `code` (`SOURCE_NEEDS_LOGIN`,
+   * `SOURCE_UNREADABLE`) con el que la pantalla elige el texto. No vuelve a
+   * listar: quien llama lo hace, junto con el resto de lo que refresca.
    */
-  async addUrlSource(courseId: string, url: string, conversationId?: string): Promise<boolean> {
+  async addUrlSource(
+    courseId: string,
+    url: string,
+    conversationId?: string
+  ): Promise<{ documentId: string; fileName: string } | null> {
     this.isAddingUrl = true;
-    let success = false;
+    let guardada: { documentId: string; fileName: string } | null = null;
     await this.execute<AddUrlSourceRequest>({
       requestFn: () =>
-        classroomio.agent.documents.url.$post({
-          json: { courseId, url, conversationId }
-        }),
+        classroomio.agent.documents.url.$post(
+          {
+            json: { courseId, url, conversationId }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.webPage)
+        ),
       logContext: 'adding URL source',
-      onSuccess: () => {
-        success = true;
+      onSuccess: (response) => {
+        guardada = { documentId: response.data.documentId, fileName: response.data.fileName };
       }
     });
     this.isAddingUrl = false;
 
-    // The response carries only the stored document; re-listing keeps ordering and
-    // the dedup case (same page added twice) consistent with the server.
-    if (success) await this.listSources(courseId);
-
-    return success;
+    return guardada;
   }
 
   /**
-   * Igual que `addUrlSource`, pero devuelve el id del documento y NO re-lista.
+   * Igual que `addUrlSource`, sin marcar la pantalla de Fuentes como ocupada.
    *
    * Lo usa el asistente de creacion, que necesita el id para adjuntar la pagina
    * al primer turno del agente — y que todavia no tiene la pantalla de fuentes
-   * abierta, asi que re-listar seria trabajo tirado.
+   * abierta.
    *
    * Devuelve `null` si la pagina no se pudo bajar. Quien llama decide: bajar 3
    * paginas y perder 1 no puede tumbar la creacion del curso entero.
+   *
+   * @param alFallar recibe el error de ESTA página (el cuerpo de la respuesta
+   *   como texto, para `claveDelErrorDeFuente`). `error` no sirve para eso
+   *   cuando se guardan varias a la vez: la última que falla pisa a las demás.
    */
-  async guardarPaginaComoFuente(courseId: string, url: string): Promise<{ documentId: string; fileName: string } | null> {
+  async guardarPaginaComoFuente(
+    courseId: string,
+    url: string,
+    alFallar?: (errorCrudo: string | null) => void
+  ): Promise<{ documentId: string; fileName: string } | null> {
     let guardada: { documentId: string; fileName: string } | null = null;
 
     await this.execute<AddUrlSourceRequest>({
       requestFn: () =>
-        classroomio.agent.documents.url.$post({
-          json: { courseId, url }
-        }),
+        classroomio.agent.documents.url.$post(
+          {
+            json: { courseId, url }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.webPage)
+        ),
       logContext: 'saving web page as course source',
       onSuccess: (response) => {
         guardada = { documentId: response.data.documentId, fileName: response.data.fileName };
+      },
+      onError: (error) => {
+        alFallar?.(typeof error === 'string' ? error : error ? JSON.stringify(error) : null);
       }
     });
 
@@ -170,21 +199,37 @@ class SourcesApi extends BaseApiWithErrors {
   }
 
   /**
-   * Force-rebuild the cache handle. Drops any existing handle (Gemini also
-   * DELETEs the server-side cachedContent) and creates a fresh one. Idempotent.
+   * Vuelve a leer la fuente: el archivo original con el lector de hoy, o la
+   * página web leída de nuevo.
+   *
+   * El botón ↻ de la tarjeta dice «Volver a leer esta fuente» y llamaba a
+   * `refresh-cache`, que no relee nada: sólo suelta el handle de caché. Después
+   * mostraba «Fuente actualizada». Con una planilla que se guardó con la pantalla
+   * de inicio de sesión, la docente la compartía, apretaba el botón y seguía con
+   * el muro de login y un mensaje de éxito.
+   *
+   * Devuelve si el texto cambió, o `null` si falló (el cuerpo del error queda en
+   * `error`, con su `code`).
    */
-  async refreshCache(documentId: string): Promise<DocumentCacheStatus | null> {
+  async releerFuente(documentId: string): Promise<RelecturaDeFuente | null> {
     this.refreshingId = documentId;
-    let result: DocumentCacheStatus | null = null;
-    await this.execute<RefreshCacheRequest>({
+    let result: RelecturaDeFuente | null = null;
+    await this.execute<RereadSourceRequest>({
       requestFn: () =>
-        classroomio.agent.documents[':documentId']['refresh-cache'].$post({
-          param: { documentId }
-        }),
-      logContext: 'refreshing cache',
+        classroomio.agent.documents[':documentId'].reread.$post(
+          {
+            param: { documentId }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.reread)
+        ),
+      logContext: 're-reading source',
       onSuccess: (res) => {
-        result = res.data as DocumentCacheStatus;
-        this.cacheStatuses[documentId] = result;
+        const data = res.data as { changed?: unknown; wordCount?: unknown };
+
+        result = {
+          changed: data.changed === true,
+          wordCount: typeof data.wordCount === 'number' ? data.wordCount : 0
+        };
       }
     });
     this.refreshingId = null;

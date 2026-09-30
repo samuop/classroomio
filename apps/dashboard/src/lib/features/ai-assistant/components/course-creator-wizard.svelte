@@ -21,6 +21,7 @@
   import { setInitialChatPrompt, setInitialChatDocumentIds } from '$features/ai-assistant/utils/store';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
   import { armarMensajeInicial } from '$features/ai-assistant/utils/mensaje-inicial';
+  import { claveDelErrorDeFuente } from '$features/ai-assistant/utils/errores-del-chat';
   import type { TCourseType } from '@cio/db/types';
 
   const EXAMPLE_PROMPT_KEYS = [
@@ -33,7 +34,11 @@
   const ACCEPT =
     '.pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation';
   const MAX_FILE_SIZE = MAX_AGENT_DOCUMENT_SIZE;
-  /** Backend cap: MAX_DOCUMENTS_PER_CONVERSATION (ai_chat_document). */
+  /**
+   * Cuántos archivos se suben a mano al crear el curso. Muy por debajo del tope
+   * de fuentes por curso de la API (MAX_SOURCES_PER_COURSE), que además de estos
+   * tiene que alojar la investigación.
+   */
   const MAX_DOCS = 10;
 
   type UploadedDoc = { id: string; name: string };
@@ -284,12 +289,23 @@
     savingPages = urls.length;
 
     try {
-      const resultados = await Promise.all(urls.map((url) => sourcesApi.guardarPaginaComoFuente(courseId, url)));
+      const errores: Array<string | null> = [];
+      const resultados = await Promise.all(
+        urls.map((url) => sourcesApi.guardarPaginaComoFuente(courseId, url, (error) => errores.push(error)))
+      );
       const guardadas = resultados.filter((r): r is { documentId: string; fileName: string } => r !== null);
       const fallidas = resultados.length - guardadas.length;
 
       if (fallidas > 0) {
-        snackbar.error(t.get('course.creator.guide.source.url_failed', { count: fallidas }));
+        // Una planilla o un documento privado tiene arreglo, y se dice cuál:
+        // compartirlo o bajarlo como PDF. Con el conteo solo, la docente no
+        // sabía qué hacer con su planilla de Google.
+        const privada = errores.some(
+          (error) => claveDelErrorDeFuente(error, '') === 'course.sources.error_needs_login'
+        );
+        const conteo = t.get('course.creator.guide.source.url_failed', { count: fallidas });
+
+        snackbar.error(privada ? `${conteo} ${t.get('course.sources.error_needs_login')}` : conteo);
       }
 
       return guardadas.map((r) => r.documentId);

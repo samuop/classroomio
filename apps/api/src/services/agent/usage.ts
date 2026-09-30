@@ -38,52 +38,6 @@ const PLAN_TOKEN_ALLOWANCES: Record<string, number> = {
   ENTERPRISE: 15_000_000
 };
 
-// ─── Model Cost Multipliers ───────────────────────────────────────────────────
-
-// Blended multiplier vs Gemini 3.1 Flash Lite baseline ($0.50/1M blended at 80/20 input/output mix); unknown → 1×.
-// gemini-2.5-flash kept for backward compat with historical usage records.
-const MODEL_COST_MULTIPLIER: Record<string, number> = {
-  'gemini-3.1-flash-lite': 1,
-  'gemini-flash-lite-latest': 1, // Google alias → newest stable Flash-Lite (baseline cost)
-  'gemini-flash-latest': 1.5, // Google alias → newest stable Flash (a bit pricier than Lite)
-  'gemini-2.5-flash-lite': 1,
-  'gemini-2.5-flash': 1.5,
-  'gpt-5.4-mini': 4,
-  'claude-sonnet-4-6': 11,
-  'claude-haiku-4-5-20251001': 1.5,
-  'kimi-k2.6': 4
-};
-
-/**
- * What a model's tokens are billed at, and whether that number was measured.
- *
- * Exported because the platform panel now offers whatever models Google reports,
- * not a hand-kept list. A model nobody priced still has to be counted at
- * something, and 1× is that something — but the panel says so out loud instead
- * of presenting a guess as a fact, which is the whole difference between an
- * under-reported cap and an informed choice.
- */
-const modelosSinPrecioAvisados = new Set<string>();
-
-export function getModelCostMultiplier(model: string): { multiplier: number; isMeasured: boolean } {
-  const known = MODEL_COST_MULTIPLIER[model];
-
-  if (known === undefined) {
-    // Una vez por modelo y por proceso: el 1× de un modelo sin precio es una
-    // suposición, y hasta ahora era una suposición MUDA — nadie se enteraba de
-    // que el cupo se estaba descontando con un número inventado. El Set evita
-    // que esto inunde el log en una tanda de 40 pasos.
-    if (!modelosSinPrecioAvisados.has(model)) {
-      modelosSinPrecioAvisados.add(model);
-      console.warn(`[usage] modelo sin precio medido: "${model}" — se cobra a 1×. Agregalo a MODEL_COST_MULTIPLIER.`);
-    }
-
-    return { multiplier: 1, isMeasured: false };
-  }
-
-  return { multiplier: known, isMeasured: true };
-}
-
 // ─── Cache Read Discounts ─────────────────────────────────────────────
 
 /**
@@ -96,6 +50,13 @@ export function getModelCostMultiplier(model: string): { multiplier: number; isM
  * Per provider and not a single constant because getting it wrong in the cheap
  * direction under-charges silently, which is the failure nobody notices until
  * the provider bill arrives.
+ *
+ * Desde que hay precio por modelo, esto ya NO decide la caché de un modelo con
+ * precio de lista: esa va en su tarifa, con el número de Google (en 3.x es el
+ * 10% de la entrada, no el 25%). Sigue valiendo para lo que no tiene precio de
+ * lista: las equivalencias legadas, que tienen que dar exactamente lo mismo que
+ * antes; un modelo desconocido que no sirve Google; y la caché de 2.5 Flash, que
+ * se tomó con esta misma proporción por falta de dato.
  */
 const CACHE_READ_FACTOR: Record<string, number> = {
   anthropic: 0.1,
@@ -118,6 +79,188 @@ export function getCacheReadFactor(provider: string | undefined): number {
   return factor ?? 1;
 }
 
+// ─── Precio de cada modelo ────────────────────────────────────────────────────
+
+/**
+ * Lo que vale una unidad del cupo: USD 0,50 el millón.
+ *
+ * Es la base, Gemini 3.1 Flash-Lite, mezclada 80/20 entre entrada y salida
+ * (0,8 × 0,25 + 0,2 × 1,50 = 0,50): la misma definición que tenía el
+ * multiplicador. Unidades = costo en USD × 2.000.000. Los cupos
+ * (`aiTokenAllowance`) y los créditos están en esta unidad y no cambian de
+ * valor; lo que cambia es cuántas unidades cuesta cada llamada.
+ */
+const USD_POR_MILLON_DE_UNIDADES = 0.5;
+
+/** La mezcla con la que se definió la unidad; el panel la usa para comparar modelos. */
+const MEZCLA_ENTRADA = 0.8;
+
+/** Precio de lista en USD por millón de fichas. */
+interface Tarifa {
+  /** Entrada que NO vino de caché. */
+  entrada: number;
+  /** Salida, con el razonamiento adentro: el SDK lo cuenta como parte de la salida. */
+  salida: number;
+  /** Entrada releída de caché. */
+  cache: number;
+}
+
+/** Una tarifa y el instante (UTC) desde el que vale. Sin `desde`, vale desde siempre. */
+interface Tramo extends Tarifa {
+  desde?: string;
+}
+
+type PrecioDelModelo =
+  /** Precio de lista del proveedor, por tramos de vigencia, del más viejo al más nuevo. */
+  | { tipo: 'lista'; tramos: readonly Tramo[] }
+  /**
+   * Sin precio de lista acá: se cobra como antes, `multiplicador` unidades por
+   * ficha de entrada o de salida (USD 0,50 × multiplicador el millón, las dos
+   * iguales) y la caché con el factor del proveedor. No se les inventa un
+   * precio: se conserva la cuenta con la que se fijaron los cupos de quienes
+   * ya los usan.
+   */
+  | { tipo: 'equivalencia'; multiplicador: number };
+
+/**
+ * Gemini 3.7 Flash y 3.8 Flash cuestan lo mismo, y los dos duplican el precio el
+ * 1-1-2027 (ai.google.dev/gemini-api/docs/pricing, consultado el 2026-09-29).
+ *
+ * Antes no estaban en la tabla y se cobraban a 1×: la mezcla 80/20 salía 2,7
+ * veces más barata de lo que cuesta. Un multiplicador de 2,7 tampoco alcanzaba:
+ * la caché se contaba al 25% de la entrada y Google la cobra al 10%, así que a
+ * las empresas con mucha caché les habría cobrado ~60% de más. Por eso cada
+ * parte lleva su precio.
+ */
+const GEMINI_FLASH_3X: readonly Tramo[] = [
+  { entrada: 0.75, salida: 3.75, cache: 0.075 },
+  // Medianoche UTC: contra el día de facturación de Google son unas horas de un solo día.
+  { desde: '2027-01-01T00:00:00Z', entrada: 1.5, salida: 7.5, cache: 0.15 }
+];
+
+/** La base: la unidad del cupo se definió con este modelo. */
+const MODELO_BASE = 'gemini-3.1-flash-lite';
+
+const TRAMOS_BASE: readonly Tramo[] = [{ entrada: 0.25, salida: 1.5, cache: 0.025 }];
+
+/**
+ * Lo que paga un modelo que nadie cargó en la tabla: la tarifa de lista más cara
+ * que conocemos, no la de la base.
+ *
+ * Se cobraba como la base y eso regalaba: para el uso real del agente (mucha
+ * entrada y caché, poca salida), el próximo Flash que publique Google se habría
+ * descontado a un tercio de lo que cuesta, igual que pasó con el 3.7. Cobrar de
+ * más hasta que alguien lo agregue a PRECIO_POR_MODELO es el error que se nota
+ * y se corrige; cobrar de menos no se nota hasta la factura.
+ */
+const MODELO_SIN_PRECIO = 'gemini-3.8-flash';
+const TRAMOS_SIN_PRECIO = GEMINI_FLASH_3X;
+
+/**
+ * El precio de cada modelo que conocemos. Vale desde que se desplegó: las filas
+ * ya registradas conservan las unidades con las que se cobraron.
+ */
+const PRECIO_POR_MODELO: Record<string, PrecioDelModelo> = {
+  [MODELO_BASE]: { tipo: 'lista', tramos: TRAMOS_BASE },
+  'gemini-3.7-flash': { tipo: 'lista', tramos: GEMINI_FLASH_3X },
+  'gemini-3.8-flash': { tipo: 'lista', tramos: GEMINI_FLASH_3X },
+  // Sin dato de caché: la proporción que el código ya usaba para Google.
+  'gemini-2.5-flash': {
+    tipo: 'lista',
+    tramos: [{ entrada: 0.3, salida: 2.5, cache: 0.3 * CACHE_READ_FACTOR.google }]
+  },
+
+  // Equivalencias legadas: dan exactamente lo mismo que el multiplicador de
+  // antes. Los alias los mueve Google solo, sin avisar, así que no hay un precio
+  // de lista que les corresponda con certeza.
+  'gemini-flash-lite-latest': { tipo: 'equivalencia', multiplicador: 1 },
+  'gemini-flash-latest': { tipo: 'equivalencia', multiplicador: 1.5 },
+  'gemini-2.5-flash-lite': { tipo: 'equivalencia', multiplicador: 1 },
+  'gpt-5.4-mini': { tipo: 'equivalencia', multiplicador: 4 },
+  'claude-sonnet-4-6': { tipo: 'equivalencia', multiplicador: 11 },
+  'claude-haiku-4-5-20251001': { tipo: 'equivalencia', multiplicador: 1.5 },
+  'kimi-k2.6': { tipo: 'equivalencia', multiplicador: 4 }
+};
+
+type PrecioResuelto =
+  | { tipo: 'lista'; tarifa: Tarifa; isMeasured: boolean }
+  | { tipo: 'equivalencia'; multiplicador: number; isMeasured: true };
+
+function tarifaVigente(tramos: readonly Tramo[], at: Date): Tarifa {
+  let vigente = tramos[0];
+
+  for (const tramo of tramos) {
+    if (!tramo.desde || Date.parse(tramo.desde) <= at.getTime()) vigente = tramo;
+  }
+
+  return vigente;
+}
+
+const modelosSinPrecioAvisados = new Set<string>();
+
+/**
+ * La tarifa de un modelo en un momento dado.
+ *
+ * Un modelo que nadie cargó en la tabla se cobra con la tarifa más cara que
+ * conocemos (`TRAMOS_SIN_PRECIO`) y queda marcado como no medido. Es una
+ * suposición, así que se avisa en el log — una vez por modelo y por proceso,
+ * para no inundarlo en una tanda de 40 pasos —, y el panel la muestra como tal.
+ * La caché de esa tarifa es un descuento de Google: si al modelo desconocido lo
+ * sirve otro proveedor, su caché se cobra con el factor de ESE proveedor, y
+ * entera si tampoco lo conocemos.
+ */
+function resolverPrecio(model: string, provider: string | undefined, at: Date): PrecioResuelto {
+  // `hasOwn` y no `PRECIO_POR_MODELO[model]`: un nombre como `constructor`
+  // encontraría algo en el prototipo y se cobraría con eso.
+  const precio = Object.hasOwn(PRECIO_POR_MODELO, model) ? PRECIO_POR_MODELO[model] : undefined;
+
+  if (precio?.tipo === 'equivalencia') {
+    return { tipo: 'equivalencia', multiplicador: precio.multiplicador, isMeasured: true };
+  }
+
+  if (precio) {
+    return { tipo: 'lista', tarifa: tarifaVigente(precio.tramos, at), isMeasured: true };
+  }
+
+  if (!modelosSinPrecioAvisados.has(model)) {
+    modelosSinPrecioAvisados.add(model);
+    console.warn(
+      `[usage] modelo sin precio medido: "${model}" — se cobra como ${MODELO_SIN_PRECIO}, la tarifa más cara que conocemos. Agregalo a PRECIO_POR_MODELO.`
+    );
+  }
+
+  const supuesta = tarifaVigente(TRAMOS_SIN_PRECIO, at);
+  const tarifa =
+    provider === 'google' ? supuesta : { ...supuesta, cache: supuesta.entrada * getCacheReadFactor(provider) };
+
+  return { tipo: 'lista', tarifa, isMeasured: false };
+}
+
+/**
+ * Cuánto más caro que la base sale un modelo, y si ese número está medido.
+ *
+ * Exportado porque el panel de la plataforma ofrece los modelos que informa
+ * Google, no una lista armada a mano, y muestra este número al lado de cada uno.
+ * Es la mezcla 80/20 contra la de la base, al precio vigente en `at`: una
+ * referencia para elegir. Lo que se descuenta del cupo se calcula llamada por
+ * llamada con la entrada, la salida y la caché de verdad (`computeCostUnits`).
+ */
+export function getModelCostMultiplier(
+  model: string,
+  at: Date = new Date()
+): { multiplier: number; isMeasured: boolean } {
+  const precio = resolverPrecio(model, undefined, at);
+
+  if (precio.tipo === 'equivalencia') {
+    return { multiplier: precio.multiplicador, isMeasured: true };
+  }
+
+  const mezcla = MEZCLA_ENTRADA * precio.tarifa.entrada + (1 - MEZCLA_ENTRADA) * precio.tarifa.salida;
+
+  // A dos decimales: 0,8 × 0,30 + 0,2 × 2,50 da 1,4800000000000002 en coma flotante.
+  return { multiplier: Math.round((mezcla / USD_POR_MILLON_DE_UNIDADES) * 100) / 100, isMeasured: precio.isMeasured };
+}
+
 /**
  * What this call costs the plan, in credit units.
  *
@@ -132,13 +275,30 @@ export function getCacheReadFactor(provider: string | undefined): number {
  *
  * Deliberately NOT retroactive: historical rows keep the units they were
  * charged. Recomputing them would rewrite numbers people already saw.
+ *
+ * Un modelo con precio de lista se cobra en dólares: entrada nueva, caché y
+ * salida, cada una a su precio, pasadas a unidades (USD × 2.000.000). `at` es
+ * el momento de la llamada; existe para que el cambio de precio de una fecha se
+ * pueda probar sin esperar a esa fecha.
  */
-export function computeCostUnits(usage: TokenUsage, model: string, provider?: string): number {
+export function computeCostUnits(usage: TokenUsage, model: string, provider?: string, at: Date = new Date()): number {
   const cacheRead = Math.min(usage.cacheReadTokens ?? 0, usage.promptTokens);
   const freshInput = usage.promptTokens - cacheRead;
-  const weightedInput = freshInput + cacheRead * getCacheReadFactor(provider);
+  const precio = resolverPrecio(model, provider, at);
 
-  return Math.round((weightedInput + usage.completionTokens) * getModelCostMultiplier(model).multiplier);
+  if (precio.tipo === 'equivalencia') {
+    // La cuenta de antes, tal cual y en el mismo orden: pasarla por dólares
+    // podría mover un redondeo, y estas empresas tienen el cupo fijado con esta.
+    const weightedInput = freshInput + cacheRead * getCacheReadFactor(provider);
+
+    return Math.round((weightedInput + usage.completionTokens) * precio.multiplicador);
+  }
+
+  const { entrada, salida, cache } = precio.tarifa;
+  // Fichas × USD por millón = millonésimas de dólar; una unidad vale 0,50 de esas.
+  const microdolares = freshInput * entrada + cacheRead * cache + usage.completionTokens * salida;
+
+  return Math.round(microdolares / USD_POR_MILLON_DE_UNIDADES);
 }
 
 async function getPlanAllowance(orgId: string): Promise<{ planName: string; allowance: number }> {

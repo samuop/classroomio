@@ -1,4 +1,15 @@
-import { BaseApiWithErrors, classroomio, apiClient, getRequestBaseUrl } from '$lib/utils/services/api';
+import {
+  AI_REQUEST_TIMEOUT,
+  BaseApiWithErrors,
+  classroomio,
+  apiClient,
+  getRequestBaseUrl,
+  llamadaDeIA,
+  opcionesDeIA
+} from '$lib/utils/services/api';
+import { t } from '$lib/utils/functions/translations';
+import { esTiempoAgotado, leerErrorDeApi } from '../utils/errores-del-chat';
+import { rondaVivaDe, type RondaViva } from '../utils/ronda-cortada';
 import type {
   AgentConversation,
   AgentConversationCreateData,
@@ -25,6 +36,61 @@ class AiAssistantApi extends BaseApiWithErrors {
         this.status = result.data;
       }
     });
+  }
+
+  /**
+   * La ronda del chat que esta persona tiene viva en el curso, preguntada al
+   * servidor.
+   *
+   * Es la pregunta que se repite mientras el panel espera que una ronda termine
+   * en el servidor, así que no pasa por `execute`: eso pisaría `error` e
+   * `isLoading`, que otras pantallas leen, cada pocos segundos. De paso deja el
+   * estado al día (el cupo baja mientras la ronda trabaja).
+   *
+   * `undefined` si no se pudo preguntar: no se sabe, que no es «no hay».
+   *
+   * Con `conversationId`, el servidor contesta por la ronda de ESA
+   * conversación: otra ronda viva del curso (otra pestaña, otro chat) no hace
+   * que el panel dé la suya por terminada.
+   */
+  async leerRondaViva(courseId: string, conversationId?: string): Promise<RondaViva | null | undefined> {
+    try {
+      const response = await classroomio.agent.status.$get({
+        query: conversationId ? { courseId, conversationId } : { courseId }
+      });
+      const result = (await response.json()) as { success?: boolean; data?: AgentStatusData };
+
+      if (!result?.success || !result.data) return undefined;
+
+      this.status = result.data;
+
+      return rondaVivaDe(result.data);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * «Detener»: la orden al servidor de cerrar la ronda viva de la conversación
+   * después del paso en curso. Ver `POST /agent/chat/stop`.
+   *
+   * `undefined` si la orden no llegó (la red, un error): para la pantalla es lo
+   * mismo que `'sin-redis'`, la ronda va a seguir hasta terminar. No pasa por
+   * `execute`, por lo mismo que `leerRondaViva`.
+   */
+  async detenerRonda(
+    courseId: string,
+    conversationId: string
+  ): Promise<'pedido' | 'sin-ronda' | 'sin-redis' | undefined> {
+    try {
+      const response = await classroomio.agent.chat.stop.$post({ json: { courseId, conversationId } });
+      const result = (await response.json()) as { success?: boolean; data?: { stop?: string } };
+      const stop = result?.success ? result.data?.stop : undefined;
+
+      return stop === 'pedido' || stop === 'sin-ronda' || stop === 'sin-redis' ? stop : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async listConversations(courseId: string) {
@@ -140,7 +206,7 @@ class AiAssistantApi extends BaseApiWithErrors {
     try {
       const response = await apiClient.request(
         `${getRequestBaseUrl()}/agent/attachments/image?courseId=${encodeURIComponent(courseId)}`,
-        { method: 'POST', body: formData, credentials: 'include' }
+        { method: 'POST', body: formData, credentials: 'include', ...opcionesDeIA(AI_REQUEST_TIMEOUT.upload) }
       );
       const result = (await response.json()) as {
         success: boolean;
@@ -174,7 +240,8 @@ class AiAssistantApi extends BaseApiWithErrors {
       const response = await apiClient.request(url, {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        ...opcionesDeIA(AI_REQUEST_TIMEOUT.upload)
       });
       const result = (await response.json()) as {
         success: boolean;
@@ -186,7 +253,9 @@ class AiAssistantApi extends BaseApiWithErrors {
       }
     } catch (error) {
       console.error('Error uploading document:', error);
-      this.error = 'Failed to upload document';
+      // El cuerpo de la respuesta, si vino: de ahí sale el `code` que la
+      // pantalla traduce (el tope de fuentes, por ejemplo). Ver `claveDelErrorDeFuente`.
+      this.error = error instanceof Error ? error.message : 'Failed to upload document';
     }
 
     return null;
@@ -202,7 +271,8 @@ class AiAssistantApi extends BaseApiWithErrors {
       const response = await apiClient.request(`${getRequestBaseUrl()}/agent/upload-draft`, {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        ...opcionesDeIA(AI_REQUEST_TIMEOUT.upload)
       });
       const result = (await response.json()) as {
         success: boolean;
@@ -245,6 +315,8 @@ class AiAssistantApi extends BaseApiWithErrors {
     queries: string[];
     sources: { documentId: string; title: string; url: string; chars: number }[];
     failedCount: number;
+    /** Páginas que no entraron porque el curso llegó a su tope de fuentes. */
+    leftOutByLimit?: number;
   } | null> {
     try {
       const response = await apiClient.request(`${getRequestBaseUrl()}/agent/research`, {
@@ -257,7 +329,11 @@ class AiAssistantApi extends BaseApiWithErrors {
           ...(options.audience ? { audience: options.audience } : {}),
           ...(options.level ? { level: options.level } : {})
         }),
-        credentials: 'include'
+        credentials: 'include',
+        // La profundidad normal tarda ~32 s y la profunda más: con los 30 s de
+        // una pantalla común, el navegador abandonaba una búsqueda que el
+        // servidor terminaba igual.
+        ...opcionesDeIA(AI_REQUEST_TIMEOUT.research)
       });
       const result = (await response.json()) as {
         success: boolean;
@@ -266,6 +342,7 @@ class AiAssistantApi extends BaseApiWithErrors {
           queries: string[];
           sources: { documentId: string; title: string; url: string; chars: number }[];
           failedCount: number;
+          leftOutByLimit?: number;
         };
       };
 
@@ -276,7 +353,18 @@ class AiAssistantApi extends BaseApiWithErrors {
       this.error = result.error ?? 'Failed to research the topic';
     } catch (error) {
       console.error('Error researching topic:', error);
-      this.error = error instanceof Error ? error.message : 'Failed to research the topic';
+      // Un vencimiento se dice en castellano y con lo que conviene hacer: el
+      // texto crudo («Request timeout») era lo único que veía la docente, y
+      // ganaba sobre la traducción de quien muestra este error. Lo mismo el
+      // tope de fuentes. Del resto se muestra el texto del servidor, no el
+      // JSON entero del cuerpo.
+      const { code, detalle } = leerErrorDeApi(error);
+
+      this.error = esTiempoAgotado(error)
+        ? t.get('ai_assistant.error_timeout')
+        : code === 'SOURCE_LIMIT_REACHED'
+          ? t.get('course.sources.error_source_limit')
+          : (detalle ?? (error instanceof Error ? error.message : 'Failed to research the topic'));
     }
 
     return null;
@@ -299,7 +387,8 @@ class AiAssistantApi extends BaseApiWithErrors {
       const response = await apiClient.request(url, {
         method: 'POST',
         body: formData,
-        credentials: 'include'
+        credentials: 'include',
+        ...opcionesDeIA(AI_REQUEST_TIMEOUT.upload)
       });
       const result = (await response.json()) as {
         success: boolean;
@@ -311,7 +400,8 @@ class AiAssistantApi extends BaseApiWithErrors {
       }
     } catch (error) {
       console.error('Error uploading source document:', error);
-      this.error = 'Failed to upload document';
+      // Ver `uploadDocument`: el `code` del cuerpo decide el texto.
+      this.error = error instanceof Error ? error.message : 'Failed to upload document';
     }
 
     return null;
@@ -373,9 +463,12 @@ class AiAssistantApi extends BaseApiWithErrors {
 
     await this.execute<(typeof classroomio.agent)['summarize']['$post']>({
       requestFn: () =>
-        classroomio.agent.summarize.$post({
-          json: { messages, courseId }
-        }),
+        classroomio.agent.summarize.$post(
+          {
+            json: { messages, courseId }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.summary)
+        ),
       logContext: 'summarizing conversation',
       onSuccess: (result) => {
         summary = (result.data as { summary: string }).summary;
@@ -390,9 +483,12 @@ class AiAssistantApi extends BaseApiWithErrors {
 
     await this.execute<CompactConversationRequest>({
       requestFn: () =>
-        classroomio.agent.history[':conversationId'].compact.$post({
-          param: { conversationId }
-        }),
+        classroomio.agent.history[':conversationId'].compact.$post(
+          {
+            param: { conversationId }
+          },
+          llamadaDeIA(AI_REQUEST_TIMEOUT.summary)
+        ),
       logContext: 'compacting conversation',
       onSuccess: (result) => {
         compacted = result.data.messages;

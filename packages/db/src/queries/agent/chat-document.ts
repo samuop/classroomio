@@ -1,30 +1,71 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '@db/schema';
 import { db } from '@db/drizzle';
 
 /**
- * Cap on how many documents we keep per conversation. Older ones get pruned on
- * insert.
+ * Cuántas fuentes puede tener un curso.
  *
- * **Why this is 40 and not 10.** The prune deletes the OLDEST rows, and every
- * source a teacher adds from the wizard or the Sources panel lands in the same
- * hidden "Course sources" conversation. Web research adds up to 20 pages in one
- * go; with the old cap of 10, a deep run on a course that already had an
- * uploaded PDF deleted that PDF — it was inserted first, so it pruned first.
- * The teacher would have watched the agent build a course from web pages while
- * their own material was silently dropped from the database.
+ * ── Por qué un tope que RECHAZA y no una poda ────────────────────────────────
  *
- * The cap was never the thing protecting the model's context anyway: the source
- * pack has its own token budget (AGENT_SOURCE_PACK_BUDGET, 300k by default) and
- * degrades overflow to summaries instead of destroying rows. This number only
- * bounds storage growth per conversation, so it can be generous.
+ * Antes había un tope de 40 documentos por conversación que, al pasarse, BORRABA
+ * los más viejos en silencio. Mientras cada fuente abría su propia conversación
+ * no mordía; desde que todas las fuentes del panel de un curso van a una sola
+ * conversación oculta, dos investigaciones profundas y una subida ya borraban el
+ * PDF de la docente —el más viejo— sin que nadie se enterara.
+ *
+ * La regla ahora es la del dueño: una fuente no se borra nunca si la docente no
+ * lo pide. Pasado el tope, la fuente nueva se rechaza con un mensaje claro y la
+ * docente decide cuál sacar.
+ *
+ * El tope no protege el contexto del modelo: para eso están el presupuesto del
+ * paquete de fuentes (AGENT_SOURCE_PACK_BUDGET) y el de la caché, que degradan a
+ * resúmenes sin borrar nada. Esto sólo acota lo que se guarda por curso.
  */
-export const MAX_DOCUMENTS_PER_CONVERSATION = (() => {
-  const raw = process.env.AGENT_MAX_DOCUMENTS_PER_CONVERSATION?.trim();
+export const MAX_SOURCES_PER_COURSE = (() => {
+  const raw = process.env.AGENT_MAX_SOURCES_PER_COURSE?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
 
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 40;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
 })();
+
+/** El código con que la API rechaza una fuente de más (422). */
+export const CODIGO_TOPE_DE_FUENTES = 'SOURCE_LIMIT_REACHED';
+
+/** El curso ya tiene `MAX_SOURCES_PER_COURSE` fuentes: la nueva no se guarda. */
+export class TopeDeFuentesError extends Error {
+  readonly code = CODIGO_TOPE_DE_FUENTES;
+
+  constructor(readonly tope: number) {
+    super(`This course already has ${tope} sources`);
+    this.name = 'TopeDeFuentesError';
+  }
+}
+
+/**
+ * Si un error es el del tope de fuentes, venga suelto o envuelto (Drizzle
+ * envuelve lo que tira adentro de una transacción en su `cause`).
+ */
+export function esTopeDeFuentes(error: unknown): error is TopeDeFuentesError {
+  const conCodigo = (valor: unknown) =>
+    !!valor && typeof valor === 'object' && (valor as { code?: unknown }).code === CODIGO_TOPE_DE_FUENTES;
+
+  return conCodigo(error) || conCodigo((error as { cause?: unknown } | null)?.cause);
+}
+
+/** Cuántas fuentes tiene un curso, de todas las personas del equipo. */
+export async function contarFuentesDelCurso(courseId: string): Promise<number> {
+  try {
+    const [fila] = await db
+      .select({ cantidad: count() })
+      .from(schema.aiChatDocument)
+      .where(eq(schema.aiChatDocument.courseId, courseId));
+
+    return Number(fila?.cantidad ?? 0);
+  } catch (error) {
+    console.error('contarFuentesDelCurso error:', error);
+    throw new Error('Failed to count course sources');
+  }
+}
 
 export interface ChatDocumentRecord {
   id: string;
@@ -71,21 +112,26 @@ export async function createChatDocument(record: {
 }): Promise<void> {
   try {
     await db.transaction(async (tx) => {
-      await tx.insert(schema.aiChatDocument).values(record);
+      // Las altas del mismo curso, de a una: sin esto, dos altas a la vez con el
+      // curso en 99 cuentan 99 las dos y quedan 101.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${record.courseId}))`);
 
-      const all = await tx
-        .select({ id: schema.aiChatDocument.id })
+      const [fila] = await tx
+        .select({ cantidad: count() })
         .from(schema.aiChatDocument)
-        .where(eq(schema.aiChatDocument.conversationId, record.conversationId))
-        .orderBy(desc(schema.aiChatDocument.createdAt));
+        .where(eq(schema.aiChatDocument.courseId, record.courseId));
 
-      if (all.length > MAX_DOCUMENTS_PER_CONVERSATION) {
-        const toDelete = all.slice(MAX_DOCUMENTS_PER_CONVERSATION).map((row) => row.id);
-
-        await tx.delete(schema.aiChatDocument).where(inArray(schema.aiChatDocument.id, toDelete));
+      if (Number(fila?.cantidad ?? 0) >= MAX_SOURCES_PER_COURSE) {
+        throw new TopeDeFuentesError(MAX_SOURCES_PER_COURSE);
       }
+
+      await tx.insert(schema.aiChatDocument).values(record);
     });
   } catch (error) {
+    // El tope no es una falla: quien llama lo convierte en el 422 que la
+    // docente ve con su texto.
+    if (esTopeDeFuentes(error)) throw new TopeDeFuentesError(MAX_SOURCES_PER_COURSE);
+
     console.error('createChatDocument error:', error);
     throw new Error('Failed to persist chat document');
   }
