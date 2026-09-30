@@ -264,6 +264,13 @@ export function crearEscritorDeLecciones(params: {
   providerConfig: AIProviderConfig;
   courseTitle: string;
   temario?: string;
+  /**
+   * Lo que la docente eligió en el formulario de preguntas (ver
+   * `respuestas-del-formulario.ts`). La consigna de cada lección no lo trae, y
+   * sin esto una fuente que nombra personas salía con los nombres aunque ella
+   * hubiera pedido roles.
+   */
+  indicaciones?: string;
 }): EscritorDeLecciones {
   const modelName =
     process.env.AGENT_WRITER_MODEL?.trim() ||
@@ -320,7 +327,8 @@ export function crearEscritorDeLecciones(params: {
     // reutiliza en todas y el material en las que comparten fuente.
     const partes = [
       `## Course\n\n${params.courseTitle}` +
-        (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : ''),
+        (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : '') +
+        (params.indicaciones ? `\n\n${params.indicaciones}` : ''),
       armado.texto
         ? `## Source material for this lesson\n\n${armado.texto}`
         : `## Source material for this lesson\n\n${SIN_MATERIAL_ASIGNADO}`,

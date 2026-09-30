@@ -149,6 +149,16 @@ vi.mock('@api/config/storage', async (original) => ({
   getStorageConfig: () => ({ mediaPublicBaseUrl: 'https://medios.ejemplo.test' })
 }));
 
+// Los escritores de verdad, espiados: se prueba con qué los arma la ronda.
+vi.mock('@api/services/agent/lesson-writer', async (original) => {
+  const real = await original<typeof import('@api/services/agent/lesson-writer')>();
+  return { ...real, crearEscritorDeLecciones: vi.fn(real.crearEscritorDeLecciones) };
+});
+vi.mock('@api/services/agent/question-writer', async (original) => {
+  const real = await original<typeof import('@api/services/agent/question-writer')>();
+  return { ...real, crearEscritorDePreguntas: vi.fn(real.crearEscritorDePreguntas) };
+});
+
 // Lo que el chequeo de publicación dice del curso en sí: listo. Lo que agrega
 // del plan es lo que se prueba.
 vi.mock('@api/services/course/go-live-readiness', async (original) => ({
@@ -165,6 +175,8 @@ const { buildSourceIndex } = await import('@api/services/agent/source-index');
 const { listCourseSources } = await import('@cio/db/queries/agent/chat-document');
 const { getCourseContentItems } = await import('@cio/db/queries/course/content');
 const { tomarCandadoDeRonda } = await import('@api/services/agent/ronda-viva');
+const { crearEscritorDeLecciones } = await import('@api/services/agent/lesson-writer');
+const { crearEscritorDePreguntas } = await import('@api/services/agent/question-writer');
 const { AppError } = await import('@api/utils/errors');
 const { hasta, leerPartes } = await import('./ayuda/sse');
 
@@ -819,6 +831,77 @@ describe('las fuentes agregadas después del plan', () => {
       await leerPartes(await chat({ conversationId: conversacionNueva() }));
 
       expect(loQueLeyoDelChequeo()).toEqual({ ready: true, blockers: [], warnings: [], suggestedFixes: {} });
+    });
+  });
+
+  /**
+   * Medido en producción el 2026-09-30: la docente eligió en el formulario
+   * nombrar las responsabilidades por rol, y 12 de 16 lecciones salieron con
+   * los nombres de la planilla. Ver `respuestas-del-formulario.ts`.
+   */
+  describe('lo que la docente eligió en el formulario, en la construcción', () => {
+    const ELECCION = '- ¿Cómo nombramos a los responsables?: Por su rol (cajero, encargado)';
+
+    const conFormulario = [
+      {
+        id: 'a0',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-ask_discovery_questions',
+            toolCallId: 'formulario-1',
+            state: 'output-available',
+            input: {
+              title: 'Antes del plan',
+              formId: 'form-caja',
+              fields: [
+                {
+                  id: 'nombres',
+                  label: '¿Cómo nombramos a los responsables?',
+                  type: 'select',
+                  options: [
+                    { value: 'reales', label: 'Con sus nombres' },
+                    { value: 'roles', label: 'Por su rol (cajero, encargado)' }
+                  ]
+                }
+              ]
+            },
+            output: { awaiting_user: true }
+          }
+        ]
+      },
+      {
+        id: 'u0',
+        role: 'user',
+        metadata: { discovery: { action: 'submit_discovery_answers', formId: 'form-caja', answers: { nombres: 'roles' } } },
+        parts: [{ type: 'text', text: 'Here are my answers to your questions:' }]
+      },
+      ...CONSTRUCCION
+    ];
+
+    beforeEach(() => {
+      vi.mocked(listCourseSources).mockResolvedValue([MANUAL] as never);
+    });
+
+    it('el constructor la ve, aunque corre sin la conversación', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: conFormulario }));
+
+      expect(promptsRecibidos[0]).toContain('What the teacher chose before the plan');
+      expect(promptsRecibidos[0]).toContain(ELECCION);
+    });
+
+    it('y la reciben los dos escritores', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: conFormulario }));
+
+      expect(vi.mocked(crearEscritorDeLecciones).mock.calls[0][0].indicaciones).toContain(ELECCION);
+      expect(vi.mocked(crearEscritorDePreguntas).mock.calls[0][0].indicaciones).toContain(ELECCION);
+    });
+
+    it('sin formulario contestado, nada', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: CONSTRUCCION }));
+
+      expect(promptsRecibidos[0]).not.toContain('What the teacher chose before the plan');
+      expect(vi.mocked(crearEscritorDeLecciones).mock.calls[0][0].indicaciones).toBeUndefined();
     });
   });
 });

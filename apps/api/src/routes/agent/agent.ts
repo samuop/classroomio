@@ -139,6 +139,7 @@ import { transformarEnlacesDelChat } from '@api/services/agent/enlaces-del-chat'
 import { mapaDelCurso } from '@api/services/agent/manijas';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
+import { indicacionesDelFormulario, respuestasDelFormulario } from '@api/services/agent/respuestas-del-formulario';
 import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
@@ -1046,6 +1047,16 @@ const agentCoreRouter = new Hono()
         approvedPlan
       });
 
+      // Lo que la docente eligió en el formulario de preguntas, en toda ronda
+      // suya y para los dos escritores: el constructor corre aislado de la
+      // conversación y los escritores ven sólo su consigna. Ver
+      // `respuestas-del-formulario.ts`.
+      const indicacionesDeLaDocente =
+        role === AgentRole.TEACHER ? indicacionesDelFormulario(respuestasDelFormulario(messages)) : undefined;
+      if (indicacionesDeLaDocente) {
+        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${indicacionesDeLaDocente}` : indicacionesDeLaDocente;
+      }
+
       // "The material really rides in THIS request" — nothing more. Two things
       // downstream ask that question: where to put the Anthropic cache_control
       // tag, and whether a cached read reported afterwards can be attributed to
@@ -1404,7 +1415,8 @@ const agentCoreRouter = new Hono()
                 redis,
                 providerConfig,
                 courseTitle: courseRow.title,
-                temario: temarioDelPlan(approvedPlan)
+                temario: temarioDelPlan(approvedPlan),
+                indicaciones: indicacionesDeLaDocente
               }),
               // El sub-agente que escribe las preguntas de un ejercicio con el
               // texto de las lecciones delante. El constructor no lo tiene —las
@@ -1415,7 +1427,8 @@ const agentCoreRouter = new Hono()
                 userId: user.id,
                 courseId,
                 providerConfig,
-                isOrgOnPaidPlan: isOrgPaid
+                isOrgOnPaidPlan: isOrgPaid,
+                indicaciones: indicacionesDeLaDocente
               }),
               // El sub-agente que compara una fuente nueva contra el curso ya
               // escrito. Ver `cambios-de-fuente.ts`: el modelo dice qué dato

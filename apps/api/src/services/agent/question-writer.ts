@@ -198,6 +198,8 @@ export function crearEscritorDePreguntas(params: {
   courseId: string;
   providerConfig: AIProviderConfig;
   isOrgOnPaidPlan: boolean;
+  /** Lo que la docente eligió en el formulario de preguntas. Ver `respuestas-del-formulario.ts`. */
+  indicaciones?: string;
 }): EscritorDePreguntas {
   const modelName =
     process.env.AGENT_QUESTIONS_MODEL?.trim() ||
@@ -218,10 +220,13 @@ export function crearEscritorDePreguntas(params: {
       schema: Resultado,
       system,
       prompt: [
+        params.indicaciones ?? '',
         `## The lessons this exercise covers\n\n${armado.texto || '(no lesson text)'}`,
         `## This exercise\n\nTitle: ${exerciseTitle}\nWrite everything a learner reads in this language: ${locale}\nHow many questions: ${count}` +
           (brief ? `\n\nBrief:\n${brief}` : '')
-      ].join('\n\n'),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
       maxRetries: 1,
       // Con tope, el reintento incluido: ver `TIEMPO_MAXIMO_PREGUNTAS_MS`.
       abortSignal: AbortSignal.timeout(TIEMPO_MAXIMO_PREGUNTAS_MS)
