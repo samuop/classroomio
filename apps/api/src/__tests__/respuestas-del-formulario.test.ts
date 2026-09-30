@@ -33,7 +33,9 @@ vi.mock('@cio/db/queries/agent/chat-document', async (original) => ({
   listCourseSources: vi.fn().mockResolvedValue([])
 }));
 
-const { indicacionesDelFormulario, respuestasDelFormulario } = await import('@api/services/agent/respuestas-del-formulario');
+const { indicacionesDelFormulario, respuestasDelFormulario, RECORDATORIO_DE_LA_DOCENTE } = await import(
+  '@api/services/agent/respuestas-del-formulario'
+);
 const { crearEscritorDeLecciones } = await import('@api/services/agent/lesson-writer');
 const { crearEscritorDePreguntas } = await import('@api/services/agent/question-writer');
 
@@ -134,11 +136,16 @@ describe('las respuestas del formulario, leídas del historial', () => {
     expect(indicacionesDelFormulario([])).toBeUndefined();
   });
 
-  it('el bloque dice que la elección de la docente manda sobre las fuentes', () => {
+  it('el bloque dice que la elección de la docente manda, y dónde: también en tablas, ejemplos y consignas', () => {
     const bloque = indicacionesDelFormulario(respuestasDelFormulario(CONVERSACION))!;
 
     expect(bloque).toContain('## What the teacher chose before the plan (discovery form)');
-    expect(bloque).toContain("a source names people and the teacher chose roles — follow the teacher's choice");
+    expect(bloque).toContain('they win over the sources, the plan and any brief');
+    // Medido: la prosa salió con roles y los nombres volvieron en la tabla de
+    // responsables, en el ejemplo de cómo llenar la columna y en una consigna.
+    expect(bloque).toContain('write the role wherever the source has the name, even inside a table or in an example of how to fill in a column');
+    expect(bloque).toContain('never put the name next to the role');
+    expect(bloque).toContain('When you write a brief for someone else, apply the choices there too.');
     expect(bloque).toContain('- ¿Cómo preferís nombrar las responsabilidades?: Por roles y funciones (ej. Responsable de Recepción)');
   });
 });
@@ -152,7 +159,11 @@ describe('los escritores las reciben', () => {
     vi.spyOn(console, 'info').mockImplementation(() => {});
   });
 
-  it('el de lecciones, en la parte del pedido que es igual para todo el curso', async () => {
+  /**
+   * En sus instrucciones, y un recordatorio después de la consigna. Medido: en
+   * el pedido, antes de la consigna, la consigna ganaba —traía los nombres—.
+   */
+  it('el de lecciones, en sus instrucciones, con el recordatorio al final de la consigna', async () => {
     generateText.mockResolvedValue({ text: '<lesson><p>Una lección.</p></lesson>', finishReason: 'stop', usage: {} });
 
     await crearEscritorDeLecciones({
@@ -165,12 +176,13 @@ describe('los escritores las reciben', () => {
       indicaciones: BLOQUE
     })({ lessonTitle: 'Recepción', brief: 'Quién recibe la mercadería.', locale: 'es', sources: [] });
 
-    const prompt: string = generateText.mock.calls[0][0].prompt;
-    expect(prompt).toContain(BLOQUE);
-    expect(prompt.indexOf(BLOQUE)).toBeLessThan(prompt.indexOf('## This lesson'));
+    const { system, prompt } = generateText.mock.calls[0][0] as { system: string; prompt: string };
+    expect(system.endsWith(BLOQUE)).toBe(true);
+    expect(prompt).not.toContain(BLOQUE);
+    expect(prompt).toContain(`Quién recibe la mercadería.\n\n${RECORDATORIO_DE_LA_DOCENTE}`);
   });
 
-  it('el de preguntas', async () => {
+  it('el de preguntas, igual', async () => {
     generateObject.mockResolvedValue({ object: { questions: [] }, usage: {} });
 
     await crearEscritorDePreguntas({
@@ -182,17 +194,20 @@ describe('los escritores las reciben', () => {
       indicaciones: BLOQUE
     })({
       exerciseTitle: 'Casos de recepción',
-      brief: '',
+      brief: 'Casos del día a día.',
       count: 6,
       lecciones: [{ title: 'Recepción', text: 'El responsable de recepción controla el remito.' }],
       locale: 'es'
     });
 
-    expect(generateObject.mock.calls[0][0].prompt).toContain(BLOQUE);
+    const { system, prompt } = generateObject.mock.calls[0][0] as { system: string; prompt: string };
+    expect(system.endsWith(BLOQUE)).toBe(true);
+    expect(prompt).toContain(`Casos del día a día.\n\n${RECORDATORIO_DE_LA_DOCENTE}`);
   });
 
   it('sin formulario, los pedidos no cambian', async () => {
     generateText.mockResolvedValue({ text: '<lesson><p>Una lección.</p></lesson>', finishReason: 'stop', usage: {} });
+    generateObject.mockResolvedValue({ object: { questions: [] }, usage: {} });
 
     await crearEscritorDeLecciones({
       orgId: 'org',
@@ -202,7 +217,17 @@ describe('los escritores las reciben', () => {
       providerConfig: PROVEEDOR,
       courseTitle: 'Depósito'
     })({ lessonTitle: 'Recepción', brief: 'Quién recibe la mercadería.', locale: 'es', sources: [] });
+    await crearEscritorDePreguntas({
+      orgId: 'org',
+      userId: 'usuario',
+      courseId: 'curso',
+      providerConfig: PROVEEDOR,
+      isOrgOnPaidPlan: false
+    })({ exerciseTitle: 'Casos', brief: 'Casos.', count: 6, lecciones: [{ title: 'Recepción', text: 'Texto.' }], locale: 'es' });
 
-    expect(generateText.mock.calls[0][0].prompt).not.toContain('What the teacher chose');
+    for (const llamada of [generateText.mock.calls[0][0], generateObject.mock.calls[0][0]] as Array<{ system: string; prompt: string }>) {
+      expect(llamada.system).not.toContain('What the teacher chose');
+      expect(llamada.prompt).not.toContain(RECORDATORIO_DE_LA_DOCENTE);
+    }
   });
 });

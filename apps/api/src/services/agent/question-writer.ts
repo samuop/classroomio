@@ -9,6 +9,7 @@ import {
 } from '@cio/ai-assistant';
 import { questionFields } from '@api/services/agent/agent-tool-schemas';
 import { esCortePorTiempo } from '@api/services/agent/grounding';
+import { RECORDATORIO_DE_LA_DOCENTE } from '@api/services/agent/respuestas-del-formulario';
 import { recordTokenUsage } from '@api/services/agent/usage';
 
 /**
@@ -209,7 +210,9 @@ export function crearEscritorDePreguntas(params: {
   // La lista de tipos depende del plan de la organización y no de la llamada,
   // así que el prompt se arma una vez por ronda: es el mismo para todos los
   // ejercicios del curso y la caché del proveedor lo sirve desde el segundo.
-  const system = buildQuestionWriterPrompt(buildQuestionTypeListBlock(params.isOrgOnPaidPlan));
+  // Las elecciones de la docente, en las instrucciones: ver el mismo punto en `lesson-writer.ts`.
+  const base = buildQuestionWriterPrompt(buildQuestionTypeListBlock(params.isOrgOnPaidPlan));
+  const system = params.indicaciones ? `${base}\n\n${params.indicaciones}` : base;
 
   return async ({ exerciseTitle, brief, count, lecciones, locale }) => {
     const armado = armarLecciones(lecciones);
@@ -220,13 +223,11 @@ export function crearEscritorDePreguntas(params: {
       schema: Resultado,
       system,
       prompt: [
-        params.indicaciones ?? '',
         `## The lessons this exercise covers\n\n${armado.texto || '(no lesson text)'}`,
         `## This exercise\n\nTitle: ${exerciseTitle}\nWrite everything a learner reads in this language: ${locale}\nHow many questions: ${count}` +
-          (brief ? `\n\nBrief:\n${brief}` : '')
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
+          (brief ? `\n\nBrief:\n${brief}` : '') +
+          (params.indicaciones ? `\n\n${RECORDATORIO_DE_LA_DOCENTE}` : '')
+      ].join('\n\n'),
       maxRetries: 1,
       // Con tope, el reintento incluido: ver `TIEMPO_MAXIMO_PREGUNTAS_MS`.
       abortSignal: AbortSignal.timeout(TIEMPO_MAXIMO_PREGUNTAS_MS)

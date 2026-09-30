@@ -85,15 +85,25 @@ export function respuestasDelFormulario(messages: readonly unknown[]): Respuesta
  * El bloque que va al constructor y a los escritores. Dice que manda sobre las
  * fuentes: el caso medido es justamente una fuente que nombra personas y una
  * docente que pidió roles.
+ *
+ * Y dice DÓNDE, porque la primera versión decía sólo «seguí su elección» y no
+ * alcanzó: medido en producción el mismo día, la prosa salió con roles pero los
+ * nombres volvieron en lo copiado de la planilla —la tabla de responsables, el
+ * ejemplo de cómo llenar la columna— y en una consigna que el constructor le
+ * escribió al escritor.
  */
 export function indicacionesDelFormulario(respuestas: readonly RespuestaDelFormulario[]): string | undefined {
   if (respuestas.length === 0) return undefined;
 
   return [
-    "## What the teacher chose before the plan (discovery form)",
+    '## What the teacher chose before the plan (discovery form)',
     '',
-    "These choices apply to every lesson, exercise and question of this course, including what is added later. Where the sources, the plan or a brief say it differently — for example, a source names people and the teacher chose roles — follow the teacher's choice.",
+    "These choices apply to every lesson, exercise and question of this course, including what is added later, and they win over the sources, the plan and any brief — in the prose and also in tables, examples and sample rows copied from a source. For example, if a source names people and the teacher chose roles: write the role wherever the source has the name, even inside a table or in an example of how to fill in a column, and never put the name next to the role. When you write a brief for someone else, apply the choices there too.",
     '',
     ...respuestas.map((r) => `- ${r.pregunta}: ${r.respuesta}`)
   ].join('\n');
 }
+
+/** La línea que va después de la consigna de cada pieza: lo último que lee quien escribe. */
+export const RECORDATORIO_DE_LA_DOCENTE =
+  "Where this brief or the source material disagrees with the teacher's choices (in your instructions), the choices win — tables and examples included.";

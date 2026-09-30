@@ -5,6 +5,7 @@ import { getCourseSourceText } from '@api/services/agent/document';
 import { esCortePorTiempo, type FuenteVista } from '@api/services/agent/grounding';
 import { crearMarcadorDeTokens, type MarcadorDeTokens } from '@api/services/agent/marcas-del-rebote';
 import { buscarFuente } from '@api/services/agent/plan-coverage';
+import { RECORDATORIO_DE_LA_DOCENTE } from '@api/services/agent/respuestas-del-formulario';
 import { recordTokenUsage } from '@api/services/agent/usage';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -277,7 +278,9 @@ export function crearEscritorDeLecciones(params: {
     params.providerConfig.model ||
     resolveModelName(params.providerConfig.provider);
   const model = createModel({ ...params.providerConfig, model: modelName });
-  const system = buildLessonWriterPrompt();
+  // Las elecciones de la docente van en las instrucciones y no en el pedido: en
+  // el pedido competían con la consigna, que va al final y ganaba.
+  const system = params.indicaciones ? `${buildLessonWriterPrompt()}\n\n${params.indicaciones}` : buildLessonWriterPrompt();
 
   const escribir = async ({
     lessonTitle,
@@ -327,12 +330,12 @@ export function crearEscritorDeLecciones(params: {
     // reutiliza en todas y el material en las que comparten fuente.
     const partes = [
       `## Course\n\n${params.courseTitle}` +
-        (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : '') +
-        (params.indicaciones ? `\n\n${params.indicaciones}` : ''),
+        (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : ''),
       armado.texto
         ? `## Source material for this lesson\n\n${armado.texto}`
         : `## Source material for this lesson\n\n${SIN_MATERIAL_ASIGNADO}`,
-      `## This lesson\n\nTitle: ${lessonTitle}\nWrite it in this language: ${locale}\n\nBrief:\n${brief}`,
+      `## This lesson\n\nTitle: ${lessonTitle}\nWrite it in this language: ${locale}\n\nBrief:\n${brief}` +
+        (params.indicaciones ? `\n\n${RECORDATORIO_DE_LA_DOCENTE}` : ''),
       contenidoActual ? `## Current content of this lesson (you are rewriting it)\n\n${contenidoActual}` : ''
     ].filter(Boolean);
 
