@@ -10,9 +10,12 @@
  * porque de acá salen las lecciones, y una lección que dice `VLOOKUP` le habla
  * a quien aprende de una función que no está en su pantalla.
  *
- * Una hoja de datos de miles de filas no entra entera ni hace falta: va el
- * perfil de cada columna, unas filas de muestra y las reglas de cálculo. El
- * resto se consulta con la herramienta de planillas (`consulta.ts`).
+ * Una hoja que entra va entera y con el texto completo de cada celda: muchas
+ * planillas de las empresas no calculan nada, son procedimientos e instructivos
+ * escritos en celdas, y su contenido es ese texto. Una hoja de datos de miles de
+ * filas no entra ni hace falta: va el perfil de cada columna, unas filas de
+ * muestra y las reglas de cálculo. El resto se consulta con la herramienta de
+ * planillas (`consulta.ts`).
  */
 import {
   analizar,
@@ -24,7 +27,7 @@ import {
   type Regla
 } from './analisis';
 import { ERRORES_EN_CASTELLANO } from './funciones-en-castellano';
-import { columnaALetras, formulaEnCastellano, rangoDe } from './formulas';
+import { columnaALetras, formulaEnCastellano, rangoDe, rectanguloDe } from './formulas';
 import {
   anotarEnPerfil,
   MAX_DISTINTOS,
@@ -91,8 +94,8 @@ function corto(texto: string, max = 40): string {
 }
 
 /** Para una celda de tabla markdown. */
-function enTabla(texto: string): string {
-  return corto(texto).replace(/\|/g, '/');
+function enTabla(texto: string, max: number): string {
+  return corto(texto, max).replace(/\|/g, '/');
 }
 
 // ─── Piezas del mapa ────────────────────────────────────────────────────────
@@ -149,8 +152,23 @@ function valorDeLaCelda(analisis: Analisis, referencia: string | undefined, hoja
 interface Presupuesto {
   filasDeMuestra: number;
   reglasPorHoja: number;
-  filasDeGrilla: number;
+  /** Una hoja cuya grilla entera ocupa hasta esto va entera; si no, resumida. */
+  caracteresPorHoja: number;
+  /** Hasta dónde se copia el texto de una celda en la grilla entera. */
+  largoDeCelda: number;
 }
+
+/**
+ * Desde cuántas filas de datos una hoja con encabezados es una tabla de
+ * registros y lleva el perfil de sus columnas.
+ */
+const FILAS_DE_UNA_TABLA = 60;
+
+/** Las columnas que entran en una grilla. */
+const MAX_COLUMNAS = 26;
+
+/** El largo de una celda en las filas de muestra: ilustran, no son el contenido. */
+const LARGO_DE_MUESTRA = 60;
 
 type PerfilDeHoja = NonNullable<HojaLeida['perfil']>;
 
@@ -223,7 +241,7 @@ function avisoDeOmitidas(hoja: HojaLeida): string[] {
   ];
 }
 
-function grilla(hoja: HojaLeida, filas: number[], columnas: number[]): string[] {
+function grilla(hoja: HojaLeida, filas: number[], columnas: number[], largo: number): string[] {
   const porCelda = new Map(hoja.celdas.map((c) => [`${c.col},${c.fila}`, c]));
   const lineas = [`| | ${columnas.map(columnaALetras).join(' | ')} |`, `|---|${columnas.map(() => '---').join('|')}|`];
 
@@ -232,13 +250,45 @@ function grilla(hoja: HojaLeida, filas: number[], columnas: number[]): string[] 
       `| ${fila} | ${columnas
         .map((col) => {
           const c = porCelda.get(`${col},${fila}`);
-          return c ? enTabla(mostrarValor(c.valor, c.formato)) : '';
+          return c ? enTabla(mostrarValor(c.valor, c.formato), largo) : '';
         })
         .join(' | ')} |`
     );
   }
 
   return lineas;
+}
+
+/**
+ * Las filas con algo que entran en `tope` caracteres de grilla, en orden.
+ * Una hoja escrita como documento —un procedimiento, un instructivo— tiene su
+ * contenido en el texto de las celdas: se copia entero mientras entre.
+ */
+function filasQueEntran(
+  hoja: HojaLeida,
+  columnas: number[],
+  largo: number,
+  tope: number
+): { filas: number[]; todas: number; siguiente?: number } {
+  const mostradas = new Set(columnas);
+  const porFila = new Map<number, number>();
+
+  for (const c of hoja.celdas) {
+    if (!mostradas.has(c.col)) continue;
+    const texto = mostrarValor(c.valor, c.formato);
+    porFila.set(c.fila, (porFila.get(c.fila) ?? columnas.length * 3 + 8) + Math.min(texto.length, largo));
+  }
+
+  const filas: number[] = [];
+  let total = 0;
+
+  for (const [fila, costo] of porFila) {
+    total += costo;
+    if (total > tope) return { filas, todas: porFila.size, siguiente: fila };
+    filas.push(fila);
+  }
+
+  return { filas, todas: porFila.size };
 }
 
 function lineaDeRegla(analisis: Analisis, r: Regla): string {
@@ -250,6 +300,40 @@ function lineaDeRegla(analisis: Analisis, r: Regla): string {
   }
 
   return `- ${rangoDe(r.rect)} (${r.celdas} celdas, la misma fórmula copiada): \`${f}\` — la de ${rangoDe({ ...r.rect, col2: r.rect.col1, fila2: r.rect.fila1 })}`;
+}
+
+/**
+ * El formato condicional, una línea por regla. Copiar y pegar formato en Excel
+ * deja la misma regla repetida celda por celda —una hoja de procedimiento traía
+ * 54—: los rangos de una misma regla se juntan en uno que los contiene.
+ */
+function formatosCondicionales(hoja: HojaLeida): string[] {
+  const porRegla = new Map<string, Set<string>>();
+
+  for (const f of hoja.formatosCondicionales) {
+    const regla = f.reglas.join('; ');
+    const rangos = porRegla.get(regla) ?? new Set<string>();
+    for (const r of f.rango.split(/\s+/).filter(Boolean)) rangos.add(r);
+    porRegla.set(regla, rangos);
+  }
+
+  return [...porRegla].map(([regla, rangos]) => {
+    if (rangos.size <= 4) return `Formato condicional en ${[...rangos].join(', ')}: ${regla}.`;
+
+    const rects = [...rangos].map((r) => rectanguloDe(r, hoja.filas, hoja.columnas)).filter((r) => r !== null);
+    const junto = {
+      col1: Math.min(...rects.map((r) => r.col1)),
+      fila1: Math.min(...rects.map((r) => r.fila1)),
+      col2: Math.max(...rects.map((r) => r.col2)),
+      fila2: Math.max(...rects.map((r) => r.fila2))
+    };
+    return `Formato condicional en ${rangos.size} rangos dentro de ${rangoDe(junto)}: ${regla}.`;
+  });
+}
+
+/** Hojas que no se pasan datos: el papel de cada una no dice nada. */
+function sinFlujo(analisis: Analisis): boolean {
+  return analisis.flechas.length === 0 && analisis.externos.size === 0;
 }
 
 function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): string[] {
@@ -267,7 +351,7 @@ function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): stri
   }
 
   lineas.push(
-    `Ocupa ${rangoDe({ col1: 1, fila1: 1, col2: hoja.columnas, fila2: hoja.filas })}: ${totalCeldas} celdas con algo, ${formulas} con fórmula. Papel: ${PAPELES[papel]}.`
+    `Ocupa ${rangoDe({ col1: 1, fila1: 1, col2: hoja.columnas, fila2: hoja.filas })}: ${totalCeldas} celdas con algo, ${formulas} con fórmula.${sinFlujo(analisis) ? '' : ` Papel: ${PAPELES[papel]}.`}`
   );
 
   const toma = analisis.flechas.filter((f) => f.hacia === hoja.nombre);
@@ -283,10 +367,21 @@ function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): stri
   }
 
   const cabecera = perfilDeLaHoja(hoja);
-  const grande = hoja.filas > p.filasDeGrilla || totalCeldas > 400;
+  const tabla = cabecera !== null && (cabecera.filasDeDatos > FILAS_DE_UNA_TABLA || totalCeldas > 400);
+  const todasLasColumnas = [...new Set(hoja.celdas.map((c) => c.col))].sort((a, b) => a - b);
+  const columnas = todasLasColumnas.slice(0, MAX_COLUMNAS);
+  const entran = filasQueEntran(hoja, columnas, p.largoDeCelda, p.caracteresPorHoja);
+  const entera = !hoja.omitidas && entran.siguiente === undefined;
+  const contenido = `Contenido${reglas.length ? ' (valores; las fórmulas van abajo)' : ''}:`;
+  const columnasDeMas =
+    todasLasColumnas.length > columnas.length
+      ? [
+          `(Y ${todasLasColumnas.length - columnas.length} columnas más con contenido, desde la ${columnaALetras(todasLasColumnas[MAX_COLUMNAS])}: consultalas con la herramienta de planillas.)`
+        ]
+      : [];
   lineas.push('');
 
-  if (cabecera && grande) {
+  if (tabla && cabecera) {
     lineas.push(
       `Una fila de encabezados (fila ${cabecera.filaEncabezado}) y ${cabecera.filasDeDatos} filas de datos debajo. Columnas (contadas sobre todas las filas):`
     );
@@ -305,26 +400,34 @@ function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): stri
       partes.push(textoDelPerfil(columna));
       if (validacion) partes.push(`— desplegable (${validacion.tipo === 'list' ? `lista ${validacion.formula ?? ''}` : validacion.tipo})`);
       if (condicional) partes.push(`— formato condicional en ${condicional.rango}: ${condicional.reglas.join('; ')}`);
-      if (nota) partes.push(`— nota: «${corto(nota.texto, 200)}»`);
+      if (nota) partes.push(`— nota: «${corto(nota.texto, p.largoDeCelda)}»`);
       lineas.push(partes.join(' '));
     }
 
-    const primeras = [...new Set(hoja.celdas.filter((c) => c.fila > cabecera.filaEncabezado).map((c) => c.fila))].slice(0, p.filasDeMuestra);
-    lineas.push('', `Filas de muestra (${primeras.length} de ${cabecera.filasDeDatos}):`);
-    lineas.push(...grilla(hoja, [cabecera.filaEncabezado, ...primeras], cabecera.columnas.map((c) => c.col)));
-    lineas.push(...avisoDeOmitidas(hoja));
+    if (entera) {
+      lineas.push('', contenido, ...grilla(hoja, entran.filas, columnas, p.largoDeCelda));
+    } else {
+      // Lo que está arriba de los encabezados —el título, la fecha del informe— va siempre.
+      const arriba = [...new Set(hoja.celdas.filter((c) => c.fila < cabecera.filaEncabezado).map((c) => c.fila))];
+      const primeras = [...new Set(hoja.celdas.filter((c) => c.fila > cabecera.filaEncabezado).map((c) => c.fila))].slice(0, p.filasDeMuestra);
+      lineas.push('', `Filas de muestra (${primeras.length} de ${cabecera.filasDeDatos}):`);
+      lineas.push(...grilla(hoja, [...arriba, cabecera.filaEncabezado, ...primeras], columnas, LARGO_DE_MUESTRA));
+      lineas.push(...avisoDeOmitidas(hoja));
+    }
+
+    lineas.push(...columnasDeMas);
   } else {
-    const filas = [...new Set(hoja.celdas.map((c) => c.fila))];
-    const columnas = [...new Set(hoja.celdas.map((c) => c.col))].sort((a, b) => a - b).slice(0, 26);
-    const mostradas = filas.slice(0, p.filasDeGrilla);
-    lineas.push('Contenido (valores; las fórmulas van abajo):');
-    lineas.push(...grilla(hoja, mostradas, columnas));
-    if (filas.length > mostradas.length) lineas.push(`(${filas.length - mostradas.length} filas más: consultalas con la herramienta de planillas)`);
-    lineas.push(...avisoDeOmitidas(hoja));
+    lineas.push(contenido, ...grilla(hoja, entran.filas, columnas, p.largoDeCelda));
+    if (entran.siguiente !== undefined) {
+      lineas.push(
+        `(Faltan ${entran.todas - entran.filas.length} filas con contenido, desde la ${entran.siguiente}: no entran en este mapa. Consultalas con la herramienta de planillas.)`
+      );
+    }
+    lineas.push(...columnasDeMas, ...avisoDeOmitidas(hoja));
 
     for (const v of hoja.validaciones) lineas.push(`Desplegable en ${v.rango}: ${v.tipo === 'list' ? `lista ${v.formula ?? ''}` : v.tipo}.`);
-    for (const f of hoja.formatosCondicionales) lineas.push(`Formato condicional en ${f.rango}: ${f.reglas.join('; ')}.`);
-    for (const n of hoja.notas) lineas.push(`Nota en ${n.celda}: «${corto(n.texto, 200)}».`);
+    lineas.push(...formatosCondicionales(hoja));
+    for (const n of hoja.notas) lineas.push(`Nota en ${n.celda}: «${corto(n.texto, p.largoDeCelda)}».`);
   }
 
   if (hoja.combinadas.length) lineas.push(`Celdas combinadas: ${hoja.combinadas.slice(0, 20).join(', ')}${hoja.combinadas.length > 20 ? '…' : ''}.`);
@@ -360,10 +463,15 @@ function escribir(libro: LibroLeido, analisis: Analisis, nombreDelArchivo: strin
     '## Recorrido de los datos (de las entradas a los resultados)'
   ];
 
+  if (sinFlujo(analisis)) {
+    l.push('Las hojas no se pasan datos: ninguna fórmula ni desplegable de una usa otra. Cada una se lee por su cuenta, en el orden del libro:');
+  }
+
   analisis.orden.forEach((nombre, i) => {
     const h = analisis.indice.hoja(nombre)!;
-    const oculta = h.estado === 'visible' ? '' : `, ${h.estado}`;
-    l.push(`${i + 1}. ${nombre} — ${analisis.papel.get(nombre)}${oculta}`);
+    const estado = h.estado === 'visible' ? '' : h.estado;
+    const detalle = sinFlujo(analisis) ? estado : [analisis.papel.get(nombre), estado].filter(Boolean).join(', ');
+    l.push(`${i + 1}. ${nombre}${detalle ? ` — ${detalle}` : ''}`);
   });
 
   if (analisis.flechas.length) {
@@ -432,10 +540,10 @@ function escribir(libro: LibroLeido, analisis: Analisis, nombreDelArchivo: strin
 }
 
 const PRESUPUESTOS: Presupuesto[] = [
-  { filasDeMuestra: 6, reglasPorHoja: 60, filasDeGrilla: 60 },
-  { filasDeMuestra: 3, reglasPorHoja: 30, filasDeGrilla: 40 },
-  { filasDeMuestra: 2, reglasPorHoja: 15, filasDeGrilla: 20 },
-  { filasDeMuestra: 1, reglasPorHoja: 6, filasDeGrilla: 10 }
+  { filasDeMuestra: 6, reglasPorHoja: 60, caracteresPorHoja: 30_000, largoDeCelda: 1_000 },
+  { filasDeMuestra: 3, reglasPorHoja: 30, caracteresPorHoja: 15_000, largoDeCelda: 400 },
+  { filasDeMuestra: 2, reglasPorHoja: 15, caracteresPorHoja: 6_000, largoDeCelda: 150 },
+  { filasDeMuestra: 1, reglasPorHoja: 6, caracteresPorHoja: 2_500, largoDeCelda: 60 }
 ];
 
 /**
@@ -458,7 +566,8 @@ export function mapaDelLibro(libro: LibroLeido, nombreDelArchivo: string, maxCar
 export function mapaDeUnaHoja(analisis: Analisis, nombre: string): string | null {
   const hoja = analisis.indice.hoja(nombre);
   if (!hoja) return null;
-  return escribirHoja(analisis, hoja, { filasDeMuestra: 25, reglasPorHoja: 300, filasDeGrilla: 120 }).join('\n');
+  // La respuesta de la herramienta se corta en 12.000 caracteres: la grilla entera, hasta 10.000.
+  return escribirHoja(analisis, hoja, { filasDeMuestra: 25, reglasPorHoja: 300, caracteresPorHoja: 10_000, largoDeCelda: 1_000 }).join('\n');
 }
 
 export { celdasEn, rangoConHoja };

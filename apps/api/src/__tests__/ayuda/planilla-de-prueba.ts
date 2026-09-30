@@ -275,6 +275,12 @@ export async function planillaDePrueba(opciones: OpcionesDeLaPlanilla = {}): Pro
     TURNOS.forEach((t, i) => (din.getCell(5 + r, 2 + i).value = porRubro(rubro, t)));
     din.getCell(5 + r, 5).value = porRubro(rubro);
   });
+  // La fila de totales, que Excel dibuja siempre: la tabla va de A3 a E10. Sin
+  // ella, el asistente ubicó el «Total general» en E9, que es el de un rubro.
+  const filaDeTotales = 5 + RUBROS.length;
+  din.getCell(filaDeTotales, 1).value = 'Total general';
+  TURNOS.forEach((_, i) => (din.getCell(filaDeTotales, 2 + i).value = porTurno[i]));
+  din.getCell(filaDeTotales, 5).value = totalDelMes;
 
   const base = Buffer.from(await libro.xlsx.writeBuffer());
 
