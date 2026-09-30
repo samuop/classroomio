@@ -143,8 +143,12 @@ describe('las respuestas del formulario, leídas del historial', () => {
     expect(bloque).toContain('they win over the sources, the plan and any brief');
     // Medido: la prosa salió con roles y los nombres volvieron en la tabla de
     // responsables, en el ejemplo de cómo llenar la columna y en una consigna.
-    expect(bloque).toContain('write the role wherever the source has the name, even inside a table or in an example of how to fill in a column');
+    expect(bloque).toContain('write the role wherever the source has the name, even inside a table');
     expect(bloque).toContain('never put the name next to the role');
+    // Y hasta dónde: con «el rol también en el ejemplo de cómo llenar la columna»,
+    // la lección enseñó a escribir el rol en la planilla, que lleva el nombre.
+    expect(bloque).toContain('A choice about how the course is written never changes what the company does');
+    expect(bloque).toContain("say it takes the name of whoever did the task, without a real name in the example");
     expect(bloque).toContain('When you write a brief for someone else, apply the choices there too.');
     expect(bloque).toContain('- ¿Cómo preferís nombrar las responsabilidades?: Por roles y funciones (ej. Responsable de Recepción)');
   });

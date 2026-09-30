@@ -91,6 +91,11 @@ export function respuestasDelFormulario(messages: readonly unknown[]): Respuesta
  * nombres volvieron en lo copiado de la planilla —la tabla de responsables, el
  * ejemplo de cómo llenar la columna— y en una consigna que el constructor le
  * escribió al escritor.
+ *
+ * Y dice hasta dónde: la segunda versión mandaba el rol también «al ejemplo de
+ * cómo llenar una columna», y la lección pasó a enseñar que en la columna
+ * RESPONSABLE de la planilla se escribe el rol. La planilla de la empresa lleva
+ * el nombre de quien hizo la tarea; lo que se eligió es cómo se escribe el curso.
  */
 export function indicacionesDelFormulario(respuestas: readonly RespuestaDelFormulario[]): string | undefined {
   if (respuestas.length === 0) return undefined;
@@ -98,7 +103,7 @@ export function indicacionesDelFormulario(respuestas: readonly RespuestaDelFormu
   return [
     '## What the teacher chose before the plan (discovery form)',
     '',
-    "These choices apply to every lesson, exercise and question of this course, including what is added later, and they win over the sources, the plan and any brief — in the prose and also in tables, examples and sample rows copied from a source. For example, if a source names people and the teacher chose roles: write the role wherever the source has the name, even inside a table or in an example of how to fill in a column, and never put the name next to the role. When you write a brief for someone else, apply the choices there too.",
+    "These choices apply to every lesson, exercise and question of this course, including what is added later, and they win over the sources, the plan and any brief — in the prose and also in tables, examples and sample rows copied from a source. For example, if a source names people and the teacher chose roles: write the role wherever the source has the name, even inside a table, and never put the name next to the role. A choice about how the course is written never changes what the company does: when a lesson explains a form column that holds a person's name, say it takes the name of whoever did the task, without a real name in the example. When you write a brief for someone else, apply the choices there too.",
     '',
     ...respuestas.map((r) => `- ${r.pregunta}: ${r.respuesta}`)
   ].join('\n');
