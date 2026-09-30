@@ -9,7 +9,7 @@
 # de Nginx separados por server_name.
 #
 # Qué instala/configura:
-#   - Node 20.19.3 (si falta) + corepack/pnpm 10.19.0
+#   - Node 24 LTS (si falta) + corepack/pnpm 10.19.0
 #   - PostgreSQL 16 + pgvector  → DB `classroomio` + usuario `cio`
 #   - Redis (broker de BullMQ, OBLIGATORIO para el worker)
 #   - ffmpeg/ffprobe (media worker)
@@ -25,7 +25,7 @@ set -euo pipefail
 APP_DIR="/var/www/classroomio"
 LOG_DIR="/var/log/classroomio"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
-NODE_MAJOR="20"
+NODE_MAJOR="24"
 PNPM_VERSION="10.19.0"
 PG_VERSION="16"
 DB_NAME="classroomio"
@@ -44,7 +44,7 @@ fi
 log "[1/10] Actualizando índices de paquetes..."
 apt-get update -q
 
-# ── 2. Node 20 + pnpm ────────────────────────────────────────────────────────
+# ── 2. Node 24 + pnpm ────────────────────────────────────────────────────────
 log "[2/10] Node.js ${NODE_MAJOR} + pnpm ${PNPM_VERSION}..."
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v)" != v${NODE_MAJOR}.* ]]; then
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -

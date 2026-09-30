@@ -31,16 +31,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. pnpm + Node 20 ────────────────────────────────────────────────
+      # ── 2. pnpm + Node 24 ────────────────────────────────────────────────
       - name: Setup pnpm
         # Sin `version:` — se toma de `packageManager` en package.json. Especificar
         # ambos hace fallar action-setup con "Multiple versions of pnpm specified".
         uses: pnpm/action-setup@v4
 
+      # La misma versión mayor que el VPS (paquete nodejs de NodeSource, rama
+      # node_24.x, desde el 2026-09-30): lo que se compila y se prueba acá es lo
+      # que corre allá. Cambiar una sin la otra es probar con una versión y correr
+      # con otra.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.3'
+          node-version: '24.21.0'
           cache: 'pnpm'
 
       # ── 3. Install (full, con devDeps — necesario para buildear) ─────────
@@ -230,8 +234,11 @@ jobs:
       # prompt de 74k fichas vuelve como cacheRead. Para volver a MiniMax,
       # borrar CHAT_PROVIDER y GOOGLE_MODEL.
       #
-      # GOOGLE_MODEL=gemini-flash-latest (antes gemini-3.5-flash-lite):
-      # planificar y construir un curso pide un modelo más capaz que Flash-Lite.
+      # GOOGLE_MODEL=gemini-3.8-flash (antes gemini-flash-latest, y antes
+      # gemini-3.5-flash-lite): planificar y construir un curso pide un modelo
+      # más capaz que Flash-Lite. Fijado el 2026-09-30 en vez del alias, que
+      # cambia de modelo cuando Google saca uno nuevo —y con él el precio— y se
+      # cobraba con una fórmula vieja en vez del precio de lista (ver usage.ts).
       # Es sólo el modelo POR DEFECTO: el ajuste global del panel de plataforma
       # y el `aiModel` del plan de cada empresa le ganan (providerConfigForOrg).
       # Sin GOOGLE_SEARCH_MODEL, la investigación web sigue a este modelo, y
@@ -273,7 +280,7 @@ jobs:
           PUBLIC_IS_SELFHOSTED=false
           AUTH_COOKIE_DOMAIN=
           CHAT_PROVIDER=google
-          GOOGLE_MODEL=gemini-flash-latest
+          GOOGLE_MODEL=gemini-3.8-flash
           AUDIT_SLOW_REQUEST_MS=2000
           AUDIT_RETENTION_DAYS=365
           ENVEOF

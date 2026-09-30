@@ -46,7 +46,7 @@
     "typescript": "^5.1.6"
   },
   "engines": {
-    "node": "^20.19.3"
+    "node": "^24.21.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
