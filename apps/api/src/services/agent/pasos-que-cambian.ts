@@ -37,6 +37,7 @@ export const HERRAMIENTAS_DE_LECTURA: ReadonlySet<string> = new Set([
   'get_course_structure',
   'get_exercise_details',
   'get_lesson_content',
+  'inspect_spreadsheet',
   'read_lessons',
   'read_source',
   'search_document',

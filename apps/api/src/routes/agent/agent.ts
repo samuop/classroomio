@@ -1727,6 +1727,9 @@ const agentCoreRouter = new Hono()
               // Planning is exactly when missing material hurts: without search
               // here, the agent can only read URLs it was handed.
               'search_web',
+              // El paquete trae el MAPA de una planilla, no el libro: para
+              // planificar su recorrido hay que poder mirar adentro.
+              'inspect_spreadsheet',
               // Planificar sobre un curso que ya existe empieza por saber qué
               // del curso cambia la fuente nueva. Sin esto acá, el plan de
               // cambios sólo se podría proponer a ojo.

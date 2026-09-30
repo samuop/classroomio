@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {Adicionei a fonte {names}. Refaça o plano para usá-la.} other {Adicionei as fontes {names}. Refaça o plano para usá-las.}}",
       "error_source_limit": "Este curso já tem 100 fontes: exclua alguma antes de adicionar outra.",
       "upload_failed": "Não foi possível enviar o arquivo. Tente de novo.",
-      "research_left_out_by_limit": "O curso chegou ao limite de 100 fontes: {count} páginas da pesquisa ficaram de fora. Exclua alguma fonte se quiser adicioná-las."
+      "research_left_out_by_limit": "O curso chegou ao limite de 100 fontes: {count} páginas da pesquisa ficaram de fora. Exclua alguma fonte se quiser adicioná-las.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "A planilha tem senha ou é um .xls antigo: salve-a como .xlsx sem senha e envie-a novamente.",
+      "error_spreadsheet_invalid": "O arquivo não é uma planilha do Excel válida (.xlsx).",
+      "error_spreadsheet_too_large": "A planilha é grande demais para ser lida inteira: deixe só as abas necessárias para entendê-la e envie-a novamente.",
+      "error_unsupported_type": "Só são aceitos PDF, Word (DOCX), PowerPoint (PPTX) e Excel (XLSX).",
+      "error_file_too_large": "O arquivo tem mais de {maxSize} MB."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Peça-me para ajudar com o conteúdo do seu curso – redigir lições, gerar perguntas ou planejar um curso a partir de um documento.",
     "input_placeholder": "Pergunte ao assistente de IA...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Anexe um documento (PDF, DOCX, PPTX)",
+    "attach_document": "Anexe um documento (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Atualize para fazer upload de documentos",
     "tokens_exhausted": "Limite mensal de tokens de IA atingido.",
     "tokens_exhausted_buy_more": "Comprar mais",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Preparando modelo de formulário",
         "fetch_documentation_url": "Lendo a página de documentos",
         "fetch_documentation_url_with_url": "Lendo {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Analisando a planilha"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Formulário de modelo pronto",
-        "fetch_documentation_url": "Leia {url}"
+        "fetch_documentation_url": "Leia {url}",
+        "inspect_spreadsheet_range": "Consultou {ref} em “{title}”",
+        "inspect_spreadsheet_trace": "Rastreou de onde vem {ref} em “{title}”",
+        "inspect_spreadsheet_dependents": "Verificou onde {ref} é usado em “{title}”",
+        "inspect_spreadsheet_find": "Procurou “{query}” em “{title}”",
+        "inspect_spreadsheet_sheet": "Leu a aba “{sheet}” de “{title}”"
       }
     },
     "student_empty_state": "Pergunte-me qualquer coisa sobre este curso - obtenha explicações, faça testes ou resuma o que está lendo.",

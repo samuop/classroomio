@@ -109,6 +109,12 @@ describe('los errores de fuentes', () => {
     expect(claveDelErrorDeFuente(cuerpo('SOURCE_LIMIT_REACHED'), 'x')).toBe('course.sources.error_source_limit');
   });
 
+  it('una planilla que no se puede leer dice por qué: contraseña, archivo roto o demasiado grande', () => {
+    expect(claveDelErrorDeFuente(cuerpo('SPREADSHEET_PROTECTED'), 'x')).toBe('course.sources.error_spreadsheet_protected');
+    expect(claveDelErrorDeFuente(cuerpo('SPREADSHEET_INVALID'), 'x')).toBe('course.sources.error_spreadsheet_invalid');
+    expect(claveDelErrorDeFuente(cuerpo('SPREADSHEET_TOO_LARGE'), 'x')).toBe('course.sources.error_spreadsheet_too_large');
+  });
+
   it('un vencimiento usa el texto del vencimiento', () => {
     expect(claveDelErrorDeFuente('Request timeout', 'x')).toBe('ai_assistant.error_timeout');
   });

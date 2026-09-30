@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {Dodałem źródło {names}. Przygotuj plan od nowa, żeby z niego korzystać.} other {Dodałem źródła {names}. Przygotuj plan od nowa, żeby z nich korzystać.}}",
       "error_source_limit": "Ten kurs ma już 100 źródeł: usuń któreś, zanim dodasz kolejne.",
       "upload_failed": "Nie udało się przesłać pliku. Spróbuj ponownie.",
-      "research_left_out_by_limit": "Kurs osiągnął limit 100 źródeł: {count} stron z wyszukiwania nie zostało dodanych. Usuń któreś źródło, jeśli chcesz je dodać."
+      "research_left_out_by_limit": "Kurs osiągnął limit 100 źródeł: {count} stron z wyszukiwania nie zostało dodanych. Usuń któreś źródło, jeśli chcesz je dodać.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Arkusz jest chroniony hasłem lub jest starym plikiem .xls: zapisz go jako .xlsx bez hasła i prześlij ponownie.",
+      "error_spreadsheet_invalid": "Plik nie jest prawidłowym skoroszytem Excel (.xlsx).",
+      "error_spreadsheet_too_large": "Arkusz jest zbyt duży, by odczytać go w całości: zostaw tylko arkusze potrzebne do jego zrozumienia i prześlij go ponownie.",
+      "error_unsupported_type": "Akceptowane są tylko pliki PDF, Word (DOCX), PowerPoint (PPTX) i Excel (XLSX).",
+      "error_file_too_large": "Plik jest większy niż {maxSize} MB."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Poproś mnie o pomoc w przygotowaniu treści kursu — szkicuj lekcje, generuj pytania lub planuj kurs na podstawie dokumentu.",
     "input_placeholder": "Zapytaj asystenta AI...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Załącz dokument (PDF, DOCX, PPTX)",
+    "attach_document": "Załącz dokument (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Uaktualnij, aby przesyłać dokumenty",
     "tokens_exhausted": "Osiągnięto miesięczny limit tokenów AI.",
     "tokens_exhausted_buy_more": "Kup więcej",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Przygotowanie szablonu formularza",
         "fetch_documentation_url": "Czytanie strony z dokumentami",
         "fetch_documentation_url_with_url": "Czytanie {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Przeglądanie arkusza"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Formularz szablonu gotowy",
-        "fetch_documentation_url": "Przeczytaj {url}"
+        "fetch_documentation_url": "Przeczytaj {url}",
+        "inspect_spreadsheet_range": "Sprawdzono {ref} w „{title}”",
+        "inspect_spreadsheet_trace": "Prześledzono, skąd pochodzi {ref} w „{title}”",
+        "inspect_spreadsheet_dependents": "Sprawdzono, gdzie używane jest {ref} w „{title}”",
+        "inspect_spreadsheet_find": "Wyszukano „{query}” w „{title}”",
+        "inspect_spreadsheet_sheet": "Przeczytano arkusz „{sheet}” z „{title}”"
       }
     },
     "student_empty_state": "Zapytaj mnie o cokolwiek na temat tego kursu — uzyskaj wyjaśnienia, przeprowadź quiz lub podsumuj to, co czytasz.",

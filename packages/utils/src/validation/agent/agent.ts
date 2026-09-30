@@ -93,7 +93,9 @@ export type TAgentCreditPurchase = z.infer<typeof ZAgentCreditPurchase>;
 export const SUPPORTED_UPLOAD_MIME_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12'
 ] as const;
 
 export const MAX_AGENT_DOCUMENT_SIZE = 25 * 1024 * 1024; // 25MB (keep in sync with @cio/ai-assistant)

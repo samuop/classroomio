@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {मैंने स्रोत {names} जोड़ा है। इसका उपयोग करने के लिए योजना दोबारा बनाओ।} other {मैंने स्रोत {names} जोड़े हैं। इनका उपयोग करने के लिए योजना दोबारा बनाओ।}}",
       "error_source_limit": "इस कोर्स में पहले से 100 स्रोत हैं: नया जोड़ने से पहले कोई एक हटाएँ।",
       "upload_failed": "फ़ाइल अपलोड नहीं हो सकी। फिर से कोशिश करें।",
-      "research_left_out_by_limit": "कोर्स 100 स्रोतों की सीमा तक पहुँच गया: खोज के {count} पेज नहीं जोड़े गए। उन्हें जोड़ना हो तो कोई स्रोत हटाएँ।"
+      "research_left_out_by_limit": "कोर्स 100 स्रोतों की सीमा तक पहुँच गया: खोज के {count} पेज नहीं जोड़े गए। उन्हें जोड़ना हो तो कोई स्रोत हटाएँ।",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "स्प्रेडशीट पासवर्ड से सुरक्षित है या पुरानी .xls फ़ाइल है: इसे बिना पासवर्ड के .xlsx के रूप में सहेजें और फिर से अपलोड करें।",
+      "error_spreadsheet_invalid": "यह फ़ाइल मान्य Excel वर्कबुक (.xlsx) नहीं है।",
+      "error_spreadsheet_too_large": "स्प्रेडशीट पूरी पढ़ने के लिए बहुत बड़ी है: उसे समझने के लिए ज़रूरी शीट ही रखें और फिर से अपलोड करें।",
+      "error_unsupported_type": "केवल PDF, Word (DOCX), PowerPoint (PPTX) और Excel (XLSX) फ़ाइलें स्वीकार की जाती हैं।",
+      "error_file_too_large": "फ़ाइल {maxSize} MB से बड़ी है।"
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "मुझसे अपने पाठ्यक्रम की सामग्री में मदद करने के लिए कहें - पाठों का मसौदा तैयार करें, प्रश्न तैयार करें, या किसी दस्तावेज़ से पाठ्यक्रम की योजना बनाएं।",
     "input_placeholder": "एआई सहायक से पूछें...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "एक दस्तावेज़ संलग्न करें (पीडीएफ, DOCX, PPTX)",
+    "attach_document": "एक दस्तावेज़ संलग्न करें (पीडीएफ, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "दस्तावेज़ अपलोड करने के लिए अपग्रेड करें",
     "tokens_exhausted": "मासिक एआई टोकन सीमा पूरी हो गई।",
     "tokens_exhausted_buy_more": "और खरीदें",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "टेम्प्लेट फॉर्म तैयार किया जा रहा है",
         "fetch_documentation_url": "दस्तावेज़ पृष्ठ पढ़ना",
         "fetch_documentation_url_with_url": "पढ़ना {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "स्प्रेडशीट देखी जा रही है"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "टेम्प्लेट फॉर्म तैयार",
-        "fetch_documentation_url": "पढ़ें {url}"
+        "fetch_documentation_url": "पढ़ें {url}",
+        "inspect_spreadsheet_range": "“{title}” में {ref} देखा",
+        "inspect_spreadsheet_trace": "“{title}” में {ref} कहाँ से आता है, यह खोजा",
+        "inspect_spreadsheet_dependents": "“{title}” में {ref} का उपयोग कहाँ होता है, यह जाँचा",
+        "inspect_spreadsheet_find": "“{title}” में “{query}” खोजा",
+        "inspect_spreadsheet_sheet": "“{title}” की शीट “{sheet}” पढ़ी"
       }
     },
     "student_empty_state": "इस पाठ्यक्रम के बारे में मुझसे कुछ भी पूछें - स्पष्टीकरण प्राप्त करें, स्वयं प्रश्नोत्तरी करें, या आप जो पढ़ रहे हैं उसे संक्षेप में प्रस्तुत करें।",

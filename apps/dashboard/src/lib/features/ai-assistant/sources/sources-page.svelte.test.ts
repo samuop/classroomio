@@ -234,6 +234,47 @@ describe('el curso con todas sus fuentes (tope de 100)', () => {
     expect(screen.queryByText(texto('course.sources.snackbar_delete_failed'))).toBeNull();
   });
 
+  it('una planilla de Excel entra aunque el navegador no le ponga tipo, como en una computadora sin Office', async () => {
+    falso.aiAssistantApi.uploadSourceDocument.mockResolvedValue({ documentId: 'planilla-1' });
+
+    await abrirDialogo();
+    const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const planilla = new File(['PK'], 'almacen.xlsx', { type: '' });
+
+    expect(entrada.accept).toContain('.xlsx');
+
+    await fireEvent.change(entrada, { target: { files: [planilla] } });
+    await fireEvent.click(screen.getAllByRole('button', { name: texto('course.sources.upload_cta') }).at(-1)!);
+
+    await waitFor(() => expect(falso.aiAssistantApi.uploadSourceDocument).toHaveBeenCalledWith(planilla, 'curso-1'));
+    expect(screen.queryByText(texto('course.sources.error_unsupported_type'))).toBeNull();
+  });
+
+  it('una planilla con contraseña se explica con su texto', async () => {
+    falso.aiAssistantApi.uploadSourceDocument.mockImplementation(async () => {
+      falso.aiAssistantApi.error = cuerpoDeError('SPREADSHEET_PROTECTED');
+      return null;
+    });
+
+    await abrirDialogo();
+    const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await fireEvent.change(entrada, {
+      target: { files: [new File(['x'], 'caja.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })] }
+    });
+    await fireEvent.click(screen.getAllByRole('button', { name: texto('course.sources.upload_cta') }).at(-1)!);
+
+    expect(await screen.findByText(texto('course.sources.error_spreadsheet_protected'))).toBeInTheDocument();
+  });
+
+  it('un .xls viejo no entra, y el aviso dice en castellano qué se acepta', async () => {
+    await abrirDialogo();
+    const entrada = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await fireEvent.change(entrada, { target: { files: [new File(['x'], 'viejo.xls', { type: 'application/vnd.ms-excel' })] } });
+
+    expect(await screen.findByText(texto('course.sources.error_unsupported_type'))).toBeInTheDocument();
+    expect(falso.aiAssistantApi.uploadSourceDocument).not.toHaveBeenCalled();
+  });
+
   it('una investigación que no entró entera dice cuántas páginas quedaron afuera', async () => {
     falso.aiAssistantApi.research.mockResolvedValue({
       queries: ['arqueo de caja'],

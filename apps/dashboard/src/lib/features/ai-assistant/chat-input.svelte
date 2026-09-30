@@ -19,6 +19,7 @@
   import { currentOrgPath, isFreePlan } from '$lib/utils/store/org';
   import { openUpgradeModal } from '$lib/utils/functions/org';
   import { AI_AGENT_RUNNING_WARNING_DISMISSED_KEY } from '$features/ai-assistant/utils/constants';
+  import { ACEPTA_FUENTES } from '$features/ai-assistant/utils/tipos-de-fuente';
   import ContextIndicator from '$features/ai-assistant/context-indicator.svelte';
   import type { ContextUsage } from '$features/ai-assistant/utils/context-utils';
   import { imagenesDe, TIPOS_DE_IMAGEN, type AdjuntoDeImagen } from '$features/ai-assistant/utils/chat-attachments';
@@ -260,7 +261,7 @@
 <input
   bind:this={fileInputEl}
   type="file"
-  accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  accept={ACEPTA_FUENTES}
   class="hidden"
   onchange={handleFileChange}
 />

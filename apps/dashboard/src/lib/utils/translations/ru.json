@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {Я добавил источник {names}. Переделай план, чтобы его использовать.} other {Я добавил источники {names}. Переделай план, чтобы их использовать.}}",
       "error_source_limit": "В этом курсе уже 100 источников: удалите какой-нибудь, прежде чем добавить новый.",
       "upload_failed": "Не удалось загрузить файл. Попробуйте ещё раз.",
-      "research_left_out_by_limit": "Курс достиг предела в 100 источников: {count} страниц из поиска не вошли. Удалите какой-нибудь источник, если хотите их добавить."
+      "research_left_out_by_limit": "Курс достиг предела в 100 источников: {count} страниц из поиска не вошли. Удалите какой-нибудь источник, если хотите их добавить.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Таблица защищена паролем или это старый файл .xls: сохраните её как .xlsx без пароля и загрузите снова.",
+      "error_spreadsheet_invalid": "Файл не является корректной книгой Excel (.xlsx).",
+      "error_spreadsheet_too_large": "Таблица слишком большая, чтобы прочитать её целиком: оставьте только листы, нужные для её понимания, и загрузите снова.",
+      "error_unsupported_type": "Принимаются только файлы PDF, Word (DOCX), PowerPoint (PPTX) и Excel (XLSX).",
+      "error_file_too_large": "Файл больше {maxSize} МБ."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Попросите меня помочь с содержанием вашего курса: набросайте уроки, сформулируйте вопросы или спланируйте курс на основе документа.",
     "input_placeholder": "Спросите ИИ-помощника...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Прикрепите документ (PDF, DOCX, PPTX)",
+    "attach_document": "Прикрепите документ (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Обновите, чтобы загружать документы",
     "tokens_exhausted": "Достигнут месячный лимит токенов AI.",
     "tokens_exhausted_buy_more": "Купить ещё",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Подготовка шаблонной формы",
         "fetch_documentation_url": "Чтение страницы документации",
         "fetch_documentation_url_with_url": "Чтение {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Просмотр таблицы"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Шаблон формы готов.",
-        "fetch_documentation_url": "Прочитать {url}"
+        "fetch_documentation_url": "Прочитать {url}",
+        "inspect_spreadsheet_range": "Просмотрен диапазон {ref} в «{title}»",
+        "inspect_spreadsheet_trace": "Отслежено, откуда берётся {ref} в «{title}»",
+        "inspect_spreadsheet_dependents": "Проверено, где используется {ref} в «{title}»",
+        "inspect_spreadsheet_find": "Выполнен поиск «{query}» в «{title}»",
+        "inspect_spreadsheet_sheet": "Прочитан лист «{sheet}» из «{title}»"
       }
     },
     "student_empty_state": "Спросите меня о чем-нибудь об этом курсе — получите объяснения, пройдите тест или подведите итог прочитанному.",

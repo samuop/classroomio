@@ -84,6 +84,33 @@ export const searchDocumentParam = z.object({
  * seguir sin llevar la cuenta: la lectura vuelve numerada, así que continuar es
  * pedir desde la última línea que vio.
  */
+/**
+ * Mirar adentro de una planilla de Excel que es fuente del curso.
+ *
+ * Todo opcional salvo la fuente y la acción: cada acción usa campos distintos, y
+ * lo que falte se contesta como error legible (ver `inspect_spreadsheet`).
+ */
+export const inspectSpreadsheetParam = z.object({
+  sourceId: z
+    .string()
+    .min(1)
+    .describe('The id of an Excel source, copied exactly from the "## Course Sources — index" list.'),
+  action: z
+    .enum(['range', 'trace', 'dependents', 'find', 'sheet'])
+    .describe(
+      'range: values and formulas of a cell or range. trace: where a cell value comes from, step by step back to typed data and other files. dependents: every formula, dropdown, pivot table and chart that uses a cell or range. find: cells whose value or formula contains a text. sheet: one sheet in full detail.'
+    ),
+  ref: z
+    .string()
+    .optional()
+    .describe(
+      'For range, trace and dependents: a cell or range as written in Excel ("B7", "Ventas!H2:H20", "\'Resumen mensual\'!B7"), a defined name ("IVA") or a table column ("TablaProductos[Costo]").'
+    ),
+  sheet: z.string().optional().describe('The sheet, when ref does not name it. For action "sheet", the sheet to show.'),
+  query: z.string().optional().describe('For find: the text to look for, in values and in formulas (case and accents ignored).'),
+  depth: z.number().int().min(1).max(5).optional().describe('For trace: how many steps back to follow. Defaults to 3.')
+});
+
 export const readSourceParam = z.object({
   sourceId: z
     .string()

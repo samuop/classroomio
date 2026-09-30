@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {Jeg har tilføjet kilden {names}. Lav planen om, så den bliver brugt.} other {Jeg har tilføjet kilderne {names}. Lav planen om, så de bliver brugt.}}",
       "error_source_limit": "Dette kursus har allerede 100 kilder: slet en, før du tilføjer en ny.",
       "upload_failed": "Filen kunne ikke uploades. Prøv igen.",
-      "research_left_out_by_limit": "Kurset har nået grænsen på 100 kilder: {count} sider fra søgningen kom ikke med. Slet en kilde, hvis du vil tilføje dem."
+      "research_left_out_by_limit": "Kurset har nået grænsen på 100 kilder: {count} sider fra søgningen kom ikke med. Slet en kilde, hvis du vil tilføje dem.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Regnearket er beskyttet med adgangskode eller er en gammel .xls-fil: gem det som .xlsx uden adgangskode, og upload det igen.",
+      "error_spreadsheet_invalid": "Filen er ikke en gyldig Excel-projektmappe (.xlsx).",
+      "error_spreadsheet_too_large": "Regnearket er for stort til at blive læst helt: behold kun de ark, der skal til for at forstå det, og upload det igen.",
+      "error_unsupported_type": "Kun PDF, Word (DOCX), PowerPoint (PPTX) og Excel (XLSX) accepteres.",
+      "error_file_too_large": "Filen er større end {maxSize} MB."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Bed mig om at hjælpe med dit kursusindhold - lav lektioner, generer spørgsmål, eller planlæg et kursus ud fra et dokument.",
     "input_placeholder": "Spørg AI-assistenten...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Vedhæft et dokument (PDF, DOCX, PPTX)",
+    "attach_document": "Vedhæft et dokument (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Opgrader for at uploade dokumenter",
     "tokens_exhausted": "Månedlig AI-token-grænse nået.",
     "tokens_exhausted_buy_more": "Køb mere",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Udarbejdelse af skabelonformular",
         "fetch_documentation_url": "Læse dokumenter side",
         "fetch_documentation_url_with_url": "Læser {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Gennemgår regnearket"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Skabelonformular klar",
-        "fetch_documentation_url": "Læs {url}"
+        "fetch_documentation_url": "Læs {url}",
+        "inspect_spreadsheet_range": "Så på {ref} i “{title}”",
+        "inspect_spreadsheet_trace": "Sporede, hvor {ref} kommer fra i “{title}”",
+        "inspect_spreadsheet_dependents": "Tjekkede, hvor {ref} bruges i “{title}”",
+        "inspect_spreadsheet_find": "Søgte efter “{query}” i “{title}”",
+        "inspect_spreadsheet_sheet": "Læste arket “{sheet}” i “{title}”"
       }
     },
     "student_empty_state": "Spørg mig om noget om dette kursus - få forklaringer, quiz dig selv, eller opsummer det, du læser.",

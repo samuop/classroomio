@@ -1,5 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
+import { vi } from 'vitest';
+
+// Cada prueba espera, a propósito, lo que tarda la ronda del servidor en
+// terminar: unos 4 s aislada. Con toda la tanda corriendo a la vez se pasaba de
+// los 5 s por defecto (medido el 2026-09-30) sin que nada estuviera roto.
+vi.setConfig({ testTimeout: 15_000 });
 
 import AiCourseChat from './ai-course-chat.svelte';
 import { pantallaDelPlan } from './utils/plan-screen.svelte';

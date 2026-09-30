@@ -200,7 +200,7 @@
     "empty_state": "Pedime ayuda con tu curso: redactar lecciones, armar preguntas o planificarlo a partir de un documento.",
     "input_placeholder": "Escribile al asistente…",
     "quote_lesson_note": "Citar en el asistente",
-    "attach_document": "Adjuntar un documento (PDF, DOCX, PPTX)",
+    "attach_document": "Adjuntar un documento (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Actualizar para cargar documentos",
     "tokens_exhausted": "Se alcanzó el límite mensual de tokens de IA.",
     "tokens_exhausted_buy_more": "Comprar más",
@@ -293,7 +293,8 @@
         "get_lesson_content_named": "Leyendo «{title}»",
         "edit_lesson_content_named": "Editando «{title}»",
         "replace_lesson_block_named": "Editando «{title}»",
-        "update_lesson_content_named": "Actualizando «{title}»"
+        "update_lesson_content_named": "Actualizando «{title}»",
+        "inspect_spreadsheet": "Revisando la planilla"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# carácter} other {# caracteres}})",
@@ -338,7 +339,12 @@
         "delete_lesson": "Lección borrada: {title}",
         "delete_exercise": "Ejercicio borrado: {title}",
         "delete_section": "Sección borrada: {title}",
-        "read_lessons": "Se {count, plural, one {leyó # lección} other {leyeron # lecciones}}"
+        "read_lessons": "Se {count, plural, one {leyó # lección} other {leyeron # lecciones}}",
+        "inspect_spreadsheet_range": "Se revisó {ref} de «{title}»",
+        "inspect_spreadsheet_trace": "Se rastreó de dónde sale {ref} en «{title}»",
+        "inspect_spreadsheet_dependents": "Se buscó dónde se usa {ref} en «{title}»",
+        "inspect_spreadsheet_find": "Se buscó «{query}» en «{title}»",
+        "inspect_spreadsheet_sheet": "Se leyó la hoja «{sheet}» de «{title}»"
       }
     },
     "student_empty_state": "Preguntame lo que quieras sobre este curso: explicaciones, práctica o un resumen de lo que estás leyendo.",
@@ -2853,7 +2859,7 @@
         "source": {
           "document_label": "Material de referencia (opcional)",
           "dropzone": "Arrastrá y soltá archivos acá, o hacé clic para buscar",
-          "document_hint": "PDF, DOCX o PPTX — hasta 10 archivos. Los usaremos como fuente de tu curso.",
+          "document_hint": "PDF, DOCX, PPTX o Excel (XLSX) — hasta 10 archivos. Los usaremos como fuente de tu curso.",
           "uploading": "Subiendo…",
           "count": "{count} de {max} archivos agregados",
           "too_many": "Podés agregar hasta {max} archivos. Quitá uno para agregar otro.",
@@ -2948,7 +2954,7 @@
         },
         "source": {
           "document_label": "Subir un documento",
-          "document_hint": "PDF, DOCX o PPTX — máx. 5MB.",
+          "document_hint": "PDF, DOCX, PPTX o Excel (XLSX) — máx. 5MB.",
           "upload_button": "Elegir archivo",
           "too_large": "El archivo es demasiado grande. Tamaño máximo 25MB.",
           "upload_failed": "No se pudo subir el archivo. Inténtalo de nuevo.",
@@ -3056,7 +3062,7 @@
     },
     "sources": {
       "heading": "Fuentes del curso",
-      "description": "Documentos que el asistente de IA puede leer al planificar y construir este curso. Subí PDFs, presentaciones (PPTX) o archivos Word (DOCX). El agente los usará como fuente de verdad al generar lecciones, ejercicios y evaluaciones.",
+      "description": "Documentos que el asistente de IA puede leer al planificar y construir este curso. Subí PDFs, presentaciones (PPTX), archivos Word (DOCX) o planillas de Excel (XLSX): de una planilla entiende las hojas, las fórmulas y cómo se conectan. El agente los usará como fuente de verdad al generar lecciones, ejercicios y evaluaciones.",
       "upload_cta": "Agregar fuente",
       "uploading": "Subiendo fuente…",
       "empty_title": "Aún no hay fuentes",
@@ -3078,7 +3084,7 @@
       "meta_docx": "DOCX",
       "meta_pptx": "PPTX",
       "drop_zone_title": "Soltá archivos para subirlos como fuentes",
-      "drop_zone_hint": "PDF, DOCX o PPTX de hasta {maxSize}MB cada uno",
+      "drop_zone_hint": "PDF, DOCX, PPTX o XLSX de hasta {maxSize}MB cada uno",
       "tab_file": "Archivo",
       "tab_url": "Página web",
       "tab_research": "Investigar",
@@ -3108,7 +3114,13 @@
       "plan_notice_prompt": "{count, plural, one {Agregué la fuente {names}. Rehacé el plan para usarla.} other {Agregué las fuentes {names}. Rehacé el plan para usarlas.}}",
       "error_source_limit": "Este curso ya tiene 100 fuentes: borrá alguna antes de agregar otra.",
       "upload_failed": "No se pudo subir el archivo. Intentá de nuevo.",
-      "research_left_out_by_limit": "El curso llegó al tope de 100 fuentes: {count} páginas de la investigación quedaron afuera. Borrá alguna fuente si querés sumarlas."
+      "research_left_out_by_limit": "El curso llegó al tope de 100 fuentes: {count} páginas de la investigación quedaron afuera. Borrá alguna fuente si querés sumarlas.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "La planilla tiene contraseña o es un .xls viejo: guardala como .xlsx sin contraseña y subila de nuevo.",
+      "error_spreadsheet_invalid": "El archivo no es una planilla de Excel válida (.xlsx).",
+      "error_spreadsheet_too_large": "La planilla es demasiado grande para leerla entera: dejá sólo las hojas que hacen falta para entenderla y subila de nuevo.",
+      "error_unsupported_type": "Sólo se aceptan PDF, Word (DOCX), PowerPoint (PPTX) y Excel (XLSX).",
+      "error_file_too_large": "El archivo pesa más de {maxSize} MB."
     },
     "load_error": {
       "title": "No pudimos abrir este curso",

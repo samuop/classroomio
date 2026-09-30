@@ -5,6 +5,7 @@ import { extractoDeProsa } from '@api/services/agent/pagina-sin-contenido';
 import { encolarResumen, leerResumenesGuardados } from '@api/services/agent/resumenes-de-fuentes';
 import { computeContentHash } from '@api/utils/redis/key-generators';
 import type { RedisClient } from '@api/utils/redis/redis';
+import { esPlanilla } from '@api/services/agent/planilla/tipos';
 
 /**
  * El índice de fuentes: qué material tiene el curso, sin el material.
@@ -37,8 +38,14 @@ import type { RedisClient } from '@api/utils/redis/redis';
  * construir, editar, corregir, agregar una sección, contestar una pregunta.
  */
 
-/** Cómo llegó a texto lo que el agente va a leer. */
-export type ComoSeLeyo = 'texto' | 'vision' | 'web';
+/**
+ * Cómo llegó a texto lo que el agente va a leer.
+ *
+ * `planilla`: el texto es el MAPA de un libro de Excel, no el libro. El índice
+ * lo dice porque cambia cómo se lee: un total que no está en el mapa se busca
+ * con `inspect_spreadsheet`, no se da por inexistente.
+ */
+export type ComoSeLeyo = 'texto' | 'vision' | 'web' | 'planilla';
 
 export interface EntradaDelIndice {
   id: string;
@@ -106,16 +113,18 @@ const MAX_RESUMEN_CHARS = 240;
  * Decir «esto se leyó mirándolo» es decirle al modelo cuánta confianza tenerle
  * a lo que va a leer.
  */
-export function comoSeLeyo(doc: { text: string; sourceUrl: string | null }): ComoSeLeyo {
+export function comoSeLeyo(doc: { text: string; sourceUrl: string | null; mimeType?: string | null }): ComoSeLeyo {
+  if (esPlanilla(doc.mimeType)) return 'planilla';
   if (esLecturaVisual(doc.text)) return 'vision';
   if (doc.sourceUrl) return 'web';
 
   return 'texto';
 }
 
-function describirLectura(entrada: EntradaDelIndice): string {
+export function describirLectura(entrada: EntradaDelIndice): string {
+  const planilla = entrada.comoSeLeyo === 'planilla';
   const tamano = [
-    entrada.pageCount ? `${entrada.pageCount} page(s)` : null,
+    entrada.pageCount ? `${entrada.pageCount} ${planilla ? 'sheet(s)' : 'page(s)'}` : null,
     `${entrada.words.toLocaleString('en-US')} words`
   ]
     .filter(Boolean)
@@ -126,7 +135,9 @@ function describirLectura(entrada: EntradaDelIndice): string {
       ? 'read VISUALLY — the file had no extractable text, so the pages were transcribed from the images'
       : entrada.comoSeLeyo === 'web'
         ? 'fetched from a web page'
-        : 'text extracted from the file';
+        : planilla
+          ? 'EXCEL WORKBOOK — its text is a MAP of the workbook (sheets, which sheet feeds which, named ranges, formulas in Spanish, sample rows), not every cell. To see any range, trace where a number comes from or find who uses a cell, call inspect_spreadsheet with this id'
+          : 'text extracted from the file';
 
   return `${tamano}, ${lectura}`;
 }

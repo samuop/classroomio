@@ -493,11 +493,15 @@ export const MAX_OUTPUT_TOKENS_STUDENT = 4096;
 export const SUPPORTED_DOCUMENT_TYPES = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // Planillas de Excel: se leen como libro (hojas, fórmulas, flujo de datos),
+  // no como texto. Ver `apps/api/src/services/agent/planilla/`.
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12'
 ] as const;
 
 /** Supported file extensions for document upload */
-export const SUPPORTED_DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.pptx'] as const;
+export const SUPPORTED_DOCUMENT_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.xlsx', '.xlsm'] as const;
 
 /** Token cost estimation heuristics (tokens per item) */
 export const TOKEN_COST_ESTIMATES = {

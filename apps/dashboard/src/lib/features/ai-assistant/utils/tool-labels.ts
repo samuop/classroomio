@@ -58,6 +58,7 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'search_web',
   'generate_image',
   'read_source',
+  'inspect_spreadsheet',
   'search_document',
   'delete_lesson',
   'delete_exercise',
@@ -174,6 +175,23 @@ export function getCompletedToolLine(toolName: string, result: unknown): ToolLin
           total: readPositiveInt(r, 'totalLines')
         }
       };
+    // Qué miró de la planilla, con la celda o el texto: «Se rastreó de dónde sale
+    // B7 en «almacen.xlsx»» le dice a la docente sobre qué se apoya la explicación.
+    case 'inspect_spreadsheet': {
+      const accion = readString(r, 'action');
+      const acciones = ['range', 'trace', 'dependents', 'find', 'sheet'];
+
+      return {
+        shape: 'i18n',
+        key: `ai_assistant.tool.done.inspect_spreadsheet_${accion && acciones.includes(accion) ? accion : 'range'}`,
+        vars: {
+          title: readString(r, 'fileName') ?? '',
+          ref: readString(r, 'ref') ?? '',
+          query: readString(r, 'query') ?? '',
+          sheet: readString(r, 'sheet') ?? ''
+        }
+      };
+    }
     case 'update_section':
       return {
         shape: 'i18n',

@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {J'ai ajouté la source {names}. Refais le plan pour l'utiliser.} other {J'ai ajouté les sources {names}. Refais le plan pour les utiliser.}}",
       "error_source_limit": "Ce cours a déjà 100 sources : supprimez-en une avant d'en ajouter une autre.",
       "upload_failed": "Le fichier n'a pas pu être envoyé. Réessayez.",
-      "research_left_out_by_limit": "Le cours a atteint sa limite de 100 sources : {count} pages de la recherche ont été laissées de côté. Supprimez une source si vous voulez les ajouter."
+      "research_left_out_by_limit": "Le cours a atteint sa limite de 100 sources : {count} pages de la recherche ont été laissées de côté. Supprimez une source si vous voulez les ajouter.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Le classeur est protégé par un mot de passe ou est un ancien fichier .xls : enregistrez-le en .xlsx sans mot de passe et importez-le à nouveau.",
+      "error_spreadsheet_invalid": "Le fichier n'est pas un classeur Excel valide (.xlsx).",
+      "error_spreadsheet_too_large": "Le classeur est trop volumineux pour être lu en entier : ne gardez que les feuilles nécessaires pour le comprendre et importez-le à nouveau.",
+      "error_unsupported_type": "Seuls les fichiers PDF, Word (DOCX), PowerPoint (PPTX) et Excel (XLSX) sont acceptés.",
+      "error_file_too_large": "Le fichier dépasse {maxSize} Mo."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Demandez-moi de vous aider avec le contenu de votre cours : rédigez des leçons, générez des questions ou planifiez un cours à partir d'un document.",
     "input_placeholder": "Demandez à l'assistant IA...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Joindre un document (PDF, DOCX, PPTX)",
+    "attach_document": "Joindre un document (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Mise à niveau pour télécharger des documents",
     "tokens_exhausted": "Limite mensuelle de jetons IA atteinte.",
     "tokens_exhausted_buy_more": "Acheter plus",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Préparation du formulaire modèle",
         "fetch_documentation_url": "Lecture de la page de documentation",
         "fetch_documentation_url_with_url": "Lecture de {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Examen du classeur"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Formulaire modèle prêt",
-        "fetch_documentation_url": "Lire {url}"
+        "fetch_documentation_url": "Lire {url}",
+        "inspect_spreadsheet_range": "A consulté {ref} dans « {title} »",
+        "inspect_spreadsheet_trace": "A retracé l'origine de {ref} dans « {title} »",
+        "inspect_spreadsheet_dependents": "A vérifié où {ref} est utilisé dans « {title} »",
+        "inspect_spreadsheet_find": "A cherché « {query} » dans « {title} »",
+        "inspect_spreadsheet_sheet": "A lu la feuille « {sheet} » de « {title} »"
       }
     },
     "student_empty_state": "Demandez-moi n'importe quoi sur ce cours : obtenez des explications, posez-vous des questions ou résumez ce que vous lisez.",

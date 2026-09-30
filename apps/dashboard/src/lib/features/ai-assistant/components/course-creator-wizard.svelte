@@ -22,6 +22,7 @@
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
   import { armarMensajeInicial } from '$features/ai-assistant/utils/mensaje-inicial';
   import { claveDelErrorDeFuente } from '$features/ai-assistant/utils/errores-del-chat';
+  import { ACEPTA_FUENTES } from '$features/ai-assistant/utils/tipos-de-fuente';
   import type { TCourseType } from '@cio/db/types';
 
   const EXAMPLE_PROMPT_KEYS = [
@@ -31,8 +32,7 @@
     'course.creator.examples.product_demo'
   ];
 
-  const ACCEPT =
-    '.pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const ACCEPT = ACEPTA_FUENTES;
   const MAX_FILE_SIZE = MAX_AGENT_DOCUMENT_SIZE;
   /**
    * Cuántos archivos se suben a mano al crear el curso. Muy por debajo del tope

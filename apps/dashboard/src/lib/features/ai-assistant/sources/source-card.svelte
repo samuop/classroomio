@@ -11,6 +11,7 @@
   import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import { formatDisplayDate } from '$lib/utils/functions/date';
+  import { esPlanilla } from '../utils/tipos-de-fuente';
 
   let {
     source,
@@ -36,6 +37,7 @@
       return t.get('course.sources.meta_docx');
     if (source.mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
       return t.get('course.sources.meta_pptx');
+    if (esPlanilla(source.mimeType)) return t.get('course.sources.meta_xlsx');
     return source.mimeType;
   });
 

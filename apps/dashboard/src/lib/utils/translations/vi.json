@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, =1 {Tôi đã thêm nguồn {names}. Hãy lập lại kế hoạch để dùng nguồn này.} other {Tôi đã thêm các nguồn {names}. Hãy lập lại kế hoạch để dùng các nguồn này.}}",
       "error_source_limit": "Khóa học này đã có 100 nguồn: hãy xóa bớt một nguồn trước khi thêm nguồn khác.",
       "upload_failed": "Không thể tải tệp lên. Vui lòng thử lại.",
-      "research_left_out_by_limit": "Khóa học đã đạt giới hạn 100 nguồn: {count} trang từ lượt tìm kiếm không được thêm. Hãy xóa bớt một nguồn nếu muốn thêm chúng."
+      "research_left_out_by_limit": "Khóa học đã đạt giới hạn 100 nguồn: {count} trang từ lượt tìm kiếm không được thêm. Hãy xóa bớt một nguồn nếu muốn thêm chúng.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Bảng tính có mật khẩu hoặc là tệp .xls cũ: hãy lưu thành .xlsx không có mật khẩu rồi tải lên lại.",
+      "error_spreadsheet_invalid": "Tệp không phải là sổ làm việc Excel hợp lệ (.xlsx).",
+      "error_spreadsheet_too_large": "Bảng tính quá lớn để đọc toàn bộ: chỉ giữ lại các trang tính cần thiết để hiểu nó rồi tải lên lại.",
+      "error_unsupported_type": "Chỉ chấp nhận tệp PDF, Word (DOCX), PowerPoint (PPTX) và Excel (XLSX).",
+      "error_file_too_large": "Tệp lớn hơn {maxSize} MB."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Hãy yêu cầu tôi trợ giúp về nội dung khóa học của bạn — soạn thảo bài học, tạo câu hỏi hoặc lên kế hoạch cho khóa học từ một tài liệu.",
     "input_placeholder": "Hãy hỏi trợ lý AI...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Đính kèm tài liệu (PDF, DOCX, PPTX)",
+    "attach_document": "Đính kèm tài liệu (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Nâng cấp để tải lên tài liệu",
     "tokens_exhausted": "Đã đạt đến giới hạn mã thông báo AI hàng tháng.",
     "tokens_exhausted_buy_more": "Mua thêm",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Chuẩn bị mẫu biểu mẫu",
         "fetch_documentation_url": "Trang đọc tài liệu",
         "fetch_documentation_url_with_url": "Đang đọc {url}",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Đang xem bảng tính"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Mẫu biểu đã sẵn sàng",
-        "fetch_documentation_url": "Đọc {url}"
+        "fetch_documentation_url": "Đọc {url}",
+        "inspect_spreadsheet_range": "Đã xem {ref} trong “{title}”",
+        "inspect_spreadsheet_trace": "Đã truy nguồn gốc của {ref} trong “{title}”",
+        "inspect_spreadsheet_dependents": "Đã kiểm tra nơi {ref} được dùng trong “{title}”",
+        "inspect_spreadsheet_find": "Đã tìm “{query}” trong “{title}”",
+        "inspect_spreadsheet_sheet": "Đã đọc trang tính “{sheet}” của “{title}”"
       }
     },
     "student_empty_state": "Hãy hỏi tôi bất cứ điều gì về khóa học này - nhận lời giải thích, tự kiểm tra hoặc tóm tắt những gì bạn đang đọc.",

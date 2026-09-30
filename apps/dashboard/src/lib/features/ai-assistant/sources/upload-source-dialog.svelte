@@ -9,6 +9,7 @@
   import { aiAssistantApi } from '../api/ai-assistant.svelte';
   import { sourcesApi } from '../api/sources.svelte';
   import { claveDelErrorDeFuente } from '../utils/errores-del-chat';
+  import { ACEPTA_FUENTES, esFuenteAceptada } from '../utils/tipos-de-fuente';
   import { snackbar } from '$features/ui/snackbar/store';
   import { MAX_AGENT_DOCUMENT_SIZE } from '@cio/ai-assistant';
 
@@ -72,12 +73,6 @@
   );
   const isBusy = $derived(isUploading || isAddingUrl || isResearching);
 
-  const ALLOWED_MIME_TYPES = [
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-  ] as const;
-
   const MAX_FILE_SIZE = MAX_AGENT_DOCUMENT_SIZE;
   const MAX_FILE_SIZE_MB = Math.round((MAX_FILE_SIZE / (1024 * 1024)) * 10) / 10;
 
@@ -103,7 +98,7 @@
   }
 
   function validateFile(file: File): string | null {
-    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(file.type)) {
+    if (!esFuenteAceptada(file)) {
       return 'unsupported_file_type';
     }
     if (file.size > MAX_FILE_SIZE) {
@@ -349,7 +344,7 @@
         <Input
           bind:ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          accept={ACEPTA_FUENTES}
           onchange={handleFileInput}
           class="hidden"
         />
@@ -371,15 +366,9 @@
     {/if}
 
     {#if localError === 'unsupported_file_type'}
-      <p class="ui:text-destructive mt-2 text-xs">
-        {$t('course.sources.meta_pdf')} / {$t('course.sources.meta_docx')} / {$t(
-          'course.sources.meta_pptx'
-        )} only
-      </p>
+      <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.error_unsupported_type')}</p>
     {:else if localError === 'file_too_large'}
-      <p class="ui:text-destructive mt-2 text-xs">
-        File exceeds {MAX_FILE_SIZE_MB}MB
-      </p>
+      <p class="ui:text-destructive mt-2 text-xs">{$t('course.sources.error_file_too_large', { maxSize: MAX_FILE_SIZE_MB })}</p>
     {:else if localError === 'upload_failed'}
       <!-- Decía «No se pudo eliminar la fuente» ante una subida fallida. -->
       <p class="ui:text-destructive mt-2 text-xs" data-upload-error>{$t(claveDeErrorDeSubida)}</p>

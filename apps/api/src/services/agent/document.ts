@@ -43,6 +43,9 @@ import { getFromS3, uploadToS3 } from '@api/utils/s3';
 import { getStorageConfig } from '@api/config/storage';
 import { createAssetFromUploadService } from '@api/services/assets/assets';
 import { getAssetsByIds } from '@cio/db/queries/assets';
+import { leerLibro, PlanillaIlegibleError, type MotivoIlegible } from '@api/services/agent/planilla/leer-libro';
+import { mapaDelLibro } from '@api/services/agent/planilla/mapa-del-libro';
+import { tipoDelArchivo, TIPO_XLSM, TIPO_XLSX } from '@api/services/agent/planilla/tipos';
 
 /**
  * Versión del lector de archivos.
@@ -152,10 +155,10 @@ export interface ParsedDocument {
  * not store anything — callers persist as needed. Throws 415/413 on bad input.
  */
 export async function parseDocument(file: File): Promise<ParsedDocument> {
-  const mimeType = file.type;
+  const mimeType = tipoDelArchivo(file.name, file.type);
 
   if (!SUPPORTED_DOCUMENT_TYPES.includes(mimeType as (typeof SUPPORTED_DOCUMENT_TYPES)[number])) {
-    throw new AppError('Unsupported file type. Allowed: PDF, DOCX, PPTX', 'UNSUPPORTED_FILE_TYPE', 415);
+    throw new AppError('Unsupported file type. Allowed: PDF, DOCX, PPTX, XLSX', 'UNSUPPORTED_FILE_TYPE', 415);
   }
 
   if (file.size > MAX_AGENT_DOCUMENT_SIZE) {
@@ -179,6 +182,13 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
       break;
     case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
       ({ text: extractedText, pageCount } = await extractPptxText(buffer));
+      break;
+    case TIPO_XLSX:
+    case TIPO_XLSM:
+      // El texto de una planilla es su mapa: cómo está armada, de dónde sale
+      // cada dato y sus fórmulas en castellano. El libro entero queda en el
+      // original, que el asistente consulta con `inspect_spreadsheet`.
+      ({ text: extractedText, pageCount } = await extractSpreadsheetMap(buffer, file.name));
       break;
     default:
       throw new AppError('Unsupported file type', 'UNSUPPORTED_FILE_TYPE', 415);
@@ -914,23 +924,7 @@ export async function releerFuente(params: {
 
   if (!doc.assetId && doc.sourceUrl) return releerPaginaWeb(doc, doc.sourceUrl, params);
 
-  if (!doc.assetId) {
-    throw new AppError('This source has no stored file nor web address to re-read', 'SOURCE_HAS_NO_FILE', 400);
-  }
-
-  const [asset] = await getAssetsByIds([doc.assetId]);
-
-  if (!asset?.storageKey) {
-    throw new AppError('The original file is no longer in storage', 'SOURCE_FILE_MISSING', 410);
-  }
-
-  const descarga = await getFromS3({ Bucket: getStorageConfig().bucketDocuments, Key: asset.storageKey });
-
-  if (!descarga.success || !descarga.data?.Body) {
-    throw new AppError('Could not read the original file from storage', 'SOURCE_FILE_UNREADABLE', 502);
-  }
-
-  const bytes = Buffer.from(await descarga.data.Body.transformToByteArray());
+  const bytes = await bajarArchivoOriginal(doc);
   const archivo = new File([bytes], doc.fileName, { type: doc.mimeType });
   const leido = await parseDocument(archivo);
   const contentHash = computeContentHash(leido.text);
@@ -967,6 +961,32 @@ export async function releerFuente(params: {
     pageCount: leido.pageCount,
     wordCount: leido.wordCount
   };
+}
+
+/**
+ * Los bytes del archivo que se subió como fuente, bajados del almacenamiento.
+ *
+ * Lo usan releer una fuente y la consulta de planillas, que necesita el libro
+ * entero y no el mapa que quedó como texto.
+ */
+export async function bajarArchivoOriginal(doc: Pick<ChatDocumentRecord, 'assetId'>): Promise<Buffer<ArrayBuffer>> {
+  if (!doc.assetId) {
+    throw new AppError('This source has no stored file nor web address to re-read', 'SOURCE_HAS_NO_FILE', 400);
+  }
+
+  const [asset] = await getAssetsByIds([doc.assetId]);
+
+  if (!asset?.storageKey) {
+    throw new AppError('The original file is no longer in storage', 'SOURCE_FILE_MISSING', 410);
+  }
+
+  const descarga = await getFromS3({ Bucket: getStorageConfig().bucketDocuments, Key: asset.storageKey });
+
+  if (!descarga.success || !descarga.data?.Body) {
+    throw new AppError('Could not read the original file from storage', 'SOURCE_FILE_UNREADABLE', 502);
+  }
+
+  return Buffer.from(await descarga.data.Body.transformToByteArray());
 }
 
 /** El hash con que se guardó el texto de una fuente; las filas viejas no lo tienen y se calcula. */
@@ -1078,6 +1098,25 @@ export async function getDocumentSummary(
 }
 
 // ─── Extraction Helpers ──────────────────────────────────────────────────────
+
+/** Por qué no se pudo leer una planilla, con el código que el panel traduce. */
+const CODIGOS_DE_PLANILLA: Record<MotivoIlegible, string> = {
+  protegido: 'SPREADSHEET_PROTECTED',
+  'no-es-xlsx': 'SPREADSHEET_INVALID',
+  'muy-grande': 'SPREADSHEET_TOO_LARGE'
+};
+
+async function extractSpreadsheetMap(buffer: Buffer, fileName: string): Promise<{ text: string; pageCount: number }> {
+  try {
+    const libro = await leerLibro(buffer);
+    return { text: mapaDelLibro(libro, fileName), pageCount: libro.hojas.length };
+  } catch (error) {
+    if (error instanceof PlanillaIlegibleError) {
+      throw new AppError(error.message, CODIGOS_DE_PLANILLA[error.motivo], 422);
+    }
+    throw error;
+  }
+}
 
 async function extractPdfText(buffer: Buffer): Promise<{ text: string; pageCount: number }> {
   const pdfParse = (await import('pdf-parse')).default;

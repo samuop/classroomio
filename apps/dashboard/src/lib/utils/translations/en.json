@@ -2254,7 +2254,7 @@
         "source": {
           "document_label": "Reference material (optional)",
           "dropzone": "Drag & drop files here, or click to browse",
-          "document_hint": "PDF, DOCX or PPTX — up to 10 files. We'll use them as the source for your course.",
+          "document_hint": "PDF, DOCX, PPTX or Excel (XLSX) — up to 10 files. We'll use them as the source for your course.",
           "uploading": "Uploading…",
           "count": "{count} of {max} files added",
           "too_many": "You can add up to {max} files. Remove one to add another.",
@@ -2349,7 +2349,7 @@
         },
         "source": {
           "document_label": "Upload a document",
-          "document_hint": "PDF, DOCX, or PPTX — max 5MB.",
+          "document_hint": "PDF, DOCX, PPTX, or Excel (XLSX) — max 5MB.",
           "upload_button": "Choose file",
           "too_large": "File is too large. Maximum size is 25MB.",
           "upload_failed": "Couldn't upload the file. Try again.",
@@ -4150,7 +4150,7 @@
     },
     "sources": {
       "heading": "Course sources",
-      "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), or Word files (DOCX). The agent will use them as the source of truth when generating lessons, exercises, and assessments.",
+      "description": "Documents the AI assistant can read while planning and building this course. Upload PDFs, slide decks (PPTX), Word files (DOCX), or Excel workbooks (XLSX): from a workbook it understands the sheets, the formulas and how they connect. The agent will use them as the source of truth when generating lessons, exercises, and assessments.",
       "upload_cta": "Add source",
       "uploading": "Uploading source…",
       "empty_title": "No sources yet",
@@ -4172,7 +4172,7 @@
       "meta_docx": "DOCX",
       "meta_pptx": "PPTX",
       "drop_zone_title": "Drop files to upload as sources",
-      "drop_zone_hint": "PDF, DOCX, or PPTX up to {maxSize}MB each",
+      "drop_zone_hint": "PDF, DOCX, PPTX, or XLSX up to {maxSize}MB each",
       "tab_file": "File",
       "tab_url": "Web page",
       "tab_research": "Research",
@@ -4202,7 +4202,13 @@
       "plan_notice_prompt": "{count, plural, one {I added the source {names}. Redo the plan to use it.} other {I added the sources {names}. Redo the plan to use them.}}",
       "error_source_limit": "This course already has 100 sources: delete one before adding another.",
       "upload_failed": "The file could not be uploaded. Please try again.",
-      "research_left_out_by_limit": "The course reached its limit of 100 sources: {count} pages from the research were left out. Delete a source if you want to add them."
+      "research_left_out_by_limit": "The course reached its limit of 100 sources: {count} pages from the research were left out. Delete a source if you want to add them.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "The spreadsheet is password-protected or an old .xls file: save it as .xlsx without a password and upload it again.",
+      "error_spreadsheet_invalid": "The file is not a valid Excel workbook (.xlsx).",
+      "error_spreadsheet_too_large": "The spreadsheet is too large to read in full: keep only the sheets needed to understand it and upload it again.",
+      "error_unsupported_type": "Only PDF, Word (DOCX), PowerPoint (PPTX) and Excel (XLSX) files are accepted.",
+      "error_file_too_large": "The file is larger than {maxSize} MB."
     },
     "load_error": {
       "title": "We couldn't open this course",
@@ -5132,7 +5138,7 @@
     "generic_working": "Working",
     "input_placeholder": "Message the assistant…",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Attach a document (PDF, DOCX, PPTX)",
+    "attach_document": "Attach a document (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Upgrade to upload documents",
     "tokens_exhausted": "Monthly AI token limit reached.",
     "tokens_exhausted_buy_more": "Buy more",
@@ -5253,7 +5259,8 @@
         "get_lesson_content_named": "Reading \"{title}\"",
         "edit_lesson_content_named": "Editing \"{title}\"",
         "replace_lesson_block_named": "Editing \"{title}\"",
-        "update_lesson_content_named": "Updating \"{title}\""
+        "update_lesson_content_named": "Updating \"{title}\"",
+        "inspect_spreadsheet": "Looking into the spreadsheet"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -5298,7 +5305,12 @@
         "delete_lesson": "Lesson deleted: {title}",
         "delete_exercise": "Exercise deleted: {title}",
         "delete_section": "Section deleted: {title}",
-        "read_lessons": "Read {count, plural, one {# lesson} other {# lessons}}"
+        "read_lessons": "Read {count, plural, one {# lesson} other {# lessons}}",
+        "inspect_spreadsheet_range": "Looked at {ref} in \"{title}\"",
+        "inspect_spreadsheet_trace": "Traced where {ref} comes from in \"{title}\"",
+        "inspect_spreadsheet_dependents": "Checked where {ref} is used in \"{title}\"",
+        "inspect_spreadsheet_find": "Searched \"{title}\" for \"{query}\"",
+        "inspect_spreadsheet_sheet": "Read the sheet \"{sheet}\" of \"{title}\""
       }
     },
     "mention_lesson": "Lesson",

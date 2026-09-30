@@ -2218,7 +2218,13 @@
       "plan_notice_prompt": "{count, plural, one {Ich habe die Quelle {names} hinzugefügt. Erstelle den Plan neu, damit sie genutzt wird.} other {Ich habe die Quellen {names} hinzugefügt. Erstelle den Plan neu, damit sie genutzt werden.}}",
       "error_source_limit": "Dieser Kurs hat bereits 100 Quellen: Lösche eine, bevor du eine weitere hinzufügst.",
       "upload_failed": "Die Datei konnte nicht hochgeladen werden. Bitte versuche es erneut.",
-      "research_left_out_by_limit": "Der Kurs hat sein Limit von 100 Quellen erreicht: {count} Seiten aus der Recherche wurden nicht übernommen. Lösche eine Quelle, wenn du sie hinzufügen möchtest."
+      "research_left_out_by_limit": "Der Kurs hat sein Limit von 100 Quellen erreicht: {count} Seiten aus der Recherche wurden nicht übernommen. Lösche eine Quelle, wenn du sie hinzufügen möchtest.",
+      "meta_xlsx": "Excel",
+      "error_spreadsheet_protected": "Die Tabelle ist passwortgeschützt oder eine alte .xls-Datei: Speichern Sie sie als .xlsx ohne Passwort und laden Sie sie erneut hoch.",
+      "error_spreadsheet_invalid": "Die Datei ist keine gültige Excel-Arbeitsmappe (.xlsx).",
+      "error_spreadsheet_too_large": "Die Tabelle ist zu groß, um sie vollständig zu lesen: Behalten Sie nur die Blätter, die zum Verständnis nötig sind, und laden Sie sie erneut hoch.",
+      "error_unsupported_type": "Es werden nur PDF-, Word- (DOCX), PowerPoint- (PPTX) und Excel-Dateien (XLSX) akzeptiert.",
+      "error_file_too_large": "Die Datei ist größer als {maxSize} MB."
     }
   },
   "courses": {
@@ -3894,7 +3900,7 @@
     "empty_state": "Bitten Sie mich, Ihnen bei den Inhalten Ihres Kurses zu helfen – Lektionen zu entwerfen, Fragen zu generieren oder einen Kurs anhand eines Dokuments zu planen.",
     "input_placeholder": "Fragen Sie den KI-Assistenten...",
     "quote_lesson_note": "Quote in assistant",
-    "attach_document": "Ein Dokument anhängen (PDF, DOCX, PPTX)",
+    "attach_document": "Ein Dokument anhängen (PDF, DOCX, PPTX, XLSX)",
     "upgrade_to_upload": "Upgrade zum Hochladen von Dokumenten",
     "tokens_exhausted": "Das monatliche AI-Token-Limit wurde erreicht.",
     "tokens_exhausted_buy_more": "Mehr kaufen",
@@ -3954,7 +3960,8 @@
         "ask_template_questions": "Vorlageformular vorbereiten",
         "fetch_documentation_url": "Seite „Dokumente lesen“.",
         "fetch_documentation_url_with_url": "{url} wird gelesen",
-        "replace_lesson_block": "Editing the lesson"
+        "replace_lesson_block": "Editing the lesson",
+        "inspect_spreadsheet": "Tabelle wird durchgesehen"
       },
       "meta": {
         "lesson_char_count": "({count, plural, one {# character} other {# characters}})",
@@ -3986,7 +3993,12 @@
         "go_live_not_published": "Course was not published",
         "generate_course_plan": "Course plan generated",
         "ask_template_questions": "Vorlageformular fertig",
-        "fetch_documentation_url": "{url} lesen"
+        "fetch_documentation_url": "{url} lesen",
+        "inspect_spreadsheet_range": "{ref} in „{title}“ angesehen",
+        "inspect_spreadsheet_trace": "Nachverfolgt, woher {ref} in „{title}“ kommt",
+        "inspect_spreadsheet_dependents": "Geprüft, wo {ref} in „{title}“ verwendet wird",
+        "inspect_spreadsheet_find": "„{title}“ nach „{query}“ durchsucht",
+        "inspect_spreadsheet_sheet": "Blatt „{sheet}“ aus „{title}“ gelesen"
       }
     },
     "student_empty_state": "Fragen Sie mich zu diesem Kurs – holen Sie sich Erklärungen, stellen Sie selbst ein Quiz oder fassen Sie zusammen, was Sie gerade lesen.",

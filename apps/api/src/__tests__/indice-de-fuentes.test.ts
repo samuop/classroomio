@@ -24,6 +24,7 @@ import { VISION_NOTICE } from '@api/services/agent/document-vision';
 import {
   comoSeLeyo,
   decidirMaterial,
+  describirLectura,
   LINEAS_POR_LECTURA,
   MAX_LECTURA_CHARS,
   recortarLineas
@@ -42,6 +43,34 @@ describe('cómo se leyó cada fuente', () => {
 
   it('lo demás es texto extraído del archivo', () => {
     expect(comoSeLeyo({ text: 'Capítulo 1…', sourceUrl: null })).toBe('texto');
+  });
+
+  it('una planilla de Excel se dice planilla, y el índice nombra la herramienta para mirarla por dentro', () => {
+    // Su texto es el mapa del libro, no el libro: un total que no está en el
+    // mapa se consulta, no se da por inexistente.
+    const planilla = comoSeLeyo({
+      text: '# Planilla de Excel «almacen.xlsx»',
+      sourceUrl: null,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+
+    expect(planilla).toBe('planilla');
+    expect(comoSeLeyo({ text: '…', sourceUrl: null, mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12' })).toBe('planilla');
+
+    const linea = describirLectura({
+      id: 'x',
+      fileName: 'almacen.xlsx',
+      chars: 11_000,
+      words: 1_500,
+      pageCount: 6,
+      comoSeLeyo: planilla,
+      resumen: null,
+      extracto: null
+    });
+
+    expect(linea).toContain('6 sheet(s)');
+    expect(linea).toMatch(/EXCEL WORKBOOK — its text is a MAP of the workbook/);
+    expect(linea).toContain('call inspect_spreadsheet with this id');
   });
 
   it('la marca de visión sólo cuenta al principio, no en el medio', () => {

@@ -74,6 +74,7 @@ import {
   type DecisionDelParche
 } from '@api/services/agent/marcas-del-rebote';
 import { guardiaDelRebote } from '@api/services/agent/guardia-del-rebote';
+import { planillaDeLaFuente } from '@api/services/agent/planilla/planilla-de-la-fuente';
 import {
   anotarChequeo,
   crearRegistroDeAvisos,
@@ -146,6 +147,7 @@ import {
   lessonReadParam,
   readLessonsParam,
   readSourceParam,
+  inspectSpreadsheetParam,
   reorderContentParam,
   replaceBlockParam,
   updateContentParam,
@@ -1957,6 +1959,35 @@ export function buildAgentTools(
                 }
               : {})
           };
+        });
+      }
+    }),
+
+    inspect_spreadsheet: tool({
+      description:
+        'Look inside an Excel workbook that is a course source. Its text (what read_source returns) is only a MAP of the workbook — sheets, which sheet feeds which, named ranges, formulas grouped into rules, sample rows. This tool reads the workbook itself: "range" shows the values and formulas of a range; "trace" follows where a cell value comes from, step by step back to the typed data (and warns when it comes from another file we do not have); "dependents" lists everything that uses a cell; "find" searches values and formulas; "sheet" shows one sheet in full detail. Formulas come written as a Spanish-language Excel shows them (SUMA, BUSCARV, ";"). Values are the ones Excel saved: nothing is recalculated. Use it before explaining how a number is obtained, and before writing a lesson or exercise about part of the workbook.',
+      inputSchema: inspectSpreadsheetParam,
+      execute: async (args) => {
+        return executeAgentTool('inspect_spreadsheet', { orgId, userId, courseId, args }, async () => {
+          const { fileName, consulta } = await planillaDeLaFuente(args.sourceId, courseId);
+          const pedir = (campo: string, valor: string | undefined) => {
+            if (!valor?.trim()) throw new Error(`Action "${args.action}" needs "${campo}".`);
+            return valor;
+          };
+
+          const resultado =
+            args.action === 'range'
+              ? await consulta.rango(pedir('ref', args.ref), args.sheet)
+              : args.action === 'trace'
+                ? await consulta.rastrear(pedir('ref', args.ref), args.sheet, args.depth ?? 3)
+                : args.action === 'dependents'
+                  ? consulta.quienUsa(pedir('ref', args.ref), args.sheet)
+                  : args.action === 'find'
+                    ? consulta.buscar(pedir('query', args.query))
+                    : consulta.hojaEntera(pedir('sheet', args.sheet));
+
+          // Qué se consultó viaja con el resultado: el chat lo muestra en su renglón.
+          return { fileName, action: args.action, ref: args.ref, sheet: args.sheet, query: args.query, result: resultado };
         });
       }
     }),

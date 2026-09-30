@@ -86,7 +86,12 @@ export interface CourseSource {
 /** Ver `CourseSource.cacheEligibility`. Espeja la política del servidor. */
 export type CacheEligibility = 'too_small' | 'cache' | 'over_limit';
 
-export type CourseSourceMimeType = 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+export type CourseSourceMimeType =
+  | 'application/pdf'
+  | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  | 'application/vnd.ms-excel.sheet.macroEnabled.12';
 
 export interface CourseSourcesListSuccess {
   success: true;

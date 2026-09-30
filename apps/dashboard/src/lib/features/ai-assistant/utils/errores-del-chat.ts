@@ -127,6 +127,11 @@ export function claveDelErrorDeFuente(errorCrudo: string | null | undefined, por
   // El curso ya tiene todas las fuentes que puede tener: ninguna se borra sola
   // para hacerle lugar a otra, lo decide la docente.
   if (cuerpo?.code === 'SOURCE_LIMIT_REACHED') return 'course.sources.error_source_limit';
+  // Una planilla que no se pudo leer: con contraseña (o un .xls viejo), un
+  // archivo que no es un Excel, o una tan grande que no se lee entera.
+  if (cuerpo?.code === 'SPREADSHEET_PROTECTED') return 'course.sources.error_spreadsheet_protected';
+  if (cuerpo?.code === 'SPREADSHEET_INVALID') return 'course.sources.error_spreadsheet_invalid';
+  if (cuerpo?.code === 'SPREADSHEET_TOO_LARGE') return 'course.sources.error_spreadsheet_too_large';
   if (errorCrudo === MENSAJE_DE_TIEMPO_AGOTADO) return 'ai_assistant.error_timeout';
 
   return porDefecto;
