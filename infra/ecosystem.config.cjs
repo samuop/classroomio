@@ -26,6 +26,14 @@ const NODE_HEAP = '--max-old-space-size=384';
 // acá es idempotente y homogéneo.) PM2 7.0.1 no soporta `env_file`, por eso esto.
 const WITH_DOTENV = `${NODE_HEAP} -r dotenv/config`;
 
+// La API, con más margen que los otros dos. Con Node 24 una ronda del asistente
+// la llevó a 484 MB de memoria y PM2 la reinició por pasar el techo de 450M: la
+// ronda murió a los 100 segundos y a todo el que estaba usando la API se le
+// cortó el pedido. Pasó dos veces seguidas; con Node 20 no había pasado nunca
+// (el log de PM2 lo dice desde junio). Quieta ronda los 310 MB. El VPS tiene
+// 8 GB y en reposo quedan 6 libres.
+const API_HEAP = '--max-old-space-size=768';
+
 module.exports = {
   apps: [
     {
@@ -34,8 +42,8 @@ module.exports = {
       script: 'dist/index.js',
       exec_mode: 'fork',
       instances: 1,
-      node_args: WITH_DOTENV,
-      max_memory_restart: '450M',
+      node_args: `${API_HEAP} -r dotenv/config`,
+      max_memory_restart: '1024M',
       autorestart: true,
       watch: false,
       kill_timeout: 10000,
