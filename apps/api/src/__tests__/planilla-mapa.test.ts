@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 import JSZip from 'jszip';
 
 import { leerLibro, PlanillaIlegibleError, type LibroLeido } from '@api/services/agent/planilla/leer-libro';
@@ -48,7 +49,9 @@ describe('el libro, leído', () => {
 
     expect(ventas.validaciones).toEqual([{ rango: 'B2:B401', tipo: 'list', formula: 'ListaTurnos' }]);
     expect(ventas.notas).toEqual([{ celda: 'D1', texto: 'Unidades vendidas, sin descontar devoluciones.' }]);
-    expect(ventas.formatosCondicionales).toEqual([{ rango: 'H2:H401', reglas: ['resalta si el valor es mayor que 20000'] }]);
+    expect(ventas.formatosCondicionales).toEqual([
+      { rango: 'H2:H401', reglas: ['resalta con fondo rojo claro (#FFC7CE) si el valor es mayor que 20000'] }
+    ]);
   });
 
   it('la tabla dinámica, el gráfico, el vínculo externo y las macros, que exceljs no lee', () => {
@@ -151,6 +154,64 @@ describe('el mapa', () => {
     expect(chico.length).toBeLessThanOrEqual(9_000 + 200);
     expect(chico).toContain('## Recorrido de los datos');
     expect(chico).toMatch(/Filas de muestra \([1-3] de 400\)/);
+  });
+});
+
+/**
+ * Un control de vencimientos INVENTADO, como el de una sucursal: la columna de
+ * días que faltan pintada como semáforo con tres reglas sobre el mismo rango.
+ * Lo que mira quien la usa es el color, así que el mapa tiene que decir las tres
+ * reglas y de qué color pinta cada una.
+ */
+describe('el formato condicional, con su color', () => {
+  let semaforo: string;
+
+  beforeAll(async () => {
+    const libro = new ExcelJS.Workbook();
+    const hoja = libro.addWorksheet('Vencimientos');
+    hoja.getCell('A1').value = { formula: 'TODAY()', result: new Date(Date.UTC(2026, 8, 30)) } as ExcelJS.CellValue;
+    hoja.getRow(2).values = ['FECHA CONTROL', 'PRODUCTO', 'FECHA DE VENCIMIENTO', 'DIAS A VENCER'];
+    for (let f = 3; f <= 82; f++) {
+      const dias = (f * 7) % 45;
+      hoja.getCell(`A${f}`).value = new Date(Date.UTC(2026, 8, 1));
+      hoja.getCell(`B${f}`).value = `producto ${f}`;
+      hoja.getCell(`C${f}`).value = new Date(Date.UTC(2026, 8, 30 + dias));
+      hoja.getCell(`D${f}`).value = { formula: `C${f}-$A$1`, result: dias } as ExcelJS.CellValue;
+    }
+
+    const regla = (formula: string, color: Partial<ExcelJS.Color>, priority: number) =>
+      hoja.addConditionalFormatting({
+        ref: 'D3:D200',
+        rules: [{ type: 'expression', formulae: [formula], priority, style: { fill: { type: 'pattern', pattern: 'solid', bgColor: color } } }]
+      });
+    regla('D3>=15', { theme: 6 }, 1);
+    regla('AND(D3>7,D3<15)', { argb: 'FFFFC000' }, 2);
+    regla('D3<=7', { argb: 'FFFF0000' }, 3);
+    // Una columna sin encabezado cuyo nombre empieza con A: no es la columna A.
+    hoja.addConditionalFormatting({
+      ref: 'AB3:AB82',
+      rules: [{ type: 'expression', formulae: ['AB3>0'], priority: 4, style: { font: { color: { argb: 'FF006100' }, bold: true } } }]
+    });
+
+    semaforo = mapaDelLibro(await leerLibro(Buffer.from(await libro.xlsx.writeBuffer())), 'vencimientos.xlsx');
+  });
+
+  it('las tres reglas del semáforo, en la línea de la columna y cada una con su color', () => {
+    const columna = semaforo.split('\n').find((l) => l.startsWith('- D «DIAS A VENCER»'))!;
+
+    expect(columna).toContain(
+      '— formato condicional en D3:D200: ' +
+        'resalta con fondo verde (#9BBB59) si la fórmula =D3>=15 da VERDADERO; ' +
+        'resalta con fondo naranja (#FFC000) si la fórmula =Y(D3>7;D3<15) da VERDADERO; ' +
+        'resalta con fondo rojo (#FF0000) si la fórmula =D3<=7 da VERDADERO'
+    );
+  });
+
+  it('el formato de otra columna va aparte, una vez, y no en la de la A', () => {
+    const columnaA = semaforo.split('\n').find((l) => l.startsWith('- A «FECHA CONTROL»'))!;
+
+    expect(columnaA).not.toContain('formato condicional');
+    expect(semaforo).toContain('Formato condicional en AB3:AB82: resalta con letra verde oscuro (#006100), negrita si la fórmula =AB3>0 da VERDADERO.');
   });
 });
 

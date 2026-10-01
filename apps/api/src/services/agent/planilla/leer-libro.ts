@@ -511,21 +511,26 @@ const OPERADORES: Record<string, string> = {
   notBetween: 'fuera de'
 };
 
-/** Una regla de formato condicional, en castellano: «resalta si el valor es mayor que 20000». */
-function describirRegla(r: Record<string, string>, formulas: string[]): string {
+/**
+ * Una regla de formato condicional, en castellano: «resalta con fondo rojo
+ * (#FF0000) si el valor es mayor que 20000». `resaltado` es cómo pinta la regla
+ * (ver `leerResaltados`); sin él, la regla dice sólo cuándo pinta.
+ */
+function describirRegla(r: Record<string, string>, formulas: string[], resaltado?: string): string {
   const f = formulas.map((x) => formulaEnCastellano(x).slice(1));
+  const resalta = resaltado ? `resalta con ${resaltado}` : 'resalta';
 
   switch (r.type) {
     case 'cellIs':
-      return `resalta si el valor es ${OPERADORES[r.operator] ?? r.operator} ${f.join(' y ')}`;
+      return `${resalta} si el valor es ${OPERADORES[r.operator] ?? r.operator} ${f.join(' y ')}`;
     case 'expression':
-      return `resalta si la fórmula =${f[0] ?? ''} da VERDADERO`;
+      return `${resalta} si la fórmula =${f[0] ?? ''} da VERDADERO`;
     case 'containsText':
     case 'notContainsText':
     case 'beginsWith':
     case 'endsWith': {
       const como = r.type === 'notContainsText' ? 'no contiene' : r.type === 'beginsWith' ? 'empieza con' : r.type === 'endsWith' ? 'termina con' : 'contiene';
-      return `resalta si el texto ${como} «${r.text ?? ''}»`;
+      return `${resalta} si el texto ${como} «${r.text ?? ''}»`;
     }
     case 'colorScale':
       return 'escala de colores según el valor';
@@ -534,15 +539,23 @@ function describirRegla(r: Record<string, string>, formulas: string[]): string {
     case 'iconSet':
       return 'íconos según el valor';
     case 'top10':
-      return `resalta ${r.bottom === '1' ? 'los últimos' : 'los primeros'} ${r.rank ?? '10'}${r.percent === '1' ? '%' : ''}`;
+      return `${resalta} ${r.bottom === '1' ? 'los últimos' : 'los primeros'} ${r.rank ?? '10'}${r.percent === '1' ? '%' : ''}`;
     case 'aboveAverage':
-      return `resalta lo que está ${r.aboveAverage === '0' ? 'debajo' : 'arriba'} del promedio`;
+      return `${resalta} lo que está ${r.aboveAverage === '0' ? 'debajo' : 'arriba'} del promedio`;
     case 'duplicateValues':
-      return 'resalta los valores repetidos';
+      return `${resalta} los valores repetidos`;
     case 'uniqueValues':
-      return 'resalta los valores únicos';
+      return `${resalta} los valores únicos`;
     case 'timePeriod':
-      return `resalta fechas del período ${r.timePeriod ?? ''}`;
+      return `${resalta} fechas del período ${r.timePeriod ?? ''}`;
+    case 'containsBlanks':
+      return `${resalta} si la celda está vacía`;
+    case 'notContainsBlanks':
+      return `${resalta} si la celda no está vacía`;
+    case 'containsErrors':
+      return `${resalta} si la celda tiene un error`;
+    case 'notContainsErrors':
+      return `${resalta} si la celda no tiene un error`;
     default:
       return `regla ${r.type ?? 'sin tipo'}`;
   }
@@ -601,6 +614,7 @@ export class LectorDeLibro {
     private readonly zip: JSZip,
     private readonly textos: string[],
     private readonly formatos: Array<string | undefined>,
+    private readonly resaltados: Array<string | undefined>,
     private readonly sistema1904: boolean,
     readonly hojasDelArchivo: HojaDelArchivo[],
     private readonly libroXml: string
@@ -647,10 +661,12 @@ export class LectorDeLibro {
 
     const partes = [...rels.values()];
     const textos = await leerTextosCompartidos(zip, partes.find((r) => r.tipo === 'sharedStrings')?.destino ?? 'xl/sharedStrings.xml');
-    const formatos = await leerFormatos(zip, partes.find((r) => r.tipo === 'styles')?.destino ?? 'xl/styles.xml');
+    const estilos = partes.find((r) => r.tipo === 'styles')?.destino ?? 'xl/styles.xml';
+    const formatos = await leerFormatos(zip, estilos);
+    const resaltados = await leerResaltados(zip, estilos, partes.find((r) => r.tipo === 'theme')?.destino ?? 'xl/theme/theme1.xml');
     const sistema1904 = /date1904="(?:1|true)"/.test(etiquetas(libroXml, 'workbookPr')[0] ?? '');
 
-    return new LectorDeLibro(zip, textos, formatos, sistema1904, hojas, libroXml);
+    return new LectorDeLibro(zip, textos, formatos, resaltados, sistema1904, hojas, libroXml);
   }
 
   /** El libro entero: cada hoja resumida si es grande, y todo lo que lo explica. */
@@ -953,7 +969,10 @@ export class LectorDeLibro {
             validacion = null;
             break;
           case 'cfRule':
-            if (regla && condicional) condicional.reglas.push(describirRegla(regla.attrs, regla.formulas));
+            if (regla && condicional) {
+              const resaltado = regla.attrs.dxfId === undefined ? undefined : this.resaltados[Number(regla.attrs.dxfId)];
+              condicional.reglas.push(describirRegla(regla.attrs, regla.formulas, resaltado));
+            }
             regla = null;
             break;
           case 'conditionalFormatting':
@@ -1050,6 +1069,156 @@ async function leerFormatos(zip: JSZip, ruta: string): Promise<Array<string | un
     const id = Number(atributo(e, 'numFmtId') ?? 0);
     return id === 0 ? undefined : (propios.get(id) ?? FORMATOS_DE_FABRICA[id]);
   });
+}
+
+// ─── Cómo pinta el formato condicional ──────────────────────────────────────
+
+/**
+ * Cómo se ve cada estilo de formato condicional (índice de `dxfs`, el `dxfId`
+ * de cada regla): «fondo rojo (#FF0000)», «letra verde oscuro (#006100)».
+ *
+ * Una regla sin su color dice la mitad. Una planilla de vencimientos tenía un
+ * semáforo de tres reglas sobre la misma columna —rojo hasta 7 días, naranja
+ * hasta 14, verde desde 15— y lo que mira el vendedor es el color: sin esto el
+ * mapa decía «resalta si =G3>=15» y nadie podía enseñar qué quiere decir cada
+ * color. El código va al lado del nombre porque el nombre es una aproximación.
+ */
+async function leerResaltados(zip: JSZip, rutaDeEstilos: string, rutaDelTema: string): Promise<Array<string | undefined>> {
+  const dxfs = bloques((await leerTexto(zip, rutaDeEstilos)) ?? '', 'dxfs')[0];
+  if (!dxfs) return [];
+
+  const tema = coloresDelTema((await leerTexto(zip, rutaDelTema)) ?? '');
+  // En orden, y contando los vacíos (`<dxf/>`): el índice es el que usan las reglas.
+  const estilos = dxfs.match(/<(?:\w+:)?dxf\s*\/>|<(?:\w+:)?dxf\b[^>]*>[\s\S]*?<\/(?:\w+:)?dxf>/g) ?? [];
+
+  return estilos.map((dxf) => describirResaltado(dxf, tema));
+}
+
+function describirResaltado(dxf: string, tema: Array<string | undefined>): string | undefined {
+  const partes: string[] = [];
+
+  const relleno = bloques(dxf, 'fill')[0];
+  if (relleno) {
+    // En un dxf el color de un relleno liso es bgColor (fgColor es el de la trama);
+    // hay programas que escriben sólo fgColor.
+    const color = colorDe(etiquetas(relleno, 'bgColor')[0], tema) ?? colorDe(etiquetas(relleno, 'fgColor')[0], tema);
+    if (color) partes.push(`fondo ${color}`);
+  }
+
+  const letra = bloques(dxf, 'font')[0];
+  if (letra) {
+    const color = colorDe(etiquetas(letra, 'color')[0], tema);
+    if (color) partes.push(`letra ${color}`);
+    if (/<(?:\w+:)?b(?:\s+val="(?:1|true)")?\s*\/>/.test(letra)) partes.push('negrita');
+    if (/<(?:\w+:)?strike(?:\s+val="(?:1|true)")?\s*\/>/.test(letra)) partes.push('tachado');
+  }
+
+  return partes.length ? partes.join(', ') : undefined;
+}
+
+/** Los colores del tema en el orden de `theme="n"`, que no es el del archivo del tema: claro y oscuro van al revés. */
+function coloresDelTema(xml: string): Array<string | undefined> {
+  const esquema = bloques(xml, 'clrScheme')[0] ?? '';
+
+  return ['lt1', 'dk1', 'lt2', 'dk2', 'accent1', 'accent2', 'accent3', 'accent4', 'accent5', 'accent6', 'hlink', 'folHlink'].map((nombre) => {
+    const bloque = bloques(esquema, nombre)[0] ?? '';
+    const rgb = etiquetas(bloque, 'srgbClr')[0];
+    if (rgb) return atributo(rgb, 'val');
+    const sistema = etiquetas(bloque, 'sysClr')[0];
+    return sistema ? atributo(sistema, 'lastClr') : undefined;
+  });
+}
+
+/** La paleta vieja de Excel, para los colores guardados como `indexed="n"`. */
+const COLORES_INDEXADOS = (
+  '000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF ' +
+  '000000 FFFFFF FF0000 00FF00 0000FF FFFF00 FF00FF 00FFFF 800000 008000 000080 808000 800080 008080 C0C0C0 808080 ' +
+  '9999FF 993366 FFFFCC CCFFFF 660066 FF8080 0066CC CCCCFF 000080 FF00FF FFFF00 00FFFF 800080 800000 008080 0000FF ' +
+  '00CCFF CCFFFF CCFFCC FFFF99 99CCFF FF99CC CC99FF FFCC99 3366FF 33CCCC 99CC00 FFCC00 FF9900 FF6600 666699 969696 ' +
+  '003366 339966 003300 333300 993300 993366 333399 333333'
+).split(' ');
+
+function colorDe(etiqueta: string | undefined, tema: Array<string | undefined>): string | undefined {
+  if (!etiqueta) return undefined;
+
+  const tematico = atributo(etiqueta, 'theme');
+  const indexado = atributo(etiqueta, 'indexed');
+  const base =
+    atributo(etiqueta, 'rgb')?.slice(-6) ??
+    (tematico !== undefined ? tema[Number(tematico)] : undefined) ??
+    (indexado !== undefined ? COLORES_INDEXADOS[Number(indexado)] : undefined);
+
+  if (!base || !/^[0-9A-Fa-f]{6}$/.test(base)) return undefined;
+
+  const tinte = Number(atributo(etiqueta, 'tint') ?? 0);
+  const hex = (tinte ? conTinte(base, tinte) : base).toUpperCase();
+
+  return `${nombreDelColor(hex)} (#${hex})`;
+}
+
+function aHsl(hex: string): [number, number, number] {
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+
+  if (d === 0) return [0, 0, l];
+
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+
+  return [h * 60, s, l];
+}
+
+function deHsl(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+
+  return [r, g, b].map((v) => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+}
+
+/** El tinte del tema aclara (positivo) u oscurece (negativo) el color, como en «Verde, Énfasis 6, claro 40%». */
+function conTinte(hex: string, tinte: number): string {
+  const [h, s, l] = aHsl(hex);
+  return deHsl(h, s, tinte < 0 ? l * (1 + tinte) : l * (1 - tinte) + tinte);
+}
+
+/** Los colores con nombre propio en Excel: la paleta estándar y los rellenos de los formatos que trae hechos. */
+const COLORES_CON_NOMBRE: Record<string, string> = {
+  C00000: 'rojo oscuro',
+  FF0000: 'rojo',
+  FFC000: 'naranja',
+  FFFF00: 'amarillo',
+  '92D050': 'verde claro',
+  '00B050': 'verde',
+  '00B0F0': 'celeste',
+  '0070C0': 'azul',
+  '002060': 'azul oscuro',
+  '7030A0': 'violeta',
+  FFC7CE: 'rojo claro',
+  '9C0006': 'rojo oscuro',
+  FFEB9C: 'amarillo claro',
+  '9C5700': 'amarillo oscuro',
+  C6EFCE: 'verde claro',
+  '006100': 'verde oscuro'
+};
+
+function nombreDelColor(hex: string): string {
+  if (COLORES_CON_NOMBRE[hex]) return COLORES_CON_NOMBRE[hex];
+
+  const [h, s, l] = aHsl(hex);
+
+  if (l >= 0.95) return 'blanco';
+  if (l <= 0.08) return 'negro';
+  if (s < 0.15) return l >= 0.75 ? 'gris claro' : l <= 0.3 ? 'gris oscuro' : 'gris';
+
+  const base =
+    h < 12 || h >= 340 ? 'rojo' : h < 47 ? 'naranja' : h < 70 ? 'amarillo' : h < 165 ? 'verde' : h < 200 ? 'celeste' : h < 255 ? 'azul' : h < 290 ? 'violeta' : 'rosa';
+
+  return l >= 0.75 ? `${base} claro` : l <= 0.3 ? `${base} oscuro` : base;
 }
 
 async function leerTablas(zip: JSZip, rutas: string[]): Promise<TablaLeida[]> {

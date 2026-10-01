@@ -307,10 +307,10 @@ function lineaDeRegla(analisis: Analisis, r: Regla): string {
  * deja la misma regla repetida celda por celda —una hoja de procedimiento traía
  * 54—: los rangos de una misma regla se juntan en uno que los contiene.
  */
-function formatosCondicionales(hoja: HojaLeida): string[] {
+function formatosCondicionales(hoja: HojaLeida, lista = hoja.formatosCondicionales): string[] {
   const porRegla = new Map<string, Set<string>>();
 
-  for (const f of hoja.formatosCondicionales) {
+  for (const f of lista) {
     const regla = f.reglas.join('; ');
     const rangos = porRegla.get(regla) ?? new Set<string>();
     for (const r of f.rango.split(/\s+/).filter(Boolean)) rangos.add(r);
@@ -386,12 +386,29 @@ function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): stri
       `Una fila de encabezados (fila ${cabecera.filaEncabezado}) y ${cabecera.filasDeDatos} filas de datos debajo. Columnas (contadas sobre todas las filas):`
     );
 
+    /**
+     * El formato condicional de una sola columna va en la línea de esa columna,
+     * con TODAS sus reglas: un semáforo son tres reglas sobre el mismo rango, y
+     * quedarse con la primera (como hacía esto) contaba el verde y callaba el
+     * naranja y el rojo. El que abarca varias columnas, o una que no está en la
+     * lista, va aparte, una sola vez.
+     */
+    const columnaDe = (rango: string) => {
+      const r = rectanguloDe(rango, hoja.filas, hoja.columnas);
+      return r && r.col1 === r.col2 ? r.col1 : undefined;
+    };
+    const perfiladas = new Set(cabecera.columnas.map((c) => c.col));
+    const sueltos = hoja.formatosCondicionales.filter((f) => !perfiladas.has(columnaDe(f.rango) ?? 0));
+
     for (const columna of cabecera.columnas) {
       const col = columna.col;
       const deLaColumna = reglas.filter((r) => r.rect.col1 <= col && r.rect.col2 >= col);
       const validacion = hoja.validaciones.find((v) => v.rango.startsWith(`${columnaALetras(col)}`));
       const nota = hoja.notas.find((n) => n.celda === `${columnaALetras(col)}${cabecera.filaEncabezado}`);
-      const condicional = hoja.formatosCondicionales.find((f) => f.rango.startsWith(columnaALetras(col)));
+      const condicionales = new Map<string, string[]>();
+      for (const f of hoja.formatosCondicionales.filter((x) => columnaDe(x.rango) === col)) {
+        condicionales.set(f.rango, [...(condicionales.get(f.rango) ?? []), ...f.reglas]);
+      }
 
       const partes = [`- ${columnaALetras(col)} «${corto(columna.encabezado, 40)}»:`];
       for (const r of deLaColumna.slice(0, 3)) {
@@ -399,10 +416,12 @@ function escribirHoja(analisis: Analisis, hoja: HojaLeida, p: Presupuesto): stri
       }
       partes.push(textoDelPerfil(columna));
       if (validacion) partes.push(`— desplegable (${validacion.tipo === 'list' ? `lista ${validacion.formula ?? ''}` : validacion.tipo})`);
-      if (condicional) partes.push(`— formato condicional en ${condicional.rango}: ${condicional.reglas.join('; ')}`);
+      for (const [rango, deEseRango] of condicionales) partes.push(`— formato condicional en ${rango}: ${deEseRango.join('; ')}`);
       if (nota) partes.push(`— nota: «${corto(nota.texto, p.largoDeCelda)}»`);
       lineas.push(partes.join(' '));
     }
+
+    lineas.push(...formatosCondicionales(hoja, sueltos));
 
     if (entera) {
       lineas.push('', contenido, ...grilla(hoja, entran.filas, columnas, p.largoDeCelda));
