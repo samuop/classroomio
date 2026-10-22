@@ -28,6 +28,10 @@
 
   let { courses, programs }: Props = $props();
 
+  // `orgApi` es uno solo: sin esto, el error de una importación anterior
+  // aparecería debajo de la lista al volver a esta página.
+  orgApi.importError = null;
+
   let recipientCsv = $state('');
   let courseAccessMode = $state('none');
   let programAccessMode = $state('none');
@@ -94,6 +98,7 @@
     rows={6}
     className="w-full"
     placeholder={$t('audience.import.emails_placeholder')}
+    errorMessage={orgApi.importError ?? ''}
   />
 
   <div class="space-y-3">

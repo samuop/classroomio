@@ -139,13 +139,15 @@
     });
 
     if (!response) {
-      return;
+      return orgApi.importError ?? false;
     }
 
     await courseApi.refreshCourse(courseId, $profile.id);
     // Brand-new invitees have no profile yet, so refreshCourse alone leaves the
     // screen looking as if nothing happened. This is where they show up.
     await peopleApi.loadInvitations(courseId);
+
+    return true;
   }
 
   async function onSubmit() {

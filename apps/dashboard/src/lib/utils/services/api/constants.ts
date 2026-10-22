@@ -80,3 +80,17 @@ export function llamadaDeIA(timeout: number): { init: RequestInit } {
 
   return { init };
 }
+
+/**
+ * El segundo argumento del cliente RPC para un pedido que NO se reintenta solo,
+ * con el reloj por defecto.
+ *
+ * Para los que mandan invitaciones: reenviar una importación de alumnos después
+ * de un 502 la corre dos veces, y la segunda revoca las invitaciones que acaba de
+ * crear la primera — el link del primer correo pasa a decir «revocada».
+ */
+export function sinReintento(): { init: RequestInit } {
+  const init: RequestConfig = { retries: 0 };
+
+  return { init };
+}

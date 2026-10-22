@@ -11,6 +11,18 @@ import { log } from '../utils/logger';
 import { processSendEmail } from '../processors/emails';
 
 const concurrency = Number.parseInt(env.EMAIL_WORKER_CONCURRENCY ?? '5', 10) || 5;
+
+/**
+ * Freno de envío. Una invitación masiva encola cientos de correos de golpe, y el
+ * servidor SMTP de una empresa (un hosting compartido) suele tener un tope por
+ * hora que no publica: pasado el tope rechaza, y sin freno la cola lo alcanzaba
+ * en un par de minutos. A un correo cada 4 s, cien invitaciones tardan unos 7
+ * minutos en salir. Lo que igual choque contra el tope lo absorben los reintentos
+ * largos de la cola (`QUEUE_DEFAULTS.emails`).
+ */
+const rateMax = Number.parseInt(env.EMAIL_WORKER_RATE_MAX ?? '1', 10) || 1;
+const rateDurationMs = Number.parseInt(env.EMAIL_WORKER_RATE_DURATION_MS ?? '4000', 10) || 4000;
+
 const connection = createRedisConnection();
 
 const worker = new Worker(
@@ -29,7 +41,7 @@ const worker = new Worker(
         throw new Error(`Unknown emails job: ${job.name}`);
     }
   },
-  { connection, concurrency }
+  { connection, concurrency, limiter: { max: rateMax, duration: rateDurationMs } }
 );
 
 worker.on('failed', async (job, err) => {
@@ -60,7 +72,9 @@ worker.on('failed', async (job, err) => {
   });
 });
 
-worker.on('ready', () => log.info('email-worker-ready', { concurrency, queue: QUEUE_NAMES.emails }));
+worker.on('ready', () =>
+  log.info('email-worker-ready', { concurrency, rateMax, rateDurationMs, queue: QUEUE_NAMES.emails })
+);
 worker.on('error', (err) => log.error('email-worker-error', { error: errorMessage(err) }));
 
 const shutdown = async (signal: string) => {

@@ -177,6 +177,10 @@ export const ErrorCodes = {
   // AI assistant chat
   NO_MESSAGES_TO_COMPACT: 'NO_MESSAGES_TO_COMPACT',
 
+  // Audience import: the whole list is rejected, nobody gets invited
+  AUDIENCE_INVALID_EMAILS: 'AUDIENCE_INVALID_EMAILS',
+  AUDIENCE_STAFF_EMAILS: 'AUDIENCE_STAFF_EMAILS',
+
   // Generic
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INTERNAL_ERROR: 'INTERNAL_ERROR'

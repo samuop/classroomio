@@ -234,7 +234,7 @@ export const classroomio = hcWithType(getRequestBaseUrl(), {
 // Utility functions for common use cases
 export const createApiClient = (config: ApiClientConfig) => new ApiClient(config);
 
-export { AI_REQUEST_TIMEOUT, AI_REQUEST_TIMEOUT_MAX, llamadaDeIA, opcionesDeIA } from './constants';
+export { AI_REQUEST_TIMEOUT, AI_REQUEST_TIMEOUT_MAX, llamadaDeIA, opcionesDeIA, sinReintento } from './constants';
 export { MENSAJE_DE_TIEMPO_AGOTADO } from './intentos';
 
 // Re-export utility functions for convenience

@@ -826,6 +826,13 @@
       "snackbar_success": "{imported} invitaciones nuevas, {assigned} estudiantes existentes con acceso al curso, {pendingInvitesRenewed} invitaciones pendientes renovadas ({emailsSent} correos enviados)",
       "snackbar_no_emails": "Escribí al menos un correo",
       "snackbar_failed": "No se pudieron importar usuarios",
+      "snackbar_kept": "{count} ya tenían una invitación vigente y no se les volvió a mandar (para reenviarla, usá «Reenviar» en la lista de invitados).",
+      "snackbar_emails_failed": "{count} correos no se pudieron poner en cola: reenviá esas invitaciones desde la lista de invitados.",
+      "error_invalid_emails": "No se invitó a nadie: hay correos mal escritos ({emails}). Corregilos y volvé a enviar la lista.",
+      "error_staff_emails": "No se invitó a nadie: estos correos son del equipo de la empresa, no alumnos ({emails}). Sacalos de la lista y volvé a enviarla.",
+      "error_rejected": "No se invitó a nadie: la lista no se pudo procesar. Revisá que sean correos válidos y que no sean demasiados de una vez (como mucho unos 800).",
+      "error_unknown_outcome": "La importación no respondió a tiempo y puede haberse hecho igual. Antes de volver a enviar la lista, mirá en la lista de invitados quiénes ya quedaron invitados.",
+      "error_more": "y {count} más",
       "page_subtitle": "Agregá muchas personas de una por correo, y asignales cursos o programas si querés."
     },
     "page_subtitle": "Mirá quién pertenece a tu organización, quién está aprendiendo, quién está invitado y cómo contactarlos.",

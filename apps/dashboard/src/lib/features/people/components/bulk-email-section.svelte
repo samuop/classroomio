@@ -6,8 +6,14 @@
   import { t } from '$lib/utils/functions/translations';
   import { snackbar } from '$features/ui/snackbar/store';
 
+  /**
+   * `true` si salió bien (se vacía la lista); un texto, el error a mostrar debajo
+   * de la lista; `false`, falló sin texto propio.
+   */
+  type InviteOutcome = boolean | string;
+
   interface Props {
-    onInvite: (recipientCsv: string, sendEmail: boolean) => void | Promise<void>;
+    onInvite: (recipientCsv: string, sendEmail: boolean) => InviteOutcome | Promise<InviteOutcome>;
     titleKey?: string;
     descriptionKey?: string;
     submitKey?: string;
@@ -25,6 +31,7 @@
   let recipientCsv = $state('');
   let sendInviteEmails = $state(true);
   let isSubmitting = $state(false);
+  let errorMessage = $state('');
 
   async function inviteStudents() {
     if (!recipientCsv.trim()) {
@@ -33,10 +40,19 @@
     }
 
     isSubmitting = true;
+    errorMessage = '';
 
     try {
-      await onInvite(recipientCsv, sendInviteEmails);
-      recipientCsv = '';
+      const outcome = await onInvite(recipientCsv, sendInviteEmails);
+
+      // La lista se vacía SÓLO si salió bien. Se vaciaba siempre: con un correo
+      // mal escrito no se invitaba a nadie y encima la lista desaparecía, sin
+      // ningún aviso. Con cien correos pegados, eso es empezar de cero a ciegas.
+      if (outcome === true) {
+        recipientCsv = '';
+      } else if (typeof outcome === 'string') {
+        errorMessage = outcome;
+      }
     } finally {
       isSubmitting = false;
     }
@@ -54,6 +70,7 @@
       rows={4}
       className="w-full"
       placeholder={$t('audience.import.emails_placeholder')}
+      {errorMessage}
     />
     <CheckboxField name="send-invite-emails" label={$t('audience.import.send_email')} bind:checked={sendInviteEmails} />
   </Field.Group>

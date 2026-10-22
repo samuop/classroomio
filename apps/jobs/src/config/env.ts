@@ -28,6 +28,9 @@ const envSchema = z.object({
   MEDIA_WORKER_CONCURRENCY: z.string().optional(),
   TRANSCRIBE_WORKER_CONCURRENCY: z.string().optional(),
   EMAIL_WORKER_CONCURRENCY: z.string().optional(),
+  /** Freno de envío de correos: como mucho RATE_MAX cada RATE_DURATION_MS. */
+  EMAIL_WORKER_RATE_MAX: z.string().optional(),
+  EMAIL_WORKER_RATE_DURATION_MS: z.string().optional(),
 
   /** Optional OpenAI Whisper key — when unset, transcribe-audio jobs no-op. */
   OPENAI_API_KEY: z.string().optional()

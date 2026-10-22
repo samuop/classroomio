@@ -9,11 +9,17 @@ export { ErrorCodes, type ErrorCode };
  * Standard application error with code for easy identification
  */
 export class AppError extends Error {
+  /**
+   * @param details datos para que el cliente arme su propio mensaje (por ejemplo,
+   *   los correos rechazados de una importación). Sólo viaja en un 4xx: un 5xx
+   *   responde el mensaje genérico y nada del error interno.
+   */
   constructor(
     error: string | Error,
     public code: string,
     public statusCode: ContentfulStatusCode = 500,
-    public field?: string
+    public field?: string,
+    public details?: Record<string, unknown>
   ) {
     super(error instanceof Error ? error.message : error);
     this.name = 'AppError';
@@ -28,6 +34,7 @@ export interface ErrorResponse {
   error: string;
   code: string;
   field?: string;
+  details?: Record<string, unknown>;
 }
 
 /**
@@ -76,7 +83,8 @@ export const handleError = (
         success: false,
         error: responseMessage,
         code: responseCode,
-        field: isServerError ? undefined : error.field
+        field: isServerError ? undefined : error.field,
+        details: isServerError ? undefined : error.details
       },
       error.statusCode
     );

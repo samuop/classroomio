@@ -14,6 +14,7 @@ import {
   createOrganizationInviteAudits,
   createOrganizationInvites,
   createOrganizationMembers,
+  getActiveOrganizationInvitesByEmails,
   getOrganizationAudienceMember,
   getLatestOrganizationInviteRowByOrgAndEmail,
   getOrgMembersByProfileIds,
@@ -38,6 +39,24 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 /** Parallel outbound invite emails; avoids sequential SMTP/API latency per recipient. */
 const EMAIL_SEND_CONCURRENCY = 5;
+/** Cuántos correos rechazados viajan en el error de una importación. */
+const MAX_EMAILS_IN_ERROR = 50;
+
+/**
+ * Si una invitación vigente ya lleva a todos los cursos y programas que se piden.
+ *
+ * Volver a importar a alguien que ya tiene una así no debe tocarla: renovarla
+ * revoca el link del correo que la persona ya recibió, que pasa a decir
+ * «revocada». Pasaba al pegar dos veces la misma lista, o cuando el navegador
+ * reenviaba la importación sola después de un corte.
+ */
+export function invitationCoversAccess(metadata: unknown, courseIds: string[], programIds: string[]): boolean {
+  const meta = (metadata ?? {}) as { courseIds?: unknown; programIds?: unknown };
+  const cursos = new Set(Array.isArray(meta.courseIds) ? meta.courseIds : []);
+  const programas = new Set(Array.isArray(meta.programIds) ? meta.programIds : []);
+
+  return courseIds.every((id) => cursos.has(id)) && programIds.every((id) => programas.has(id));
+}
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   if (items.length === 0) {
@@ -448,12 +467,16 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
 
   const recipients = getNormalizedRecipients(data.recipientCsv);
 
+  // Los dos rechazos de la lista entera viajan con su código y los correos que
+  // los causan: el dashboard arma con eso el mensaje, y sin los correos la
+  // docente no tiene forma de encontrar el mal escrito en una lista de cien.
   if (recipients.invalid.length > 0) {
     throw new AppError(
       `Invalid emails found: ${recipients.invalid.slice(0, 5).join(', ')}`,
-      ErrorCodes.VALIDATION_ERROR,
+      ErrorCodes.AUDIENCE_INVALID_EMAILS,
       400,
-      'recipientCsv'
+      'recipientCsv',
+      { emails: recipients.invalid.slice(0, MAX_EMAILS_IN_ERROR) }
     );
   }
 
@@ -489,9 +512,10 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
   if (teamEmails.length > 0) {
     throw new AppError(
       `These emails belong to organization staff, not students: ${teamEmails.slice(0, 8).join(', ')}${teamEmails.length > 8 ? '…' : ''}`,
-      ErrorCodes.VALIDATION_ERROR,
+      ErrorCodes.AUDIENCE_STAFF_EMAILS,
       400,
-      'recipientCsv'
+      'recipientCsv',
+      { emails: teamEmails.slice(0, MAX_EMAILS_IN_ERROR) }
     );
   }
 
@@ -574,13 +598,24 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
     importEmailsFailed = inviteOutcome.emailsFailed;
   }
 
+  // Un pendiente cuya invitación vigente ya cubre lo pedido se deja como está:
+  // ver `invitationCoversAccess`. Los demás (vencida, o un curso nuevo) se renuevan.
+  const activeInvites =
+    pendingStudentEmails.length > 0 ? await getActiveOrganizationInvitesByEmails(orgId, pendingStudentEmails) : [];
+  const keptEmails = new Set(
+    activeInvites
+      .filter((invite) => invitationCoversAccess(invite.metadata, courseIds, programIds))
+      .map((invite) => invite.email.toLowerCase())
+  );
+  const pendingToRenew = pendingStudentEmails.filter((email) => !keptEmails.has(email));
+
   let pendingEmailsSent = 0;
   let pendingEmailsFailed = 0;
-  if (pendingStudentEmails.length > 0) {
+  if (pendingToRenew.length > 0) {
     const pendingOutcome = await createStudentOrgInvitesAndSendEmails({
       orgId,
       organization,
-      emails: pendingStudentEmails,
+      emails: pendingToRenew,
       courseIds,
       programIds,
       accessNamesLabel,
@@ -596,7 +631,8 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
     assigned: assignedToCourses.assigned + assignedToPrograms.assigned,
     alreadyEnrolledInCourses: assignedToCourses.alreadyEnrolled,
     alreadyEnrolledInPrograms: assignedToPrograms.alreadyEnrolled,
-    pendingInvitesRenewed: pendingStudentEmails.length,
+    pendingInvitesRenewed: pendingToRenew.length,
+    pendingInvitesKept: keptEmails.size,
     duplicates: recipients.duplicates.length,
     emailsSent: assignedToCourses.emailsSent + assignedToPrograms.emailsSent + importEmailsSent + pendingEmailsSent,
     emailsFailed: importEmailsFailed + pendingEmailsFailed

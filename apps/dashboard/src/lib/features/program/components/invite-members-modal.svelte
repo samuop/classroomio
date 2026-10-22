@@ -154,7 +154,7 @@
   }
 
   async function inviteNewStudents(recipientCsv: string, sendEmail: boolean) {
-    await programApi.inviteStudentsToProgram(programId, { recipientCsv, sendEmail });
+    return programApi.inviteStudentsToProgram(programId, { recipientCsv, sendEmail });
   }
 
   $effect(() => {

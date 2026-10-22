@@ -23,9 +23,13 @@ export const QUEUE_DEFAULTS: Record<QueueName, JobsOptions> = {
     removeOnComplete: { age: 86_400, count: 500 },
     removeOnFail: { age: 14 * 86_400 }
   },
+  // Reintentos largos a propósito: lo que más hace fallar un correo es el tope
+  // por hora del servidor SMTP de la empresa, y con 5 intentos en 75 s el correo
+  // moría antes de que el tope se renovara. Con 8 desde 1 min (1, 2, 4… 64 min)
+  // la ventana cubre unas 2 horas.
   [QUEUE_NAMES.emails]: {
-    attempts: 5,
-    backoff: { type: 'exponential', delay: 5_000 },
+    attempts: 8,
+    backoff: { type: 'exponential', delay: 60_000 },
     removeOnComplete: { age: 6 * 3_600, count: 5_000 },
     removeOnFail: { age: 7 * 86_400 }
   },

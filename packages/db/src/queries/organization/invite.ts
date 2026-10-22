@@ -78,6 +78,40 @@ export async function createOrganizationInviteAudits(
   }
 }
 
+/**
+ * Las invitaciones vigentes de una empresa para estos correos: ni revocadas, ni
+ * aceptadas, ni vencidas. Los correos van normalizados (minúsculas), igual que
+ * se guardan.
+ */
+export async function getActiveOrganizationInvitesByEmails(
+  organizationId: string,
+  emails: string[]
+): Promise<TOrganizationInvite[]> {
+  if (emails.length === 0) {
+    return [];
+  }
+
+  try {
+    return await db
+      .select()
+      .from(schema.organizationInvite)
+      .where(
+        and(
+          eq(schema.organizationInvite.organizationId, organizationId),
+          inArray(schema.organizationInvite.email, emails),
+          eq(schema.organizationInvite.isRevoked, false),
+          isNull(schema.organizationInvite.acceptedAt),
+          gt(schema.organizationInvite.expiresAt, sql`NOW()`)
+        )
+      );
+  } catch (error) {
+    console.error('getActiveOrganizationInvitesByEmails error:', error);
+    throw new Error(
+      `Failed to get active organization invites: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export async function revokeActiveOrganizationInvitesByEmails(
   organizationId: string,
   emails: string[],

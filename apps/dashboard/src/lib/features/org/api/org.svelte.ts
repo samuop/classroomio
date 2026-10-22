@@ -15,7 +15,8 @@ import type {
   ResendAudienceInviteRequest,
   RevokeAudienceInviteRequest
 } from '../utils/types';
-import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
+import { BaseApiWithErrors, classroomio, sinReintento } from '$lib/utils/services/api';
+import { mensajeDeErrorDeImportacion } from '../utils/errores-de-importacion';
 import type {
   TAssignAudienceCourses,
   TAudienceInviteByEmail,
@@ -62,6 +63,8 @@ export interface TOrgUpdateForm {
  * API class for organization operations
  */
 class OrgApi extends BaseApiWithErrors {
+  /** Por qué falló la última importación de alumnos, ya traducido; `null` si salió bien. */
+  importError = $state<string | null>(null);
   teamMembers = $state<OrganizationTeamMembers>([]);
   audience = $state<OrganizationAudience>([]);
   audiencePagination = $state<OrganizationAudiencePagination | null>(null);
@@ -443,30 +446,43 @@ class OrgApi extends BaseApiWithErrors {
    * Imports users into the organization as students
    */
   async importAudienceMembers(data: TImportAudienceMembers) {
+    this.importError = null;
+
     return this.execute<ImportAudienceRequest>({
-      requestFn: () =>
-        classroomio.organization.audience.import.$post({
-          json: data
-        }),
+      // Sin reintento: ver `sinReintento`. Reenviada, la importación revocaba las
+      // invitaciones que acababa de mandar.
+      requestFn: () => classroomio.organization.audience.import.$post({ json: data }, sinReintento()),
       logContext: 'importing audience members',
       onSuccess: (response) => {
         const d = response.data;
-        snackbar.success(
+        const partes = [
           t.get('audience.import.snackbar_success', {
             imported: d.imported,
             assigned: d.assigned ?? 0,
             pendingInvitesRenewed: d.pendingInvitesRenewed ?? 0,
             emailsSent: d.emailsSent
           })
-        );
+        ];
+
+        const conservadas = d.pendingInvitesKept ?? 0;
+        if (conservadas > 0) {
+          partes.push(t.get('audience.import.snackbar_kept', { count: conservadas }));
+        }
+
+        if (d.emailsFailed > 0) {
+          partes.push(t.get('audience.import.snackbar_emails_failed', { count: d.emailsFailed }));
+          snackbar.error(partes.join(' '));
+        } else {
+          snackbar.success(partes.join(' '));
+        }
+
         this.success = true;
       },
       onError: (result) => {
-        if (typeof result === 'string') {
-          snackbar.error(result);
-          return;
-        }
-        if ('error' in result && 'field' in result) {
+        this.importError = mensajeDeErrorDeImportacion(result);
+        snackbar.error(this.importError);
+
+        if (typeof result !== 'string' && 'error' in result && 'field' in result) {
           this.errors[result.field as string] = result.error;
         }
       }
@@ -479,9 +495,7 @@ class OrgApi extends BaseApiWithErrors {
   async assignAudienceToCourses(data: TAssignAudienceCourses) {
     return this.execute<AssignAudienceCoursesRequest>({
       requestFn: () =>
-        classroomio.organization.audience['assign-courses'].$post({
-          json: data
-        }),
+        classroomio.organization.audience['assign-courses'].$post({ json: data }, sinReintento()),
       logContext: 'assigning audience to courses',
       onSuccess: (response) => {
         const d = response.data;
@@ -509,9 +523,8 @@ class OrgApi extends BaseApiWithErrors {
   async resendAudienceInvite(data: TAudienceInviteByEmail) {
     return this.execute<ResendAudienceInviteRequest>({
       requestFn: () =>
-        classroomio.organization.audience['resend-invite'].$post({
-          json: data
-        }),
+        // Reenviada sola, la segunda revocaba la invitación que mandó la primera.
+        classroomio.organization.audience['resend-invite'].$post({ json: data }, sinReintento()),
       logContext: 'resending audience invite',
       onSuccess: (response) => {
         if (response.data.emailSent) {

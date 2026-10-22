@@ -4296,7 +4296,14 @@
       "back": "Back to Audience",
       "snackbar_success": "{imported} new invites, {assigned} existing students given access, {pendingInvitesRenewed} pending invites renewed ({emailsSent} emails sent)",
       "snackbar_no_emails": "Please enter at least one email address",
-      "snackbar_failed": "Failed to import users"
+      "snackbar_failed": "Failed to import users",
+      "snackbar_kept": "{count} already had a valid invite and it was not sent again (to resend it, use \"Resend\" in the invite list).",
+      "snackbar_emails_failed": "{count} emails could not be queued: resend those invites from the invite list.",
+      "error_invalid_emails": "Nobody was invited: some emails are misspelled ({emails}). Fix them and send the list again.",
+      "error_staff_emails": "Nobody was invited: these emails belong to the organization's team, not students ({emails}). Remove them and send the list again.",
+      "error_rejected": "Nobody was invited: the list could not be processed. Check that they are valid emails and not too many at once (about 800 at most).",
+      "error_unknown_outcome": "The import did not answer in time and may have gone through anyway. Before sending the list again, check the invite list to see who is already invited.",
+      "error_more": "and {count} more"
     },
     "assign": {
       "title": "Assign to Courses",
