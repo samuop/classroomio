@@ -74,7 +74,8 @@ vi.mock('@api/utils/org-url', () => ({ resolveOrgUrlIdentity: async () => ({ sit
 vi.mock('@api/config/dashboard-url', () => ({ getDashboardBaseUrl: () => 'https://aula.empresa.ejemplo' }));
 
 const { importAudienceMembers, invitationCoversAccess } = await import('@api/services/organization/audience');
-const { AppError } = await import('@api/utils/errors');
+const { AppError, handleError } = await import('@api/utils/errors');
+const { Hono } = await import('hono');
 
 const ORG = 'org-cliente';
 const CURSO = 'curso-nuevo';
@@ -199,6 +200,30 @@ describe('la lista rechazada entera', () => {
 
     expect(error).toMatchObject({ code: 'AUDIENCE_STAFF_EMAILS', details: { emails: ['tutora@ejemplo.test'] } });
     expect(db.createOrganizationMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('la respuesta HTTP de un rechazo', () => {
+  // `details` va en el JSON sin estar declarado en `ErrorResponse` (ver
+  // `handleError`): nada de tipos lo cuida, así que lo cuida esto.
+  const responder = async (error: Error) => {
+    const app = new Hono().get('/importar', (c) => handleError(c, error));
+    const respuesta = await app.request('/importar');
+    return respuesta.json();
+  };
+
+  it('un 4xx lleva los correos culpables', async () => {
+    const cuerpo = await responder(
+      new AppError('Invalid emails found', 'AUDIENCE_INVALID_EMAILS', 400, 'recipientCsv', { emails: ['beto@ejemplo'] })
+    );
+
+    expect(cuerpo).toMatchObject({ code: 'AUDIENCE_INVALID_EMAILS', details: { emails: ['beto@ejemplo'] } });
+  });
+
+  it('un 5xx no deja salir nada del error interno', async () => {
+    const cuerpo = await responder(new AppError('boom', 'INTERNO', 500, undefined, { secreto: 'x' }));
+
+    expect(cuerpo).not.toHaveProperty('details');
   });
 });
 

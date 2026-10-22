@@ -34,7 +34,6 @@ export interface ErrorResponse {
   error: string;
   code: string;
   field?: string;
-  details?: Record<string, unknown>;
 }
 
 /**
@@ -78,14 +77,20 @@ export const handleError = (
     const responseCode = isServerError ? (fallbackCode ?? error.code) : error.code;
     const responseMessage = isServerError ? fallbackMessage : error.message;
 
+    const body: ErrorResponse = {
+      success: false,
+      error: responseMessage,
+      code: responseCode,
+      field: isServerError ? undefined : error.field
+    };
+
+    // `details` viaja en el JSON pero NO se declara en `ErrorResponse`, a
+    // propósito: ese tipo se repite en la respuesta de cada ruta de la cadena de
+    // `app.ts`, que ya está al borde de lo que TypeScript puede serializar, y un
+    // campo más tiraba el build de la API (TS7056). Quien lo lee lo trata como
+    // dato desconocido.
     return c.json<ErrorResponse>(
-      {
-        success: false,
-        error: responseMessage,
-        code: responseCode,
-        field: isServerError ? undefined : error.field,
-        details: isServerError ? undefined : error.details
-      },
+      isServerError || !error.details ? body : Object.assign(body, { details: error.details }),
       error.statusCode
     );
   }
