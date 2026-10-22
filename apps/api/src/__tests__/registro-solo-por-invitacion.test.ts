@@ -13,14 +13,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   getOrganizationById: vi.fn(),
-  hasActiveOrganizationInviteForEmailInAccount: vi.fn()
+  hasActiveOrganizationInviteForEmailInAccount: vi.fn(),
+  hasActiveOrganizationInviteForEmailAnywhere: vi.fn()
 }));
 
 vi.mock('@cio/db/queries/organization', () => ({
   checkEmailExistsInOrg: vi.fn(),
   getFirstOrganization: vi.fn(),
   getOrganizationById: db.getOrganizationById,
-  hasActiveOrganizationInviteForEmailInAccount: db.hasActiveOrganizationInviteForEmailInAccount
+  hasActiveOrganizationInviteForEmailInAccount: db.hasActiveOrganizationInviteForEmailInAccount,
+  hasActiveOrganizationInviteForEmailAnywhere: db.hasActiveOrganizationInviteForEmailAnywhere
 }));
 
 vi.mock('@api/config/env', () => ({ env: { PUBLIC_IS_SELFHOSTED: 'false' } }));
@@ -82,6 +84,24 @@ describe('registro sólo por invitación', () => {
 
     expect(status).toBe(403);
     expect(cuerpo).toMatchObject({ code: 'INVITE_REQUIRED' });
+  });
+
+  it('desde el dominio raíz (sin empresa), sin invitación nadie crea una cuenta', async () => {
+    db.hasActiveOrganizationInviteForEmailAnywhere.mockResolvedValue(false);
+
+    const { status, cuerpo } = await registrar(undefined);
+
+    expect(status).toBe(403);
+    expect(cuerpo).toMatchObject({ code: 'INVITE_REQUIRED' });
+  });
+
+  it('desde el dominio raíz, una invitación a cualquier empresa alcanza', async () => {
+    db.hasActiveOrganizationInviteForEmailAnywhere.mockResolvedValue(true);
+
+    const { status } = await registrar(undefined, 'Ana@Ejemplo.test');
+
+    expect(status).toBe(200);
+    expect(db.hasActiveOrganizationInviteForEmailAnywhere).toHaveBeenCalledWith('ana@ejemplo.test');
   });
 
   it('una empresa con registro abierto no pide invitación', async () => {

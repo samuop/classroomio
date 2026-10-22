@@ -79,11 +79,12 @@ export async function createOrganizationInviteAudits(
 }
 
 /**
- * Las invitaciones vigentes de una empresa para estos correos: ni revocadas, ni
- * aceptadas, ni vencidas. Los correos van normalizados (minúsculas), igual que
- * se guardan.
+ * Las invitaciones pendientes de una empresa para estos correos: ni revocadas ni
+ * aceptadas, VENCIDAS INCLUIDAS (quien llama mira `expiresAt`). Renovar revoca la
+ * anterior, así que hay a lo sumo una por correo. Los correos van normalizados
+ * (minúsculas), igual que se guardan.
  */
-export async function getActiveOrganizationInvitesByEmails(
+export async function getUnacceptedOrganizationInvitesByEmails(
   organizationId: string,
   emails: string[]
 ): Promise<TOrganizationInvite[]> {
@@ -100,14 +101,13 @@ export async function getActiveOrganizationInvitesByEmails(
           eq(schema.organizationInvite.organizationId, organizationId),
           inArray(schema.organizationInvite.email, emails),
           eq(schema.organizationInvite.isRevoked, false),
-          isNull(schema.organizationInvite.acceptedAt),
-          gt(schema.organizationInvite.expiresAt, sql`NOW()`)
+          isNull(schema.organizationInvite.acceptedAt)
         )
       );
   } catch (error) {
-    console.error('getActiveOrganizationInvitesByEmails error:', error);
+    console.error('getUnacceptedOrganizationInvitesByEmails error:', error);
     throw new Error(
-      `Failed to get active organization invites: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `Failed to get unaccepted organization invites: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 }
@@ -282,6 +282,35 @@ export async function hasActiveOrganizationInviteForEmailInAccount(
     return !!result;
   } catch (error) {
     console.error('hasActiveOrganizationInviteForEmailInAccount error:', error);
+    return false;
+  }
+}
+
+/**
+ * Si el correo tiene una invitación vigente en ALGUNA empresa. Es la condición
+ * para crear una cuenta desde el dominio raíz del despliegue, donde no hay una
+ * empresa a la que preguntarle: sin invitación, nadie se registra.
+ */
+export async function hasActiveOrganizationInviteForEmailAnywhere(email: string): Promise<boolean> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [result] = await db
+      .select({ id: schema.organizationInvite.id })
+      .from(schema.organizationInvite)
+      .where(
+        and(
+          eq(schema.organizationInvite.email, normalizedEmail),
+          eq(schema.organizationInvite.isRevoked, false),
+          isNull(schema.organizationInvite.acceptedAt),
+          gt(schema.organizationInvite.expiresAt, sql`NOW()`)
+        )
+      )
+      .limit(1);
+
+    return !!result;
+  } catch (error) {
+    console.error('hasActiveOrganizationInviteForEmailAnywhere error:', error);
     return false;
   }
 }

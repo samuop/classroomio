@@ -3,6 +3,7 @@ import {
   checkEmailExistsInOrg,
   getFirstOrganization,
   getOrganizationById,
+  hasActiveOrganizationInviteForEmailAnywhere,
   hasActiveOrganizationInviteForEmailInAccount
 } from '@cio/db/queries/organization';
 
@@ -72,11 +73,34 @@ async function getOrganizationSafely(orgId: string) {
   }
 }
 
-async function canProceedWithoutOrgContext(c: Context) {
-  if (!isSelfHosted) {
-    return true;
+/**
+ * Un registro desde el dominio raíz (sin empresa en el encabezado) sólo pasa con
+ * una invitación vigente a alguna empresa.
+ *
+ * Ahí el registro era libre: cualquiera creaba una cuenta y el onboarding le
+ * ofrecía armar su propia empresa. En este despliegue las cuentas se crean sólo
+ * por invitación — también la del administrador de una empresa nueva, que se
+ * invita desde la empresa que se crea para él.
+ */
+async function handleRootSignup(c: Context, next: Next) {
+  const { email, parseFailed } = await getSignupEmail(c);
+
+  if (parseFailed) {
+    return c.json(INVALID_REQUEST, 400);
   }
 
+  if (!email) {
+    return c.json(EMAIL_REQUIRED, 400);
+  }
+
+  if (!(await hasActiveOrganizationInviteForEmailAnywhere(email))) {
+    return c.json(INVITE_REQUIRED, 403);
+  }
+
+  await next();
+}
+
+async function canProceedWithoutOrgContext(c: Context) {
   const firstOrg = await getFirstOrganization();
   if (!firstOrg) {
     return true;
@@ -125,7 +149,7 @@ async function handleInviteOnlySignup(c: Context, next: Next, accountRootId: str
  *     any organization of the same account (the org's root and its children).
  *
  * When the `cio-org-id` header is absent:
- *   - Non-self-hosted: pass through (header optional).
+ *   - Non-self-hosted (the root domain): require an active invite to some org.
  *   - Self-hosted: require the header unless no orgs exist yet (bootstrap), or the
  *     signup email is already an organization member (e.g. invited, profile_id null).
  */
@@ -133,6 +157,10 @@ export const signupGuard: MiddlewareHandler = async (c, next) => {
   const orgId = c.req.header('cio-org-id');
 
   if (!orgId) {
+    if (!isSelfHosted) {
+      return handleRootSignup(c, next);
+    }
+
     const canContinue = await canProceedWithoutOrgContext(c);
     if (!canContinue) {
       return c.json(SELF_HOSTED_ORG_CONTEXT_REQUIRED, 400);

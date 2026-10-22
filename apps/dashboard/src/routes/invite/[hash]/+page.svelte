@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { Button } from '@cio/ui/base/button';
   import AuthUI from '$features/ui/auth-ui.svelte';
   import { currentOrg, mergeAccountOrgFromServer } from '$lib/utils/store/org';
@@ -38,7 +38,24 @@
     return parts.join('&');
   }
 
-  const loginParams = $derived(buildInviteAuthParams(page.url?.pathname || '', data.invite?.invite?.email || ''));
+  /**
+   * Volver de crear la cuenta (o de iniciar sesión) desde esta invitación ES
+   * aceptarla.
+   *
+   * Se volvía a esta página y había que apretar «Aceptar» OTRA vez: quien cerraba
+   * la pestaña en ese momento quedaba con una cuenta sin empresa, y con el
+   * registro sólo por invitación nada lo volvía a meter en la suya. El registro y
+   * el inicio de sesión vuelven con esta marca, y la página acepta sola. Es lo
+   * mismo que el botón: el servidor sigue exigiendo que el correo sea el invitado.
+   */
+  const MARCA_DE_ACEPTAR = 'aceptar';
+
+  function caminoDeVuelta(): string {
+    const pathname = page.url?.pathname || '';
+    return pathname ? `${pathname}?${MARCA_DE_ACEPTAR}=1` : '';
+  }
+
+  const loginParams = $derived(buildInviteAuthParams(caminoDeVuelta(), data.invite?.invite?.email || ''));
 
   const orgName = $derived(data.invite?.organization?.name ?? '');
   const inviteRoleId = $derived(data.invite?.invite?.roleId ?? 0);
@@ -70,7 +87,7 @@
     }
 
     if (!$profile.id || !$profile.email) {
-      const qs = buildInviteAuthParams(page.url?.pathname || '', data.invite?.invite?.email || '');
+      const qs = buildInviteAuthParams(caminoDeVuelta(), data.invite?.invite?.email || '');
       return goto(resolve(`/signup?${qs}`, {}));
     }
 
@@ -132,6 +149,19 @@
     }
     return goto(resolve(orgSlug ? `/org/${orgSlug}` : '/org', {}));
   }
+
+  let aceptacionAutomaticaIntentada = false;
+
+  $effect(() => {
+    if (aceptacionAutomaticaIntentada) return;
+    if (page.url?.searchParams.get(MARCA_DE_ACEPTAR) !== '1') return;
+    // La sesión llega después de montar: se espera al perfil, y una invitación
+    // de otro correo (o vencida) no se intenta — su cartel ya explica por qué.
+    if (!$profile.id || !canJoinOrganization) return;
+
+    aceptacionAutomaticaIntentada = true;
+    untrack(() => handleSubmit());
+  });
 
   onMount(async () => {
     if (!data.currentOrg) return;

@@ -14,7 +14,7 @@ import {
   createOrganizationInviteAudits,
   createOrganizationInvites,
   createOrganizationMembers,
-  getActiveOrganizationInvitesByEmails,
+  getUnacceptedOrganizationInvitesByEmails,
   getOrganizationAudienceMember,
   getLatestOrganizationInviteRowByOrgAndEmail,
   getOrgMembersByProfileIds,
@@ -51,11 +51,36 @@ const MAX_EMAILS_IN_ERROR = 50;
  * reenviaba la importación sola después de un corte.
  */
 export function invitationCoversAccess(metadata: unknown, courseIds: string[], programIds: string[]): boolean {
-  const meta = (metadata ?? {}) as { courseIds?: unknown; programIds?: unknown };
-  const cursos = new Set(Array.isArray(meta.courseIds) ? meta.courseIds : []);
-  const programas = new Set(Array.isArray(meta.programIds) ? meta.programIds : []);
+  const { courseIds: cursos, programIds: programas } = invitationAccess(metadata);
 
-  return courseIds.every((id) => cursos.has(id)) && programIds.every((id) => programas.has(id));
+  return courseIds.every((id) => cursos.includes(id)) && programIds.every((id) => programas.includes(id));
+}
+
+type InviteAccess = { courseIds: string[]; programIds: string[] };
+
+/** Los cursos y programas a los que lleva una invitación, leídos de su `metadata`. */
+function invitationAccess(metadata: unknown): InviteAccess {
+  const meta = (metadata ?? {}) as { courseIds?: unknown; programIds?: unknown };
+  const soloTextos = (lista: unknown) =>
+    Array.isArray(lista) ? lista.filter((id): id is string => typeof id === 'string') : [];
+
+  return { courseIds: soloTextos(meta.courseIds), programIds: soloTextos(meta.programIds) };
+}
+
+/**
+ * Lo que debe llevar la invitación que reemplaza a otra: lo nuevo MÁS lo que ya
+ * llevaba la anterior.
+ *
+ * Renovar revoca la invitación anterior, y la nueva se armaba sólo con lo que se
+ * pedía ahora: quien estaba invitado al curso A y se volvía a invitar al curso B
+ * aceptaba y entraba a B, perdiendo A sin que nadie se enterara. Pasa al invitar
+ * la misma lista a cada curso o programa nuevo antes de que todos hayan entrado.
+ */
+export function accessForRenewedInvite(previous: InviteAccess | undefined, requested: InviteAccess): InviteAccess {
+  return {
+    courseIds: [...new Set([...(previous?.courseIds ?? []), ...requested.courseIds])],
+    programIds: [...new Set([...(previous?.programIds ?? []), ...requested.programIds])]
+  };
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -343,9 +368,23 @@ async function createStudentOrgInvitesAndSendEmails(input: {
   accessNamesLabel: string | undefined;
   invitedByProfileId: string;
   shouldSendEmail: boolean;
+  /** Lo que ya llevaba la invitación que se reemplaza, por correo: se suma. */
+  previousAccessByEmail?: Map<string, InviteAccess>;
 }): Promise<{ created: number; emailsSent: number; emailsFailed: number }> {
-  const { orgId, organization, emails, courseIds, programIds, accessNamesLabel, invitedByProfileId, shouldSendEmail } =
-    input;
+  const {
+    orgId,
+    organization,
+    emails,
+    courseIds,
+    programIds,
+    accessNamesLabel,
+    invitedByProfileId,
+    shouldSendEmail,
+    previousAccessByEmail
+  } = input;
+
+  const accessFor = (email: string) =>
+    accessForRenewedInvite(previousAccessByEmail?.get(email), { courseIds, programIds });
 
   if (emails.length === 0) {
     return { created: 0, emailsSent: 0, emailsFailed: 0 };
@@ -357,6 +396,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
 
   const inviteInputs = emails.map((email) => {
     const token = generateToken();
+    const access = accessFor(email);
     return {
       email,
       token,
@@ -370,8 +410,8 @@ async function createStudentOrgInvitesAndSendEmails(input: {
         isRevoked: false,
         metadata: {
           source: 'AUDIENCE_IMPORT',
-          courseIds: courseIds.length > 0 ? courseIds : undefined,
-          programIds: programIds.length > 0 ? programIds : undefined
+          courseIds: access.courseIds.length > 0 ? access.courseIds : undefined,
+          programIds: access.programIds.length > 0 ? access.programIds : undefined
         }
       }
     };
@@ -396,8 +436,7 @@ async function createStudentOrgInvitesAndSendEmails(input: {
           roleId: ROLE.STUDENT,
           roleName: 'Student',
           expiresAt,
-          courseIds,
-          programIds
+          ...accessFor(email)
         }
       };
     })
@@ -599,13 +638,21 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
   }
 
   // Un pendiente cuya invitación vigente ya cubre lo pedido se deja como está:
-  // ver `invitationCoversAccess`. Los demás (vencida, o un curso nuevo) se renuevan.
-  const activeInvites =
-    pendingStudentEmails.length > 0 ? await getActiveOrganizationInvitesByEmails(orgId, pendingStudentEmails) : [];
+  // ver `invitationCoversAccess`. Los demás (vencida, o un curso nuevo) se
+  // renuevan, y la nueva suma lo que llevaba la anterior: ver `accessForRenewedInvite`.
+  const unacceptedInvites =
+    pendingStudentEmails.length > 0 ? await getUnacceptedOrganizationInvitesByEmails(orgId, pendingStudentEmails) : [];
+  const now = Date.now();
   const keptEmails = new Set(
-    activeInvites
-      .filter((invite) => invitationCoversAccess(invite.metadata, courseIds, programIds))
+    unacceptedInvites
+      .filter(
+        (invite) =>
+          new Date(invite.expiresAt).getTime() > now && invitationCoversAccess(invite.metadata, courseIds, programIds)
+      )
       .map((invite) => invite.email.toLowerCase())
+  );
+  const previousAccessByEmail = new Map(
+    unacceptedInvites.map((invite) => [invite.email.toLowerCase(), invitationAccess(invite.metadata)])
   );
   const pendingToRenew = pendingStudentEmails.filter((email) => !keptEmails.has(email));
 
@@ -620,7 +667,8 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
       programIds,
       accessNamesLabel,
       invitedByProfileId,
-      shouldSendEmail: data.sendEmail
+      shouldSendEmail: data.sendEmail,
+      previousAccessByEmail
     });
     pendingEmailsSent = pendingOutcome.emailsSent;
     pendingEmailsFailed = pendingOutcome.emailsFailed;

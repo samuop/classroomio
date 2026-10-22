@@ -19,7 +19,7 @@ import { ROLE } from '@cio/utils/constants';
 const db = vi.hoisted(() => ({
   getOrganizationById: vi.fn(),
   getOrganizationMembersByNormalizedEmails: vi.fn(),
-  getActiveOrganizationInvitesByEmails: vi.fn(),
+  getUnacceptedOrganizationInvitesByEmails: vi.fn(),
   revokeActiveOrganizationInvitesByEmails: vi.fn(),
   createOrganizationInvites: vi.fn(),
   createOrganizationInviteAudits: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('@cio/db/queries/organization', () => ({
   createOrganizationInviteAudits: db.createOrganizationInviteAudits,
   createOrganizationInvites: db.createOrganizationInvites,
   createOrganizationMembers: db.createOrganizationMembers,
-  getActiveOrganizationInvitesByEmails: db.getActiveOrganizationInvitesByEmails,
+  getUnacceptedOrganizationInvitesByEmails: db.getUnacceptedOrganizationInvitesByEmails,
   getOrganizationAudienceMember: vi.fn(),
   getLatestOrganizationInviteRowByOrgAndEmail: vi.fn(),
   getOrgMembersByProfileIds: vi.fn(async () => []),
@@ -84,6 +84,22 @@ const OTRO_CURSO = 'curso-viejo';
 /** Una persona importada antes que todavía no entró: fila de miembro sin perfil. */
 const pendiente = (email: string) => ({ normalizedEmail: email, roleId: ROLE.STUDENT, profileId: null });
 
+const EN_TRES_DIAS = new Date(Date.now() + 3 * 86_400_000).toISOString();
+const HACE_UN_DIA = new Date(Date.now() - 86_400_000).toISOString();
+
+/** Una invitación sin aceptar ni revocar; `expiresAt` dice si sigue vigente. */
+const invitacion = (email: string, courseIds: string[], expiresAt = EN_TRES_DIAS) => ({
+  email,
+  expiresAt,
+  metadata: { courseIds }
+});
+
+/** La metadata de la invitación nueva que se creó para ese correo. */
+const invitacionNueva = (email: string) =>
+  db.createOrganizationInvites.mock.calls
+    .flatMap(([filas]) => filas as Array<{ email: string; metadata: { courseIds?: string[] } }>)
+    .find((fila) => fila.email === email)?.metadata;
+
 const correosEncolados = () =>
   db.enqueueTransactionalEmail.mock.calls.map(([, payload]) => (payload as { to: string }).to);
 
@@ -113,12 +129,13 @@ describe('volver a importar a quien ya está invitado', () => {
       pendiente('beto@ejemplo.test'),
       pendiente('caro@ejemplo.test')
     ]);
-    db.getActiveOrganizationInvitesByEmails.mockResolvedValue([
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([
       // Vigente y ya incluye el curso: se deja.
-      { email: 'ana@ejemplo.test', metadata: { courseIds: [CURSO] } },
+      invitacion('ana@ejemplo.test', [CURSO]),
       // Vigente, pero para otro curso: se renueva para sumar el nuevo.
-      { email: 'beto@ejemplo.test', metadata: { courseIds: [OTRO_CURSO] } }
-      // caro: la suya venció, no aparece entre las vigentes.
+      invitacion('beto@ejemplo.test', [OTRO_CURSO]),
+      // Vencida: se renueva aunque ya llevara el curso.
+      invitacion('caro@ejemplo.test', [CURSO], HACE_UN_DIA)
     ]);
 
     const resultado = await importAudienceMembers(
@@ -141,9 +158,7 @@ describe('volver a importar a quien ya está invitado', () => {
 
   it('pegar dos veces la misma lista no vuelve a mandar nada', async () => {
     db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([pendiente('ana@ejemplo.test')]);
-    db.getActiveOrganizationInvitesByEmails.mockResolvedValue([
-      { email: 'ana@ejemplo.test', metadata: { courseIds: [CURSO] } }
-    ]);
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([invitacion('ana@ejemplo.test', [CURSO])]);
 
     const resultado = await importAudienceMembers(
       ORG,
@@ -154,6 +169,49 @@ describe('volver a importar a quien ya está invitado', () => {
     expect(db.revokeActiveOrganizationInvitesByEmails).not.toHaveBeenCalled();
     expect(db.enqueueTransactionalEmail).not.toHaveBeenCalled();
     expect(resultado).toMatchObject({ pendingInvitesRenewed: 0, pendingInvitesKept: 1, emailsSent: 0 });
+  });
+});
+
+describe('invitar a un curso nuevo a quien todavía no entró', () => {
+  it('la invitación nueva suma el curso nuevo a los que ya tenía, no los pierde', async () => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([pendiente('beto@ejemplo.test')]);
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([invitacion('beto@ejemplo.test', [OTRO_CURSO])]);
+
+    await importAudienceMembers(
+      ORG,
+      { recipientCsv: 'beto@ejemplo.test', courseIds: [CURSO], allCourses: false, allPrograms: false, sendEmail: true },
+      'perfil-docente'
+    );
+
+    expect(invitacionNueva('beto@ejemplo.test')?.courseIds?.sort()).toEqual([CURSO, OTRO_CURSO].sort());
+  });
+
+  it('también suma los de una invitación vencida', async () => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([pendiente('caro@ejemplo.test')]);
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([
+      invitacion('caro@ejemplo.test', [OTRO_CURSO], HACE_UN_DIA)
+    ]);
+
+    await importAudienceMembers(
+      ORG,
+      { recipientCsv: 'caro@ejemplo.test', courseIds: [CURSO], allCourses: false, allPrograms: false, sendEmail: true },
+      'perfil-docente'
+    );
+
+    expect(invitacionNueva('caro@ejemplo.test')?.courseIds?.sort()).toEqual([CURSO, OTRO_CURSO].sort());
+  });
+
+  it('a alguien nuevo lo invita sólo a lo pedido', async () => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([]);
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([]);
+
+    await importAudienceMembers(
+      ORG,
+      { recipientCsv: 'dani@ejemplo.test', courseIds: [CURSO], allCourses: false, allPrograms: false, sendEmail: true },
+      'perfil-docente'
+    );
+
+    expect(invitacionNueva('dani@ejemplo.test')?.courseIds).toEqual([CURSO]);
   });
 });
 
