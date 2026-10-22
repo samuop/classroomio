@@ -3,7 +3,7 @@ import {
   checkEmailExistsInOrg,
   getFirstOrganization,
   getOrganizationById,
-  hasActiveOrganizationInviteForEmail
+  hasActiveOrganizationInviteForEmailInAccount
 } from '@cio/db/queries/organization';
 
 import { env } from '@api/config/env';
@@ -94,7 +94,7 @@ function isInviteOnlySignup(settings: OrgSettings | null) {
   return settings?.signup?.inviteOnly ?? false;
 }
 
-async function handleInviteOnlySignup(c: Context, next: Next, orgId: string) {
+async function handleInviteOnlySignup(c: Context, next: Next, accountRootId: string) {
   const { email, parseFailed } = await getSignupEmail(c);
 
   if (parseFailed) {
@@ -105,7 +105,9 @@ async function handleInviteOnlySignup(c: Context, next: Next, orgId: string) {
     return c.json(EMAIL_REQUIRED, 400);
   }
 
-  const hasInvite = await hasActiveOrganizationInviteForEmail(orgId, email);
+  // La invitación vale si es de CUALQUIER empresa de la cuenta, no sólo de la del
+  // encabezado: ver `hasActiveOrganizationInviteForEmailInAccount`.
+  const hasInvite = await hasActiveOrganizationInviteForEmailInAccount(accountRootId, email);
   if (!hasInvite) {
     return c.json(INVITE_REQUIRED, 403);
   }
@@ -119,7 +121,8 @@ async function handleInviteOnlySignup(c: Context, next: Next, orgId: string) {
  * When the `cio-org-id` header is present the middleware looks up the org and
  * rejects the request when:
  *   - `disableSignup` is true, or
- *   - `settings.signup.inviteOnly` is true and the email has no active invite.
+ *   - `settings.signup.inviteOnly` is true and the email has no active invite in
+ *     any organization of the same account (the org's root and its children).
  *
  * When the `cio-org-id` header is absent:
  *   - Non-self-hosted: pass through (header optional).
@@ -155,5 +158,5 @@ export const signupGuard: MiddlewareHandler = async (c, next) => {
     return;
   }
 
-  return handleInviteOnlySignup(c, next, orgId);
+  return handleInviteOnlySignup(c, next, org.parentOrganizationId ?? org.id);
 };

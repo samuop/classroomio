@@ -530,6 +530,7 @@
     "signup_disabled": {
       "title": "Signup Disabled",
       "invite_only_message": "Signup is invite-only. Please use an invite link to create an account.",
+      "invite_email_mismatch": "That email has no valid invitation. Sign up with the same email the invitation was sent to, or ask for it to be resent.",
       "go_to_login": "Go to Login"
     },
     "or_continue_with": "Or continue with"

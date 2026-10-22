@@ -7,7 +7,7 @@ import type {
 } from '@db/types';
 import * as schema from '@db/schema';
 
-import { and, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, type DbOrTxClient } from '@db/drizzle';
 
 export async function createOrganizationInvite(values: TNewOrganizationInvite): Promise<TOrganizationInvite> {
@@ -244,6 +244,44 @@ export async function hasActiveOrganizationInviteForEmail(organizationId: string
     return !!result;
   } catch (error) {
     console.error('hasActiveOrganizationInviteForEmail error:', error);
+    return false;
+  }
+}
+
+/**
+ * Igual que `hasActiveOrganizationInviteForEmail`, pero en TODA la cuenta: la
+ * empresa raíz y sus empresas hijas.
+ *
+ * Una consultora y sus clientes comparten el dominio de la consultora, y la
+ * pantalla de registro manda la empresa que tenga a mano: la del cliente si se
+ * llegó desde la invitación, la dueña del dominio si se recargó. Mirando sólo
+ * esa empresa, un alumno invitado al cliente quedaba afuera por recargar.
+ */
+export async function hasActiveOrganizationInviteForEmailInAccount(
+  accountRootId: string,
+  email: string
+): Promise<boolean> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const [result] = await db
+      .select({ id: schema.organizationInvite.id })
+      .from(schema.organizationInvite)
+      .innerJoin(schema.organization, eq(schema.organizationInvite.organizationId, schema.organization.id))
+      .where(
+        and(
+          or(eq(schema.organization.id, accountRootId), eq(schema.organization.parentOrganizationId, accountRootId)),
+          eq(schema.organizationInvite.email, normalizedEmail),
+          eq(schema.organizationInvite.isRevoked, false),
+          isNull(schema.organizationInvite.acceptedAt),
+          gt(schema.organizationInvite.expiresAt, sql`NOW()`)
+        )
+      )
+      .limit(1);
+
+    return !!result;
+  } catch (error) {
+    console.error('hasActiveOrganizationInviteForEmailInAccount error:', error);
     return false;
   }
 }

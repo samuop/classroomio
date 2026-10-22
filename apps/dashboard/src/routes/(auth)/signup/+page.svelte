@@ -155,10 +155,15 @@
 
       if (error) throw error;
     } catch (error) {
+      // Con el registro sólo por invitación, la API rechaza un correo sin
+      // invitación vigente (casi siempre: el alumno se registra con otro correo
+      // que el invitado). Sin esto se mostraba el texto en inglés de la API.
       submitError =
-        (error as { error_description?: string; message?: string })?.error_description ||
-        (error as { message?: string })?.message ||
-        '';
+        (error as { code?: string })?.code === 'INVITE_REQUIRED'
+          ? t.get('login.signup_disabled.invite_email_mismatch')
+          : (error as { error_description?: string; message?: string })?.error_description ||
+            (error as { message?: string })?.message ||
+            '';
       loading = false;
     }
   }

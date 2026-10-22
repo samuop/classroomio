@@ -3456,7 +3456,8 @@
     },
     "signup_disabled": {
       "title": "Registro deshabilitado",
-      "invite_only_message": "El registro es sólo por invitación. Utilice un enlace de invitación para crear una cuenta.",
+      "invite_only_message": "El registro es sólo por invitación. Para crear tu cuenta, usá el botón del correo de invitación que te llegó.",
+      "invite_email_mismatch": "Ese correo no tiene una invitación vigente. Registrate con el mismo correo al que te llegó la invitación, o pedí que te la reenvíen.",
       "go_to_login": "Ir a Iniciar sesión"
     },
     "or_continue_with": "O continuá con"
