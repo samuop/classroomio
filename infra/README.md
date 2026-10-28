@@ -28,7 +28,8 @@ VPS (sin tocar):             saas-rrhh + MySQL  ← intacto
 | Archivo | Qué hace |
 |---|---|
 | `setup-vps.sh` | Provisioning idempotente (correr 1 vez como root en el VPS). |
-| `deploy-remote.sh` | Pasos post-rsync (install + db:setup + MinIO + PM2). Lo llama el workflow. |
+| `deploy-remote.sh` | Pasos post-rsync (install + db:setup + MinIO + poda de trozos viejos del dashboard + PM2). Lo llama el workflow. |
+| `podar-trozos-viejos.sh` | Borra los `_app/immutable/` del dashboard que ningún deploy tocó en una semana. Nunca corta el deploy. |
 | `ecosystem.config.cjs` | PM2: 3 procesos Node con límites de RAM. |
 | `nginx-classroomio.conf` | 2 server blocks (dashboard + API). No toca saas-rrhh. |
 | `postgres-tuning.conf` | Tuning de Postgres para RAM baja (drop-in conf.d). |

@@ -179,6 +179,12 @@ jobs:
       # público y un `server_name` real publica quién es cliente de quién—, así
       # que sólo existen en el VPS. Sin la exclusión, `--delete` los borraría en
       # cada deploy y nadie se enteraría hasta el próximo `nginx -s reload`.
+      #
+      # Los trozos del dashboard (`_app/immutable/`) van PROTEGIDOS del
+      # `--delete`: una pestaña abierta desde antes del deploy sigue pidiendo los
+      # de su build, y borrados le daban "Failed to fetch dynamically imported
+      # module". Llevan el hash en el nombre, así que un viejo nunca pisa a uno
+      # nuevo. Los poda deploy-remote.sh cuando tienen más de una semana.
       - name: Rsync to VPS
         run: |
           codigo=0
@@ -196,6 +202,7 @@ jobs:
               --exclude='**/.env' \
               --exclude='infra/minio.env' \
               --exclude='infra/clientes/*.conf' \
+              --filter='P /apps/dashboard/build/client/_app/immutable/**' \
               ./ \
               ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/classroomio/ && exit 0
             codigo=$?
