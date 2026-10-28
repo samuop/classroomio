@@ -61,6 +61,11 @@
     return !invitation.enrolled && invitation.status === 'pending';
   }
 
+  // A live link has to be revoked first; the API refuses it with 409.
+  function canRemove(invitation: CourseInvitationItem): boolean {
+    return !invitation.enrolled && invitation.status !== 'pending';
+  }
+
   async function refresh() {
     await peopleApi.loadInvitations(courseId);
   }
@@ -91,6 +96,18 @@
     busyEmail = email;
     try {
       await orgApi.revokeAudienceInvite({ email });
+      await refresh();
+    } finally {
+      busyEmail = null;
+    }
+  }
+
+  async function remove(email: string) {
+    if (!confirm(t.get('audience.invite.remove_confirm', { email }))) return;
+
+    busyEmail = email;
+    try {
+      await peopleApi.removeInvitation(courseId, email);
       await refresh();
     } finally {
       busyEmail = null;
@@ -170,7 +187,7 @@
               </Table.Cell>
 
               <Table.Cell class="text-right">
-                {#if canResend(invitation) || canRevoke(invitation)}
+                {#if canResend(invitation) || canRevoke(invitation) || canRemove(invitation)}
                   <DropdownMenu.Root>
                     <DropdownMenu.Trigger
                       class="hover:ui:bg-muted inline-flex items-center justify-center rounded-md p-1.5"
@@ -195,6 +212,15 @@
                           onclick={() => revoke(invitation.email)}
                         >
                           {$t('audience.invite.revoke')}
+                        </DropdownMenu.Item>
+                      {/if}
+                      {#if canRemove(invitation)}
+                        <DropdownMenu.Item
+                          class="ui:text-destructive focus:ui:text-destructive"
+                          disabled={busyEmail === invitation.email}
+                          onclick={() => remove(invitation.email)}
+                        >
+                          {$t('audience.invite.remove')}
                         </DropdownMenu.Item>
                       {/if}
                     </DropdownMenu.Content>

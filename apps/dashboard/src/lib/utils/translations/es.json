@@ -791,7 +791,10 @@
       "revoke": "Revocar invitación pendiente",
       "resend_snackbar_success": "Invitación enviada por correo",
       "resend_snackbar_email_failed": "La invitación se renovó pero no se pudo enviar el correo electrónico.",
-      "revoke_snackbar_success": "Invitación pendiente revocada"
+      "revoke_snackbar_success": "Invitación pendiente revocada",
+      "remove": "Eliminar de la lista",
+      "remove_confirm": "¿Eliminar las invitaciones de {email} de este curso? No se puede deshacer.",
+      "remove_snackbar_success": "Invitación eliminada"
     },
     "assign": {
       "title": "Asignar a cursos",

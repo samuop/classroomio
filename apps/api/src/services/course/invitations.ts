@@ -1,6 +1,9 @@
 import {
   listOrganizationInviteEmailEvents,
   listOrganizationInvitesForCourse,
+  listOrganizationInvitesForCourseByEmail,
+  removeCourseFromOrganizationInvites,
+  type TCourseInviteForRemoval,
   type TCourseInviteRow,
   type TInviteEmailEvent
 } from '@cio/db/queries/organization';
@@ -108,6 +111,70 @@ export function summarizeCourseInvitations(invitations: CourseInvitation[]): Cou
     expired: invitations.filter((invitation) => !invitation.enrolled && invitation.status === 'expired').length,
     revoked: invitations.filter((invitation) => !invitation.enrolled && invitation.status === 'revoked').length
   };
+}
+
+export interface InvitationRemovalPlan {
+  /** A live link is never deleted: it has to be revoked first. */
+  pending: boolean;
+  deleteIds: string[];
+  detach: Array<{ id: string; metadata: Record<string, unknown> }>;
+}
+
+/**
+ * Takes this course off a person's invites. An invite that also lists other
+ * courses stays for them; one that was only for this course is deleted.
+ */
+export function planInvitationRemoval(
+  rows: TCourseInviteForRemoval[],
+  courseId: string,
+  now: number = Date.now()
+): InvitationRemovalPlan {
+  const plan: InvitationRemovalPlan = {
+    pending: rows.some((row) => deriveCourseInvitationStatus(row, now) === 'pending'),
+    deleteIds: [],
+    detach: []
+  };
+
+  for (const row of rows) {
+    const courseIds = Array.isArray(row.metadata.courseIds) ? (row.metadata.courseIds as unknown[]) : [];
+    const otherCourses = courseIds.filter((id) => id !== courseId);
+
+    if (otherCourses.length === 0) {
+      plan.deleteIds.push(row.id);
+    } else {
+      plan.detach.push({ id: row.id, metadata: { ...row.metadata, courseIds: otherCourses } });
+    }
+  }
+
+  return plan;
+}
+
+/** Removes a person's finished invitations (revoked, expired or accepted) from this course. */
+export async function removeCourseInvitation(
+  courseId: string,
+  email: string
+): Promise<{ deleted: number; detached: number }> {
+  const course = await getCourseWithOrgData(courseId);
+
+  if (!course) {
+    throw new AppError('Course not found', ErrorCodes.COURSE_NOT_FOUND, 404);
+  }
+
+  const rows = await listOrganizationInvitesForCourseByEmail(course.orgId, courseId, email);
+
+  if (rows.length === 0) {
+    throw new AppError('Invitation not found', ErrorCodes.NOT_FOUND, 404);
+  }
+
+  const plan = planInvitationRemoval(rows, courseId);
+
+  if (plan.pending) {
+    throw new AppError('Revoke the pending invitation before removing it', ErrorCodes.CONFLICT, 409);
+  }
+
+  await removeCourseFromOrganizationInvites(plan.deleteIds, plan.detach);
+
+  return { deleted: plan.deleteIds.length, detached: plan.detach.length };
 }
 
 /**

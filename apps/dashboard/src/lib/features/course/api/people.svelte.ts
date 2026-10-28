@@ -9,6 +9,7 @@ import type {
   ListCourseInvitationsRequest,
   ListStudentInvitesRequest,
   ListPeopleRequest,
+  RemoveCourseInvitationRequest,
   RevokeStudentInviteRequest,
   UpdatePeopleRequest
 } from '../utils/types';
@@ -171,6 +172,30 @@ export class PeopleApi extends BaseApiWithErrors {
     } finally {
       this.isLoadingInvitations = false;
     }
+  }
+
+  /**
+   * Removes a person's finished invitations (revoked, expired or accepted) from this course.
+   * @param courseId Course ID
+   * @param email Invited email
+   */
+  async removeInvitation(courseId: string, email: string) {
+    return this.execute<RemoveCourseInvitationRequest>({
+      requestFn: () =>
+        classroomio.course[':courseId']['invites']['students'].$delete({
+          param: { courseId },
+          json: { email }
+        }),
+      logContext: 'removing course invitation',
+      onSuccess: () => {
+        snackbar.success('audience.invite.remove_snackbar_success');
+      },
+      onError: (result) => {
+        if (typeof result === 'string') {
+          snackbar.error(result);
+        }
+      }
+    });
   }
 
   /**

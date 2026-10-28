@@ -11,6 +11,11 @@ export const ZCourseInviteRevokeParam = z.object({
 });
 export type TCourseInviteRevokeParam = z.infer<typeof ZCourseInviteRevokeParam>;
 
+export const ZCourseInvitationRemove = z.object({
+  email: z.string().trim().min(1).max(320)
+});
+export type TCourseInvitationRemove = z.infer<typeof ZCourseInvitationRemove>;
+
 export const ZCourseInviteAuditParam = z.object({
   courseId: z.string().min(1),
   inviteId: z.string().uuid()

@@ -1,4 +1,5 @@
 import {
+  ZCourseInvitationRemove,
   ZCourseInviteAuditParam,
   ZCourseInviteParam,
   ZCourseInviteRevokeParam,
@@ -10,9 +11,10 @@ import {
   listStudentInvites,
   revokeStudentInvite
 } from '@api/services/course/invite';
-import { listCourseInvitations } from '@api/services/course/invitations';
+import { listCourseInvitations, removeCourseInvitation } from '@api/services/course/invitations';
 
 import { Hono } from '@api/utils/hono';
+import { anotarAuditoria } from '@api/utils/audit-detail';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
 import { handleError } from '@api/utils/errors';
@@ -63,6 +65,37 @@ export const invitesRouter = new Hono()
       return handleError(c, error, 'Failed to list course invitations');
     }
   })
+  /**
+   * DELETE /course/:courseId/invites/students
+   * Removes a person's finished invitations from this course's list (team/admin only).
+   * A pending one answers 409: it has to be revoked first.
+   */
+  .delete(
+    '/students',
+    authMiddleware,
+    courseTeamMemberMiddleware,
+    zValidator('param', ZCourseInviteParam),
+    zValidator('json', ZCourseInvitationRemove),
+    async (c) => {
+      try {
+        const { courseId } = c.req.valid('param');
+        const { email } = c.req.valid('json');
+        anotarAuditoria(c, { metadata: { email } });
+
+        const result = await removeCourseInvitation(courseId, email);
+
+        return c.json(
+          {
+            success: true,
+            data: result
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to remove course invitation');
+      }
+    }
+  )
   /**
    * POST /course/:courseId/invites
    * Creates a secure student invite token for a course (team/admin only)

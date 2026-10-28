@@ -4324,7 +4324,10 @@
       "revoke": "Revoke pending invite",
       "resend_snackbar_success": "Invitation email sent",
       "resend_snackbar_email_failed": "Invite was renewed but the email could not be sent",
-      "revoke_snackbar_success": "Pending invitation revoked"
+      "revoke_snackbar_success": "Pending invitation revoked",
+      "remove": "Remove from list",
+      "remove_confirm": "Remove {email}'s invitations from this course? This cannot be undone.",
+      "remove_snackbar_success": "Invitation removed"
     },
     "delete": {
       "title": "Remove member",

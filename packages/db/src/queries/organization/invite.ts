@@ -432,6 +432,73 @@ export async function listOrganizationInvitesForCourse(
   }
 }
 
+export type TCourseInviteForRemoval = {
+  id: string;
+  acceptedAt: string | null;
+  isRevoked: boolean;
+  expiresAt: string;
+  metadata: Record<string, unknown>;
+};
+
+/** Every invite of one person that lists this course, whatever its state. */
+export async function listOrganizationInvitesForCourseByEmail(
+  organizationId: string,
+  courseId: string,
+  email: string
+): Promise<TCourseInviteForRemoval[]> {
+  try {
+    const rows = await db
+      .select({
+        id: schema.organizationInvite.id,
+        acceptedAt: schema.organizationInvite.acceptedAt,
+        isRevoked: schema.organizationInvite.isRevoked,
+        expiresAt: schema.organizationInvite.expiresAt,
+        metadata: schema.organizationInvite.metadata
+      })
+      .from(schema.organizationInvite)
+      .where(
+        and(
+          eq(schema.organizationInvite.organizationId, organizationId),
+          sql`lower(trim(${schema.organizationInvite.email})) = ${email.toLowerCase().trim()}`,
+          sql`${schema.organizationInvite.metadata} -> 'courseIds' @> ${JSON.stringify([courseId])}::jsonb`
+        )
+      );
+
+    return rows.map((row) => ({ ...row, metadata: (row.metadata ?? {}) as Record<string, unknown> }));
+  } catch (error) {
+    console.error('listOrganizationInvitesForCourseByEmail error:', error);
+    throw new Error(
+      `Failed to list organization invites for course and email: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/** Deletes some invites and rewrites the metadata of others, all or nothing. */
+export async function removeCourseFromOrganizationInvites(
+  deleteIds: string[],
+  detach: Array<{ id: string; metadata: Record<string, unknown> }>
+): Promise<void> {
+  try {
+    await db.transaction(async (tx) => {
+      if (deleteIds.length > 0) {
+        await tx.delete(schema.organizationInvite).where(inArray(schema.organizationInvite.id, deleteIds));
+      }
+
+      for (const invite of detach) {
+        await tx
+          .update(schema.organizationInvite)
+          .set({ metadata: invite.metadata, updatedAt: new Date().toISOString() })
+          .where(eq(schema.organizationInvite.id, invite.id));
+      }
+    });
+  } catch (error) {
+    console.error('removeCourseFromOrganizationInvites error:', error);
+    throw new Error(
+      `Failed to remove course from organization invites: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export type TInviteEmailEvent = {
   inviteId: string;
   eventType: 'EMAIL_SENT' | 'EMAIL_FAILED';

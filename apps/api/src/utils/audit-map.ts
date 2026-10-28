@@ -202,6 +202,12 @@ export const WRITE_ACTION_NAMES: Array<{ method: string; pattern: string; action
     action: 'REVOCO_INVITACION_AL_CURSO',
     entity: 'Course'
   },
+  {
+    method: 'DELETE',
+    pattern: '/course/:courseId/invites/students',
+    action: 'ELIMINO_INVITACION_DEL_CURSO',
+    entity: 'Course'
+  },
   { method: 'POST', pattern: '/course/:courseId/download/certificate', action: 'DESCARGO_CERTIFICADO', entity: 'Course' },
   {
     method: 'POST',

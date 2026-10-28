@@ -4,9 +4,11 @@ import {
   deriveCourseInvitationStatus,
   indexEmailEvents,
   keepLatestInvitePerEmail,
+  planInvitationRemoval,
   summarizeCourseInvitations,
   type CourseInvitation
 } from '@api/services/course/invitations';
+import type { TCourseInviteForRemoval } from '@cio/db/queries/organization';
 
 const NOW = new Date('2026-08-13T00:00:00.000Z').getTime();
 const FUTURE = '2026-08-20T00:00:00.000Z';
@@ -138,5 +140,71 @@ describe('summarizeCourseInvitations', () => {
 
   it('reports zeroes for a course nobody was invited to', () => {
     expect(summarizeCourseInvitations([])).toEqual({ total: 0, joined: 0, pending: 0, expired: 0, revoked: 0 });
+  });
+});
+
+describe('planInvitationRemoval', () => {
+  const COURSE = 'course-ventas';
+  const OTHER = 'course-onboarding';
+
+  function stored(overrides: Partial<TCourseInviteForRemoval> = {}): TCourseInviteForRemoval {
+    return {
+      id: 'invite-1',
+      acceptedAt: null,
+      isRevoked: true,
+      expiresAt: FUTURE,
+      metadata: { source: 'AUDIENCE_IMPORT', courseIds: [COURSE] },
+      ...overrides
+    };
+  }
+
+  it('deletes a revoked invite that was only for this course', () => {
+    expect(planInvitationRemoval([stored()], COURSE, NOW)).toEqual({ pending: false, deleteIds: ['invite-1'], detach: [] });
+  });
+
+  it('deletes an accepted invite whose person no longer has access', () => {
+    const plan = planInvitationRemoval([stored({ isRevoked: false, acceptedAt: PAST })], COURSE, NOW);
+    expect(plan).toEqual({ pending: false, deleteIds: ['invite-1'], detach: [] });
+  });
+
+  it('deletes an expired invite: its link no longer works', () => {
+    const plan = planInvitationRemoval([stored({ isRevoked: false, expiresAt: PAST })], COURSE, NOW);
+    expect(plan.pending).toBe(false);
+    expect(plan.deleteIds).toEqual(['invite-1']);
+  });
+
+  it('refuses a live link, so nobody kills an invitation someone is about to click', () => {
+    expect(planInvitationRemoval([stored({ isRevoked: false })], COURSE, NOW).pending).toBe(true);
+  });
+
+  it('refuses when an older invite is finished but the newest one is still live', () => {
+    const plan = planInvitationRemoval(
+      [stored({ id: 'old' }), stored({ id: 'new', isRevoked: false })],
+      COURSE,
+      NOW
+    );
+    expect(plan.pending).toBe(true);
+  });
+
+  it('keeps an invite that also lists another course, taking only this one off', () => {
+    const plan = planInvitationRemoval(
+      [stored({ metadata: { source: 'AUDIENCE_IMPORT', courseIds: [OTHER, COURSE] } })],
+      COURSE,
+      NOW
+    );
+    expect(plan).toEqual({
+      pending: false,
+      deleteIds: [],
+      detach: [{ id: 'invite-1', metadata: { source: 'AUDIENCE_IMPORT', courseIds: [OTHER] } }]
+    });
+  });
+
+  it('handles every repeat invite of the person, so an older one does not resurface in the list', () => {
+    const plan = planInvitationRemoval(
+      [stored({ id: 'first' }), stored({ id: 'second', acceptedAt: PAST, isRevoked: false })],
+      COURSE,
+      NOW
+    );
+    expect(plan.deleteIds).toEqual(['first', 'second']);
   });
 });
