@@ -5,8 +5,8 @@ import {
   ZCourseCoverGenerate,
   ZCourseCreate,
   ZCourseDeleteParam,
-  ZCourseDownloadContent,
   ZCourseDownloadParam,
+  ZCourseDownloadPdfQuery,
   ZCourseEnrollBody,
   ZCourseEnrollParam,
   ZCourseGetBySlugParam,
@@ -52,7 +52,7 @@ import { generateCertificatePdf, generateCertificatePng } from '@api/utils/certi
 import { RENDER_UNCONFIGURED_MESSAGE, isRenderConfigured } from '@api/utils/render';
 import { assembleCertificateRender, assembleOwnerPreviewRender } from '@api/services/course/certificate';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
-import { generateCoursePdf } from '@api/utils/course';
+import { generateCoursePdf } from '@api/services/course/course-pdf';
 import { AppError, ErrorCodes, handleError } from '@api/utils/errors';
 import { invitesRouter } from '@api/routes/course/invite';
 import { katexRouter } from '@api/routes/course/katex';
@@ -595,27 +595,40 @@ export const courseRouter = new Hono()
       }
     }
   )
-  .post(
-    '/:courseId/download/content',
+  /**
+   * GET /course/:courseId/download/pdf?scope=outline|full&exercises=none|questions|answers
+   * The course as a PDF, built on the server from what is stored (team/admin only).
+   */
+  .get(
+    '/:courseId/download/pdf',
     authMiddleware,
-    courseMemberMiddleware,
+    courseTeamMemberMiddleware,
     zValidator('param', ZCourseDownloadParam),
-    zValidator('json', ZCourseDownloadContent),
+    zValidator('query', ZCourseDownloadPdfQuery),
     async (c) => {
-      const validatedData = c.req.valid('json');
+      try {
+        const { courseId } = c.req.valid('param');
+        const { scope, exercises } = c.req.valid('query');
 
-      const pdfBuffer = await generateCoursePdf(validatedData);
+        const { pdf, title } = await generateCoursePdf(courseId, { scope, exercises });
 
-      c.header('Content-Type', 'application/pdf');
+        c.header('Content-Type', 'application/pdf');
+        c.header(
+          'Content-Disposition',
+          `attachment; filename="${slugifyForFilename(title)}-${scope === 'outline' ? 'temario' : 'curso'}.pdf"`
+        );
 
-      return c.body(
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(pdfBuffer);
-            controller.close();
-          }
-        })
-      );
+        return c.body(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(pdf);
+              controller.close();
+            }
+          })
+        );
+      } catch (error) {
+        return handleError(c, error, isRenderConfigured() ? 'Failed to download course' : RENDER_UNCONFIGURED_MESSAGE);
+      }
     }
   )
   .post(

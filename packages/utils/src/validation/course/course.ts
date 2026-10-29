@@ -347,21 +347,17 @@ export const ZCertificateDownloadRequest = z.object({
 });
 export type TCertificateDownloadRequest = z.infer<typeof ZCertificateDownloadRequest>;
 
-export const ZCourseDownloadContent = z.object({
-  courseTitle: z.string().min(1),
-  orgName: z.string().min(1),
-  orgTheme: z.string().min(1),
-  lessons: z.array(
-    z.object({
-      lessonTitle: z.string().min(1),
-      lessonNumber: z.string().min(1),
-      lessonNote: z.string(),
-      slideUrl: z.string().url().optional(),
-      video: z.array(z.string().url()).optional()
-    })
-  )
+export const ZCoursePdfScope = z.enum(['outline', 'full']);
+export type TCoursePdfScope = z.infer<typeof ZCoursePdfScope>;
+
+export const ZCoursePdfExercises = z.enum(['none', 'questions', 'answers']);
+export type TCoursePdfExercises = z.infer<typeof ZCoursePdfExercises>;
+
+export const ZCourseDownloadPdfQuery = z.object({
+  scope: ZCoursePdfScope.default('outline'),
+  exercises: ZCoursePdfExercises.default('none')
 });
-export type TCourseDownloadContent = z.infer<typeof ZCourseDownloadContent>;
+export type TCourseDownloadPdfQuery = z.infer<typeof ZCourseDownloadPdfQuery>;
 
 export const ZLessonDownloadContent = z.object({
   title: z.string().min(1),

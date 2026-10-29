@@ -5,3 +5,4 @@ export * from './content-batch';
 export * from './people';
 export * from './invite';
 export * from './public-course';
+export * from './pdf';

@@ -10,6 +10,7 @@
   import XIcon from '@lucide/svelte/icons/x';
 
   import ReorderMaterialTabs from '$features/course/components/reorder-material-tabs.svelte';
+  import DownloadCourseModal from '$features/course/components/download-course-modal.svelte';
   import { CourseTagPicker } from '$features/course/components';
   import { IconButton } from '@cio/ui/custom/icon-button';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
@@ -44,7 +45,6 @@
 
   let { hasUnsavedChanges = $bindable(false) }: Props = $props();
 
-  let isLoading = $state(false);
   let isDeleting = $state(false);
   let errors: {
     title: string | undefined;
@@ -158,9 +158,7 @@
     $handleOpenWidget.open = !$handleOpenWidget.open;
   }
 
-  const downloadCourse = async () => {
-    alert($t('course.navItem.settings.coming_soon'));
-  };
+  let openDownloadModal = $state(false);
 
   const deleteBannerImage = () => {
     $settings.logo = '';
@@ -655,9 +653,12 @@
       {#if $isFreePlan}
         <UpgradeBanner>{$t('upgrade.download_course')}</UpgradeBanner>
       {:else}
-        <Button variant="outline" onclick={downloadCourse} disabled={isLoading} loading={isLoading}>
+        <Button variant="outline" onclick={() => (openDownloadModal = true)} disabled={!courseApi.course?.id}>
           {$t('course.navItem.settings.download')}
         </Button>
+        {#if courseApi.course?.id}
+          <DownloadCourseModal bind:open={openDownloadModal} courseId={courseApi.course.id} />
+        {/if}
       {/if}
     </Field.Field>
   </Field.Set>

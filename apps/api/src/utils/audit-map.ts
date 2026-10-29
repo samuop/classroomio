@@ -97,6 +97,15 @@ export const AUDITED_READS: AuditedRead[] = [
   { pattern: '/course/:courseId/invites/students', action: 'VIO_INVITADOS_DEL_CURSO', entity: 'Course' },
   { pattern: '/program/:programId/members', action: 'VIO_MIEMBROS_DEL_PROGRAMA', entity: 'Program' },
   { pattern: '/organization/assets/export', action: 'EXPORTO_MEDIOS' },
+  {
+    pattern: '/course/:courseId/download/pdf',
+    action: 'DESCARGO_EL_CURSO_EN_PDF',
+    entity: 'Course',
+    metadata: (url) => ({
+      scope: url.searchParams.get('scope') ?? 'outline',
+      exercises: url.searchParams.get('exercises') ?? 'none'
+    })
+  },
 
   // ── Consumo de IA ──
   // Quién mira cuánto gasta cada estudiante con el tutor: es actividad de una
