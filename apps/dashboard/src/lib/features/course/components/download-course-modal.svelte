@@ -73,10 +73,10 @@
         {#each SCOPES as option (option)}
           <div class="flex items-start gap-2">
             <RadioGroup.Item value={option} id={`course-pdf-scope-${option}`} class="mt-0.5" />
-            <Label for={`course-pdf-scope-${option}`} class="flex flex-col items-start gap-0.5 font-normal">
-              <span>{$t(`${KEY}.scope_${option}`)}</span>
+            <div class="flex flex-col gap-1">
+              <Label for={`course-pdf-scope-${option}`} class="font-normal">{$t(`${KEY}.scope_${option}`)}</Label>
               <span class="ui:text-muted-foreground text-xs">{$t(`${KEY}.scope_${option}_hint`)}</span>
-            </Label>
+            </div>
           </div>
         {/each}
       </RadioGroup.Root>
@@ -88,12 +88,12 @@
         {#each EXERCISES as option (option)}
           <div class="flex items-start gap-2">
             <RadioGroup.Item value={option} id={`course-pdf-exercises-${option}`} class="mt-0.5" />
-            <Label for={`course-pdf-exercises-${option}`} class="flex flex-col items-start gap-0.5 font-normal">
-              <span>{$t(`${KEY}.exercises_${option}`)}</span>
+            <div class="flex flex-col gap-1">
+              <Label for={`course-pdf-exercises-${option}`} class="font-normal">{$t(`${KEY}.exercises_${option}`)}</Label>
               {#if option === 'answers'}
                 <span class="ui:text-muted-foreground text-xs">{$t(`${KEY}.exercises_answers_hint`)}</span>
               {/if}
-            </Label>
+            </div>
           </div>
         {/each}
       </RadioGroup.Root>
