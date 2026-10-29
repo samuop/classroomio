@@ -275,6 +275,8 @@ export type CourseSlugPayloadOrg = {
   name: string;
   siteName: string | null;
   theme?: unknown;
+  /** La marca con que se presenta, si no es la suya (ver `orgBrand`). */
+  brand?: { name: string; avatarUrl: string | null; theme: string | null; favicon: string | null } | null;
 };
 
 /** Slug course shape including optional org (RPC unions omit `org` on some branches). */

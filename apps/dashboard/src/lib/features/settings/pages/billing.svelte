@@ -1,7 +1,7 @@
 <script lang="ts">
   import { t } from '$lib/utils/functions/translations';
   import { snackbar } from '$features/ui/snackbar/store';
-  import { currentOrgPlan, isFreePlan, currentOrg, isSecondaryWorkspace } from '$lib/utils/store/org';
+  import { currentOrgPlan, isFreePlan, isSecondaryWorkspace, currentOrgBrand } from '$lib/utils/store/org';
   import HourglassIcon from '@lucide/svelte/icons/hourglass';
   import { openUpgradeModal } from '$lib/utils/functions/org';
   import ReceiptIcon from '@lucide/svelte/icons/receipt';
@@ -55,7 +55,7 @@
       </Item.Media>
       <Item.Content>
         <Item.Description>
-          {$t('account.workspaces.secondary_billing_notice', { primaryName: $currentOrg.name })}
+          {$t('account.workspaces.secondary_billing_notice', { primaryName: $currentOrgBrand.name })}
         </Item.Description>
       </Item.Content>
     </Item.Root>

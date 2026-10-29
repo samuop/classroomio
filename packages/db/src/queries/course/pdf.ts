@@ -43,6 +43,7 @@ export type TCoursePdfData = {
     title: string;
     description: string | null;
     metadata: Record<string, unknown>;
+    orgId: string | null;
     orgName: string | null;
   };
   sections: Array<{ id: string; title: string | null; order: number | null }>;
@@ -73,6 +74,7 @@ export async function getCourseForPdf(courseId: string): Promise<TCoursePdfData 
         title: schema.course.title,
         description: schema.course.description,
         metadata: schema.course.metadata,
+        orgId: schema.organization.id,
         orgName: schema.organization.name
       })
       .from(schema.course)
@@ -188,6 +190,7 @@ export async function getCourseForPdf(courseId: string): Promise<TCoursePdfData 
         title: course.title,
         description: course.description,
         metadata: (course.metadata ?? {}) as Record<string, unknown>,
+        orgId: course.orgId,
         orgName: course.orgName
       },
       sections,

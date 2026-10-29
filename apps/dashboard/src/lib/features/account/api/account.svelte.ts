@@ -5,7 +5,8 @@ import type {
   CreateAccountWorkspaceRequest,
   DeleteAccountWorkspaceRequest,
   GetAccountUsageRequest,
-  ListAccountWorkspacesRequest
+  ListAccountWorkspacesRequest,
+  UpdateAccountWorkspaceBrandRequest
 } from '../utils/types';
 import { BaseApiWithErrors, classroomio } from '$lib/utils/services/api';
 import { ZCreateWorkspace, type TCreateWorkspace } from '@cio/utils/validation/account';
@@ -86,6 +87,24 @@ class AccountApi extends BaseApiWithErrors {
       onSuccess: () => {
         this.workspaces = this.workspaces.filter((row) => row.id !== workspaceId);
         snackbar.success('snackbar.account.workspaceDeleted');
+      },
+      onError: (result) => {
+        if (typeof result === 'object' && 'code' in result) {
+          snackbar.error(`snackbar.account.${String(result.code).toLowerCase()}`);
+        }
+      }
+    });
+  }
+
+  /** Que el cliente se muestre con la marca de la consultora o con la suya. */
+  async setWorkspaceBrand(workspaceId: string, useParentBrand: boolean) {
+    return this.execute<UpdateAccountWorkspaceBrandRequest>({
+      requestFn: () =>
+        classroomio.account.workspaces[':workspaceId'].brand.$put({ param: { workspaceId }, json: { useParentBrand } }),
+      logContext: 'updating workspace brand',
+      onSuccess: (response) => {
+        this.workspaces = this.workspaces.map((row) => (row.id === workspaceId ? response.data : row));
+        snackbar.success(useParentBrand ? 'snackbar.account.workspaceBrandOn' : 'snackbar.account.workspaceBrandOff');
       },
       onError: (result) => {
         if (typeof result === 'object' && 'code' in result) {

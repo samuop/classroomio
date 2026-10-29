@@ -74,6 +74,7 @@ import { searchRouter } from '@api/routes/organization/search';
 import { tagsRouter } from '@api/routes/organization/tags';
 import { widgetsRouter } from '@api/routes/organization/widgets';
 import { zValidator } from '@hono/zod-validator';
+import { attachOrgBrands } from '@api/services/organization/org-brand';
 
 export const organizationRouter = new Hono()
   /**
@@ -103,7 +104,7 @@ export const organizationRouter = new Hono()
         );
       }
 
-      const organizations = await getOrganizationsWithFilters(filters);
+      const organizations = await attachOrgBrands(await getOrganizationsWithFilters(filters));
 
       return c.json(
         {

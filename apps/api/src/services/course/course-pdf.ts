@@ -10,6 +10,7 @@ import {
 } from '@cio/db/queries/course';
 import type { TCoursePdfExercises, TCoursePdfScope } from '@cio/utils/validation/course';
 
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 import { renderPdf } from '@api/utils/render';
 import { sanitizeHtml } from '@api/utils/sanitize-html';
@@ -393,6 +394,10 @@ export async function generateCoursePdf(
   if (!data) {
     throw new AppError('Course not found', ErrorCodes.COURSE_NOT_FOUND, 404);
   }
+
+  // La portada nombra a la empresa con la marca con que se presenta (ver `org-brand.ts`).
+  const brand = await resolveOrgBrand(data.course.orgId);
+  if (brand) data.course.orgName = brand.name;
 
   const pdf = await renderPdf(buildCoursePdfHtml(data, options, now), undefined, {
     format: 'A4',

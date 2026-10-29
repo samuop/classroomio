@@ -185,6 +185,12 @@ export const WRITE_ACTION_NAMES: Array<{ method: string; pattern: string; action
     action: 'BORRO_EMPRESA_CLIENTE',
     entity: 'Organization'
   },
+  {
+    method: 'PUT',
+    pattern: '/account/workspaces/:workspaceId/brand',
+    action: 'CAMBIO_LA_MARCA_DEL_CLIENTE',
+    entity: 'Organization'
+  },
 
   // Cursos y contenido
   { method: 'POST', pattern: '/course', action: 'CREO_CURSO' },

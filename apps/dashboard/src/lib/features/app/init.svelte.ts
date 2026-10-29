@@ -1,5 +1,5 @@
 import { BaseApi, classroomio } from '$lib/utils/services/api';
-import { currentOrg, mergeAccountOrgFromServer, orgs } from '$lib/utils/store/org';
+import { currentOrg, mergeAccountOrgFromServer, orgBrand, orgs } from '$lib/utils/store/org';
 import { defaultProfileState, defaultUserState, profile, user } from '$lib/utils/store/user';
 
 import type { AccountResponse } from './types';
@@ -253,7 +253,8 @@ class AppInitApi extends BaseApi {
 
     currentOrg.set(mergeAccountOrgFromServer(nextOrg));
 
-    const theme = get(currentOrg)?.theme;
+    // El color con que se presenta: el de la consultora si el cliente lo pidió.
+    const theme = orgBrand(get(currentOrg)).theme;
 
     setTheme(theme || 'blue');
   }

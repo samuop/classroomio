@@ -5,15 +5,20 @@
   import { Spinner } from '@cio/ui/base/spinner';
   import * as Dialog from '@cio/ui/base/dialog';
   import * as Field from '@cio/ui/base/field';
+  import { Checkbox } from '@cio/ui/base/checkbox';
+  import { Label } from '@cio/ui/base/label';
+  import { Switch } from '@cio/ui/base/switch';
 
   import { accountApi } from '$features/account/api/account.svelte';
-  import { currentOrg, isPrimaryWorkspace } from '$lib/utils/store/org';
+  import { currentOrg, isPrimaryWorkspace, currentOrgBrand } from '$lib/utils/store/org';
   import { isPlatformAdmin } from '$lib/utils/store/user';
   import { t } from '$lib/utils/functions/translations';
 
   let isCreateOpen = $state(false);
   let formName = $state('');
   let formSiteName = $state('');
+  let formUseParentBrand = $state(false);
+  let brandSavingId = $state<string | null>(null);
   let confirmDeleteId = $state<string | null>(null);
 
   $effect(() => {
@@ -42,13 +47,20 @@
   });
 
   async function onCreate() {
-    await accountApi.createWorkspace({ name: formName, siteName: formSiteName });
+    await accountApi.createWorkspace({ name: formName, siteName: formSiteName, useParentBrand: formUseParentBrand });
 
     if (accountApi.success) {
       formName = '';
       formSiteName = '';
+      formUseParentBrand = false;
       isCreateOpen = false;
     }
+  }
+
+  async function onToggleBrand(workspaceId: string, useParentBrand: boolean) {
+    brandSavingId = workspaceId;
+    await accountApi.setWorkspaceBrand(workspaceId, useParentBrand);
+    brandSavingId = null;
   }
 
   async function onDelete(id: string) {
@@ -59,7 +71,7 @@
 
 {#if !$isPrimaryWorkspace}
   <div class="ui:text-muted-foreground rounded border p-4">
-    {$t('account.workspaces.secondary_billing_notice', { primaryName: $currentOrg.name })}
+    {$t('account.workspaces.secondary_billing_notice', { primaryName: $currentOrgBrand.name })}
   </div>
 {:else}
   <Field.Group class="w-full max-w-2xl px-2">
@@ -136,13 +148,26 @@
                 </div>
 
                 {#if !workspace.isPrimary}
-                  <Button
-                    variant="ghost"
-                    class="text-red-500 hover:text-red-700"
-                    onclick={() => (confirmDeleteId = workspace.id)}
-                  >
-                    {$t('account.workspaces.delete_action')}
-                  </Button>
+                  <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                      <Switch
+                        id={`workspace-brand-${workspace.id}`}
+                        checked={Boolean(workspace.settings?.useParentBrand)}
+                        onCheckedChange={(checked) => onToggleBrand(workspace.id, checked)}
+                        disabled={brandSavingId === workspace.id}
+                      />
+                      <Label for={`workspace-brand-${workspace.id}`} class="text-xs font-normal">
+                        {$t('account.workspaces.parent_brand_toggle', { primaryName: $currentOrg.name })}
+                      </Label>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      class="text-red-500 hover:text-red-700"
+                      onclick={() => (confirmDeleteId = workspace.id)}
+                    >
+                      {$t('account.workspaces.delete_action')}
+                    </Button>
+                  </div>
                 {/if}
               </div>
             </Field.Field>
@@ -174,6 +199,20 @@
         {#if accountApi.errors.siteName}
           <Field.Error>{accountApi.errors.siteName}</Field.Error>
         {/if}
+      </Field.Field>
+
+      <Field.Field>
+        <div class="flex items-start gap-2">
+          <Checkbox id="workspace-parent-brand" bind:checked={formUseParentBrand} class="mt-0.5" />
+          <div class="flex flex-col gap-1">
+            <Label for="workspace-parent-brand" class="font-normal">
+              {$t('account.workspaces.parent_brand_label', { primaryName: $currentOrg.name })}
+            </Label>
+            <span class="ui:text-muted-foreground text-xs">
+              {$t('account.workspaces.parent_brand_hint', { primaryName: $currentOrg.name })}
+            </span>
+          </div>
+        </div>
       </Field.Field>
     </Field.Group>
 

@@ -101,6 +101,8 @@ export type CreateSecondaryWorkspaceInput = {
   ownerRoleId: number;
   /** Plan to grant the new workspace — normally the parent's own. */
   planName: string;
+  /** Present the client with the consultancy's brand instead of its own. */
+  useParentBrand?: boolean;
 };
 
 export async function createSecondaryWorkspace(input: CreateSecondaryWorkspaceInput): Promise<TOrganization> {
@@ -109,7 +111,8 @@ export async function createSecondaryWorkspace(input: CreateSecondaryWorkspaceIn
       const insertValues: TNewOrganization = {
         name: input.name,
         siteName: input.siteName,
-        parentOrganizationId: input.parentOrganizationId
+        parentOrganizationId: input.parentOrganizationId,
+        ...(input.useParentBrand ? { settings: { useParentBrand: true } } : {})
       } as TNewOrganization;
 
       const [created] = await tx.insert(schema.organization).values(insertValues).returning();

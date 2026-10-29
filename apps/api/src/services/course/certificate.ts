@@ -2,6 +2,7 @@ import { AppError, ErrorCodes } from '@api/utils/errors';
 import { getCourseById, getOrganizationById, getProfileById, getCourseOrganizationId } from '@cio/db/queries';
 import { resolveCertificateDesign, type CertificateRenderInput } from '@api/utils/certificate';
 import type { TCertificateDownloadRequest } from '@cio/utils/validation/course';
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 
 /**
  * Loads the design + render data for a given course/student pair so the API
@@ -21,6 +22,8 @@ export async function assembleCertificateRender(
 
   const organizationId = await getCourseOrganizationId(courseId);
   const organization = organizationId ? await getOrganizationById(organizationId) : null;
+  // El certificado se lo queda el alumno: lleva la marca con que se presenta la empresa.
+  const brand = await resolveOrgBrand(organizationId);
 
   const design = resolveCertificateDesign(courseRow.certificate);
 
@@ -38,8 +41,8 @@ export async function assembleCertificateRender(
       recipientName: body.studentName,
       courseName: courseRow.title,
       courseDescription: courseRow.description ?? '',
-      orgName: organization?.name ?? '',
-      orgLogoUrl: organization?.avatarUrl ?? undefined,
+      orgName: brand?.name ?? organization?.name ?? '',
+      orgLogoUrl: (brand ? brand.avatarUrl : organization?.avatarUrl) ?? undefined,
       date,
       certificateId
     }

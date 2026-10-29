@@ -36,7 +36,7 @@
   import { cn } from '@cio/ui/tools';
   import { t } from '$lib/utils/functions/translations';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
 
   interface Props {
     values: BindingValues;
@@ -322,7 +322,7 @@
     if (element.source.kind === 'clientLogo') return store.draft.clientBrandLogoUrl || undefined;
     // El de la organizacion faltaba: su hueco salia siempre vacio, y ubicar un
     // logo que no se ve es adivinar.
-    if (element.source.kind === 'orgLogo') return store.draft.orgBrandLogoUrl || $currentOrg.avatarUrl || undefined;
+    if (element.source.kind === 'orgLogo') return store.draft.orgBrandLogoUrl || $currentOrgBrand.avatarUrl || undefined;
 
     return undefined;
   }

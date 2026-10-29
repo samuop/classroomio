@@ -34,6 +34,7 @@ import { getProfileById } from '@cio/db/queries/auth';
 import { insertOrganizationMembersOnConflictDoNothing } from '@cio/db/queries/organization';
 import { buildCourseContent, calcPercentageWithRounding, formatLastSeen, type CourseContent } from './utils';
 import { guardCourseTypeTransition } from './public-course-guard';
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 
 const DEFAULT_CONTENT_GROUPING = true;
 const DEFAULT_SECTION_TITLE = 'First Section [edit me]';
@@ -152,7 +153,8 @@ export async function getCourse(courseId?: string, slug?: string, profileId?: st
           id: courseOrg.id,
           name: courseOrg.name,
           siteName: courseOrg.siteName ?? '',
-          theme: courseOrg.theme ?? undefined
+          theme: courseOrg.theme ?? undefined,
+          brand: await resolveOrgBrand(courseOrg.id)
         }
       };
     }

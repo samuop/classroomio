@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { MediaPlayerOptions } from '../types';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
 
   interface Props {
     svid?: string;
@@ -18,7 +18,7 @@
   const embedUrl = $derived.by(() => {
     if (!svid) return '';
 
-    const logo = $currentOrg.avatarUrl ? `logo=${encodeURIComponent($currentOrg.avatarUrl)}&` : '';
+    const logo = $currentOrgBrand.avatarUrl ? `logo=${encodeURIComponent($currentOrgBrand.avatarUrl)}&` : '';
 
     return `https://muse.ai/embed/${svid}?${logo}subtitles=auto&cover_play_position=center`;
   });

@@ -17,7 +17,7 @@
   import { t } from '$lib/utils/functions/translations';
 
   import { courseApi } from '$features/course/api';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { isFreePlan } from '$lib/utils/store/org';
   import { profile } from '$lib/utils/store/user';
   import CertificateEditorHeader from './certificate-editor-header.svelte';
@@ -95,8 +95,8 @@
       store.draft.descriptionOverride ||
       courseApi.course?.description ||
       $t('course.navItem.certificates.editor.sample_description'),
-    orgName: $currentOrg.name || $t('course.navItem.certificates.editor.sample_org'),
-    orgLogoUrl: $currentOrg.avatarUrl || undefined,
+    orgName: $currentOrgBrand.name || $t('course.navItem.certificates.editor.sample_org'),
+    orgLogoUrl: $currentOrgBrand.avatarUrl || undefined,
     // Matches the server's default in `formatCertificateDate`. The issued date
     // is formatted server-side (issuance has no browser to ask), so hardcoding
     // en-US here showed the teacher a preview in a different language from the

@@ -425,7 +425,8 @@ async function sendNewsfeedCommentEmail(feedId: string, commentContent: string) 
         orgName
       },
       from: buildEmailFromName(await resolveSenderName(feedData.organization?.id)),
-      replyTo: EMAIL_REPLY_TO
+      replyTo: EMAIL_REPLY_TO,
+      orgId: feedData.organization?.id
     });
   } catch (error) {
     console.error('Error sending newsfeed comment email:', error);

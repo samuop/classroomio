@@ -26,10 +26,18 @@ export const ZCreateWorkspace = z.object({
     .refine((val) => !/^[-]|[-]$/.test(val), {
       message: 'Workspace name cannot start or end with a hyphen'
     }),
-  siteName: ZSiteName
+  siteName: ZSiteName,
+  /** Que el cliente se presente con la marca de la consultora y no con la suya. */
+  useParentBrand: z.boolean().optional()
 });
 
 export type TCreateWorkspace = z.infer<typeof ZCreateWorkspace>;
+
+export const ZUpdateWorkspaceBrand = z.object({
+  useParentBrand: z.boolean()
+});
+
+export type TUpdateWorkspaceBrand = z.infer<typeof ZUpdateWorkspaceBrand>;
 
 export const ZWorkspaceIdParam = z.object({
   workspaceId: z.uuid()

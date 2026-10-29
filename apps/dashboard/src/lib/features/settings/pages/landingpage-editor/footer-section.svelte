@@ -3,7 +3,7 @@
   import set from 'lodash/set';
   import TrashIcon from '@lucide/svelte/icons/trash';
   import { t } from '$lib/utils/functions/translations';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import * as Accordion from '@cio/ui/base/accordion';
   import { Button } from '@cio/ui/base/button';
   import * as Field from '@cio/ui/base/field';
@@ -181,10 +181,10 @@
     <Accordion.Content>
       <div class="space-y-4 pb-2">
         <div class="flex items-center gap-2.5 text-sm">
-          {#if $currentOrg.avatarUrl}
-            <img src={$currentOrg.avatarUrl} alt="" class="size-7 rounded object-cover" />
+          {#if $currentOrgBrand.avatarUrl}
+            <img src={$currentOrgBrand.avatarUrl} alt="" class="size-7 rounded object-cover" />
           {/if}
-          <span class="font-medium">{$currentOrg.name}</span>
+          <span class="font-medium">{$currentOrgBrand.name}</span>
         </div>
 
         <Field.Field>

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import OrgLogo from '$features/ui/org-logo.svelte';
   import * as Select from '@cio/ui/base/select';
   import { Input } from '@cio/ui/base/input';
@@ -60,8 +60,8 @@
       <!-- Header With Logo -->
       <div class="flex flex-col items-center">
         <div class="mb-4 flex w-full items-center justify-center">
-          <OrgLogo src={$currentOrg.avatarUrl} name={$currentOrg.name || brandName} class="h-[50px] w-[50px]" />
-          <h4 class="ml-2 text-xl dark:text-white">{$currentOrg.name || brandName}</h4>
+          <OrgLogo src={$currentOrgBrand.avatarUrl} name={$currentOrgBrand.name || brandName} class="h-[50px] w-[50px]" />
+          <h4 class="ml-2 text-xl dark:text-white">{$currentOrgBrand.name || brandName}</h4>
         </div>
 
         <!-- Loggedin Email -->

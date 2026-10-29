@@ -5,6 +5,7 @@
   import { snackbar } from '$features/ui/snackbar/store';
   import { t } from '$lib/utils/functions/translations';
   import { ROLE } from '@cio/utils/constants';
+  import { orgBrand } from '$lib/utils/store/org';
   import type { PendingOrgInvite } from '../utils/types';
 
   interface Props {
@@ -17,7 +18,8 @@
 
   let isLoading = $state(false);
 
-  const orgName = $derived(invite.organization.name);
+  // Con la marca con que se presenta la empresa (ver `orgBrand`).
+  const orgName = $derived(orgBrand(invite.organization).name);
 
   function getInvitationMessage(): string {
     if (invite.roleId === ROLE.STUDENT) {

@@ -41,7 +41,8 @@ export const load = async ({ params, url }) => {
       id: data.organization.id,
       name: data.organization.name,
       siteName: data.organization.siteName ?? '',
-      theme: data.organization.theme ?? undefined
+      theme: data.organization.theme ?? undefined,
+      brand: data.organization.brand ?? null
     };
 
     return {
@@ -77,7 +78,8 @@ export const load = async ({ params, url }) => {
         id: courseData.org.id,
         name: courseData.org.name,
         siteName: courseData.org.siteName ?? '',
-        theme: courseData.org.theme ?? undefined
+        theme: courseData.org.theme ?? undefined,
+        brand: courseData.org.brand ?? null
       }
     : null;
 

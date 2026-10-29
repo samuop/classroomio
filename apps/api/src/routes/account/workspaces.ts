@@ -3,11 +3,13 @@ import {
   deleteWorkspaceFromAccount,
   getAccountUsage,
   getWorkspaceLimits,
-  listAccountWorkspaces
+  listAccountWorkspaces,
+  setWorkspaceParentBrand
 } from '@api/services/account';
 
 import { Hono } from '@api/utils/hono';
-import { ZCreateWorkspace, ZWorkspaceIdParam } from '@cio/utils/validation/account';
+import { anotarAuditoria } from '@api/utils/audit-detail';
+import { ZCreateWorkspace, ZUpdateWorkspaceBrand, ZWorkspaceIdParam } from '@cio/utils/validation/account';
 import { authMiddleware } from '@api/middlewares/auth';
 import { handleError } from '@api/utils/errors';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
@@ -52,6 +54,27 @@ export const accountWorkspacesRouter = new Hono()
         return c.json({ success: true, data: { id: workspaceId } }, 200);
       } catch (error) {
         return handleError(c, error, 'Failed to delete workspace');
+      }
+    }
+  )
+  .put(
+    '/workspaces/:workspaceId/brand',
+    authMiddleware,
+    orgAdminMiddleware,
+    zValidator('param', ZWorkspaceIdParam),
+    zValidator('json', ZUpdateWorkspaceBrand),
+    async (c) => {
+      try {
+        const orgId = c.req.header('cio-org-id')!;
+        const { workspaceId } = c.req.valid('param');
+        const { useParentBrand } = c.req.valid('json');
+
+        const workspace = await setWorkspaceParentBrand(orgId, workspaceId, useParentBrand);
+        anotarAuditoria(c, { metadata: { workspaceId, useParentBrand } });
+
+        return c.json({ success: true, data: workspace }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to update workspace brand');
       }
     }
   )

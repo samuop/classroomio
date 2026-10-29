@@ -13,7 +13,7 @@
   import { appInitApi } from '$features/app/init.svelte';
   import { setupCloudAnalytics } from '$lib/utils/functions/appSetup';
   import { globalStore } from '$lib/utils/store/app';
-  import { currentOrg, mergeAccountOrgFromServer } from '$lib/utils/store/org';
+  import { currentOrg, currentOrgBrand, mergeAccountOrgFromServer, orgBrand } from '$lib/utils/store/org';
   import { user } from '$lib/utils/store/user';
   import { leerTemaGuardado, setTheme, temaInicial } from '$lib/utils/functions/theme';
   import { authClient } from '$lib/utils/services/auth/client';
@@ -41,7 +41,8 @@
   // cargados: el cubo aislado va sobre fondo negro, que es como Tensor presenta
   // su marca. El fondo NO es decorativo — el isotipo es blanco puro (RGB medio
   // 253,253,252), así que sobre una pestaña de tema claro sería invisible.
-  const favicon = $derived($currentOrg.favicon || data.org?.favicon || '/favicon.png');
+  // `orgBrand`: el cliente que se presenta con la marca de su consultora lleva el favicon de ella.
+  const favicon = $derived($currentOrgBrand.favicon || orgBrand(data.org).favicon || '/favicon.png');
 
   onMount(() => {
     const loadingIndicator = document.getElementById('app-loading-indicator');
@@ -69,7 +70,7 @@
       // Con sesión, el último color visto: la empresa del usuario todavía no se conoce (ver temaInicial).
       setTheme(
         temaInicial({
-          temaDelDominio: data.org.theme,
+          temaDelDominio: orgBrand(data.org).theme,
           temaGuardado: leerTemaGuardado(),
           conSesion: Boolean(data?.locals?.user)
         })

@@ -2192,6 +2192,13 @@ export const organization = pgTable(
        * es la fuente de verdad; esto sólo mantiene honesto el tipo de Drizzle.
        */
       notifications?: Record<string, boolean>;
+      /**
+       * Empresa cliente que se presenta con la marca de su consultora (nombre,
+       * logo, color, favicon) en lugar de la propia: hay clientes cuya política
+       * interna no permite su marca en una plataforma de terceros. Lo decide la
+       * consultora. Ver `org-brand.ts` en la API.
+       */
+      useParentBrand?: boolean;
     }>(),
     landingpage: jsonb().default({}).$type<{
       header?: {

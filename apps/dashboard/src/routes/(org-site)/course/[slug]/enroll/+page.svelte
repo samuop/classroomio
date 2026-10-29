@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import { Button } from '@cio/ui/base/button';
   import AuthUI from '$features/ui/auth-ui.svelte';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrg, orgBrand } from '$lib/utils/store/org';
   import { setTheme } from '$lib/utils/functions/theme';
   import { courseApi } from '$features/course/api';
   import { t } from '$lib/utils/functions/translations';
@@ -108,13 +108,15 @@
     const rawTheme = data.currentOrg.theme;
     const themeString = typeof rawTheme === 'string' ? rawTheme : '';
 
-    setTheme(themeString);
+    // El color con que se presenta (ver `orgBrand`); la fila guarda el propio.
+    setTheme(orgBrand({ ...data.currentOrg, theme: themeString }).theme);
     currentOrg.update((o) => ({
       ...o,
       id: data.currentOrg?.id ?? o.id,
       name: data.currentOrg?.name ?? o.name,
       siteName: data.currentOrg?.siteName ?? o.siteName,
-      theme: themeString || o.theme
+      theme: themeString || o.theme,
+      brand: data.currentOrg?.brand ?? null
     }));
   });
 </script>

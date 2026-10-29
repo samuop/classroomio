@@ -4,7 +4,7 @@
   import { InputField } from '@cio/ui/custom/input-field';
   import { TextareaField } from '@cio/ui/custom/textarea-field';
   import { t } from '$lib/utils/functions/translations';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { certificateEditorStore } from '../store/certificate-editor.store.svelte';
   import BrandLogoField from './brand-logo-field.svelte';
   import SignatureField from './signature-field.svelte';
@@ -102,7 +102,7 @@
         <InputField
           label={$t('course.navItem.certificates.editor.org_brand_name')}
           bind:value={certificateEditorStore.draft.orgBrandName}
-          placeholder={$currentOrg.name || $t('course.navItem.certificates.editor.sample_org')}
+          placeholder={$currentOrgBrand.name || $t('course.navItem.certificates.editor.sample_org')}
           isDisabled={disabled}
         />
         <Field.Description>

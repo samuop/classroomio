@@ -3,7 +3,7 @@
   import * as Sidebar from '@cio/ui/base/sidebar';
   import { Skeleton } from '@cio/ui/base/skeleton';
   import { resolve } from '$app/paths';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { shortenName } from '$lib/utils/functions/string';
   import { courseApi } from '$features/course/api';
   import { getNavItemRoute } from '$features/course/utils/functions';
@@ -20,10 +20,10 @@
     >
       {#snippet child({ props })}
         <a href={courseId ? resolve(getNavItemRoute(courseId), {}) : '#'} {...props}>
-          {#if $currentOrg.name}
+          {#if $currentOrgBrand.name}
             <Avatar.Root class="flex size-6! items-center justify-center rounded-md!">
-              <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name} />
-              <Avatar.Fallback class="rounded-md! text-xs">{shortenName($currentOrg.name)}</Avatar.Fallback>
+              <Avatar.Image src={$currentOrgBrand.avatarUrl} alt={$currentOrgBrand.name} />
+              <Avatar.Fallback class="rounded-md! text-xs">{shortenName($currentOrgBrand.name)}</Avatar.Fallback>
             </Avatar.Root>
             {#if courseTitle}
               <span class="truncate text-sm font-medium">{courseTitle}</span>

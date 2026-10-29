@@ -4,7 +4,7 @@
   import { onMount, untrack } from 'svelte';
   import { Button } from '@cio/ui/base/button';
   import AuthUI from '$features/ui/auth-ui.svelte';
-  import { currentOrg, mergeAccountOrgFromServer } from '$lib/utils/store/org';
+  import { currentOrg, mergeAccountOrgFromServer, orgBrand } from '$lib/utils/store/org';
   import { setTheme } from '$lib/utils/functions/theme';
   import { classroomio } from '$lib/utils/services/api';
   import { profile } from '$lib/utils/store/user';
@@ -57,7 +57,8 @@
 
   const loginParams = $derived(buildInviteAuthParams(caminoDeVuelta(), data.invite?.invite?.email || ''));
 
-  const orgName = $derived(data.invite?.organization?.name ?? '');
+  // Con la marca con que se presenta la empresa (ver `orgBrand`).
+  const orgName = $derived(orgBrand(data.invite?.organization).name);
   const inviteRoleId = $derived(data.invite?.invite?.roleId ?? 0);
 
   function getBlockedInviteMessage(): string {
@@ -166,13 +167,13 @@
   onMount(async () => {
     if (!data.currentOrg) return;
 
-    setTheme(data.currentOrg?.theme || '');
+    setTheme(orgBrand(data.currentOrg).theme);
     currentOrg.set(mergeAccountOrgFromServer(data.currentOrg));
   });
 </script>
 
 <svelte:head>
-  <title>{$t('invite.organization.page_title', { orgName: data.invite.organization.name })}</title>
+  <title>{$t('invite.organization.page_title', { orgName })}</title>
 </svelte:head>
 
 <AuthUI isLogin={false} {handleSubmit} isLoading={loading} showOnlyContent={true} showLogo={true}>

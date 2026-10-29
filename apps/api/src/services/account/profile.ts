@@ -12,10 +12,12 @@ import { ROLE } from '@cio/utils/constants';
 import type { TProfile } from '@cio/db/types';
 import { env } from '@api/config/env';
 import { getLicenseStatus } from '@api/services/license';
+import { attachOrgBrands, type TOrgBrand } from '@api/services/organization/org-brand';
 
 export type GetAccountDataResult = {
   profile: TProfile;
-  organizations: OrganizationWithMemberAndPlans[];
+  // Opcional en el tipo: el alta (onboarding) devuelve empresas recién creadas, que nunca la toman prestada.
+  organizations: Array<OrganizationWithMemberAndPlans & { brand?: TOrgBrand | null }>;
   licenseFeatures: string[];
 };
 
@@ -58,7 +60,9 @@ export async function getAccountData(userId: string): Promise<GetAccountDataResu
 
   return {
     profile,
-    organizations,
+    // Con qué marca se muestra cada empresa: la de la consultora para el cliente
+    // que así lo pidió (ver `org-brand.ts`).
+    organizations: await attachOrgBrands(organizations),
     licenseFeatures: licenseStatus.features
   };
 }

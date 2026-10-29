@@ -9,7 +9,7 @@
   import { t } from '$lib/utils/functions/translations';
 
   import { courseApi } from '$features/course/api';
-  import { currentOrg, isFreePlan } from '$lib/utils/store/org';
+  import { isFreePlan, currentOrgBrand } from '$lib/utils/store/org';
   import { CERTIFICATE_TEMPLATES, type CertificateDesign, resolveCertificateDesign } from '@cio/certificates';
 
   type Props = {
@@ -31,8 +31,8 @@
     recipientName: $t('course.navItem.certificates.editor.sample_recipient'),
     courseName: courseApi.course?.title ?? 'Course Title',
     courseDescription: design.descriptionOverride || courseApi.course?.description || '',
-    orgName: $currentOrg.name || 'Organization',
-    orgLogoUrl: $currentOrg.avatarUrl || undefined,
+    orgName: $currentOrgBrand.name || 'Organization',
+    orgLogoUrl: $currentOrgBrand.avatarUrl || undefined,
     // Matches `formatCertificateDate` on the server, which is what actually
     // prints the date on an issued certificate. Hardcoded en-US here showed a
     // preview in a different language from the document students receive.

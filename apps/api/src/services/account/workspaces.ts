@@ -11,7 +11,8 @@ import { canCreateWorkspaces, getWorkspaceAllowance } from '@cio/utils/plans';
 
 import { ROLE } from '@cio/utils/constants';
 import type { TOrganization } from '@cio/db/types';
-import { checkSiteNameExists } from '@cio/db/queries/organization';
+import { checkSiteNameExists, updateOrganization } from '@cio/db/queries/organization';
+import { clearOrgBrandCache } from '@api/services/organization/org-brand';
 
 export type AccountWorkspace = TOrganization & {
   isPrimary: boolean;
@@ -47,7 +48,7 @@ export async function listAccountWorkspaces(activeOrgId: string): Promise<Accoun
 export async function createWorkspaceForAccount(
   activeOrgId: string,
   ownerProfileId: string,
-  input: { name: string; siteName: string }
+  input: { name: string; siteName: string; useParentBrand?: boolean }
 ): Promise<AccountWorkspace> {
   const primary = await resolvePrimaryOrThrow(activeOrgId);
   const planName = await getActivePlanForPrimary(primary.id);
@@ -80,7 +81,8 @@ export async function createWorkspaceForAccount(
       ownerRoleId: ROLE.ADMIN,
       // Non-null by construction: `canCreateWorkspaces` above rejected the
       // planless and non-Enterprise cases before we got here.
-      planName: planName!
+      planName: planName!,
+      useParentBrand: input.useParentBrand
     });
 
     return { ...created, isPrimary: false };
@@ -112,6 +114,36 @@ export async function deleteWorkspaceFromAccount(activeOrgId: string, targetWork
     }
     throw new AppError('Workspace not found', ErrorCodes.WORKSPACE_NOT_FOUND, 404);
   }
+}
+
+/**
+ * Que un cliente se presente con la marca de la consultora o con la suya.
+ *
+ * Lo decide la consultora, no el cliente: por eso pasa por `resolvePrimaryOrThrow`
+ * como el alta y la baja (403 desde dentro de una empresa hija), y el destino
+ * tiene que ser un cliente de ESTA cuenta.
+ */
+export async function setWorkspaceParentBrand(
+  activeOrgId: string,
+  targetWorkspaceId: string,
+  useParentBrand: boolean
+): Promise<AccountWorkspace> {
+  const primary = await resolvePrimaryOrThrow(activeOrgId);
+
+  const workspaces = await listWorkspacesForAccount(primary.id);
+  const target = workspaces.find((row) => row.id === targetWorkspaceId);
+  if (!target) {
+    throw new AppError('Workspace not found in account', ErrorCodes.WORKSPACE_NOT_FOUND, 404);
+  }
+
+  if (!target.parentOrganizationId) {
+    throw new AppError('The primary workspace always shows its own brand', ErrorCodes.WORKSPACE_IS_PRIMARY, 400);
+  }
+
+  const updated = await updateOrganization(targetWorkspaceId, { settings: { useParentBrand } });
+  clearOrgBrandCache();
+
+  return { ...(updated ?? target), isPrimary: false };
 }
 
 export async function getWorkspaceLimits(activeOrgId: string) {

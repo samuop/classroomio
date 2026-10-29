@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import * as Avatar from '@cio/ui/base/avatar';
   import { t } from '$lib/utils/functions/translations';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrg, currentOrgBrand } from '$lib/utils/store/org';
   import { brandName } from '$lib/utils/branding';
   import { shortenName } from '$lib/utils/functions/string';
   import { GoogleIconColored } from '$features/ui/icons';
@@ -91,8 +91,8 @@
       <Card.Header class="ui:flex ui:flex-col ui:items-center ui:gap-4">
         <Avatar.Root>
           <!-- Falls through to the initials rather than to the upstream logo. -->
-          <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name ? $currentOrg.name : brandName} />
-          <Avatar.Fallback>{shortenName($currentOrg.name || brandName)}</Avatar.Fallback>
+          <Avatar.Image src={$currentOrgBrand.avatarUrl} alt={$currentOrgBrand.name ? $currentOrgBrand.name : brandName} />
+          <Avatar.Fallback>{shortenName($currentOrgBrand.name || brandName)}</Avatar.Fallback>
         </Avatar.Root>
 
         {#if !showOnlyContent}

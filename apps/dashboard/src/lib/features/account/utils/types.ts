@@ -3,6 +3,8 @@ import { classroomio, type InferResponseType } from '$lib/utils/services/api';
 export type ListAccountWorkspacesRequest = typeof classroomio.account.workspaces.$get;
 export type CreateAccountWorkspaceRequest = typeof classroomio.account.workspaces.$post;
 export type DeleteAccountWorkspaceRequest = (typeof classroomio.account.workspaces)[':workspaceId']['$delete'];
+export type UpdateAccountWorkspaceBrandRequest =
+  (typeof classroomio.account.workspaces)[':workspaceId']['brand']['$put'];
 export type GetAccountUsageRequest = typeof classroomio.account.usage.$get;
 
 type ListSuccess = Extract<InferResponseType<ListAccountWorkspacesRequest>, { success: true }>;

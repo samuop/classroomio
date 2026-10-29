@@ -52,8 +52,46 @@ export const currentOrg: Writable<AccountOrg> = writable({
   roleId: 0,
   settings: {},
   siteName: '',
-  theme: ''
+  theme: '',
+  brand: null
 });
+
+/**
+ * Con qué nombre, logo, color y favicon se MUESTRA una empresa.
+ *
+ * El cliente que la consultora marcó para presentarse con la marca de ella trae
+ * `brand` desde la API (ver `org-brand.ts`); las demás, sus propios campos. Las
+ * pantallas muestran esto. Los formularios de configuración siguen leyendo los
+ * campos propios, que son los que guardan: si leyeran la marca prestada, el
+ * primer «Guardar» le escribiría al cliente el nombre de la consultora.
+ */
+export interface OrgBrand {
+  name: string;
+  avatarUrl: string;
+  theme: string;
+  favicon: string;
+}
+
+type OrgBrandSource = {
+  name?: string | null;
+  avatarUrl?: string | null;
+  theme?: string | null;
+  favicon?: string | null;
+  brand?: { name: string; avatarUrl: string | null; theme: string | null; favicon: string | null } | null;
+};
+
+export function orgBrand(org: OrgBrandSource | null | undefined): OrgBrand {
+  const source = org?.brand ?? org;
+
+  return {
+    name: source?.name ?? '',
+    avatarUrl: source?.avatarUrl ?? '',
+    theme: source?.theme ?? '',
+    favicon: source?.favicon ?? ''
+  };
+}
+
+export const currentOrgBrand = derived(currentOrg, ($currentOrg) => orgBrand($currentOrg));
 
 export const isSecondaryWorkspace = derived(currentOrg, ($currentOrg) => Boolean($currentOrg.parentOrganizationId));
 

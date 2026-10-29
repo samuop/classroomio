@@ -22,7 +22,10 @@
       "usage_banner": "{learners} alumnos y {tokens} tokens de IA utilizados en {workspaces} espacios de trabajo este mes",
       "secondary_billing_notice": "La facturación la administra su espacio de trabajo principal ({primaryName}).",
       "go_to_primary": "Ir al espacio de trabajo principal",
-      "usage_banner_plain": "{learners} alumnos en {workspaces} espacios de trabajo este mes"
+      "usage_banner_plain": "{learners} alumnos en {workspaces} espacios de trabajo este mes",
+      "parent_brand_label": "Usar la marca de {primaryName}",
+      "parent_brand_hint": "Para clientes que no pueden mostrar su propia marca. Su gente ve el nombre, el logo y el color de {primaryName} en la plataforma, en los correos y en los certificados.",
+      "parent_brand_toggle": "Con la marca de {primaryName}"
     },
     "switcher": {
       "your_account": "tu cuenta",
@@ -5054,6 +5057,8 @@
     "account": {
       "workspaceCreated": "Espacio de trabajo creado",
       "workspaceDeleted": "Espacio de trabajo eliminado",
+      "workspaceBrandOn": "Listo: este cliente se muestra con tu marca.",
+      "workspaceBrandOff": "Listo: este cliente vuelve a mostrarse con la suya.",
       "workspace_limit_reached": "Has alcanzado el límite de tu espacio de trabajo. Contáctanos para ampliar.",
       "plan_upgrade_required": "El espacio de trabajo múltiple es una característica empresarial. Actualice para agregar más espacios de trabajo.",
       "workspace_is_primary": "No podés eliminar el espacio de trabajo principal.",

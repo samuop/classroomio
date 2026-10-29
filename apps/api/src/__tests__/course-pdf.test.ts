@@ -26,6 +26,7 @@ function data(): TCoursePdfData {
       title: 'Curso <Prueba>',
       description: 'Primera línea\nSegunda línea',
       metadata: { goals: '<p>Atender bien la caja</p>' },
+      orgId: 'empresa',
       orgName: 'Empresa Ejemplo'
     },
     sections: [

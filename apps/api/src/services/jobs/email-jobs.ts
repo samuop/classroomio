@@ -5,6 +5,7 @@ import * as z from 'zod';
 import { logRedisUnavailableOnce } from '@api/utils/redis/redis';
 import { resolveEmailOverride } from '@api/services/organization/email-template';
 import { resolveSenderName } from '@api/services/organization/sender-name';
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 
 type Recipient = string | string[];
 
@@ -79,6 +80,18 @@ export async function enqueueTransactionalEmail<TId extends EmailId>(
 
   const recipients = toRecipientArray(input.to);
   const jobIds: string[] = [];
+
+  /**
+   * El cliente que se presenta con la marca de su consultora no puede aparecer
+   * nombrado en el correo: «Te invitaron a sumarte al curso X en <cliente>» es
+   * justo lo que su política interna no permite. Se cambia acá, antes del texto
+   * reescrito y antes de encolar, por el mismo motivo que la firma de abajo: los
+   * catorce correos pasan por esta función.
+   */
+  const brand = await resolveOrgBrand(input.orgId);
+  if (brand && typeof validatedFields.orgName === 'string') {
+    validatedFields.orgName = brand.name;
+  }
 
   // El texto reescrito se resuelve UNA vez, acá, y no en cada punto de envío:
   // los catorce correos pasan por esta función, así que es el único lugar donde

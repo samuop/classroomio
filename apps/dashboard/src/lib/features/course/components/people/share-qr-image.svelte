@@ -1,6 +1,6 @@
 <script lang="ts">
   import { t } from '$lib/utils/functions/translations';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { courseApi } from '$features/course/api';
   import { qrInviteNodeStore } from './store';
 
@@ -27,7 +27,7 @@
     <img src={qrImage} alt="qrcode" />
     <div class="pt-1 pb-4">
       <p class="ui:text-primary mt-2 text-2xl">{courseApi.course?.title}</p>
-      <p class="mt-1 text-lg font-semibold text-black">{$currentOrg.name}</p>
+      <p class="mt-1 text-lg font-semibold text-black">{$currentOrgBrand.name}</p>
     </div>
   </div>
   <!-- The upstream "powered by ClassroomIO" badge stood here, shown to free-plan

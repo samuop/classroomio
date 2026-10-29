@@ -26,7 +26,7 @@
     themeStyle,
     themeRendersNavInsideHero
   } from '$features/org/utils/landing-page';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrg, currentOrgBrand, orgBrand } from '$lib/utils/store/org';
   import { basePath } from '$lib/utils/store/app';
   import { user } from '$lib/utils/store/user';
   import { NAV_ITEM_KEY, NAV_ITEMS } from './constants';
@@ -68,8 +68,11 @@
   const heroShellStyle = $derived(themeStyle(landingSettings.theme));
   const navInsideHero = $derived(themeRendersNavInsideHero(landingSettings.theme));
 
-  const orgNameForNav = $derived($currentOrg.name || get(courseData, 'org.name', '') || brandName);
-  const logoUrlForNav = $derived($currentOrg.avatarUrl || undefined);
+  // La empresa del curso con la marca con que se presenta (ver `orgBrand`).
+  const courseOrg = $derived(get(courseData, 'org') as Parameters<typeof orgBrand>[0] | undefined);
+  const courseOrgBrand = $derived(courseOrg ? orgBrand(courseOrg) : null);
+  const orgNameForNav = $derived($currentOrgBrand.name || courseOrgBrand?.name || brandName);
+  const logoUrlForNav = $derived($currentOrgBrand.avatarUrl || undefined);
 
   const authAction = $derived(
     $user.isLoggedIn
@@ -140,7 +143,7 @@
   const expandDescription = $derived(Array(reviews?.length ?? 0).fill(false));
 
   const instructor = $derived((get(courseData, 'metadata.instructor') || {}) as Record<string, unknown>);
-  const organizationName = $derived(get(courseData, 'org.name') || $currentOrg.name || '');
+  const organizationName = $derived(courseOrgBrand?.name || $currentOrgBrand.name || '');
   const instructorName = $derived.by(() => {
     const name = get(instructor, 'name');
     return typeof name === 'string' && name.trim().length > 0 ? name : organizationName;

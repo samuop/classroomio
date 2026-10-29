@@ -4,7 +4,7 @@
   import AuthUI from '$features/ui/auth-ui.svelte';
   import { Button } from '@cio/ui/base/button';
   import * as Card from '@cio/ui/base/card';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import * as Avatar from '@cio/ui/base/avatar';
   import { shortenName } from '$lib/utils/functions/string';
 
@@ -22,8 +22,8 @@
 <AuthUI isLogin={false} showOnlyContent={true}>
   <div class="flex flex-col items-center gap-4">
     <Avatar.Root>
-      <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name ? $currentOrg.name : brandName} />
-      <Avatar.Fallback>{shortenName($currentOrg.name || brandName)}</Avatar.Fallback>
+      <Avatar.Image src={$currentOrgBrand.avatarUrl} alt={$currentOrgBrand.name ? $currentOrgBrand.name : brandName} />
+      <Avatar.Fallback>{shortenName($currentOrgBrand.name || brandName)}</Avatar.Fallback>
     </Avatar.Root>
 
     <p class="text-xl font-semibold">Something went wrong</p>

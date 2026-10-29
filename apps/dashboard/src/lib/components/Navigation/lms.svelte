@@ -3,7 +3,7 @@
   import BellIcon from '@lucide/svelte/icons/bell';
   import * as Avatar from '@cio/ui/base/avatar';
 
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { t } from '$lib/utils/functions/translations';
   import { shortenName } from '$lib/utils/functions/string';
 
@@ -22,11 +22,11 @@
           <!-- No fallback src: an unset avatar falls through to Avatar.Fallback
                below, which shows the org's own initials. It used to fall back to
                the upstream ClassroomIO logo. -->
-          <Avatar.Image src={$currentOrg.avatarUrl} alt={$currentOrg.name ? $currentOrg.name : 'Organization'} />
-          <Avatar.Fallback>{shortenName($currentOrg.name)}</Avatar.Fallback>
+          <Avatar.Image src={$currentOrgBrand.avatarUrl} alt={$currentOrgBrand.name ? $currentOrgBrand.name : 'Organization'} />
+          <Avatar.Fallback>{shortenName($currentOrgBrand.name)}</Avatar.Fallback>
         </Avatar.Root>
         <span class="line-clamp-1">
-          {$currentOrg.name}
+          {$currentOrgBrand.name}
         </span>
       </a>
     </div>

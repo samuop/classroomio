@@ -223,7 +223,10 @@
       "usage_banner": "{learners} learners and {tokens} AI tokens used across {workspaces} workspaces this month",
       "secondary_billing_notice": "Billing is managed by your primary workspace ({primaryName}).",
       "go_to_primary": "Go to primary workspace",
-      "usage_banner_plain": "{learners} learners across {workspaces} workspaces this month"
+      "usage_banner_plain": "{learners} learners across {workspaces} workspaces this month",
+      "parent_brand_label": "Use {primaryName}'s brand",
+      "parent_brand_hint": "For clients that cannot show their own brand. Their people see {primaryName}'s name, logo and colour across the platform, in emails and on certificates.",
+      "parent_brand_toggle": "With {primaryName}'s brand"
     }
   },
   "verify_email_modal": {
@@ -4691,6 +4694,8 @@
     "account": {
       "workspaceCreated": "Workspace created",
       "workspaceDeleted": "Workspace deleted",
+      "workspaceBrandOn": "Done: this client now shows your brand.",
+      "workspaceBrandOff": "Done: this client shows its own brand again.",
       "workspace_limit_reached": "You've reached your workspace limit. Contact us to expand.",
       "plan_upgrade_required": "Multi-workspace is an Enterprise feature. Upgrade to add more workspaces.",
       "workspace_is_primary": "You can't delete the primary workspace.",

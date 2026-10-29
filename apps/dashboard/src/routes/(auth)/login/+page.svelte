@@ -4,7 +4,7 @@
   import { LOGIN_FIELDS } from '$lib/utils/constants/authentication';
   import { t } from '$lib/utils/functions/translations';
   import { authValidation } from '$lib/utils/functions/validator';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrg, currentOrgBrand } from '$lib/utils/store/org';
   import { authClient } from '$lib/utils/services/auth/client';
   import { page } from '$app/state';
   import { resolve } from '$app/paths';
@@ -125,7 +125,7 @@
 </script>
 
 <svelte:head>
-  <title>Welcome back to {$currentOrg.name || brandName}</title>
+  <title>Welcome back to {$currentOrgBrand.name || brandName}</title>
 </svelte:head>
 
 {#snippet getPasswordAuthAlternative()}

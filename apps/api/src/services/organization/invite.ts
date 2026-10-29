@@ -31,6 +31,7 @@ import { markUserAndProfileEmailVerified } from '@cio/db/queries/auth/profile';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { ensureComplianceEnrollmentRecordsForProfiles } from '../course/compliance';
 import { formatDisplayDateTime } from '@api/utils/display-date';
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 
 type OrganizationInviteStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ACCEPTED';
 
@@ -314,7 +315,7 @@ export async function previewOrganizationInvite(token: string, context: TInviteR
       expiresAt: data.invite.expiresAt,
       status: getInviteStatus(data.invite)
     },
-    organization: data.organization
+    organization: { ...data.organization, brand: await resolveOrgBrand(data.organization.id) }
   };
 }
 
@@ -474,7 +475,7 @@ export async function getPendingOrgInviteForUser(orgId: string, email: string) {
     roleId: data.invite.roleId,
     roleLabel: getRoleLabel(data.invite.roleId),
     expiresAt: data.invite.expiresAt,
-    organization: data.organization
+    organization: { ...data.organization, brand: await resolveOrgBrand(data.organization.id) }
   };
 }
 

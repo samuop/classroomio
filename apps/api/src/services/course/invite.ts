@@ -33,6 +33,7 @@ import { getCourseTeachers } from '@cio/db/queries/course/people';
 import { getProfileById } from '@cio/db/queries/auth';
 import { EMAIL_BRAND_NAME, buildEmailFromName } from '@cio/email';
 import { resolveSenderName } from '@api/services/organization/sender-name';
+import { resolveOrgBrand } from '@api/services/organization/org-brand';
 import { enqueueTransactionalEmail } from '@api/services/jobs';
 import { getProfileByEmail, markUserAndProfileEmailVerified } from '@cio/db/queries/auth';
 import { generateSlug } from '@cio/utils/functions';
@@ -859,7 +860,8 @@ export async function previewStudentInvite(token: string, context: TInviteReques
     },
     organization: {
       ...data.organization,
-      theme: data.organization.theme ?? undefined
+      theme: data.organization.theme ?? undefined,
+      brand: await resolveOrgBrand(data.organization.id)
     },
     course: {
       id: data.course.id,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { brandName } from '$lib/utils/branding';
-  import { currentOrg } from '$lib/utils/store/org';
+  import { currentOrgBrand } from '$lib/utils/store/org';
   import { onMount, onDestroy } from 'svelte';
   import 'plyr/dist/plyr.css';
   import type { MediaPlayerOptions } from '../types';
@@ -105,13 +105,13 @@
     video of every tenant. With no avatar set, nothing is drawn at all: an
     unbranded video beats one carrying somebody else's brand.
   -->
-  {#if $currentOrg.avatarUrl}
+  {#if $currentOrgBrand.avatarUrl}
     <div
       class="plyr-logo-overlay absolute top-2 right-2 z-10 opacity-90 transition-opacity duration-200 ease-in-out hover:opacity-100"
     >
       <img
-        src={$currentOrg.avatarUrl}
-        alt={$currentOrg.name || brandName}
+        src={$currentOrgBrand.avatarUrl}
+        alt={$currentOrgBrand.name || brandName}
         class="h-7 w-7 rounded-sm bg-white/90 p-0.5 shadow-sm"
       />
     </div>
