@@ -12,6 +12,26 @@ function nombrarCorreos(correos: string[]): string {
 }
 
 /**
+ * Lo que la docente lee cuando la importación salió, pero dejó correos afuera.
+ *
+ * Un correo mal escrito o uno del equipo ya no frena la lista: se invita al
+ * resto, y los descartados quedan en el cuadro con esto debajo, para que los
+ * corrija (o los saque) y los vuelva a mandar solos.
+ */
+export function mensajeDeDescartados(malEscritos: string[], delEquipo: string[]): string {
+  const partes = [t.get('audience.import.skipped_intro', { count: malEscritos.length + delEquipo.length })];
+
+  if (malEscritos.length > 0) {
+    partes.push(t.get('audience.import.skipped_invalid', { emails: nombrarCorreos(malEscritos) }));
+  }
+  if (delEquipo.length > 0) {
+    partes.push(t.get('audience.import.skipped_staff', { emails: nombrarCorreos(delEquipo) }));
+  }
+
+  return partes.join(' ');
+}
+
+/**
  * Lo que la docente lee cuando una importación de alumnos falla.
  *
  * Antes los rechazos con `field` quedaban guardados en `orgApi.errors`, que

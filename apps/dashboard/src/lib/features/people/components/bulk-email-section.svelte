@@ -8,9 +8,10 @@
 
   /**
    * `true` si salió bien (se vacía la lista); un texto, el error a mostrar debajo
-   * de la lista; `false`, falló sin texto propio.
+   * de la lista; `false`, falló sin texto propio; `{ remaining, message }`, salió
+   * para algunos: en la lista quedan sólo los que se dejaron afuera, con el motivo.
    */
-  type InviteOutcome = boolean | string;
+  type InviteOutcome = boolean | string | { remaining: string; message: string };
 
   interface Props {
     onInvite: (recipientCsv: string, sendEmail: boolean) => InviteOutcome | Promise<InviteOutcome>;
@@ -52,6 +53,9 @@
         recipientCsv = '';
       } else if (typeof outcome === 'string') {
         errorMessage = outcome;
+      } else if (outcome && typeof outcome === 'object') {
+        recipientCsv = outcome.remaining;
+        errorMessage = outcome.message;
       }
     } finally {
       isSubmitting = false;

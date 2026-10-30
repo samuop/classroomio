@@ -839,6 +839,9 @@
       "error_rejected": "No se invitó a nadie: la lista no se pudo procesar. Revisá que sean correos válidos y que no sean demasiados de una vez (como mucho unos 800).",
       "error_unknown_outcome": "La importación no respondió a tiempo y puede haberse hecho igual. Antes de volver a enviar la lista, mirá en la lista de invitados quiénes ya quedaron invitados.",
       "error_more": "y {count} más",
+      "skipped_intro": "Se invitó al resto. {count, plural, one {Este correo quedó afuera y sigue en la lista:} other {Estos # correos quedaron afuera y siguen en la lista:}}",
+      "skipped_invalid": "mal escritos, corregilos y volvé a enviarlos ({emails});",
+      "skipped_staff": "son del equipo de la empresa, no alumnos: sacalos ({emails}).",
       "page_subtitle": "Agregá muchas personas de una por correo, y asignales cursos o programas si querés."
     },
     "page_subtitle": "Mirá quién pertenece a tu organización, quién está aprendiendo, quién está invitado y cómo contactarlos.",

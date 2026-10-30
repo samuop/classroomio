@@ -8,9 +8,9 @@
  * se pide se deja como está; se renueva sólo la vencida o la que no incluye el
  * curso nuevo.
  *
- * Y los dos rechazos de la lista entera (un correo mal escrito, un correo del
- * equipo) viajan con su código y los correos culpables, que es con lo que el
- * dashboard le dice a la docente cuál corregir.
+ * Y un correo mal escrito o del equipo ya no frena la lista: se invita al resto
+ * y los descartados vuelven aparte. La lista se rechaza entera (con su código y
+ * los correos culpables) sólo cuando no queda nadie a quien invitar.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -215,19 +215,44 @@ describe('invitar a un curso nuevo a quien todavía no entró', () => {
   });
 });
 
-describe('la lista rechazada entera', () => {
-  it('un correo mal escrito vuelve con su código y los correos, sin invitar a nadie', async () => {
-    const error = await importAudienceMembers(
+describe('un correo malo no frena la lista', () => {
+  const importar = (recipientCsv: string) =>
+    importAudienceMembers(
       ORG,
-      {
-        recipientCsv: 'ana@ejemplo.test, beto@ejemplo, caro@@ejemplo.test',
-        courseIds: [CURSO],
-        allCourses: false,
-        allPrograms: false,
-        sendEmail: true
-      },
+      { recipientCsv, courseIds: [CURSO], allCourses: false, allPrograms: false, sendEmail: true },
       'perfil-docente'
-    ).catch((e: unknown) => e);
+    );
+
+  const altas = () =>
+    db.createOrganizationMembers.mock.calls.flatMap(([filas]) => (filas as Array<{ email: string }>).map((f) => f.email));
+
+  beforeEach(() => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([]);
+    db.getUnacceptedOrganizationInvitesByEmails.mockResolvedValue([]);
+  });
+
+  it('invita a los bien escritos y devuelve los mal escritos para corregir', async () => {
+    const resultado = await importar('ana@ejemplo.test, beto@ejemplo, caro@@ejemplo.test, dani@ejemplo.test');
+
+    expect(altas().sort()).toEqual(['ana@ejemplo.test', 'dani@ejemplo.test']);
+    expect(correosEncolados().sort()).toEqual(['ana@ejemplo.test', 'dani@ejemplo.test']);
+    expect(resultado).toMatchObject({ imported: 2, skippedInvalid: ['beto@ejemplo', 'caro@@ejemplo.test'], skippedStaff: [] });
+  });
+
+  it('a alguien del equipo lo deja afuera e invita al resto', async () => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([
+      { normalizedEmail: 'tutora@ejemplo.test', roleId: ROLE.TUTOR, profileId: 'p-1' }
+    ]);
+
+    const resultado = await importar('tutora@ejemplo.test, dani@ejemplo.test');
+
+    expect(altas()).toEqual(['dani@ejemplo.test']);
+    expect(correosEncolados()).not.toContain('tutora@ejemplo.test');
+    expect(resultado).toMatchObject({ imported: 1, skippedInvalid: [], skippedStaff: ['tutora@ejemplo.test'] });
+  });
+
+  it('si todos están mal escritos, rechaza con su código y los correos, sin invitar a nadie', async () => {
+    const error = await importar('beto@ejemplo, caro@@ejemplo.test').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(AppError);
     expect(error).toMatchObject({
@@ -239,25 +264,26 @@ describe('la lista rechazada entera', () => {
     expect(db.enqueueTransactionalEmail).not.toHaveBeenCalled();
   });
 
-  it('un correo del equipo vuelve con su código y los correos', async () => {
+  it('si todos son del equipo, rechaza con su código y los correos', async () => {
     db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([
       { normalizedEmail: 'tutora@ejemplo.test', roleId: ROLE.TUTOR, profileId: 'p-1' }
     ]);
 
-    const error = await importAudienceMembers(
-      ORG,
-      {
-        recipientCsv: 'tutora@ejemplo.test, dani@ejemplo.test',
-        courseIds: [CURSO],
-        allCourses: false,
-        allPrograms: false,
-        sendEmail: true
-      },
-      'perfil-docente'
-    ).catch((e: unknown) => e);
+    const error = await importar('tutora@ejemplo.test').catch((e: unknown) => e);
 
     expect(error).toMatchObject({ code: 'AUDIENCE_STAFF_EMAILS', details: { emails: ['tutora@ejemplo.test'] } });
     expect(db.createOrganizationMembers).not.toHaveBeenCalled();
+  });
+
+  it('mal escritos y del equipo, sin nadie más: nada que hacer, rechaza por los mal escritos', async () => {
+    db.getOrganizationMembersByNormalizedEmails.mockResolvedValue([
+      { normalizedEmail: 'tutora@ejemplo.test', roleId: ROLE.TUTOR, profileId: 'p-1' }
+    ]);
+
+    const error = await importar('tutora@ejemplo.test, beto@ejemplo').catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'AUDIENCE_INVALID_EMAILS', details: { emails: ['beto@ejemplo'] } });
+    expect(db.enqueueTransactionalEmail).not.toHaveBeenCalled();
   });
 });
 

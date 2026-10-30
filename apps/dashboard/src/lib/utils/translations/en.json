@@ -4323,7 +4323,10 @@
       "error_staff_emails": "Nobody was invited: these emails belong to the organization's team, not students ({emails}). Remove them and send the list again.",
       "error_rejected": "Nobody was invited: the list could not be processed. Check that they are valid emails and not too many at once (about 800 at most).",
       "error_unknown_outcome": "The import did not answer in time and may have gone through anyway. Before sending the list again, check the invite list to see who is already invited.",
-      "error_more": "and {count} more"
+      "error_more": "and {count} more",
+      "skipped_intro": "Everyone else was invited. {count, plural, one {This email was left out and is still in the list:} other {These # emails were left out and are still in the list:}}",
+      "skipped_invalid": "misspelt: fix them and send them again ({emails});",
+      "skipped_staff": "they belong to the team, not students: remove them ({emails})."
     },
     "assign": {
       "title": "Assign to Courses",

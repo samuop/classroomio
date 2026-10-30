@@ -16,7 +16,7 @@ import type {
   RevokeAudienceInviteRequest
 } from '../utils/types';
 import { BaseApiWithErrors, classroomio, sinReintento } from '$lib/utils/services/api';
-import { mensajeDeErrorDeImportacion } from '../utils/errores-de-importacion';
+import { mensajeDeDescartados, mensajeDeErrorDeImportacion } from '../utils/errores-de-importacion';
 import type {
   TAssignAudienceCourses,
   TAudienceInviteByEmail,
@@ -65,6 +65,8 @@ export interface TOrgUpdateForm {
 class OrgApi extends BaseApiWithErrors {
   /** Por qué falló la última importación de alumnos, ya traducido; `null` si salió bien. */
   importError = $state<string | null>(null);
+  /** Los correos que la última importación dejó afuera (mal escritos o del equipo), para devolverlos al cuadro. */
+  importSkipped = $state<string[]>([]);
   teamMembers = $state<OrganizationTeamMembers>([]);
   audience = $state<OrganizationAudience>([]);
   audiencePagination = $state<OrganizationAudiencePagination | null>(null);
@@ -447,6 +449,7 @@ class OrgApi extends BaseApiWithErrors {
    */
   async importAudienceMembers(data: TImportAudienceMembers) {
     this.importError = null;
+    this.importSkipped = [];
 
     return this.execute<ImportAudienceRequest>({
       // Sin reintento: ver `sinReintento`. Reenviada, la importación revocaba las
@@ -469,8 +472,20 @@ class OrgApi extends BaseApiWithErrors {
           partes.push(t.get('audience.import.snackbar_kept', { count: conservadas }));
         }
 
+        const malEscritos = d.skippedInvalid ?? [];
+        const delEquipo = d.skippedStaff ?? [];
+        this.importSkipped = [...malEscritos, ...delEquipo];
+        if (this.importSkipped.length > 0) {
+          // Queda escrito debajo del cuadro, donde siguen esos correos.
+          this.importError = mensajeDeDescartados(malEscritos, delEquipo);
+          partes.push(this.importError);
+        }
+
         if (d.emailsFailed > 0) {
           partes.push(t.get('audience.import.snackbar_emails_failed', { count: d.emailsFailed }));
+        }
+
+        if (d.emailsFailed > 0 || this.importSkipped.length > 0) {
           snackbar.error(partes.join(' '));
         } else {
           snackbar.success(partes.join(' '));

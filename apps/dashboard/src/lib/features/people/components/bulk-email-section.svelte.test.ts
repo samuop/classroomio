@@ -41,6 +41,14 @@ describe('invitar alumnos por correo', () => {
     expect(cuadro.value).toBe(LISTA);
   });
 
+  it('si sale para algunos, en la lista quedan sólo los que se dejaron afuera, con el motivo', async () => {
+    const motivo = 'Se invitó al resto. Este correo quedó afuera y sigue en la lista: mal escritos (beto@ejemplo).';
+    const cuadro = await mandar(vi.fn(async () => ({ remaining: 'beto@ejemplo', message: motivo })));
+
+    await waitFor(() => expect(cuadro.value).toBe('beto@ejemplo'));
+    expect(await screen.findByText(motivo)).toBeInTheDocument();
+  });
+
   it('si sale bien, la lista se vacía', async () => {
     const cuadro = await mandar(vi.fn(async () => true));
 

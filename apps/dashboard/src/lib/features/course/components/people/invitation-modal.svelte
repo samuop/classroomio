@@ -147,6 +147,10 @@
     // screen looking as if nothing happened. This is where they show up.
     await peopleApi.loadInvitations(courseId);
 
+    if (orgApi.importSkipped.length > 0) {
+      return { remaining: orgApi.importSkipped.join('\n'), message: orgApi.importError ?? '' };
+    }
+
     return true;
   }
 

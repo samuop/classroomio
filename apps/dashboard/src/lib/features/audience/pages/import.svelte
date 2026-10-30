@@ -78,7 +78,10 @@
         sendEmail
       });
 
-      if (result) {
+      if (result && orgApi.importSkipped.length > 0) {
+        // Se invitó al resto; en el cuadro quedan sólo los descartados, con el motivo debajo.
+        recipientCsv = orgApi.importSkipped.join('\n');
+      } else if (result) {
         await goto(resolve(audiencePath, {}));
       }
     } catch {

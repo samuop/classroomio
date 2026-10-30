@@ -506,20 +506,19 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
 
   const recipients = getNormalizedRecipients(data.recipientCsv);
 
-  // Los dos rechazos de la lista entera viajan con su código y los correos que
-  // los causan: el dashboard arma con eso el mensaje, y sin los correos la
-  // docente no tiene forma de encontrar el mal escrito en una lista de cien.
-  if (recipients.invalid.length > 0) {
-    throw new AppError(
-      `Invalid emails found: ${recipients.invalid.slice(0, 5).join(', ')}`,
-      ErrorCodes.AUDIENCE_INVALID_EMAILS,
-      400,
-      'recipientCsv',
-      { emails: recipients.invalid.slice(0, MAX_EMAILS_IN_ERROR) }
-    );
-  }
-
+  /**
+   * Un correo mal escrito, o uno del equipo, ya no frena la lista entera.
+   *
+   * Antes cualquiera de los dos rechazaba todo: con cien correos pegados, un
+   * punto de más dejaba a los otros noventa y nueve sin invitar hasta encontrarlo.
+   * Ahora se invita a los demás y los descartados vuelven en `skippedInvalid` /
+   * `skippedStaff`, para que el dashboard los deje en la lista y diga por qué.
+   *
+   * La lista se rechaza entera sólo cuando no queda NADIE a quien invitar: ahí no
+   * hubo nada que hacer, y el código con los correos culpables es la respuesta.
+   */
   if (recipients.valid.length === 0) {
+    if (recipients.invalid.length > 0) throw invalidEmailsError(recipients.invalid);
     throw new AppError('No valid emails provided', ErrorCodes.VALIDATION_ERROR, 400, 'recipientCsv');
   }
 
@@ -548,7 +547,10 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
     existingStudentProfileIds.push(m.profileId);
   }
 
-  if (teamEmails.length > 0) {
+  const nadieParaInvitar =
+    newEmails.length === 0 && existingStudentProfileIds.length === 0 && pendingStudentEmails.length === 0;
+  if (nadieParaInvitar) {
+    if (recipients.invalid.length > 0) throw invalidEmailsError(recipients.invalid);
     throw new AppError(
       `These emails belong to organization staff, not students: ${teamEmails.slice(0, 8).join(', ')}${teamEmails.length > 8 ? '…' : ''}`,
       ErrorCodes.AUDIENCE_STAFF_EMAILS,
@@ -683,8 +685,22 @@ export async function importAudienceMembers(orgId: string, data: TImportAudience
     pendingInvitesKept: keptEmails.size,
     duplicates: recipients.duplicates.length,
     emailsSent: assignedToCourses.emailsSent + assignedToPrograms.emailsSent + importEmailsSent + pendingEmailsSent,
-    emailsFailed: importEmailsFailed + pendingEmailsFailed
+    emailsFailed: importEmailsFailed + pendingEmailsFailed,
+    skippedInvalid: recipients.invalid,
+    skippedStaff: teamEmails
   };
+}
+
+function invalidEmailsError(invalid: string[]): AppError {
+  // Viaja con su código y los correos que lo causan: sin los correos, la docente
+  // no tiene forma de encontrar el mal escrito en una lista de cien.
+  return new AppError(
+    `Invalid emails found: ${invalid.slice(0, 5).join(', ')}`,
+    ErrorCodes.AUDIENCE_INVALID_EMAILS,
+    400,
+    'recipientCsv',
+    { emails: invalid.slice(0, MAX_EMAILS_IN_ERROR) }
+  );
 }
 
 export async function resendAudienceInvite(orgId: string, data: TAudienceInviteByEmail, invitedByProfileId: string) {
