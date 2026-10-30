@@ -12,6 +12,7 @@ import { customSession } from 'better-auth/plugins/custom-session';
 import { db } from '@db/drizzle';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { config as emailAndPassword } from './auth/email-password';
+import { AUTH_RATE_LIMIT } from './auth/rate-limit';
 import { getUserOrgRolesMap } from './queries/organization/organization';
 import { loginLink } from './auth/plugins/login-link';
 import { oAuthProxy } from 'better-auth/plugins/oauth-proxy';
@@ -64,6 +65,7 @@ export const auth = betterAuth({
     }
   },
   trustedOrigins: (request) => buildTrustedOrigins(request?.headers.get('origin')),
+  rateLimit: AUTH_RATE_LIMIT,
   advanced: {
     cookiePrefix: 'classroomio',
     // Cloud (multi-tenant): host-only cookies on each tenant/BYOD domain.
