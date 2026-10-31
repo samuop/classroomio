@@ -22,6 +22,7 @@ import { clientInfoFromHeaders } from '@api/utils/client-info';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
 import { ipKeyGenerator } from '@api/utils/redis/key-generators';
 import { recordIncident } from '@api/services/audit';
+import { redactRoute, redactScreen } from '@api/utils/audit-map';
 
 /** Todos los campos con tope de largo: el cuerpo lo controla el cliente. */
 const ZIncidentReport = z.object({
@@ -46,6 +47,22 @@ const incidentRateLimit = createRateLimiter({
   maxRequests: 60,
   keyGenerator: ipKeyGenerator
 });
+
+/**
+ * Las direcciones que manda el navegador, sin secretos.
+ *
+ * El middleware de auditoría no pasa por acá: este reporte trae sus direcciones
+ * en el cuerpo. `route` es una ruta de la API (la vista previa de una invitación
+ * lleva el token) o, desde el servidor del dashboard, la pantalla misma; y
+ * `metadata.screen` es siempre una pantalla.
+ */
+const sinSecretos = (path: string) => redactScreen(redactRoute(path));
+
+function metadataSinSecretos(metadata: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (!metadata) return null;
+
+  return typeof metadata.screen === 'string' ? { ...metadata, screen: sinSecretos(metadata.screen) } : metadata;
+}
 
 /**
  * `POST /audit/incident`
@@ -74,6 +91,7 @@ export const auditIncidentRouter = new Hono().post('/', incidentRateLimit, async
 
       await recordIncident({
         ...report,
+        route: report.route === undefined ? undefined : sinSecretos(report.route),
         source: 'FRONTEND',
         orgId,
         userId: user?.id ?? null,
@@ -83,7 +101,7 @@ export const auditIncidentRouter = new Hono().post('/', incidentRateLimit, async
         device: client.device,
         browser: client.browser,
         userAgent: client.userAgent,
-        metadata: report.metadata ?? null
+        metadata: metadataSinSecretos(report.metadata)
       });
     }
   } catch {

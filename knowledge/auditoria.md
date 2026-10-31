@@ -215,6 +215,12 @@ y quien tenga ese token entra a la empresa. Hasta 2026-09-13 quedaba escrito en
 incidencias, y un param secreto nunca se usa como `entity_id`. Una ruta nueva con
 un secreto en el path va en `SECRET_ROUTES` (`audit-map.ts`).
 
+Lo mismo vale para lo que manda el navegador: la pantalla de una invitación es
+`/invite/<token>`, y hasta 2026-10-31 quedaba tal cual en `metadata.screen` de
+`audit_incident`. `POST /audit/incident` pasa `route` y `metadata.screen` por
+`redactRoute` y `redactScreen`; una pantalla nueva con un secreto en la dirección
+va en `SECRET_SCREENS`.
+
 ## Que el mapa apunte a rutas reales
 
 ```bash

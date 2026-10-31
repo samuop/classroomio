@@ -601,3 +601,33 @@ describe('abrir una conversación con una ronda viva', () => {
     20_000
   );
 });
+
+describe('las fuentes del curso', () => {
+  // Son del docente: a un alumno la API se las niega con un 403. Medido en
+  // producción el 2026-10-30, con alumnas abriendo el tutor.
+  const conRol = (role: 'teacher' | 'student') => {
+    falso.aiAssistantApi.fetchStatus.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      falso.aiAssistantApi.status = { role, enabled: true };
+    });
+  };
+
+  it('no se le piden a la API cuando quien abre el chat es un alumno', async () => {
+    conRol('student');
+
+    render(AiCourseChat);
+
+    await waitFor(() => expect(falso.aiAssistantApi.fetchStatus).toHaveBeenCalledWith('curso-1'));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(falso.sourcesApi.listSources).not.toHaveBeenCalled();
+  });
+
+  it('sí se piden cuando es el docente, una vez que el servidor lo confirma', async () => {
+    conRol('teacher');
+
+    render(AiCourseChat);
+
+    await waitFor(() => expect(falso.sourcesApi.listSources).toHaveBeenCalledWith('curso-1'));
+    expect(falso.sourcesApi.listSources).toHaveBeenCalledTimes(1);
+  });
+});

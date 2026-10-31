@@ -154,6 +154,37 @@ describe('lo que llega de afuera no se cree', () => {
   });
 });
 
+describe('secretos en la dirección', () => {
+  // Con este token, cualquiera que lea la tabla se suma a la empresa.
+  const TOKEN = 'secreto-de-la-invitacion-de-prueba';
+
+  it('tapa el token de la pantalla de una invitación', async () => {
+    await post({
+      kind: 'FRONTEND_ERROR',
+      message: 'Failed to fetch',
+      route: '/login',
+      metadata: { screen: `/invite/${TOKEN}`, origin: 'unhandledrejection' }
+    });
+
+    expect(row().metadata).toEqual({ screen: '/invite/:token', origin: 'unhandledrejection' });
+    expect(JSON.stringify(row())).not.toContain(TOKEN);
+  });
+
+  it('tapa el token de la ruta, sea de la API o la pantalla desde el servidor del dashboard', async () => {
+    await post({ kind: 'REQUEST_FAILED', message: 'Request timeout', route: `/invite/organization/${TOKEN}/preview` });
+    await post({ kind: 'FRONTEND_ERROR', message: 'Error al renderizar', route: `/invite/${TOKEN}` });
+
+    const rutas = recordIncident.mock.calls.map((call) => (call as unknown as [{ route: string }])[0].route);
+    expect(rutas).toEqual(['/invite/organization/:token/preview', '/invite/:token']);
+  });
+
+  it('no toca una pantalla sin secretos', async () => {
+    await post({ ...VALID_REPORT, route: '/invite/organization/pending', metadata: { screen: '/invite' } });
+
+    expect(row()).toMatchObject({ route: '/invite/organization/pending', metadata: { screen: '/invite' } });
+  });
+});
+
 describe('nunca devuelve error', () => {
   it('responde 204 aunque el registro explote', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});

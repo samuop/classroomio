@@ -305,9 +305,27 @@ const SECRET_ROUTES = [
   '/invite/student/:token'
 ];
 
+/**
+ * Pantallas del dashboard con un secreto en la dirección.
+ *
+ * El navegador manda en `metadata.screen` la pantalla donde estaba, y la de una
+ * invitación es `/invite/<token>`: el mismo token del correo. Una conexión lenta
+ * en esa pantalla lo dejó escrito tal cual en `audit_incident` (2026-10-30).
+ */
+const SECRET_SCREENS = ['/invite/:token'];
+
 /** La ruta con cada secreto reemplazado por el nombre de su param. */
 export function redactRoute(path: string): string {
-  for (const pattern of SECRET_ROUTES) {
+  return redactWith(SECRET_ROUTES, path);
+}
+
+/** Lo mismo que `redactRoute`, para una pantalla del dashboard. */
+export function redactScreen(path: string): string {
+  return redactWith(SECRET_SCREENS, path);
+}
+
+function redactWith(patterns: string[], path: string): string {
+  for (const pattern of patterns) {
     if (!matchPattern(pattern, path)) continue;
 
     const pathSegments = path.split('/');

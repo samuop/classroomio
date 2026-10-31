@@ -166,6 +166,17 @@
 
   let progressBarStartTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * La última navegación interna: la dueña de la barra.
+   *
+   * Un segundo toque antes de que cargue la primera página arranca otra
+   * navegación, y SvelteKit rechaza el `complete` de la vieja con «navigation
+   * aborted». Si la vieja cerrara la barra igual, la apagaría mientras la nueva
+   * todavía carga: en un celular lento la pantalla parece quieta y la persona
+   * vuelve a tocar.
+   */
+  let ultimaNavegacion = 0;
+
   beforeNavigate((nav) => {
     if (progressBarStartTimeout) {
       clearTimeout(progressBarStartTimeout);
@@ -174,6 +185,8 @@
     if (noNavigationProgress) return;
 
     if (nav.to?.route.id) {
+      const estaNavegacion = ++ultimaNavegacion;
+
       // Internal navigation.
       if (displayThresholdMs > 0) {
         // Schedule a display of the progress bar in `displayThresholdMs` milliseconds.
@@ -181,13 +194,19 @@
         progressBarStartTimeout = setTimeout(() => !noNavigationProgress && start(), displayThresholdMs);
       } else start();
 
-      nav.complete.catch().finally(() => {
-        if (progressBarStartTimeout) {
-          clearTimeout(progressBarStartTimeout);
-          progressBarStartTimeout = null;
-        }
-        complete();
-      });
+      nav.complete
+        // Era `.catch()` sin función, que no atrapa nada: el rechazo seguía de
+        // largo por el `.finally()` y el navegador lo daba por no atendido.
+        .catch(() => {})
+        .finally(() => {
+          if (estaNavegacion !== ultimaNavegacion) return;
+
+          if (progressBarStartTimeout) {
+            clearTimeout(progressBarStartTimeout);
+            progressBarStartTimeout = null;
+          }
+          complete();
+        });
     }
   });
 </script>

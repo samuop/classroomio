@@ -141,6 +141,8 @@
   let pendingInitialTemplateAnswers: Record<string, string> | null = $state(null);
 
   let statusFetchedForCourseId: string | null = $state(null);
+  /** El pedido de estado del curso abierto. Ver `loadCourseSources`. */
+  let estadoDelCurso: Promise<void> = Promise.resolve();
   let conversationsLoadedForCourseId: string | null = $state(null);
   let sourcesLoadedForCourseId: string | null = $state(null);
   let activeConversationId: string | null = $state(null);
@@ -433,7 +435,7 @@
 
     if (statusFetchedForCourseId !== courseId) {
       statusFetchedForCourseId = courseId;
-      aiAssistantApi.fetchStatus(courseId);
+      estadoDelCurso = aiAssistantApi.fetchStatus(courseId);
     }
 
     if (conversationsLoadedForCourseId !== courseId) {
@@ -475,6 +477,13 @@
   });
 
   async function loadCourseSources(courseId: string) {
+    // Las fuentes son del docente: al alumno que abre el tutor la API se las
+    // niega con un 403 (medido en producción el 2026-10-30). Quién es docente
+    // lo decide el servidor en `/agent/status` con la misma regla, así que se
+    // espera esa respuesta en vez de adivinarlo acá.
+    await estadoDelCurso;
+    if (aiAssistantApi.status?.role === 'student') return;
+
     // Hit the Sources panel API to mirror its state in the chat. The Sources
     // panel is the single place where sources are managed, so the chat just
     // observes what's available there instead of accepting its own uploads.
