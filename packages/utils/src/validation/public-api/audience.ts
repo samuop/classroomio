@@ -8,6 +8,8 @@ export type TPublicApiAudienceQuery = z.infer<typeof ZPublicApiAudienceQuery>;
 export const ZPublicApiCreateAudience = z.object({
   email: z.string().email(),
   courseIds: z.array(z.string().uuid()).optional(),
+  // Los programas (las "sendas" de Seguimiento): quedan en la invitación y matriculan al aceptarla.
+  programIds: z.array(z.string().uuid()).optional(),
   sendEmail: z.boolean().default(true)
 });
 export type TPublicApiCreateAudience = z.infer<typeof ZPublicApiCreateAudience>;

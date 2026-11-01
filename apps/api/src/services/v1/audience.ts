@@ -28,6 +28,7 @@ export async function createAudienceService(orgId: string, actorId: string | nul
     {
       recipientCsv: payload.email,
       courseIds: payload.courseIds,
+      programIds: payload.programIds,
       allCourses: false,
       allPrograms: false,
       sendEmail: payload.sendEmail
