@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, or } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 
@@ -9,6 +9,7 @@ import type { AiTutorSettings } from '@cio/ai-assistant';
 import { getLesson } from '@api/services/lesson/lesson';
 import { getExercise } from '@api/services/exercise/exercise';
 import { listCourseSections } from '@api/services/course/section';
+import { isLocked } from '@api/services/course/locked-content';
 import { AppError } from '@api/utils/errors';
 import { AgentEvent, trackAgentEvent } from '@api/utils/tinybird';
 import { verifyExerciseBelongsToCourse, verifyLessonBelongsToCourse } from './chat-context';
@@ -27,7 +28,19 @@ import type { TLocale } from '@db/types';
  * Every tool re-verifies the resource belongs to `courseId` so a poisoned model
  * cannot reach into other courses or other learners' data. Exercise reads strip
  * answer keys and per-question scoring data before returning.
+ *
+ * Lo que el docente bloqueó no sale por ninguna: ni al leerlo, ni en un fragmento
+ * de búsqueda (ver `services/course/locked-content.ts`). El índice del curso sí lo
+ * nombra, marcado, porque el menú del alumno también lo muestra.
  */
+
+/** Lo que ve el modelo cuando pide algo que el docente todavía no habilitó. */
+const CONTENIDO_BLOQUEADO =
+  'This lesson or exercise is locked by the teacher and not available to the learner yet. Do not describe or guess its content; tell the learner it will be enabled later.';
+
+/** `IS NOT FALSE`: un `null` no bloquea, igual que en el menú del curso. */
+const habilitado = (column: typeof schema.lesson.isUnlocked | typeof schema.exercise.isUnlocked) =>
+  sql`${column} IS NOT FALSE`;
 
 const SEARCH_SNIPPET_RADIUS = 80;
 
@@ -185,6 +198,7 @@ async function searchExercises(
       .where(
         and(
           eq(schema.exercise.courseId, courseId),
+          habilitado(schema.exercise.isUnlocked),
           or(ilike(schema.exercise.title, pattern), ilike(schema.exercise.description, pattern))
         )
       )
@@ -231,7 +245,8 @@ export function buildStudentAgentTools(
                 id: schema.lesson.id,
                 title: schema.lesson.title,
                 sectionId: schema.lesson.sectionId,
-                order: schema.lesson.order
+                order: schema.lesson.order,
+                isUnlocked: schema.lesson.isUnlocked
               })
               .from(schema.lesson)
               .where(eq(schema.lesson.courseId, courseId))
@@ -242,14 +257,20 @@ export function buildStudentAgentTools(
                 title: schema.exercise.title,
                 lessonId: schema.exercise.lessonId,
                 sectionId: schema.exercise.sectionId,
-                order: schema.exercise.order
+                order: schema.exercise.order,
+                isUnlocked: schema.exercise.isUnlocked
               })
               .from(schema.exercise)
               .where(eq(schema.exercise.courseId, courseId))
               .orderBy(asc(schema.exercise.order))
           ]);
 
-          return { sections, lessons, exercises };
+          // Los títulos de lo bloqueado se ven en el menú del alumno; el modelo
+          // tiene que saber que ahí no hay nada para leer todavía.
+          const conCandado = <T extends { isUnlocked: boolean | null }>({ isUnlocked, ...rest }: T) =>
+            isLocked({ isUnlocked }) ? { ...rest, locked: true } : rest;
+
+          return { sections, lessons: lessons.map(conCandado), exercises: exercises.map(conCandado) };
         });
       }
     }),
@@ -266,6 +287,9 @@ export function buildStudentAgentTools(
             return { error: ID_FUERA_DEL_CURSO };
           }
           const lesson = await getLesson(args.lessonId);
+          if (isLocked(lesson)) {
+            return { error: CONTENIDO_BLOQUEADO };
+          }
           const lessonWithLangs = lesson as {
             id: string;
             title: string;
@@ -295,6 +319,9 @@ export function buildStudentAgentTools(
             return { error: ID_FUERA_DEL_CURSO };
           }
           const exercise = await getExercise(args.exerciseId);
+          if (isLocked(exercise)) {
+            return { error: CONTENIDO_BLOQUEADO };
+          }
 
           const questions = (exercise.questions ?? []).map((q) =>
             stripAnswerKeysFromQuestion({
@@ -352,7 +379,8 @@ export function buildStudentAgentTools(
               courseId,
               query: args.query,
               locale,
-              limit: limit * SEMANTIC_CHUNK_OVERFETCH
+              limit: limit * SEMANTIC_CHUNK_OVERFETCH,
+              onlyUnlocked: true
             });
 
             if (semantic.length > 0) {
@@ -399,6 +427,7 @@ export function buildStudentAgentTools(
             .where(
               and(
                 eq(schema.lesson.courseId, courseId),
+                habilitado(schema.lesson.isUnlocked),
                 or(ilike(schema.lesson.title, pattern), ilike(schema.lessonLanguage.content, pattern))
               )
             )

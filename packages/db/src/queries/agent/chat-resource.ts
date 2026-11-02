@@ -6,12 +6,14 @@ import { db } from '@db/drizzle';
 export type ResourceCourseBinding = {
   courseId: string | null;
   title: string | null;
+  /** Sólo lecciones y ejercicios: si el docente los bloqueó para los alumnos. */
+  isUnlocked?: boolean | null;
 };
 
 export async function getLessonCourseBinding(lessonId: string): Promise<ResourceCourseBinding | undefined> {
   try {
     const [row] = await db
-      .select({ courseId: schema.lesson.courseId, title: schema.lesson.title })
+      .select({ courseId: schema.lesson.courseId, title: schema.lesson.title, isUnlocked: schema.lesson.isUnlocked })
       .from(schema.lesson)
       .where(eq(schema.lesson.id, lessonId))
       .limit(1);
@@ -26,7 +28,11 @@ export async function getLessonCourseBinding(lessonId: string): Promise<Resource
 export async function getExerciseCourseBinding(exerciseId: string): Promise<ResourceCourseBinding | undefined> {
   try {
     const [row] = await db
-      .select({ courseId: schema.exercise.courseId, title: schema.exercise.title })
+      .select({
+        courseId: schema.exercise.courseId,
+        title: schema.exercise.title,
+        isUnlocked: schema.exercise.isUnlocked
+      })
       .from(schema.exercise)
       .where(eq(schema.exercise.id, exerciseId))
       .limit(1);

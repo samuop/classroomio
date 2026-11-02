@@ -14,6 +14,11 @@ import { ROLE } from '@cio/utils/constants';
  * la misma persona.
  *
  * Trae las fechas en ISO crudo: quien escribe el archivo decide cómo mostrarlas.
+ *
+ * Cuenta sólo lo habilitado. Un curso que se habilita por etapas tiene lecciones
+ * y ejercicios bloqueados que el alumno no puede abrir; contarlos dejaba a todo el
+ * curso «en curso» para siempre. Lo bloqueado se informa aparte, para que el
+ * reporte lo diga.
  */
 
 export interface TCourseReportCourse {
@@ -52,7 +57,12 @@ export interface TCourseReportPendingInvite {
 
 export interface TCourseReportData {
   course: TCourseReportCourse;
+  /** Lecciones habilitadas para los alumnos. */
   lessonsTotal: number;
+  /** Lecciones que el docente todavía no habilitó. */
+  lockedLessons: number;
+  /** Ejercicios que el docente todavía no habilitó. */
+  lockedExerciseIds: string[];
   students: TCourseReportStudent[];
   submissions: TCourseReportSubmission[];
   pendingInvites: TCourseReportPendingInvite[];
@@ -65,6 +75,7 @@ interface CourseRaw {
   org_name: string | null;
   org_avatar_url: string | null;
   lessons_total: number;
+  lessons_locked: number;
 }
 
 interface StudentRaw {
@@ -99,7 +110,8 @@ export async function getCourseReportData(courseId: string): Promise<TCourseRepo
   // postgres-js devuelve las filas como un array plano desde db.execute.
   const [course] = (await db.execute(sql`
     SELECT c.id, c.title, g.organization_id AS org_id, o.name AS org_name, o.avatar_url AS org_avatar_url,
-           (SELECT COUNT(*) FROM lesson l WHERE l.course_id = c.id)::int AS lessons_total
+           (SELECT COUNT(*) FROM lesson l WHERE l.course_id = c.id AND l.is_unlocked IS NOT FALSE)::int AS lessons_total,
+           (SELECT COUNT(*) FROM lesson l WHERE l.course_id = c.id AND l.is_unlocked = false)::int AS lessons_locked
       FROM course c
       JOIN "group" g ON g.id = c.group_id
       JOIN organization o ON o.id = g.organization_id
@@ -108,7 +120,7 @@ export async function getCourseReportData(courseId: string): Promise<TCourseRepo
 
   if (!course) return null;
 
-  const [students, submissions, invites] = await Promise.all([
+  const [students, submissions, invites, lockedExercises] = await Promise.all([
     db.execute(sql`
       SELECT gm.id AS group_member_id,
              gm.profile_id,
@@ -117,11 +129,13 @@ export async function getCourseReportData(courseId: string): Promise<TCourseRepo
              gm.created_at AS enrolled_at,
              (SELECT COUNT(*) FROM lesson_completion lc
                 JOIN lesson l ON l.id = lc.lesson_id
-               WHERE l.course_id = c.id AND lc.profile_id = gm.profile_id AND lc.is_complete = true)::int
+               WHERE l.course_id = c.id AND l.is_unlocked IS NOT FALSE
+                 AND lc.profile_id = gm.profile_id AND lc.is_complete = true)::int
                AS lessons_completed,
              (SELECT MAX(COALESCE(lc.updated_at, lc.created_at)) FROM lesson_completion lc
                 JOIN lesson l ON l.id = lc.lesson_id
-               WHERE l.course_id = c.id AND lc.profile_id = gm.profile_id AND lc.is_complete = true)
+               WHERE l.course_id = c.id AND l.is_unlocked IS NOT FALSE
+                 AND lc.profile_id = gm.profile_id AND lc.is_complete = true)
                AS last_lesson_completed_at
         FROM course c
         JOIN groupmember gm ON gm.group_id = c.group_id
@@ -153,7 +167,15 @@ export async function getCourseReportData(courseId: string): Promise<TCourseRepo
          AND i.is_revoked = false
          AND i.metadata -> 'courseIds' ? ${courseId}
        ORDER BY lower(i.email), i.created_at DESC
-    `) as unknown as Promise<InviteRaw[]>
+    `) as unknown as Promise<InviteRaw[]>,
+
+    db.execute(sql`
+      SELECT ex.id
+        FROM exercise ex
+        LEFT JOIN lesson el ON el.id = ex.lesson_id
+       WHERE (ex.course_id = ${courseId} OR el.course_id = ${courseId})
+         AND ex.is_unlocked = false
+    `) as unknown as Promise<Array<{ id: string }>>
   ]);
 
   return {
@@ -165,6 +187,8 @@ export async function getCourseReportData(courseId: string): Promise<TCourseRepo
       orgAvatarUrl: course.org_avatar_url ?? null
     },
     lessonsTotal: Number(course.lessons_total) || 0,
+    lockedLessons: Number(course.lessons_locked) || 0,
+    lockedExerciseIds: lockedExercises.map((e) => e.id),
     students: students.map((s) => ({
       groupMemberId: s.group_member_id,
       profileId: s.profile_id,

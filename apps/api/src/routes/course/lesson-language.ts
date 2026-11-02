@@ -15,6 +15,7 @@ import { Hono } from '@api/utils/hono';
 import type { TLocale } from '@db/types';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { canReadLesson } from '@api/services/course/locked-content';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 
@@ -27,7 +28,10 @@ export const lessonLanguageRouter = new Hono()
   .get('/', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonLanguageGetParam), async (c) => {
     try {
       const { lessonId } = c.req.valid('param');
-      const languages = await listLessonLanguages(lessonId);
+      // El texto de una lección bloqueada no le llega al alumno (ver locked-content.ts).
+      const languages = (await canReadLesson(c.req.param('courseId')!, lessonId, c.get('user')!.id))
+        ? await listLessonLanguages(lessonId)
+        : [];
 
       return c.json(
         {
@@ -53,7 +57,10 @@ export const lessonLanguageRouter = new Hono()
     async (c) => {
       try {
         const { lessonId, locale } = c.req.valid('param');
-        const language = await getLessonLanguage(lessonId, locale as TLocale);
+        // Bloqueada para el alumno: responde como una lección sin ese idioma.
+        const language = (await canReadLesson(c.req.param('courseId')!, lessonId, c.get('user')!.id))
+          ? await getLessonLanguage(lessonId, locale as TLocale)
+          : null;
 
         if (!language) {
           return c.json(

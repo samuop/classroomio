@@ -155,12 +155,17 @@ export function reindexLessonLanguageInBackground(params: {
  * Returns the most semantically similar chunks for the query, pre-filtered by
  * course (and locale when given). Empty array when embeddings are unavailable —
  * callers fall back to literal search.
+ *
+ * `onlyUnlocked` es para el tutor del alumno: una lección que el docente bloqueó
+ * sigue indexada (el docente la busca mientras la arma), pero al alumno no le
+ * puede llegar ni un fragmento. Ver `services/course/locked-content.ts`.
  */
 export async function semanticSearchCourse(params: {
   courseId: string;
   query: string;
   locale?: TLocale;
   limit?: number;
+  onlyUnlocked?: boolean;
 }): Promise<Array<{ lessonId: string; chunkIndex: number; content: string; distance: number }>> {
   const model = getEmbeddingModel();
   if (!model) return [];
@@ -176,13 +181,16 @@ export async function semanticSearchCourse(params: {
   const localeFilter = params.locale
     ? sql`AND locale = ${params.locale}`
     : sql``;
+  const unlockedFilter = params.onlyUnlocked
+    ? sql`AND lesson_id IN (SELECT id FROM lesson WHERE course_id = ${params.courseId} AND is_unlocked IS NOT FALSE)`
+    : sql``;
 
   // <=> is pgvector cosine distance (smaller = closer). Parameterized query vector.
   // The postgres-js driver returns the row array directly from db.execute().
   const rows = (await db.execute(sql`
     SELECT lesson_id, chunk_index, content, (embedding <=> ${queryVec}::halfvec) AS distance
     FROM lesson_embedding
-    WHERE course_id = ${params.courseId} ${localeFilter}
+    WHERE course_id = ${params.courseId} ${localeFilter} ${unlockedFilter}
     ORDER BY embedding <=> ${queryVec}::halfvec
     LIMIT ${limit}
   `)) as unknown as Array<{

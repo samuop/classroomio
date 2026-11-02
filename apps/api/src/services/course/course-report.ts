@@ -29,6 +29,10 @@ import { renderPdf } from '@api/utils/render';
  *    desaprobado.
  *  - **Los invitados que todavía no entraron** también aparecen: son a los que
  *    hay que ir a buscar.
+ *  - **Sólo cuenta lo habilitado.** Un curso que se habilita por etapas tiene
+ *    lecciones y ejercicios bloqueados que el alumno no puede abrir: contados,
+ *    nadie terminaba nunca. Lo bloqueado no tiene columna y el reporte lo dice
+ *    en una línea.
  */
 
 /** Calificada: el estado 3 del tablero de entregas. */
@@ -88,8 +92,12 @@ export interface CourseReport {
   courseTitle: string;
   orgName: string;
   generatedAt: string;
+  /** Lecciones habilitadas. */
   lessonsTotal: number;
+  /** Ejercicios habilitados, en el orden del curso. */
   exercises: ReportExercise[];
+  /** Lo que el docente todavía no habilitó y por eso no se cuenta. */
+  locked: { lessons: number; exercises: number };
   rows: ReportRow[];
   summary: CourseReportSummary;
 }
@@ -97,11 +105,17 @@ export interface CourseReport {
 const later = (a: string | null, b: string | null): string | null => (!a ? b : !b ? a : a > b ? a : b);
 
 export function buildCourseReport(
-  data: Pick<TCourseReportData, 'lessonsTotal' | 'students' | 'submissions' | 'pendingInvites'>,
+  data: Pick<
+    TCourseReportData,
+    'lessonsTotal' | 'lockedLessons' | 'lockedExerciseIds' | 'students' | 'submissions' | 'pendingInvites'
+  >,
   gradebookExercises: GradebookExercise[],
   options: { courseTitle: string; orgName: string; now: Date }
 ): CourseReport {
-  const exercises = gradebookExercises.map((ex) => ({ id: ex.id, title: ex.title, maxPoints: ex.points }));
+  const lockedExercises = new Set(data.lockedExerciseIds);
+  const exercises = gradebookExercises
+    .filter((ex) => !lockedExercises.has(ex.id))
+    .map((ex) => ({ id: ex.id, title: ex.title, maxPoints: ex.points }));
   const maxTotal = exercises.reduce((sum, ex) => sum + ex.maxPoints, 0);
   const { lessonsTotal } = data;
 
@@ -178,6 +192,7 @@ export function buildCourseReport(
     generatedAt: options.now.toISOString(),
     lessonsTotal,
     exercises,
+    locked: { lessons: data.lockedLessons, exercises: lockedExercises.size },
     rows,
     summary: {
       students: students.length,
@@ -206,6 +221,16 @@ export function summaryLine(summary: CourseReportSummary): string {
   }
 
   return parts.join(' · ');
+}
+
+/** «Todavía bloqueado para los alumnos, no se cuenta: 12 lecciones y 3 ejercicios.», o `null`. */
+export function lockedLine(locked: CourseReport['locked']): string | null {
+  const parts = [
+    locked.lessons > 0 ? `${locked.lessons} ${locked.lessons === 1 ? 'lección' : 'lecciones'}` : '',
+    locked.exercises > 0 ? `${locked.exercises} ${locked.exercises === 1 ? 'ejercicio' : 'ejercicios'}` : ''
+  ].filter(Boolean);
+
+  return parts.length === 0 ? null : `Todavía bloqueado para los alumnos, no se cuenta: ${parts.join(' y ')}.`;
 }
 
 /** «31/10/2026»: el día en Argentina. */
@@ -251,7 +276,12 @@ export async function courseReportXlsx(report: CourseReport): Promise<Buffer> {
   sheet.addRow([`Reporte de alumnos — ${report.courseTitle}`]).font = { bold: true, size: 14 };
   sheet.addRow([`${report.orgName} · Generado el ${formatDisplayDateTime(report.generatedAt)}`]);
   sheet.addRow([summaryLine(report.summary)]);
-  sheet.addRow([]);
+  const locked = lockedLine(report.locked);
+  if (locked) {
+    sheet.addRow([locked]).font = { italic: true };
+  } else {
+    sheet.addRow([]);
+  }
 
   const header = sheet.addRow([
     'Alumno',
@@ -317,6 +347,7 @@ const PDF_STYLES = `
   .curso { margin: 2px 0 0; font-size: 12pt; }
   .meta { margin: 8px 0 2px; color: #52606d; }
   .resumen { margin: 0 0 12px; font-weight: 600; }
+  .bloqueado { margin: -8px 0 12px; font-style: italic; color: #52606d; }
   table { width: 100%; border-collapse: collapse; }
   thead th {
     padding: 5px 6px; border-bottom: 1.5px solid #9aa5b1; text-align: left; vertical-align: bottom;
@@ -380,6 +411,7 @@ export function courseReportHtml(report: CourseReport, logoUrl: string | null): 
     </header>
     <p class="meta">Generado el ${escapeHtml(formatDisplayDateTime(report.generatedAt))}</p>
     <p class="resumen">${escapeHtml(summaryLine(report.summary))}</p>
+    ${lockedLine(report.locked) ? `<p class="bloqueado">${escapeHtml(lockedLine(report.locked)!)}</p>` : ''}
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
   </body></html>`;
 }

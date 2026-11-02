@@ -17,7 +17,6 @@ import {
   createLessonCommentService,
   deleteLessonCommentService,
   deleteLessonService,
-  getLesson,
   getLessonCommentsPaginated,
   getLessonCompletionService,
   getLessonHistoryService,
@@ -32,6 +31,8 @@ import { Hono } from '@api/utils/hono';
 import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { assertLessonWorkable, lessonForViewer, lessonsForViewer } from '@api/services/course/locked-content';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
 import { handleError } from '@api/utils/errors';
@@ -42,8 +43,11 @@ export const lessonRouter = new Hono()
   // Lesson CRUD routes
   .get('/', authMiddleware, courseMemberMiddleware, zValidator('query', ZLessonListQuery), async (c) => {
     try {
-      const { courseId, sectionId } = c.req.valid('query');
-      const lessons = await listLessons(courseId, sectionId);
+      // El curso es el de la ruta, que es el que validó el middleware: el de la
+      // consulta dejaba listar las lecciones de cualquier otro curso.
+      const courseId = c.req.param('courseId')!;
+      const { sectionId } = c.req.valid('query');
+      const lessons = await lessonsForViewer(courseId, await listLessons(courseId, sectionId), c.get('user')!.id);
 
       return c.json({ success: true, data: lessons }, 200);
     } catch (error) {
@@ -64,7 +68,7 @@ export const lessonRouter = new Hono()
   .get('/:lessonId', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonGetParam), async (c) => {
     try {
       const { lessonId } = c.req.valid('param');
-      const lesson = await getLesson(lessonId);
+      const lesson = await lessonForViewer(c.req.param('courseId')!, lessonId, c.get('user')!.id);
 
       return c.json({ success: true, data: lesson }, 200);
     } catch (error) {
@@ -223,6 +227,7 @@ export const lessonRouter = new Hono()
         const { lessonId } = c.req.valid('param');
         const { isComplete } = c.req.valid('json');
 
+        await assertLessonWorkable(c.req.param('courseId')!, lessonId, user.id);
         const completion = await upsertLessonCompletionService(lessonId, user.id, isComplete);
 
         return c.json({ success: true, data: completion }, 200);
@@ -235,12 +240,13 @@ export const lessonRouter = new Hono()
    * GET /course/:courseId/lesson/:lessonId/history
    * Gets lesson version history for a lesson and locale
    * Query params: locale (required), endRange (optional, default 9)
-   * Requires authentication and course membership
+   * Sólo el equipo del curso: son los borradores del editor, con el texto de
+   * cada versión, también de las lecciones bloqueadas.
    */
   .get(
     '/:lessonId/history',
     authMiddleware,
-    courseMemberMiddleware,
+    courseTeamMemberMiddleware,
     zValidator('param', ZLessonHistoryParam),
     zValidator('query', ZLessonHistoryQuery),
     async (c) => {

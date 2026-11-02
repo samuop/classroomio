@@ -9,6 +9,7 @@ import {
   courseReportXlsx,
   excelDay,
   formatDay,
+  lockedLine,
   summaryLine
 } from '@api/services/course/course-report';
 
@@ -55,6 +56,8 @@ function data(overrides: Partial<TCourseReportData> = {}): TCourseReportData {
   return {
     course: { id: 'curso', title: 'Curso de prueba', orgId: 'org', orgName: 'Empresa Ejemplo', orgAvatarUrl: null },
     lessonsTotal: 20,
+    lockedLessons: 0,
+    lockedExerciseIds: [],
     students: [],
     submissions: [],
     pendingInvites: [],
@@ -235,6 +238,48 @@ describe('el orden y el resumen', () => {
     expect(summaryLine(report.summary)).toBe(
       '4 alumnos: 2 terminaron, 1 en curso, 1 no empezó · 1 invitado que todavía no entró · nota final promedio: 95 %'
     );
+  });
+});
+
+describe('un curso que se habilita por etapas', () => {
+  // Medido en producción el 2026-11-02: con 12 lecciones y 3 cuestionarios
+  // bloqueados, el reporte decía «0 terminaron» de 51 alumnos. Nadie puede
+  // entregar lo que no ve. (La consulta ya trae `lessonsTotal` sólo con las
+  // habilitadas.)
+  const report = buildCourseReport(
+    data({
+      lessonsTotal: 8,
+      lockedLessons: 12,
+      lockedExerciseIds: ['ej-bloqueado'],
+      students: [student('ana', 'Ana', 8, '2026-10-31T13:00:00.000Z')],
+      submissions: [
+        entrega('ana', 'ej-caja', 6, '2026-10-30T19:00:00.000Z'),
+        entrega('ana', 'ej-recepcion', 9, '2026-10-31T12:00:00.000Z'),
+        entrega('ana', 'ej-final', 10, '2026-10-31T14:00:00.000Z')
+      ]
+    }),
+    // El cuarto ejercicio está bloqueado: nadie lo entregó ni lo puede entregar.
+    [...EXERCISES, { id: 'ej-bloqueado', title: 'Cuestionario bloqueado', points: 9 }],
+    { courseTitle: 'Curso de prueba', orgName: 'Empresa Ejemplo', now: NOW }
+  );
+
+  it('terminó quien hizo todo lo habilitado, aunque falte lo bloqueado', () => {
+    expect(report.rows[0]).toMatchObject({ status: 'finished', progressPct: 100, finalPct: 81 });
+  });
+
+  it('lo bloqueado no tiene columna, y el reporte lo dice', () => {
+    expect(report.exercises.map((ex) => ex.id)).toEqual(['ej-caja', 'ej-recepcion', 'ej-final']);
+    expect(report.locked).toEqual({ lessons: 12, exercises: 1 });
+  });
+});
+
+describe('la línea de lo bloqueado', () => {
+  it('nombra lecciones y ejercicios, en singular o plural, y no aparece si no hay nada', () => {
+    expect(lockedLine({ lessons: 12, exercises: 3 })).toBe(
+      'Todavía bloqueado para los alumnos, no se cuenta: 12 lecciones y 3 ejercicios.'
+    );
+    expect(lockedLine({ lessons: 1, exercises: 0 })).toBe('Todavía bloqueado para los alumnos, no se cuenta: 1 lección.');
+    expect(lockedLine({ lessons: 0, exercises: 0 })).toBeNull();
   });
 });
 

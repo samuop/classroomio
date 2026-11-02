@@ -116,6 +116,7 @@ import { listCourseSections } from '@api/services/course/section';
 import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getLesson } from '@api/services/lesson/lesson';
 import { getExercise } from '@api/services/exercise/exercise';
+import { isLocked } from '@api/services/course/locked-content';
 import { sanitizeDanglingToolCalls } from '@api/services/agent/sanitize-tool-calls';
 import { measureContextBreakdown } from '@api/services/agent/context-window';
 import {
@@ -969,9 +970,13 @@ const agentCoreRouter = new Hono()
           const editorLocale = context?.locale ?? 'en';
           // El estudiante lee: si la lección no está en su idioma, sirve la que haya. El
           // docente edita un idioma concreto, y ahí que venga vacía es información.
+          // Lo bloqueado no entra al contexto del alumno: el `lessonId` lo manda el
+          // navegador, y bastaba con pedirle al tutor que repitiera la lección.
           lessonContent =
             (role === AgentRole.STUDENT
-              ? contenidoEnIdioma(lessonWithLangs.lessonLanguages, editorLocale)
+              ? isLocked(lesson)
+                ? undefined
+                : contenidoEnIdioma(lessonWithLangs.lessonLanguages, editorLocale)
               : (
                   lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === editorLocale) ??
                   lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === 'en')

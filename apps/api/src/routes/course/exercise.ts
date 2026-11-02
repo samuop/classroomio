@@ -36,6 +36,11 @@ import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-member-or-automation-key';
 import { assertMcpAutomationUsageAllowed, recordMcpAutomationUsage } from '@api/services/organization/automation-usage';
 import { createSubmissionService, listExerciseSubmissionsOverview } from '@api/services/submission';
+import {
+  assertExerciseWorkable,
+  exerciseForViewer,
+  exercisesForViewer
+} from '@api/services/course/locked-content';
 import { zValidator } from '@hono/zod-validator';
 
 export const exerciseRouter = new Hono()
@@ -56,7 +61,9 @@ export const exerciseRouter = new Hono()
           await assertMcpAutomationUsageAllowed(automationKey, 'list_course_exercises');
         }
 
-        const exercises = await listExercises(courseId, { lessonId, sectionId }, user?.id);
+        const listed = await listExercises(courseId, { lessonId, sectionId }, user?.id);
+        // Una llave de automatización la usa quien arma el curso: ve todo.
+        const exercises = user ? await exercisesForViewer(courseId, listed, user.id) : listed;
 
         if (automationKey?.type === 'mcp') {
           await recordMcpAutomationUsage(automationKey, 'list_course_exercises', { courseId, lessonId, sectionId });
@@ -95,7 +102,11 @@ export const exerciseRouter = new Hono()
           await assertMcpAutomationUsageAllowed(automationKey, 'get_course_exercise');
         }
 
-        const exercise = await getExercise(exerciseId, undefined, user?.id);
+        // Una llave de automatización la usa quien arma el curso: ve todo. Una
+        // persona ve lo de este curso, y lo bloqueado sólo si es del equipo.
+        const exercise = user
+          ? await exerciseForViewer(c.req.param('courseId')!, exerciseId, user.id)
+          : await getExercise(exerciseId);
 
         if (automationKey?.type === 'mcp') {
           await recordMcpAutomationUsage(automationKey, 'get_course_exercise', {
@@ -260,6 +271,7 @@ export const exerciseRouter = new Hono()
           return c.json({ success: false, error: 'User is not a member of this course' }, 403);
         }
 
+        await assertExerciseWorkable(courseId, exerciseId, user.id);
         const submission = await createSubmissionService(courseId, exerciseId, groupMemberId, answers);
 
         return c.json({ success: true, data: submission }, 201);
@@ -281,6 +293,7 @@ export const exerciseRouter = new Hono()
         const { exerciseId, questionId } = c.req.valid('param');
         const data = c.req.valid('json');
 
+        await assertExerciseWorkable(courseId, exerciseId, user.id);
         const upload = await initVideoRecordingUpload(courseId, exerciseId, questionId, user.id, data);
 
         return c.json({ success: true, data: upload }, 200);
