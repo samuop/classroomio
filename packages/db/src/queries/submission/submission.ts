@@ -4,6 +4,29 @@ import type { TNewQuestionAnswer, TNewSubmission, TQuestionAnswer, TSubmission }
 import { and, count, db, eq, inArray, sql } from '@db/drizzle';
 
 /**
+ * Lo que una persona respondió en un ejercicio, en todas sus entregas: una fila
+ * por pregunta y por entrega. Sin entregas, `[]`.
+ */
+export async function getAnswersOfProfileForExercise(
+  exerciseId: string,
+  profileId: string
+): Promise<Array<{ questionId: number; answerData: TQuestionAnswer['answerData'] }>> {
+  try {
+    return await db
+      .select({ questionId: schema.questionAnswer.questionId, answerData: schema.questionAnswer.answerData })
+      .from(schema.questionAnswer)
+      .innerJoin(schema.submission, eq(schema.questionAnswer.submissionId, schema.submission.id))
+      .innerJoin(schema.groupmember, eq(schema.submission.submittedBy, schema.groupmember.id))
+      .where(and(eq(schema.submission.exerciseId, exerciseId), eq(schema.groupmember.profileId, profileId)));
+  } catch (error) {
+    console.error('getAnswersOfProfileForExercise error:', error);
+    throw new Error(
+      `Failed to get answers for exercise "${exerciseId}": ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
+/**
  * Gets a submission by ID
  * @param submissionId Submission ID
  * @returns Submission or null

@@ -32,6 +32,8 @@ import { ZLessonDownloadContent } from '@cio/utils/validation/course';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { lessonCommentAuthorOrTeamMiddleware } from '@api/middlewares/lesson-comment-author-or-team';
+import { assertInCourse, lessonInCourse } from '@api/services/course/course-binding';
 import { assertLessonWorkable, lessonForViewer, lessonsForViewer } from '@api/services/course/locked-content';
 import { generateLessonPdf } from '@api/utils/lesson';
 import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
@@ -39,6 +41,12 @@ import { handleError } from '@api/utils/errors';
 import { lessonLanguageRouter } from '@api/routes/course/lesson-language';
 import { zValidator } from '@hono/zod-validator';
 
+/**
+ * Leer es de todo miembro del curso; escribir lecciones (crear, editar, borrar,
+ * reordenar) es del equipo. Hasta 2026-11-02 las escrituras pedían sólo ser
+ * miembro: un alumno podía editar o borrar lecciones llamando a la API. Y toda
+ * lección que llega por id tiene que ser del curso de la ruta.
+ */
 export const lessonRouter = new Hono()
   // Lesson CRUD routes
   .get('/', authMiddleware, courseMemberMiddleware, zValidator('query', ZLessonListQuery), async (c) => {
@@ -54,10 +62,14 @@ export const lessonRouter = new Hono()
       return handleError(c, error, 'Failed to list lessons');
     }
   })
-  .post('/reorder', authMiddleware, courseMemberMiddleware, zValidator('json', ZLessonReorder), async (c) => {
+  .post('/reorder', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZLessonReorder), async (c) => {
     try {
       const { lessons } = c.req.valid('json');
 
+      await assertInCourse(c.req.param('courseId')!, {
+        lessonIds: lessons.map((lesson) => lesson.id),
+        sectionIds: lessons.map((lesson) => lesson.sectionId)
+      });
       const updated = await reorderLessons(lessons);
 
       return c.json({ success: true, data: updated }, 200);
@@ -75,11 +87,12 @@ export const lessonRouter = new Hono()
       return handleError(c, error, 'Failed to fetch lesson');
     }
   })
-  .post('/', authMiddleware, courseMemberMiddleware, zValidator('json', ZLessonCreate), async (c) => {
+  .post('/', authMiddleware, courseTeamMemberMiddleware, zValidator('json', ZLessonCreate), async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
       const data = c.req.valid('json');
 
+      await assertInCourse(courseId, { sectionIds: [data.sectionId] });
       const lesson = await createLesson(courseId, { ...data, courseId });
 
       return c.json({ success: true, data: lesson }, 201);
@@ -90,14 +103,17 @@ export const lessonRouter = new Hono()
   .put(
     '/:lessonId',
     authMiddleware,
-    courseMemberMiddleware,
+    courseTeamMemberMiddleware,
     zValidator('param', ZLessonGetParam),
     zValidator('json', ZLessonUpdate),
     async (c) => {
       try {
+        const courseId = c.req.param('courseId')!;
         const { lessonId } = c.req.valid('param');
         const data = c.req.valid('json');
 
+        await lessonInCourse(courseId, lessonId);
+        await assertInCourse(courseId, { sectionIds: [data.sectionId] });
         const lesson = await updateLessonService(lessonId, data);
 
         return c.json({ success: true, data: lesson }, 200);
@@ -106,9 +122,11 @@ export const lessonRouter = new Hono()
       }
     }
   )
-  .delete('/:lessonId', authMiddleware, courseMemberMiddleware, zValidator('param', ZLessonGetParam), async (c) => {
+  .delete('/:lessonId', authMiddleware, courseTeamMemberMiddleware, zValidator('param', ZLessonGetParam), async (c) => {
     try {
       const { lessonId } = c.req.valid('param');
+
+      await lessonInCourse(c.req.param('courseId')!, lessonId);
       const lesson = await deleteLessonService(lessonId);
 
       return c.json({ success: true, data: lesson }, 200);
@@ -128,6 +146,7 @@ export const lessonRouter = new Hono()
         const { lessonId } = c.req.valid('param');
         const { cursor, limit = 10 } = c.req.valid('query');
 
+        await lessonInCourse(c.req.param('courseId')!, lessonId);
         const result = await getLessonCommentsPaginated(lessonId, { cursor, limit });
 
         return c.json({ success: true, data: result }, 200);
@@ -154,6 +173,7 @@ export const lessonRouter = new Hono()
           return c.json({ success: false, error: 'User is not a member of this course' }, 403);
         }
 
+        await lessonInCourse(courseId, lessonId);
         const commentData = await createLessonCommentService(lessonId, groupMemberId, comment);
 
         return c.json({ success: true, data: commentData }, 201);
@@ -167,6 +187,7 @@ export const lessonRouter = new Hono()
     authMiddleware,
     courseMemberMiddleware,
     zValidator('param', ZLessonCommentGetParam),
+    lessonCommentAuthorOrTeamMiddleware,
     zValidator('json', ZLessonCommentUpdate),
     async (c) => {
       try {
@@ -185,6 +206,7 @@ export const lessonRouter = new Hono()
     authMiddleware,
     courseMemberMiddleware,
     zValidator('param', ZLessonCommentGetParam),
+    lessonCommentAuthorOrTeamMiddleware,
     async (c) => {
       try {
         const { commentId } = c.req.valid('param');

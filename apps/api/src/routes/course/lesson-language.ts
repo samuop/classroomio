@@ -15,6 +15,8 @@ import { Hono } from '@api/utils/hono';
 import type { TLocale } from '@db/types';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { lessonInCourse } from '@api/services/course/course-binding';
 import { canReadLesson } from '@api/services/course/locked-content';
 import { handleError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
@@ -87,12 +89,12 @@ export const lessonLanguageRouter = new Hono()
   /**
    * POST /course/:courseId/lesson/:lessonId/language
    * Creates or updates a lesson language translation (upsert)
-   * Requires authentication and course membership
+   * Sólo el equipo del curso: es el texto de la lección.
    */
   .post(
     '/',
     authMiddleware,
-    courseMemberMiddleware,
+    courseTeamMemberMiddleware,
     zValidator('param', ZLessonLanguageGetParam),
     zValidator('json', ZLessonLanguageCreate),
     async (c) => {
@@ -100,6 +102,7 @@ export const lessonLanguageRouter = new Hono()
         const { lessonId } = c.req.valid('param');
         const data = c.req.valid('json');
 
+        await lessonInCourse(c.req.param('courseId')!, lessonId);
         const language = await upsertLessonLanguageService(lessonId, data);
 
         return c.json(
@@ -117,12 +120,12 @@ export const lessonLanguageRouter = new Hono()
   /**
    * PUT /course/:courseId/lesson/:lessonId/language/:locale
    * Updates a lesson language translation
-   * Requires authentication and course membership
+   * Sólo el equipo del curso.
    */
   .put(
     '/:locale',
     authMiddleware,
-    courseMemberMiddleware,
+    courseTeamMemberMiddleware,
     zValidator('param', ZLessonLanguageGetByLocaleParam),
     zValidator('json', ZLessonLanguageUpdate),
     async (c) => {
@@ -130,6 +133,7 @@ export const lessonLanguageRouter = new Hono()
         const { lessonId, locale } = c.req.valid('param');
         const data = c.req.valid('json');
 
+        await lessonInCourse(c.req.param('courseId')!, lessonId);
         const language = await updateLessonLanguageService(lessonId, locale as TLocale, data);
 
         return c.json(

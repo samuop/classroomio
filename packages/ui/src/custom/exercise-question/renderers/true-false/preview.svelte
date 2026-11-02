@@ -6,13 +6,18 @@
   const label = (key: Parameters<typeof getExerciseQuestionLabel>[1], fallback = '') =>
     getExerciseQuestionLabel(labels, key, fallback);
 
+  const correctIsTrue = $derived(getTrueFalseCorrectIsTrue(question));
   const correctValue = $derived(
-    getTrueFalseCorrectIsTrue(question.settings as Record<string, unknown> | undefined)
-      ? label('true_false.true_label')
-      : label('true_false.false_label')
+    correctIsTrue === undefined
+      ? null
+      : correctIsTrue
+        ? label('true_false.true_label')
+        : label('true_false.false_label')
   );
 </script>
 
-<div class="ui:space-y-1">
-  <p class="ui:text-muted-foreground ui:text-sm">{label('true_false.preview.correct_value_label')}: {correctValue}</p>
-</div>
+{#if correctValue}
+  <div class="ui:space-y-1">
+    <p class="ui:text-muted-foreground ui:text-sm">{label('true_false.preview.correct_value_label')}: {correctValue}</p>
+  </div>
+{/if}

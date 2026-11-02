@@ -261,6 +261,26 @@ export async function updateLessonComment(commentId: number, comment: string): P
   }
 }
 
+/** Quién escribió un comentario de lección y de qué curso es, para decidir quién puede tocarlo. */
+export async function getLessonCommentAuthorAndCourse(
+  commentId: number
+): Promise<{ authorId: string | null; courseId: string | null } | null> {
+  try {
+    const [row] = await db
+      .select({ authorId: schema.lessonComment.groupmemberId, courseId: schema.lesson.courseId })
+      .from(schema.lessonComment)
+      .innerJoin(schema.lesson, eq(schema.lessonComment.lessonId, schema.lesson.id))
+      .where(eq(schema.lessonComment.id, commentId))
+      .limit(1);
+    return row ?? null;
+  } catch (error) {
+    console.error('getLessonCommentAuthorAndCourse error:', error);
+    throw new Error(
+      `Failed to get lesson comment author for comment "${commentId}": ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
+}
+
 export async function deleteLessonComment(commentId: number) {
   try {
     const [deleted] = await db.delete(schema.lessonComment).where(eq(schema.lessonComment.id, commentId)).returning();

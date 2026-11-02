@@ -5,7 +5,8 @@
 
   interface Props {
     labels: ExerciseQuestionLabels | undefined;
-    correctIsTrue: boolean;
+    /** `undefined`: no se sabe cuál es la correcta, y no se marca ninguna. */
+    correctIsTrue: boolean | undefined;
     studentValue: string;
     isCorrect: boolean | null;
   }
@@ -20,23 +21,23 @@
   <ToggleGroup.Root type="single" value={studentValue} disabled={true} variant="outline">
     <ToggleGroup.Item
       value="true"
-      class={correctIsTrue ? 'ui:border-emerald-500 ui:bg-emerald-50/40 dark:ui:bg-emerald-950/30' : ''}
+      class={correctIsTrue === true ? 'ui:border-emerald-500 ui:bg-emerald-50/40 dark:ui:bg-emerald-950/30' : ''}
     >
       {label('true_false.true_label')}
       <OptionCorrectnessBadges
         {labels}
-        showCorrect={correctIsTrue}
+        showCorrect={correctIsTrue === true}
         showIncorrect={studentValue === 'true' && isCorrect === false}
       />
     </ToggleGroup.Item>
     <ToggleGroup.Item
       value="false"
-      class={!correctIsTrue ? 'ui:border-emerald-500 ui:bg-emerald-50/40 dark:ui:bg-emerald-950/30' : ''}
+      class={correctIsTrue === false ? 'ui:border-emerald-500 ui:bg-emerald-50/40 dark:ui:bg-emerald-950/30' : ''}
     >
       {label('true_false.false_label')}
       <OptionCorrectnessBadges
         {labels}
-        showCorrect={!correctIsTrue}
+        showCorrect={correctIsTrue === false}
         showIncorrect={studentValue === 'false' && isCorrect === false}
       />
     </ToggleGroup.Item>

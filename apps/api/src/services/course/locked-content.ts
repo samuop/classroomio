@@ -1,7 +1,8 @@
-import { getExerciseCourseBinding, getLessonCourseBinding } from '@cio/db/queries/agent';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import type { LessonById } from '@cio/db/queries/lesson';
 
+import { exerciseInCourse, lessonInCourse } from '@api/services/course/course-binding';
+import { exerciseForStudent } from '@api/services/exercise/answer-key';
 import { getExercise } from '@api/services/exercise/exercise';
 import { getLesson } from '@api/services/lesson/lesson';
 import { AppError, ErrorCodes } from '@api/utils/errors';
@@ -29,7 +30,7 @@ export function isLocked(item: { isUnlocked?: boolean | null }): boolean {
   return item.isUnlocked === false;
 }
 
-/** Quien arma el curso ve lo bloqueado; el alumno, no. */
+/** Quien arma el curso ve lo bloqueado y la clave de respuestas; el alumno, no. */
 export async function seesLockedContent(courseId: string, userId: string): Promise<boolean> {
   return isCourseTeamMemberOrOrgAdmin(courseId, userId);
 }
@@ -84,11 +85,12 @@ export async function exerciseForViewer(courseId: string, exerciseId: string, us
   if (exercise.courseId !== courseId) {
     throw new AppError('Exercise not found', ErrorCodes.EXERCISE_NOT_FOUND, 404);
   }
-  if (isLocked(exercise) && !(await seesLockedContent(courseId, userId))) {
-    return exerciseWithoutContent(exercise);
-  }
+  if (await seesLockedContent(courseId, userId)) return exercise;
+  if (isLocked(exercise)) return exerciseWithoutContent(exercise);
 
-  return exercise;
+  // Abierto, para un alumno: las preguntas sí, la clave de respuestas según
+  // haya entregado (ver answer-key.ts).
+  return exerciseForStudent(exercise, userId);
 }
 
 export async function exercisesForViewer<T extends { description?: string | null; isUnlocked?: boolean | null }>(
@@ -106,11 +108,7 @@ export async function exercisesForViewer<T extends { description?: string | null
  * mientras está bloqueada; 404 si la lección no es de este curso.
  */
 export async function canReadLesson(courseId: string, lessonId: string, userId: string): Promise<boolean> {
-  const binding = await getLessonCourseBinding(lessonId);
-
-  if (!binding || binding.courseId !== courseId) {
-    throw new AppError('Lesson not found', ErrorCodes.LESSON_NOT_FOUND, 404);
-  }
+  const binding = await lessonInCourse(courseId, lessonId);
 
   return !isLocked(binding) || seesLockedContent(courseId, userId);
 }
@@ -127,10 +125,7 @@ export async function assertLessonWorkable(courseId: string, lessonId: string, u
 
 /** Lo mismo para entregar un ejercicio. */
 export async function assertExerciseWorkable(courseId: string, exerciseId: string, userId: string): Promise<void> {
-  const binding = await getExerciseCourseBinding(exerciseId);
+  const binding = await exerciseInCourse(courseId, exerciseId);
 
-  if (!binding || binding.courseId !== courseId) {
-    throw new AppError('Exercise not found', ErrorCodes.EXERCISE_NOT_FOUND, 404);
-  }
   if (isLocked(binding) && !(await seesLockedContent(courseId, userId))) throw LOCKED();
 }

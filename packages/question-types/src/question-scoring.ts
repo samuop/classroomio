@@ -122,11 +122,13 @@ const ETIQUETAS_FALSAS = new Set(['false', 'falso', 'falsa', 'incorrecto', 'no',
  * es el «Falso», y el resto es la explicación.
  */
 function primeraPalabraNormalizada(label: unknown): string {
-  return normalizeText(label)
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean)[0] ?? '';
+  return (
+    normalizeText(label)
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter(Boolean)[0] ?? ''
+  );
 }
 
 function etiquetaABooleano(label: unknown): boolean | undefined {
@@ -154,8 +156,15 @@ function etiquetaABooleano(label: unknown): boolean | undefined {
  *
  * Lo que decide ahora es `isCorrect`, que es donde el autor dejó la respuesta.
  * La etiqueta sólo traduce esa opción a booleano.
+ *
+ * Exportada para la pantalla de revisión, que hasta 2026-11-02 seguía mirando
+ * sólo `settings.correctValue` y daba por correcto el Verdadero: a quien acertaba
+ * un «Falso» le daba el punto y le mostraba «Incorrecta» (100 preguntas en
+ * producción). La revisión no puede decir otra cosa que la nota.
  */
-function respuestaCorrectaDeVerdaderoFalso(question: ExerciseQuestionModel): boolean | undefined {
+export function getTrueFalseCorrectValue(
+  question: Pick<ExerciseQuestionModel, 'settings' | 'options'>
+): boolean | undefined {
   const correctFromSettings = question.settings?.correctValue;
   if (typeof correctFromSettings === 'boolean') return correctFromSettings;
 
@@ -172,7 +181,7 @@ function scoreTrueFalse(
   answer: Extract<AnswerData, { type: 'TRUE_FALSE' }>,
   maxPoints: number
 ): number {
-  const correctIsTrue = respuestaCorrectaDeVerdaderoFalso(question);
+  const correctIsTrue = getTrueFalseCorrectValue(question);
 
   if (correctIsTrue === undefined) {
     // La pregunta no dice cuál es su respuesta. Adivinar es lo que rompió esto

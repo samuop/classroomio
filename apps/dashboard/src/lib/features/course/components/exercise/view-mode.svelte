@@ -45,6 +45,7 @@
   import { toExerciseQuestionModel } from './question-type-utils';
   import { getExerciseQuestionLabels } from './question-labels';
   import { getExerciseSectionDisplayTitle } from '$features/course/utils/exercise-section-utils';
+  import { refreshExercisePageData } from '$features/course/utils/exercise-page-utils';
   import axios from 'axios';
   import { IconButton } from '@cio/ui/custom/icon-button';
   import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
@@ -129,6 +130,13 @@
     if (exerciseApi.success && submitResult?.data) {
       skipHydrateFromSubmissions = false;
       const sub = submitResult.data as unknown as SubmissionListItem & { gradingState?: string };
+
+      // Mientras contestaba, la API no le mandó la clave de respuestas; recién
+      // ahora, entregado, le corresponde (ver answer-key.ts en la API). Se pide
+      // antes de mostrar la revisión: con la versión vieja, cada respuesta
+      // elegida aparecía como «Incorrecta».
+      await refreshExercisePageData(courseApi.course.id, exerciseId);
+
       if (sub.gradingState === 'completed' && sub.statusId === STATUS.GRADED && Array.isArray(sub.answers)) {
         applyMySubmission(sub);
       } else {

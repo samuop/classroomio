@@ -5,7 +5,7 @@
 
   let { question, answer = null, labels }: ExerciseQuestionRendererProps = $props();
 
-  const correctIsTrue = $derived(getTrueFalseCorrectIsTrue(question.settings as Record<string, unknown> | undefined));
+  const correctIsTrue = $derived(getTrueFalseCorrectIsTrue(question));
 
   const studentValue = $derived.by(() => {
     if (answer?.type !== 'TRUE_FALSE') return '';
@@ -13,7 +13,7 @@
   });
 
   const isCorrect = $derived.by(() => {
-    if (answer?.type !== 'TRUE_FALSE') return null;
+    if (answer?.type !== 'TRUE_FALSE' || correctIsTrue === undefined) return null;
     return answer.value === correctIsTrue;
   });
 </script>

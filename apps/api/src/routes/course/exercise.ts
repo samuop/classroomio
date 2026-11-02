@@ -22,7 +22,7 @@ import {
   updateExerciseService
 } from '@api/services/exercise/exercise';
 import { fetchAllTemplatesMetadata, fetchTemplateById, fetchTemplatesByTag } from '@api/services/exercise/template';
-import { getGroupMemberIdByCourseAndProfile, isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
+import { getGroupMemberIdByCourseAndProfile } from '@cio/db/queries/group';
 import {
   completeVideoRecordingUpload,
   getVideoRecordingPlaybackUrl,
@@ -34,15 +34,21 @@ import { authMiddleware } from '@api/middlewares/auth';
 import { authOrAutomationKeyMiddleware } from '@api/middlewares/auth-or-automation-key';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-member-or-automation-key';
+import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
+import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
+import { assertInCourse, exerciseInCourse } from '@api/services/course/course-binding';
 import { assertMcpAutomationUsageAllowed, recordMcpAutomationUsage } from '@api/services/organization/automation-usage';
 import { createSubmissionService, listExerciseSubmissionsOverview } from '@api/services/submission';
-import {
-  assertExerciseWorkable,
-  exerciseForViewer,
-  exercisesForViewer
-} from '@api/services/course/locked-content';
+import { assertExerciseWorkable, exerciseForViewer, exercisesForViewer } from '@api/services/course/locked-content';
 import { zValidator } from '@hono/zod-validator';
 
+/**
+ * Leer y entregar es de todo miembro del curso; crear, editar y borrar
+ * ejercicios es del equipo (o de una llave de automatización con permiso de
+ * escritura). Hasta 2026-11-02 las escrituras pedían sólo ser miembro, y un
+ * alumno podía cambiar las preguntas o las respuestas correctas llamando a la
+ * API. Todo ejercicio, lección o sección que llega por id es del curso de la ruta.
+ */
 export const exerciseRouter = new Hono()
   // Exercise CRUD routes
   .get(
@@ -124,12 +130,21 @@ export const exerciseRouter = new Hono()
   .post(
     '/',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('json', ZExerciseCreate),
     async (c) => {
       try {
+        const courseId = c.req.param('courseId')!;
         const data = c.req.valid('json');
         const automationKey = c.get('automationKey');
+
+        if (data.courseId !== courseId) {
+          return c.json(
+            { success: false, error: 'Course does not match the route', code: ErrorCodes.VALIDATION_ERROR },
+            400
+          );
+        }
+        await assertInCourse(courseId, { lessonIds: [data.lessonId], sectionIds: [data.sectionId] });
 
         if (automationKey?.type === 'mcp') {
           await assertMcpAutomationUsageAllowed(automationKey, 'create_course_exercise');
@@ -153,18 +168,20 @@ export const exerciseRouter = new Hono()
   /**
    * POST /course/:courseId/exercise/from-template
    * Creates an exercise from a template
-   * Requires authentication and course membership (admin/tutor role)
+   * Requires authentication and course team membership (admin/tutor role)
    */
   .post(
     '/from-template',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('json', ZExerciseFromTemplate),
     async (c) => {
       try {
         const courseId = c.req.param('courseId')!;
         const automationKey = c.get('automationKey');
         const { lessonId, sectionId, order, templateId } = c.req.valid('json');
+
+        await assertInCourse(courseId, { lessonIds: [lessonId], sectionIds: [sectionId] });
 
         if (automationKey?.type === 'mcp') {
           await assertMcpAutomationUsageAllowed(automationKey, 'create_course_exercise_from_template');
@@ -199,7 +216,7 @@ export const exerciseRouter = new Hono()
   .put(
     '/:exerciseId',
     authOrAutomationKeyMiddleware,
-    courseMemberOrAutomationKeyMiddleware(['course:exercise:write']),
+    courseTeamMemberOrAutomationKeyMiddleware(['course:exercise:write']),
     zValidator('param', ZExerciseGetParam),
     zValidator('json', ZExerciseUpdate),
     async (c) => {
@@ -207,28 +224,14 @@ export const exerciseRouter = new Hono()
         const { exerciseId } = c.req.valid('param');
         const data = c.req.valid('json');
         const courseId = c.req.param('courseId')!;
-        const user = c.get('user');
         const automationKey = c.get('automationKey');
 
         if (automationKey?.type === 'mcp') {
           await assertMcpAutomationUsageAllowed(automationKey, 'update_course_exercise');
         }
 
-        if (!automationKey && user && data.isUnlocked !== undefined) {
-          const isAuthorized = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
-
-          if (!isAuthorized) {
-            return c.json(
-              {
-                success: false,
-                error: 'Unauthorized',
-                code: ErrorCodes.UNAUTHORIZED
-              },
-              403
-            );
-          }
-        }
-
+        await exerciseInCourse(courseId, exerciseId);
+        await assertInCourse(courseId, { lessonIds: [data.lessonId], sectionIds: [data.sectionId] });
         const exercise = await updateExerciseService(exerciseId, data);
 
         if (automationKey?.type === 'mcp') {
@@ -241,17 +244,23 @@ export const exerciseRouter = new Hono()
       }
     }
   )
-  .delete('/:exerciseId', authMiddleware, courseMemberMiddleware, zValidator('param', ZExerciseGetParam), async (c) => {
-    try {
-      const courseId = c.req.param('courseId')!;
-      const { exerciseId } = c.req.valid('param');
-      const exercise = await deleteExerciseForCourseService(courseId, exerciseId);
+  .delete(
+    '/:exerciseId',
+    authMiddleware,
+    courseTeamMemberMiddleware,
+    zValidator('param', ZExerciseGetParam),
+    async (c) => {
+      try {
+        const courseId = c.req.param('courseId')!;
+        const { exerciseId } = c.req.valid('param');
+        const exercise = await deleteExerciseForCourseService(courseId, exerciseId);
 
-      return c.json({ success: true, data: exercise }, 200);
-    } catch (error) {
-      return handleError(c, error, 'Failed to delete exercise');
+        return c.json({ success: true, data: exercise }, 200);
+      } catch (error) {
+        return handleError(c, error, 'Failed to delete exercise');
+      }
     }
-  })
+  )
   // Exercise Submission routes
   .post(
     '/:exerciseId/submission',

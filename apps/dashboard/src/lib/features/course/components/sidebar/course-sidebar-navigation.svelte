@@ -143,10 +143,12 @@
         url: getNavItemRoute(id, 'marks'),
         isActive: (path || page.url.pathname) === getNavItemRoute(id, 'marks'),
         show() {
-          if (courseApi.course?.type === 'LIVE_CLASS') {
-            return isStudent ? ($currentOrg.customization?.['course']?.['grading'] ?? false) : true;
-          }
-          return false;
+          // El equipo la ve en todo curso: es donde está el reporte de alumnos.
+          // Antes sólo aparecía en las clases en vivo, y en un curso a tu ritmo
+          // no había cómo llegar al reporte desde el menú.
+          if (!isStudent) return true;
+          if (courseApi.course?.type !== 'LIVE_CLASS') return false;
+          return $currentOrg.customization?.['course']?.['grading'] ?? false;
         },
         icon: getNavIcon(NAV_IDS.MARKS)
       },
