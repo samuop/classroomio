@@ -17,6 +17,8 @@ export type GradebookResponse = {
   students: Awaited<ReturnType<typeof getCourseMembers>>;
   exercises: GradebookExercise[];
   studentMarksByExerciseId: GradebookStudentMarks;
+  /** Ejercicios que el docente todavía no habilitó: no tienen columna ni cuentan en el promedio. */
+  lockedExercises: number;
 };
 
 function buildStudentMarksByExerciseId(marks: Mark[]): GradebookStudentMarks {
@@ -30,7 +32,7 @@ function buildStudentMarksByExerciseId(marks: Mark[]): GradebookStudentMarks {
   return result;
 }
 
-function buildExercises(marks: Mark[], contentItems: CourseContentItem[]): GradebookExercise[] {
+function buildExercises(marks: Mark[], contentItems: CourseContentItem[], courseLoaded: boolean): GradebookExercise[] {
   const marksByExerciseId = new Map<string, { title: string; points: number }>();
   const exerciseOrder: string[] = [];
   for (const mark of marks) {
@@ -46,7 +48,10 @@ function buildExercises(marks: Mark[], contentItems: CourseContentItem[]): Grade
   }
 
   const exerciseItems = contentItems.filter((item) => item.type === ContentType.Exercise);
-  if (exerciseItems.length > 0) {
+  // Con el curso cargado manda su contenido, aunque no quede ningún ejercicio
+  // habilitado: lo que sigue arma las columnas desde las notas, y ahí vuelven los
+  // bloqueados.
+  if (courseLoaded) {
     return exerciseItems.map((item) => {
       const fromMarks = marksByExerciseId.get(item.id);
       return {
@@ -87,13 +92,23 @@ export async function getGradebook(courseId: string): Promise<GradebookResponse>
       contentItems = content.grouped ? (content.sections ?? []).flatMap((s) => s.items ?? []) : (content.items ?? []);
     }
 
-    const exercises = buildExercises(marks, contentItems);
+    // Lo bloqueado no lo pudo hacer nadie: con su columna en blanco y sus puntos
+    // en el promedio, la pantalla le daba a quien terminó todo lo habilitado un
+    // 52 % donde el reporte dice 90 % (medido 2026-11-02, con 3 de 6 bloqueados).
+    // Misma regla que el reporte de alumnos.
+    const unlockedItems = contentItems.filter(
+      (item) => item.type !== ContentType.Exercise || item.isUnlocked !== false
+    );
+    const lockedExercises = contentItems.length - unlockedItems.length;
+
+    const exercises = buildExercises(marks, unlockedItems, course?.contentItems != null);
     const studentMarksByExerciseId = buildStudentMarksByExerciseId(marks);
 
     return {
       students,
       exercises,
-      studentMarksByExerciseId
+      studentMarksByExerciseId,
+      lockedExercises
     };
   } catch (error) {
     console.error('getGradebook error:', error);

@@ -1812,7 +1812,8 @@
           "report_pdf": "Reporte de alumnos en PDF",
           "failed": "No se pudo armar el reporte. Probá de nuevo en un rato."
         },
-        "avg_grade": "Calificación promedio"
+        "avg_grade": "Calificación promedio",
+        "locked_note": "Todavía bloqueados para los alumnos, no se muestran ni cuentan en el promedio: {count} ejercicios."
       },
       "submissions": {
         "title": "Ejercicios enviados",

@@ -31,6 +31,8 @@ export interface MarksPageData {
   studentMarksByExerciseId: StudentMarksByExercise;
   exercises: ExerciseInfo[];
   students: CourseMembers;
+  /** Ejercicios todavía bloqueados: no vienen en `exercises` ni cuentan en el promedio. */
+  lockedExercises?: number;
 }
 
 /**

@@ -17,6 +17,7 @@
   const students = $derived(marksData?.students ?? []);
   const exercises = $derived(marksData?.exercises ?? []);
   const studentMarksByExerciseId = $derived(marksData?.studentMarksByExerciseId ?? {});
+  const lockedExercises = $derived(marksData?.lockedExercises ?? 0);
 
   function gradePercent(pointsStr: string | undefined, exercise: ExerciseInfo): number | null {
     if (pointsStr == null || exercise.points === 0) return null;
@@ -36,6 +37,11 @@
 </script>
 
 {#if students.length > 0}
+  {#if lockedExercises > 0}
+    <p class="ui:text-muted-foreground mb-3 text-sm italic">
+      {$t('course.navItem.marks.locked_note', { count: lockedExercises })}
+    </p>
+  {/if}
   <div class="rounded-md border border-gray-300 dark:border-neutral-600">
     <Tooltip.Provider>
       <Table.Root class="">

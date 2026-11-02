@@ -3433,6 +3433,7 @@
         "student": "Student",
         "total": "Total",
         "avg_grade": "Avg grade",
+        "locked_note": "Still locked for students, not shown or counted in the average: {count} exercises.",
         "export": {
           "button": "Download report",
           "report_xlsx": "Student report (Excel)",

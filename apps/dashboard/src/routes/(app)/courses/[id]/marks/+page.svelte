@@ -49,7 +49,9 @@
     goto(resolve(`/courses/${data.courseId}/lessons?next=true`, {}));
   }}
 >
-  <Page.Root class="mx-auto flex w-[90%] px-4 md:max-w-2xl lg:max-w-3xl">
+  <!-- Todo el ancho del área de contenido: una tabla con una columna por ejercicio no entraba en 3xl
+       y el examen final quedaba fuera de la vista. -->
+  <Page.Root class="mx-auto flex w-full max-w-7xl min-w-0 px-4 lg:px-8">
     <Page.Header>
       <Page.HeaderContent>
         <Page.Title>
