@@ -1,6 +1,7 @@
 import {
   ZPublicApiAssignAudienceCourses,
   ZPublicApiAudienceMemberParam,
+  ZPublicApiAudienceProgress,
   ZPublicApiAudienceQuery,
   ZPublicApiCreateAudience,
   ZPublicApiUpdateAudience
@@ -13,6 +14,7 @@ import {
   removeAudienceService,
   updateAudienceService
 } from '@api/services/v1/audience';
+import { getAudienceProgressService } from '@api/services/v1/progress';
 
 import { Hono } from '@api/utils/hono';
 import { automationKeyMiddleware } from '@api/middlewares/automation-key';
@@ -169,6 +171,47 @@ export const v1AudienceRouter = new Hono()
         );
       } catch (error) {
         return handleError(c, error, 'Failed to assign audience to courses');
+      }
+    }
+  )
+  .post(
+    '/progress',
+    automationKeyMiddleware,
+    automationKeyScopesMiddleware(['public_api:*']),
+    describeRoute({
+      description:
+        'Progress of several people in the organization: their status, their programs and courses, and the progress of each course. The emails go in the body so they stay out of the logs.',
+      tags: ['Public API Audience'],
+      responses: {
+        200: {
+          description: 'Progress returned successfully',
+          content: {
+            'application/json': {
+              schema: AudienceDetailResponse
+            }
+          }
+        },
+        400: { description: 'Invalid request body' },
+        401: { description: 'Unauthorized' },
+        403: { description: 'Forbidden' }
+      }
+    }),
+    validator('json', ZPublicApiAudienceProgress),
+    async (c) => {
+      try {
+        const orgId = c.get('orgId')!;
+        const { emails } = c.req.valid('json');
+        const progress = await getAudienceProgressService(orgId, emails);
+
+        return c.json(
+          {
+            success: true,
+            data: progress
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to get audience progress');
       }
     }
   )

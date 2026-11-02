@@ -20,6 +20,14 @@ export const ZPublicApiUpdateAudience = z.object({
 });
 export type TPublicApiUpdateAudience = z.infer<typeof ZPublicApiUpdateAudience>;
 
+// El avance de varias personas (Seguimiento, SaaS-RRHH). Los correos van en el cuerpo y no en la
+// dirección, para que no queden en los registros. No se exige que estén bien escritos: uno mal
+// escrito no figura, y no frena a los demás.
+export const ZPublicApiAudienceProgress = z.object({
+  emails: z.array(z.string().trim().min(1).max(320)).min(1).max(200)
+});
+export type TPublicApiAudienceProgress = z.infer<typeof ZPublicApiAudienceProgress>;
+
 export const ZPublicApiAssignAudienceCourses = ZAssignAudienceCourses;
 export type TPublicApiAssignAudienceCourses = z.infer<typeof ZPublicApiAssignAudienceCourses>;
 

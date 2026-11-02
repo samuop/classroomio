@@ -643,6 +643,75 @@ export async function getProfileEnrolledCourses(
   }
 }
 
+export type ProfileCourseProgressInOrg = {
+  courseId: string;
+  courseTitle: string;
+  lessonsCount: number;
+  lessonsCompleted: number;
+  /** La última lección completada: el día que terminó el curso, cuando las completó todas. */
+  lastCompletedAt: string | null;
+  certificateEarnedAt: string | null;
+};
+
+/**
+ * El avance de un alumno en cada curso de la organización, en una sola consulta: lo pide la API
+ * pública para Seguimiento (SaaS-RRHH), de a muchas personas por vez. Cuenta las lecciones y las
+ * completadas igual que getCourseProgress, para que el número sea el mismo que ve el Campus.
+ * Sólo los cursos donde es alumno.
+ * @param profileId Profile ID
+ * @param organizationId Restrict to courses in this organization
+ */
+export async function getProfileCourseProgressInOrg(
+  profileId: string,
+  organizationId: string
+): Promise<ProfileCourseProgressInOrg[]> {
+  try {
+    const rows = await db
+      .select({
+        courseId: schema.course.id,
+        courseTitle: schema.course.title,
+        certificateEarnedAt: schema.groupmember.certificateEarnedAt,
+        lessonsCount: sql<number>`(
+          SELECT COUNT(*)::int FROM ${schema.lesson} WHERE ${schema.lesson.courseId} = ${schema.course.id}
+        )`.as('lessons_count'),
+        lessonsCompleted: sql<number>`(
+          SELECT COUNT(DISTINCT lc.lesson_id)::int
+          FROM ${schema.lessonCompletion} lc
+          INNER JOIN ${schema.lesson} l ON l.id = lc.lesson_id
+          WHERE l.course_id = ${schema.course.id} AND lc.profile_id = ${profileId} AND lc.is_complete = true
+        )`.as('lessons_completed'),
+        lastCompletedAt: sql<string | null>`(
+          SELECT MAX(COALESCE(lc.updated_at, lc.created_at))
+          FROM ${schema.lessonCompletion} lc
+          INNER JOIN ${schema.lesson} l ON l.id = lc.lesson_id
+          WHERE l.course_id = ${schema.course.id} AND lc.profile_id = ${profileId} AND lc.is_complete = true
+        )`.as('last_completed_at')
+      })
+      .from(schema.groupmember)
+      .innerJoin(schema.course, eq(schema.course.groupId, schema.groupmember.groupId))
+      .innerJoin(schema.group, eq(schema.group.id, schema.groupmember.groupId))
+      .where(
+        and(
+          eq(schema.groupmember.profileId, profileId),
+          eq(schema.group.organizationId, organizationId),
+          eq(schema.groupmember.roleId, ROLE.STUDENT)
+        )
+      );
+
+    return rows.map((row) => ({
+      courseId: row.courseId,
+      courseTitle: row.courseTitle ?? '',
+      lessonsCount: Number(row.lessonsCount || 0),
+      lessonsCompleted: Number(row.lessonsCompleted || 0),
+      lastCompletedAt: row.lastCompletedAt ? new Date(row.lastCompletedAt).toISOString() : null,
+      certificateEarnedAt: row.certificateEarnedAt ?? null
+    }));
+  } catch (error) {
+    console.error('getProfileCourseProgressInOrg error:', error);
+    throw new Error(`Failed to get course progress: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 /** Course + org fields needed for certification email and threshold rules */
 export type TCourseCertificationRow = {
   type: string | null;

@@ -493,6 +493,37 @@ export const deleteOrganizationAudienceMember = async (orgId: string, memberId: 
   return deleted || null;
 };
 
+/**
+ * Los alumnos de la organización que tienen alguno de estos correos (sin distinguir mayúsculas). Lo usa
+ * la API pública del avance, para Seguimiento (SaaS-RRHH). El correo es el de la cuenta si ya aceptó,
+ * o el de la invitación si no.
+ */
+export const getOrganizationStudentsByEmails = async (orgId: string, emails: string[]) => {
+  const normalized = [...new Set(emails.map((e) => e.toLowerCase().trim()))].filter(Boolean);
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const email = sql<string>`lower(coalesce(${schema.profile.email}, ${schema.organizationmember.email}))`;
+  const rows = await db
+    .select({
+      memberId: schema.organizationmember.id,
+      profileId: schema.organizationmember.profileId,
+      email: email.as('email')
+    })
+    .from(schema.organizationmember)
+    .leftJoin(schema.profile, eq(schema.organizationmember.profileId, schema.profile.id))
+    .where(
+      and(
+        eq(schema.organizationmember.organizationId, orgId),
+        eq(schema.organizationmember.roleId, ROLE.STUDENT),
+        inArray(email, normalized)
+      )
+    );
+
+  return rows.map((row) => ({ memberId: row.memberId, profileId: row.profileId ?? null, email: row.email }));
+};
+
 export const getOrganizationAudienceMember = async (orgId: string, memberId: number) => {
   const [row] = await db
     .select({
