@@ -3434,8 +3434,10 @@
         "total": "Total",
         "avg_grade": "Avg grade",
         "export": {
-          "csv": "Export as CSV",
-          "pdf": "Export as PDF"
+          "button": "Download report",
+          "report_xlsx": "Student report (Excel)",
+          "report_pdf": "Student report (PDF)",
+          "failed": "The report could not be built. Please try again shortly."
         },
         "no_student": "No Student Added"
       },

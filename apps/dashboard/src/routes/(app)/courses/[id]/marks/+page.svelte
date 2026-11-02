@@ -8,18 +8,16 @@
   import type { AccountOrg } from '$features/app/types';
   import { currentOrg } from '$lib/utils/store/org';
   import { Button } from '@cio/ui/base/button';
-  import { Progress } from '@cio/ui/base/progress';
   import DownloadIcon from '@lucide/svelte/icons/download';
   import * as DropdownMenu from '@cio/ui/base/dropdown-menu';
-  import { courseApi } from '$features/course/api';
-  import { generateMarksCSV, generateMarksPDF } from '$features/course/utils/marks-utils';
+  import { descargarReporteDeAlumnos } from '$features/course/utils/course-report';
+  import { snackbar } from '$features/ui/snackbar/store';
   import { RefreshPageData } from '$features/ui';
+  import type { TCourseReportFormat } from '@cio/utils/validation/course';
 
   let { data } = $props();
 
   let isDownloading = $state(false);
-
-  const exercises = $derived(data.marksData?.exercises ?? []);
 
   function getPageRoles(org: AccountOrg) {
     const roles = [1, 2];
@@ -29,37 +27,20 @@
     return roles;
   }
 
-  const downloadCSV = () => {
-    if (!data.marksData) return;
-    isDownloading = true;
-    try {
-      generateMarksCSV(
-        data.marksData.students,
-        exercises,
-        data.marksData.studentMarksByExerciseId,
-        courseApi.course?.title || 'Course'
-      );
-    } finally {
-      isDownloading = false;
-    }
-  };
+  async function descargar(format: TCourseReportFormat) {
+    if (!data.courseId || isDownloading) return;
 
-  const downloadPDF = () => {
-    if (!data.marksData) return;
     isDownloading = true;
     try {
-      generateMarksPDF(
-        data.marksData.students,
-        exercises,
-        data.marksData.studentMarksByExerciseId,
-        courseApi.course?.title || 'Course'
-      );
-    } catch (error) {
-      console.error('Error generating PDF:', error);
+      if (!(await descargarReporteDeAlumnos(data.courseId, format))) {
+        snackbar.error('course.navItem.marks.export.failed');
+      }
+    } catch {
+      snackbar.error('course.navItem.marks.export.failed');
     } finally {
       isDownloading = false;
     }
-  };
+  }
 </script>
 
 <RoleBasedSecurity
@@ -80,20 +61,19 @@
           <RoleBasedSecurity allowedRoles={[1, 2]}>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger>
-                <Button variant="ghost" size="icon" class="rounded-full">
-                  {#if isDownloading}
-                    <Progress />
-                  {:else}
+                {#snippet child({ props })}
+                  <Button {...props} variant="outline" loading={isDownloading}>
                     <DownloadIcon size={16} />
-                  {/if}
-                </Button>
+                    {$t('course.navItem.marks.export.button')}
+                  </Button>
+                {/snippet}
               </DropdownMenu.Trigger>
               <DropdownMenu.Content align="end">
-                <DropdownMenu.Item onclick={downloadCSV}>
-                  {$t('course.navItem.marks.export.csv')}
+                <DropdownMenu.Item onclick={() => descargar('xlsx')}>
+                  {$t('course.navItem.marks.export.report_xlsx')}
                 </DropdownMenu.Item>
-                <DropdownMenu.Item onclick={downloadPDF}>
-                  {$t('course.navItem.marks.export.pdf')}
+                <DropdownMenu.Item onclick={() => descargar('pdf')}>
+                  {$t('course.navItem.marks.export.report_pdf')}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Root>

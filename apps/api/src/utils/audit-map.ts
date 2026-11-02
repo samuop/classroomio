@@ -106,6 +106,13 @@ export const AUDITED_READS: AuditedRead[] = [
       exercises: url.searchParams.get('exercises') ?? 'none'
     })
   },
+  // Nombres, correos y notas de todos los alumnos en un archivo que sale de la plataforma.
+  {
+    pattern: '/course/:courseId/mark/report',
+    action: 'DESCARGO_EL_REPORTE_DE_ALUMNOS',
+    entity: 'Course',
+    metadata: (url) => ({ format: url.searchParams.get('format') ?? 'xlsx' })
+  },
 
   // ── Consumo de IA ──
   // Quién mira cuánto gasta cada estudiante con el tutor: es actividad de una

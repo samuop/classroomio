@@ -359,6 +359,15 @@ export const ZCourseDownloadPdfQuery = z.object({
 });
 export type TCourseDownloadPdfQuery = z.infer<typeof ZCourseDownloadPdfQuery>;
 
+/** El reporte de alumnos: planilla para trabajarla o PDF para presentarlo. */
+export const ZCourseReportFormat = z.enum(['xlsx', 'pdf']);
+export type TCourseReportFormat = z.infer<typeof ZCourseReportFormat>;
+
+export const ZCourseReportQuery = z.object({
+  format: ZCourseReportFormat.default('xlsx')
+});
+export type TCourseReportQuery = z.infer<typeof ZCourseReportQuery>;
+
 export const ZLessonDownloadContent = z.object({
   title: z.string().min(1),
   number: z.string().min(1),

@@ -1802,13 +1802,15 @@
         }
       },
       "marks": {
-        "title": "marcas",
+        "title": "Calificaciones",
         "student": "estudiante",
         "total": "totales",
         "no_student": "No se agregó ningún estudiante",
         "export": {
-          "csv": "Exportar como CSV",
-          "pdf": "Exportar como PDF"
+          "button": "Descargar reporte",
+          "report_xlsx": "Reporte de alumnos en Excel",
+          "report_pdf": "Reporte de alumnos en PDF",
+          "failed": "No se pudo armar el reporte. Probá de nuevo en un rato."
         },
         "avg_grade": "Calificación promedio"
       },
