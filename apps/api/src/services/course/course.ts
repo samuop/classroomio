@@ -31,7 +31,11 @@ import { db } from '@cio/db/drizzle';
 import { exerciseBelongsToCourse } from '@cio/db/queries/course/certification-exercise';
 import { updateExercisesSectionId } from '@cio/db/queries/exercise/exercise';
 import { getProfileById } from '@cio/db/queries/auth';
-import { insertOrganizationMembersOnConflictDoNothing } from '@cio/db/queries/organization';
+import {
+  getOrganizationMemberIdByOrgAndProfile,
+  insertOrganizationMembersOnConflictDoNothing,
+  isPlatformAdmin
+} from '@cio/db/queries/organization';
 import { buildCourseContent, calcPercentageWithRounding, formatLastSeen, type CourseContent } from './utils';
 import { guardCourseTypeTransition } from './public-course-guard';
 import { resolveOrgBrand } from '@api/services/organization/org-brand';
@@ -175,17 +179,38 @@ export async function getCourse(courseId?: string, slug?: string, profileId?: st
 }
 
 /**
+ * ¿Quien crea el curso queda como su docente?
+ *
+ * Sí, salvo el operador de la plataforma en una empresa de la que no es
+ * miembro. Su acceso a toda empresa es derivado (ver platform-access.ts) y no lo
+ * hace parte del equipo del cliente. Sumado como docente, aparecía ante los
+ * alumnos en Personas y firmando el aviso de bienvenida, con el nombre de la
+ * cuenta de operador. Pasó en un curso armado para un cliente, y lo vio el
+ * usuario. Para editar no necesita la membresía: `puedeEntrarAlCurso` ya lo deja
+ * pasar como operador.
+ *
+ * Si el operador SÍ es miembro de la empresa (su propia empresa, por ejemplo),
+ * crea como cualquier otro.
+ */
+async function creadorQuedaComoDocente(profileId: string, organizationId: string): Promise<boolean> {
+  if (!(await isPlatformAdmin(profileId))) return true;
+  return (await getOrganizationMemberIdByOrgAndProfile(organizationId, profileId)) !== null;
+}
+
+/**
  * Creates a new course with group, group member, and default newsfeed
  * @param profileId Profile ID of the creator
  * @param data Course creation data
- * @returns Created course with group and member information
+ * @returns Created course with group and member information. `memberId` is null
+ *   when the creator does not join the course (see `creadorQuedaComoDocente`).
  */
 export async function createCourse(
   profileId: string,
   data: TCourseCreate
-): Promise<{ course: TCourse; groupId: string; memberId: string }> {
+): Promise<{ course: TCourse; groupId: string; memberId: string | null }> {
   try {
     const description = sanitizeHtml(data.description);
+    const sumarAlCreador = await creadorQuedaComoDocente(profileId, data.organizationId);
 
     const result = await db.transaction(async (tx) => {
       const [newGroup] = await createGroup(
@@ -214,6 +239,12 @@ export async function createCourse(
 
       if (!newCourse) {
         throw new AppError('Failed to create course', ErrorCodes.INTERNAL_ERROR, 500);
+      }
+
+      // Sin docente no hay quién firme el aviso de bienvenida: el curso nace sin
+      // aviso, y lo escribe quien el cliente sume como docente.
+      if (!sumarAlCreador) {
+        return { course: newCourse, groupId: newGroup.id, memberId: null };
       }
 
       const [newMember] = await addGroupMember(
