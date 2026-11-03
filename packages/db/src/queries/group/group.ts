@@ -1,7 +1,7 @@
 import * as schema from '@db/schema';
 
 import { TNewGroup, TNewGroupmember } from '@db/types';
-import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, ne, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { ROLE } from '@cio/utils/constants';
@@ -153,9 +153,19 @@ export const isUserCourseMember = async (
  * pero con 403 en cada curso: «No pudimos abrir este curso».
  *
  * Un solo nivel y sólo desde ADMIN, igual que `orgIdsAdministeredBy`.
+ *
+ * ── Por qué un alumno además tiene que ser miembro de la empresa ──────────
+ *
+ * Un alumno del grupo entra sólo si sigue siendo miembro de la empresa dueña del
+ * curso. Sacarlo de la empresa es cortarle el acceso: así egresa alguien en
+ * Seguimiento (SaaS-RRHH, fase 23). Antes la inscripción alcanzaba sola, y quien
+ * se sacaba de la empresa seguía abriendo lecciones y completándolas. No se borra
+ * nada: su inscripción, su avance y sus certificados quedan, y volver a invitarlo
+ * se los devuelve. Al equipo del grupo (TUTOR, ADMIN) no se le pide.
  */
 async function puedeEntrarAlCurso(courseId: string, profileId: string, rolesDelGrupo?: number[]): Promise<boolean> {
   const adminDeLaMadre = alias(schema.organizationmember, 'admin_de_la_madre');
+  const miembroDeLaEmpresa = alias(schema.organizationmember, 'miembro_de_la_empresa');
 
   const result = await db
     .select({
@@ -190,11 +200,21 @@ async function puedeEntrarAlCurso(courseId: string, profileId: string, rolesDelG
         eq(adminDeLaMadre.roleId, ROLE.ADMIN)
       )
     )
+    .leftJoin(
+      miembroDeLaEmpresa,
+      and(
+        eq(miembroDeLaEmpresa.organizationId, schema.group.organizationId),
+        eq(miembroDeLaEmpresa.profileId, profileId)
+      )
+    )
     .where(
       and(
         eq(schema.course.id, courseId),
         or(
-          isNotNull(schema.groupmember.id),
+          and(
+            isNotNull(schema.groupmember.id),
+            or(ne(schema.groupmember.roleId, ROLE.STUDENT), isNotNull(miembroDeLaEmpresa.id))
+          ),
           isNotNull(schema.organizationmember.id),
           isNotNull(adminDeLaMadre.id),
           // The platform operator administers every organization (see platform-access.ts).
@@ -216,6 +236,29 @@ async function puedeEntrarAlCurso(courseId: string, profileId: string, rolesDelG
  */
 export const isUserCourseMemberOrOrgAdmin = async (courseId: string, profileId: string): Promise<boolean> => {
   return puedeEntrarAlCurso(courseId, profileId);
+};
+
+/**
+ * ¿Está inscripto como alumno del curso, sea o no miembro de la empresa? Sólo
+ * para bajar el certificado: quien egresó (lo sacaron de la empresa) ya no entra
+ * a las lecciones, pero el certificado que ganó es suyo (Seguimiento, fase 23).
+ * Si de verdad lo ganó lo decide después `assertCertificateDownloadAllowed`.
+ */
+export const isEnrolledCourseStudent = async (courseId: string, profileId: string): Promise<boolean> => {
+  const result = await db
+    .select({ id: schema.groupmember.id })
+    .from(schema.groupmember)
+    .innerJoin(schema.course, eq(schema.course.groupId, schema.groupmember.groupId))
+    .where(
+      and(
+        eq(schema.course.id, courseId),
+        eq(schema.groupmember.profileId, profileId),
+        eq(schema.groupmember.roleId, ROLE.STUDENT)
+      )
+    )
+    .limit(1);
+
+  return result.length > 0;
 };
 
 /**
@@ -249,6 +292,11 @@ export const isCourseTeamMemberOrOrgAdmin = async (courseId: string, profileId: 
 /**
  * Resolves program-based access to a course.
  * Returns the course group/org context plus the matched program member role.
+ *
+ * Un alumno del programa cuenta sólo si sigue siendo miembro de la empresa del
+ * curso, como en `puedeEntrarAlCurso`. Si no, `ensureProgramCourseAccess` le
+ * volvía a crear la membresía de la empresa al abrir un curso del programa, y
+ * sacarlo de la empresa (el egreso de Seguimiento) se deshacía solo.
  */
 export async function getCourseProgramAccess(
   courseId: string,
@@ -261,6 +309,8 @@ export async function getCourseProgramAccess(
   roleId: number;
 } | null> {
   try {
+    const miembroDeLaEmpresa = alias(schema.organizationmember, 'miembro_de_la_empresa');
+
     const result = await db
       .select({
         courseId: schema.course.id,
@@ -281,7 +331,19 @@ export async function getCourseProgramAccess(
         and(eq(schema.programMember.programId, schema.program.id), eq(schema.programMember.profileId, profileId))
       )
       .leftJoin(schema.profile, eq(schema.programMember.profileId, schema.profile.id))
-      .where(eq(schema.course.id, courseId))
+      .leftJoin(
+        miembroDeLaEmpresa,
+        and(
+          eq(miembroDeLaEmpresa.organizationId, schema.group.organizationId),
+          eq(miembroDeLaEmpresa.profileId, profileId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.course.id, courseId),
+          or(ne(schema.programMember.roleId, ROLE.STUDENT), isNotNull(miembroDeLaEmpresa.id))
+        )
+      )
       .orderBy(asc(schema.programMember.roleId))
       .limit(1);
 

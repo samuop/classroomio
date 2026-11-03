@@ -4,6 +4,7 @@ import {
   ZPublicApiAudienceProgress,
   ZPublicApiAudienceQuery,
   ZPublicApiCreateAudience,
+  ZPublicApiRemoveAudience,
   ZPublicApiUpdateAudience
 } from '@cio/utils/validation/public-api';
 import {
@@ -11,6 +12,7 @@ import {
   createAudienceService,
   getAudienceMemberService,
   listAudienceService,
+  removeAudienceByEmailService,
   removeAudienceService,
   updateAudienceService
 } from '@api/services/v1/audience';
@@ -212,6 +214,48 @@ export const v1AudienceRouter = new Hono()
         );
       } catch (error) {
         return handleError(c, error, 'Failed to get audience progress');
+      }
+    }
+  )
+  .post(
+    '/remove',
+    automationKeyMiddleware,
+    automationKeyScopesMiddleware(['public_api:*']),
+    describeRoute({
+      description:
+        'Remove a student from the organization by exact email, and revoke their pending invitations. They stop entering the courses and programs of the organization; their enrollments, progress and certificates are kept, and inviting them again gives everything back. The email goes in the body so it stays out of the logs.',
+      tags: ['Public API Audience'],
+      responses: {
+        200: {
+          description: 'Removed, or nothing to remove (both counts in zero)',
+          content: {
+            'application/json': {
+              schema: AudienceMutationResponse
+            }
+          }
+        },
+        400: { description: 'Invalid request body' },
+        401: { description: 'Unauthorized' },
+        403: { description: 'Forbidden' }
+      }
+    }),
+    validator('json', ZPublicApiRemoveAudience),
+    async (c) => {
+      try {
+        const orgId = c.get('orgId')!;
+        const actorId = c.get('actorId');
+        const { email } = c.req.valid('json');
+        const result = await removeAudienceByEmailService(orgId, actorId, email);
+
+        return c.json(
+          {
+            success: true,
+            data: result
+          },
+          200
+        );
+      } catch (error) {
+        return handleError(c, error, 'Failed to remove audience member');
       }
     }
   )

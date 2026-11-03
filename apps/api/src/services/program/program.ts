@@ -242,7 +242,9 @@ export async function addProgramMembers(programId: string, data: TAddProgramMemb
             tx
           );
 
-          if (member && member.roleId === ROLE.STUDENT && member.profileId && courseGroupIds.length > 0) {
+          // El alumno queda miembro de la empresa aunque el programa todavía no tenga cursos: sin la
+          // membresía no entra al programa (isProgramMember), y es lo que se le saca al egresar.
+          if (member && member.roleId === ROLE.STUDENT && member.profileId) {
             const validCourseGroupIds = courseGroupIds.filter((groupId): groupId is string => Boolean(groupId));
 
             await insertOrganizationMembersOnConflictDoNothing(

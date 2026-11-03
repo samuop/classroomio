@@ -1,7 +1,7 @@
 import { Context, Next } from 'hono';
 
 import { ErrorCodes } from '@api/utils/errors';
-import { isUserCourseMemberOrOrgAdmin } from '@cio/db/queries/group';
+import { isEnrolledCourseStudent, isUserCourseMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { ensureProgramCourseAccess } from '@api/services/course/course';
 
 /**
@@ -64,4 +64,32 @@ export const courseMemberMiddleware = async (c: Context, next: Next) => {
       500
     );
   }
+};
+
+/**
+ * Para bajar el certificado: lo mismo que `courseMemberMiddleware`, y además quien
+ * sigue inscripto como alumno aunque ya no sea miembro de la empresa. Es quien
+ * egresó en Seguimiento (SaaS-RRHH, fase 23): ya no entra a las lecciones, pero el
+ * certificado que ganó es suyo. Si de verdad lo ganó lo decide la ruta
+ * (`assertCertificateDownloadAllowed`), igual que para cualquier alumno.
+ */
+export const courseCertificateMiddleware = async (c: Context, next: Next) => {
+  let inscripto = false;
+  try {
+    const user = c.get('user');
+    const courseId = c.req.param('courseId') || c.req.query('courseId');
+    inscripto = Boolean(user && courseId && (await isEnrolledCourseStudent(courseId, user.id)));
+  } catch (error) {
+    console.error('Error in courseCertificateMiddleware:', error);
+    return c.json(
+      {
+        success: false,
+        error: 'Failed to verify course membership',
+        code: 'COURSE_MEMBER_CHECK_FAILED'
+      },
+      500
+    );
+  }
+
+  return inscripto ? next() : courseMemberMiddleware(c, next);
 };

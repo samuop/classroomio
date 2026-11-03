@@ -28,6 +28,13 @@ export const ZPublicApiAudienceProgress = z.object({
 });
 export type TPublicApiAudienceProgress = z.infer<typeof ZPublicApiAudienceProgress>;
 
+// Sacar a un alumno de la organización por su correo exacto (Seguimiento, fase 23: el egreso). En el
+// cuerpo y no en la dirección, por lo mismo que el avance.
+export const ZPublicApiRemoveAudience = z.object({
+  email: z.string().trim().min(1).max(320)
+});
+export type TPublicApiRemoveAudience = z.infer<typeof ZPublicApiRemoveAudience>;
+
 export const ZPublicApiAssignAudienceCourses = ZAssignAudienceCourses;
 export type TPublicApiAssignAudienceCourses = z.infer<typeof ZPublicApiAssignAudienceCourses>;
 

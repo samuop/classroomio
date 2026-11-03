@@ -41,7 +41,7 @@ import { cloneCourse } from '@api/services/course/clone';
 import { getCourseOrganizationId } from '@cio/db/queries/tag';
 import { complianceRouter } from '@api/routes/course/compliance';
 import { contentRouter } from '@api/routes/course/content';
-import { courseMemberMiddleware } from '@api/middlewares/course-member';
+import { courseCertificateMiddleware, courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberOrAutomationKeyMiddleware } from '@api/middlewares/course-team-member-or-automation-key';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
 import { createRateLimiter } from '@api/middlewares/rate-limiter';
@@ -517,10 +517,11 @@ export const courseRouter = new Hono()
       }
     }
   )
+  // Quien egresó y ya no entra al curso puede seguir bajando su certificado (Seguimiento, fase 23)
   .post(
     '/:courseId/download/certificate',
     authMiddleware,
-    courseMemberMiddleware,
+    courseCertificateMiddleware,
     zValidator('param', ZCourseDownloadParam),
     zValidator('json', ZCertificateDownloadRequest),
     async (c) => {
@@ -560,7 +561,7 @@ export const courseRouter = new Hono()
   .post(
     '/:courseId/download/certificate/png',
     authMiddleware,
-    courseMemberMiddleware,
+    courseCertificateMiddleware,
     zValidator('param', ZCourseDownloadParam),
     zValidator('json', ZCertificateDownloadRequest),
     async (c) => {

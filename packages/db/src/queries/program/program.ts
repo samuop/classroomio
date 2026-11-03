@@ -1,6 +1,6 @@
 import * as schema from '@db/schema';
 
-import { and, asc, desc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { ROLE } from '@cio/utils/constants';
@@ -269,10 +269,35 @@ export async function getProgramMemberByProfileId(
   }
 }
 
+/**
+ * ¿Entra al programa? Un alumno, sólo si además es miembro de la empresa del
+ * programa: sacarlo de la empresa es cortarle el acceso (el egreso de Seguimiento,
+ * fase 23), como en los cursos (`puedeEntrarAlCurso`). Su fila de programa queda,
+ * y volver a invitarlo se lo devuelve. Al equipo del programa no se le pide.
+ */
 export async function isProgramMember(programId: string, profileId: string): Promise<boolean> {
   try {
-    const member = await getProgramMemberByProfileId(programId, profileId);
-    return member !== null;
+    const miembroDeLaEmpresa = alias(schema.organizationmember, 'miembro_de_la_empresa');
+    const [member] = await db
+      .select({ id: schema.programMember.id })
+      .from(schema.programMember)
+      .innerJoin(schema.program, eq(schema.program.id, schema.programMember.programId))
+      .leftJoin(
+        miembroDeLaEmpresa,
+        and(
+          eq(miembroDeLaEmpresa.organizationId, schema.program.organizationId),
+          eq(miembroDeLaEmpresa.profileId, profileId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.programMember.programId, programId),
+          eq(schema.programMember.profileId, profileId),
+          or(ne(schema.programMember.roleId, ROLE.STUDENT), isNotNull(miembroDeLaEmpresa.id))
+        )
+      )
+      .limit(1);
+    return member !== undefined;
   } catch (error) {
     console.error('isProgramMember error:', error);
     throw new Error(`Failed to check program membership: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -424,10 +449,16 @@ export async function getProgramMembers(programId: string): Promise<
   }
 }
 
+/**
+ * Los programas de la persona. Los que tiene como alumno, sólo en las empresas de
+ * las que sigue siendo miembro: a quien sacaron (el egreso de Seguimiento, fase 23)
+ * ya no se le muestran, como `isProgramMember` ya no lo deja entrar.
+ */
 export async function getEnrolledProgramsByProfile(
   profileId: string
 ): Promise<Array<TProgram & { roleId: number; courseCount: number; studentCount: number }>> {
   try {
+    const miembroDeLaEmpresa = alias(schema.organizationmember, 'miembro_de_la_empresa');
     const result = await db
       .select({
         program: schema.program,
@@ -458,7 +489,20 @@ export async function getEnrolledProgramsByProfile(
       })
       .from(schema.programMember)
       .innerJoin(schema.program, eq(schema.programMember.programId, schema.program.id))
-      .where(eq(schema.programMember.profileId, profileId))
+      // Una fila a lo sumo: (organización, perfil) es único
+      .leftJoin(
+        miembroDeLaEmpresa,
+        and(
+          eq(miembroDeLaEmpresa.organizationId, schema.program.organizationId),
+          eq(miembroDeLaEmpresa.profileId, profileId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.programMember.profileId, profileId),
+          or(ne(schema.programMember.roleId, ROLE.STUDENT), isNotNull(miembroDeLaEmpresa.id))
+        )
+      )
       .orderBy(desc(schema.program.createdAt));
 
     return result.map((row) => ({
