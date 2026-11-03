@@ -113,7 +113,7 @@ main();`;
             <div
               class="mt-4 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30"
             >
-              <p class="ui:text-amber-800 dark:ui:text-amber-200 text-sm font-medium">
+              <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
                 {$t('settings.token_auth.secret_shown_once')}
               </p>
               <div class="mt-2">

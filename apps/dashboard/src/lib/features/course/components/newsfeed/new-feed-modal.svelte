@@ -72,7 +72,7 @@
     }
   }}
 >
-  <Dialog.Content class="h-fit! w-fit! max-w-none!">
+  <Dialog.Content class="h-fit! max-h-[calc(100dvh-2rem)] w-fit! max-w-none! overflow-y-auto">
     <Dialog.Header>
       <Dialog.Title>
         {edit === true
@@ -86,7 +86,7 @@
         onChange={(text) => {
           newPost = text;
         }}
-        editorClass="max-h-[400px]"
+        editorClass="max-h-[min(400px,40dvh)]"
         placeholder={$t('course.navItem.news_feed.heading_button.placeholder')}
       />
       {#if errors.newPost}

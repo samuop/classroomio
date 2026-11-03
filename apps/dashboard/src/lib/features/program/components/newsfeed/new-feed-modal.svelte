@@ -77,7 +77,7 @@
     }
   }}
 >
-  <Dialog.Content class="h-fit! w-fit! max-w-none!">
+  <Dialog.Content class="h-fit! max-h-[calc(100dvh-2rem)] w-fit! max-w-none! overflow-y-auto">
     <Dialog.Header>
       <Dialog.Title>
         {edit ? $t('programs.newsfeed.edit_post') : $t('programs.newsfeed.make_a_post')}
@@ -89,7 +89,7 @@
         onChange={(text) => {
           newPost = text;
         }}
-        editorClass="max-h-[400px]"
+        editorClass="max-h-[min(400px,40dvh)]"
         placeholder={$t('programs.newsfeed.editor_placeholder')}
       />
     </section>
