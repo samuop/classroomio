@@ -873,11 +873,13 @@ export const generateImageParam = z.object({
     .describe(
       'What the picture should show, in one or two plain sentences. Describe the SCENE — the objects, the setting, the action, the point of view. Do NOT ask for text, labels or numbers inside the image: they come out wrong and the lesson supplies its own wording around it.'
     ),
+  // Obligatorio: opcional, Gemini lo dejaba vacío y la imagen no contaba para
+  // ninguna lección (ver la nota de `generate_image`).
   lessonId: z
     .string()
-    .optional()
+    .min(1)
     .describe(
-      `The lesson this illustrates, when there is one. Used to group the stored file and to keep the one-picture-per-lesson limit. ${piezaPorManija('lesson')}`
+      `The lesson this illustrates — required, it keeps the one-picture-per-lesson limit. ${piezaPorManija('lesson')} For the course landing-page banner, and only for it, write "banner".`
     ),
   aspectRatio: z
     .enum(['16:9', '4:3', '1:1', '3:4'])

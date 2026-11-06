@@ -134,6 +134,13 @@ import {
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
+import {
+  bitacoraVacia,
+  conBitacora,
+  conNotaDelPaso,
+  idsDeLecturasVencidas,
+  notaDeLaBitacora
+} from '@api/services/agent/bitacora-de-la-ronda';
 import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
 import { lecturasAConservar, podarHerramientas } from '@api/services/agent/poda-de-lecturas';
 import { transformarEnlacesDelChat } from '@api/services/agent/enlaces-del-chat';
@@ -1365,7 +1372,14 @@ const agentCoreRouter = new Hono()
        */
       const registroDeRonda = registroVacio();
 
-      const agentTools =
+      /**
+       * Lo mismo, pero para el MODELO y paso por paso: qué ya cambió, qué le
+       * negaron y qué lecturas quedaron viejas. Lo lee `prepareStep`. Ver
+       * `bitacora-de-la-ronda.ts` para el bucle que esto corta.
+       */
+      const bitacora = bitacoraVacia();
+
+      const herramientasSinBitacora =
         role === AgentRole.STUDENT
           ? buildStudentAgentTools(orgId, user.id, courseId, studentPolicy!.settings, agentContext.locale as TLocale)
           : buildAgentTools(orgId, user.id, courseId, messages, {
@@ -1451,6 +1465,13 @@ const agentCoreRouter = new Hono()
               // se permite o se niega.
               accionPorLeccion
             });
+
+      // Sólo la ronda del docente: la del alumno no cambia el curso y su techo
+      // es chico.
+      const agentTools =
+        role === AgentRole.TEACHER
+          ? (conBitacora(herramientasSinBitacora, bitacora, () => presupuestoDePasos.paso) as typeof herramientasSinBitacora)
+          : herramientasSinBitacora;
 
       const contextManaged = await buildModelContextMessages({
         conversationId,
@@ -2053,9 +2074,26 @@ const agentCoreRouter = new Hono()
           });
           const cierre = avisoDeCierre(isStudentRound);
 
+          /**
+           * Lo que la ronda ya hizo, al final de los mensajes del paso. La del
+           * paso anterior se saca: el SDK arrastra estos mensajes al siguiente.
+           * Ver `bitacora-de-la-ronda.ts`.
+           */
+          const nota = isStudentRound
+            ? undefined
+            : notaDeLaBitacora(bitacora, {
+                avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined
+              });
+
           // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
           if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: stepNumber })) {
-            return ultimoPaso ? cerrarConRespuesta(stepMessages, cierre) : {};
+            const conNota = isStudentRound ? stepMessages : conNotaDelPaso(stepMessages, nota);
+
+            return ultimoPaso
+              ? cerrarConRespuesta(conNota, cierre)
+              : conNota === stepMessages
+                ? {}
+                : { messages: conNota };
           }
 
           /**
@@ -2065,11 +2103,19 @@ const agentCoreRouter = new Hono()
            * borraba el resultado de `get_lesson_content` antes de que el modelo
            * llegara a editar esa lección. Medido el 2026-09-22: 35 de 40 pasos
            * gastados releyendo las mismas cinco piezas. Ver `poda-de-lecturas.ts`.
+           *
+           * Salvo que esa lectura esté VENCIDA: la pieza se editó después de
+           * leerla, y su texto viejo era lo que invitaba a rehacer la edición
+           * (medido el 2026-11-03: nueve reemplazos del mismo bloque).
            */
+          const vencidas = idsDeLecturasVencidas(bitacora);
+          const conservar = new Set(
+            [...lecturasAConservar(stepMessages)].filter((toolCallId) => !vencidas.has(toolCallId))
+          );
           const sinLecturasViejas = podarHerramientas({
-            messages: stepMessages,
+            messages: conNotaDelPaso(stepMessages, undefined),
             ultimos: 4,
-            conservar: lecturasAConservar(stepMessages)
+            conservar
           });
 
           const podados = pruneMessages({
@@ -2086,8 +2132,9 @@ const agentCoreRouter = new Hono()
             ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
             emptyMessages: 'remove'
           });
+          const conNota = conNotaDelPaso(podados, nota);
 
-          return ultimoPaso ? cerrarConRespuesta(podados, cierre) : { messages: podados };
+          return ultimoPaso ? cerrarConRespuesta(conNota, cierre) : { messages: conNota };
         },
         onStepFinish: async (step) => {
           completedStepCount += 1;

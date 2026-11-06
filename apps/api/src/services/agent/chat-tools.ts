@@ -104,8 +104,10 @@ import { leerFuente, LINEAS_POR_LECTURA } from '@api/services/agent/source-index
 import {
   decidirSiGenerarImagen,
   generateLessonImage,
+  IMAGEN_DEL_BANNER,
   MAX_IMAGES_PER_ROUND
 } from '@api/services/agent/image-generation';
+import { MAX_REEMPLAZOS_DEL_MISMO_BLOQUE } from '@api/services/agent/bitacora-de-la-ronda';
 import {
   conAvisoDePresupuesto,
   type PresupuestoDePasos
@@ -1623,6 +1625,43 @@ export function buildAgentTools(
   const leccionesConImagen = new Set<string>();
 
   /**
+   * La imagen que ya se generó en esta ronda, por lección, y la del banner.
+   *
+   * Medido el 2026-11-03: generó la ilustración de una lección y no la insertó.
+   * Al volver a pedirla, la negativa le decía «the <img> is already in its
+   * body» —falso— y no le devolvía la imagen, así que no tenía cómo
+   * recuperarla: reintentó diez veces y al final la pidió sin `lessonId`, que
+   * esquivaba el tope. Ahora la negativa trae el `html` y dice si de verdad
+   * está en el cuerpo.
+   */
+  const imagenesDeLaRonda = new Map<string, { url: string; html: string }>();
+
+  /** Si el cuerpo guardado de la lección, en el idioma del curso, contiene esa imagen. */
+  async function imagenEstaEnLaLeccion(lessonId: string, url: string): Promise<boolean> {
+    try {
+      const leccion = (await getLesson(lessonId)) as {
+        lessonLanguages?: Array<{ locale: string; content: string | null }>;
+      };
+      const cuerpo = leccion.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
+
+      return cuerpo.includes(url);
+    } catch {
+      // Sin poder mirarlo no se afirma nada: se le dice que no está, y lo peor
+      // que puede pasar es que la inserte dos veces, que se ve y se arregla.
+      return false;
+    }
+  }
+
+  /**
+   * Cuántas veces se reemplazó cada bloque en esta ronda, y en qué pasos.
+   *
+   * El bucle medido el 2026-11-03: los mismos tres bloques reemplazados nueve
+   * veces cada uno en una ronda, todos con `updated: true`. El guardia de
+   * «bloque idéntico» sólo frena la copia exacta; las variantes pasaban.
+   */
+  const reemplazosPorBloque = new Map<string, number[]>();
+
+  /**
    * Lecciones escritas en esta ronda sin un plan aprobado.
    *
    * ── Por qué hay un tope ──────────────────────────────────────────────────
@@ -2061,26 +2100,55 @@ export function buildAgentTools(
           // La manija se resuelve ANTES de decidir: el tope es por LECCIÓN, y si
           // la misma lección llegara una vez como `S2.L3` y otra como id, el
           // contador las contaría como dos y pagaría dos imágenes.
-          const lessonId = args.lessonId ? await manijas.leccion(args.lessonId) : undefined;
+          // `lessonId` es obligatorio: sin él la imagen no contaba para ninguna
+          // lección y se salteaba el tope (medido: dos lecciones con dos
+          // imágenes). El banner del curso es el único caso sin lección, y se
+          // nombra como tal.
+          const esBanner = args.lessonId.trim().toLowerCase() === IMAGEN_DEL_BANNER;
+          const lessonId = esBanner ? undefined : await manijas.leccion(args.lessonId);
+          const claveDeLaImagen = esBanner ? IMAGEN_DEL_BANNER : lessonId!;
+          const yaGenerada = imagenesDeLaRonda.get(claveDeLaImagen);
           // Refused rather than thrown: an error would push the model to retry,
           // which is precisely what must not happen when the reason is spend.
-          const decision = decidirSiGenerarImagen({
-            lessonId,
-            yaIlustradas: leccionesConImagen,
-            generadasEnLaRonda: imagesGenerated
-          });
+          const decision = yaGenerada
+            ? ({ generar: false, motivo: 'ya_tiene_imagen' } as const)
+            : decidirSiGenerarImagen({
+                lessonId,
+                yaIlustradas: leccionesConImagen,
+                generadasEnLaRonda: imagesGenerated
+              });
 
           if (!decision.generar) {
+            if (decision.motivo === 'ya_tiene_imagen' && yaGenerada && esBanner) {
+              return {
+                generated: false,
+                alreadyGenerated: true,
+                url: yaGenerada.url,
+                html: yaGenerada.html,
+                note: 'This round already generated the course banner (`url` above). Do not generate another: pass this `url` to update_course_landing_page as `imageUrl`.'
+              };
+            }
+
+            if (decision.motivo === 'ya_tiene_imagen' && yaGenerada && lessonId) {
+              // Se MIRA el cuerpo en vez de suponerlo: la negativa vieja decía
+              // que la imagen ya estaba insertada, y no lo estaba.
+              const enElCuerpo = await imagenEstaEnLaLeccion(lessonId, yaGenerada.url);
+
+              return {
+                generated: false,
+                alreadyGenerated: true,
+                url: yaGenerada.url,
+                html: yaGenerada.html,
+                inLessonBody: enElCuerpo,
+                note: enElCuerpo
+                  ? 'This round already generated the picture for it, and that <img> IS in the lesson body. One picture per lesson: do not generate another. If it is wrong, change it with replace_lesson_block; otherwise move on.'
+                  : 'This round already generated the picture for it (`html` above), but it is NOT in the lesson body yet. Do not generate another: insert this `html` verbatim with replace_lesson_block or edit_lesson_content, then move on.'
+              };
+            }
+
             return {
               generated: false,
-              note:
-                decision.motivo === 'ya_tiene_imagen'
-                  ? // El caso medido: cuatro lecciones ilustradas y el modelo
-                    // volvio a pedir las mismas cuatro con otro subject. Se le
-                    // dice que ya la tiene y donde esta, para que no lo lea
-                    // como un fallo que conviene reintentar.
-                    'That lesson already got its illustration in this round — one picture per lesson is the limit, and the <img> is already in its body. Do not generate another for it: if the picture is wrong, change it with edit_lesson_content, and otherwise move on to the next lesson.'
-                  : `This round has already generated its limit of ${MAX_IMAGES_PER_ROUND} images. Continue without one — write the lesson, or draw an inline <svg> if the idea is structural. Do not call generate_image again this round.`
+              note: `This round has already generated its limit of ${MAX_IMAGES_PER_ROUND} images. Continue without one — write the lesson, or draw an inline <svg> if the idea is structural. Do not call generate_image again this round.`
             };
           }
 
@@ -2109,15 +2177,20 @@ export function buildAgentTools(
           if (lessonId) leccionesConImagen.add(lessonId);
           anotarCambio(registro, 'ilustro', args.subject.slice(0, 60));
 
+          // Handed over ready to paste. The model is told never to invent an
+          // <img>, so giving it the exact element removes the temptation to
+          // improvise attributes the sanitizer would strip.
+          const html = `<img src="${image.url}" alt="${escapeHtmlAttribute(args.alt)}" />`;
+          imagenesDeLaRonda.set(claveDeLaImagen, { url: image.url, html });
+
           return {
             generated: true,
             url: image.url,
-            // Handed over ready to paste. The model is told never to invent an
-            // <img>, so giving it the exact element removes the temptation to
-            // improvise attributes the sanitizer would strip.
-            html: `<img src="${image.url}" alt="${escapeHtmlAttribute(args.alt)}" />`,
+            html,
             remaining: MAX_IMAGES_PER_ROUND - imagesGenerated,
-            note: 'Insert the `html` above into the lesson body where the picture belongs. Use it verbatim — a different src will not load.'
+            note: esBanner
+              ? 'Pass this `url` to update_course_landing_page as `imageUrl`.'
+              : 'Insert the `html` above into the lesson body where the picture belongs. Use it verbatim — a different src will not load.'
           };
         });
       }
@@ -3023,6 +3096,25 @@ export function buildAgentTools(
           };
           const current = lessonWithLangs.lessonLanguages?.find((ll) => ll.locale === locale)?.content ?? '';
 
+          // Negado sin error, como las imágenes: un error empuja a reintentar,
+          // que es justo el bucle. Ver `reemplazosPorBloque`.
+          const claveDelBloque = `${lessonId}|${args.blockId}`;
+          const pasosDelBloque = reemplazosPorBloque.get(claveDelBloque) ?? [];
+
+          if (pasosDelBloque.length >= MAX_REEMPLAZOS_DEL_MISMO_BLOQUE) {
+            return {
+              lessonId,
+              lessonTitle: lesson.title,
+              blockId: args.blockId,
+              updated: false,
+              repeated: true,
+              note:
+                `You already replaced block ${args.blockId} of this lesson ${pasosDelBloque.length} times in this round ` +
+                `(step${pasosDelBloque.length > 1 ? 's' : ''} ${pasosDelBloque.join(', ')}). It now holds what you last wrote. ` +
+                'Move on to the next point of the request. If this block still needs something different, say so in your reply instead of replacing it again.'
+            };
+          }
+
           if (!current) {
             throw new Error(
               `This lesson has no content in locale "${locale}" yet. Use write_lesson to write the initial content.`
@@ -3084,6 +3176,7 @@ export function buildAgentTools(
 
           // Anotado despues de guardar: el registro dice lo que paso.
           anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
+          reemplazosPorBloque.set(claveDelBloque, [...pasosDelBloque, _options?.presupuesto?.paso ?? 0]);
 
           // El informe que ve la docente, al día con lo que la lección dice
           // ahora. Ver `recalcularInforme`.

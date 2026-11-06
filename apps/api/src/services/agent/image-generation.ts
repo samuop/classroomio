@@ -56,10 +56,18 @@ export const MAX_IMAGES_PER_ROUND = 8;
  * qué lección se trata. Acá sí: la herramienta ya recibe el `lessonId`. O sea
  * que la regla pasa de prosa a cuenta, que es lo único que la hace valer.
  *
- * Una imagen sin `lessonId` (la portada de un curso) no tiene lección contra la
- * que contarse, y queda sólo bajo el tope de ronda.
+ * El banner del curso no tiene lección contra la que contarse: se nombra con
+ * `IMAGEN_DEL_BANNER` y la herramienta le aplica su propio tope de uno por
+ * ronda. Antes cualquier imagen sin `lessonId` quedaba sólo bajo el tope de
+ * ronda, y por ahí se colaba una segunda imagen para una lección ya ilustrada.
  */
 export type RechazoDeImagen = 'ya_tiene_imagen' | 'tope_de_ronda';
+
+/**
+ * El valor de `lessonId` para la única imagen que no es de una lección: el
+ * banner de la página del curso. Ver `generate_image`.
+ */
+export const IMAGEN_DEL_BANNER = 'banner';
 
 export function decidirSiGenerarImagen(params: {
   lessonId?: string;
