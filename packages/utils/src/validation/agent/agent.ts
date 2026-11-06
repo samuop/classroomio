@@ -76,6 +76,16 @@ export const ZAgentStatusQuery = z.object({
 
 export type TAgentStatusQuery = z.infer<typeof ZAgentStatusQuery>;
 
+// ─── GET /agent/questions-to-review ──────────────────────────────────────────
+
+export const ZAgentQuestionsToReviewQuery = z.object({
+  courseId: ZAgentCourseId,
+  /** El idioma de las lecciones contra el que se mide (el del editor). */
+  locale: z.string().min(2).max(10).optional()
+});
+
+export type TAgentQuestionsToReviewQuery = z.infer<typeof ZAgentQuestionsToReviewQuery>;
+
 // ─── POST /agent/chat/stop ───────────────────────────────────────────────────
 
 export const ZAgentChatStopBody = z.object({

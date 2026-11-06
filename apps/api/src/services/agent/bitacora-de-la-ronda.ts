@@ -386,11 +386,12 @@ export function notaDeLaBitacora(
 
   if (preguntas.length > 0) {
     partes.push(
-      'Questions to review — the lesson sentence each one was based on is no longer in any lesson:',
+      'Questions to review — a change in this round removed the lesson sentence each one was based on, so its answer may now be wrong:',
       ...lineasConTope(
         preguntas.map((pregunta) => `- ${pregunta}`),
         15
-      )
+      ),
+      'Tell the teacher about them in your reply. Update them (from what the lesson says now) only if the teacher asked for question changes.'
     );
   }
 

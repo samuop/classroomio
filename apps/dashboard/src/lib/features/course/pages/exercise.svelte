@@ -39,6 +39,8 @@
   import Submissions from '$features/course/components/exercise/submissions/submissions.svelte';
   import { IconButton } from '@cio/ui/custom/icon-button';
   import UpdateDescription from '$features/course/components/exercise/update-description.svelte';
+  import PreguntasARevisar from '$features/course/components/exercise/preguntas-a-revisar.svelte';
+  import { profile } from '$lib/utils/store/user';
   import { ContentNavigationActions } from '$features/course/components/lesson';
   import {
     // RefreshPageData,
@@ -517,6 +519,9 @@
             </UnderlineTabs.Trigger>
           </UnderlineTabs.List>
           <UnderlineTabs.Content value="questions" class="mx-auto w-full md:max-w-3xl">
+            {#if courseApi.course?.id && exerciseId}
+              <PreguntasARevisar courseId={courseApi.course.id} {exerciseId} locale={$profile.locale ?? 'en'} />
+            {/if}
             <UpdateDescription {preview} />
             {#if !preview}
               <EditMode

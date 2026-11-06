@@ -304,6 +304,18 @@
     return pieces.length > 0 || questions ? { pieces, questions } : null;
   });
 
+  /** Las preguntas que esta ronda dejó a revisar. Ver `questionsToReview`. */
+  const questionsToReview = $derived.by(() => {
+    const crudo = message.role === 'assistant' ? message.metadata?.questionsToReview : undefined;
+
+    return Array.isArray(crudo)
+      ? crudo.filter(
+          (pregunta): pregunta is { exercise: string; question: string } =>
+            typeof pregunta?.exercise === 'string' && typeof pregunta?.question === 'string'
+        )
+      : [];
+  });
+
   const isStreamingThisMessage = $derived(isStreaming && isLast && message.role === 'assistant');
   const hasToolParts = $derived((message.parts ?? []).some((part) => isAgentToolPart(part)));
 
@@ -316,6 +328,7 @@
       writerNotes.length > 0 ||
       roundChanges.length > 0 ||
       !!unverifiedClaims ||
+      questionsToReview.length > 0 ||
       stoppedByTeacher ||
       showPlanProgress
   );
@@ -651,6 +664,19 @@
             {#if roundChanges.length === 0}
               <li>{$t('ai_assistant.unverified_claims.nothing_changed')}</li>
             {/if}
+          </ul>
+        </div>
+      {/if}
+
+      {#if questionsToReview.length > 0}
+        <div class="rounded-xl border px-3 py-2">
+          <p class="ui:text-muted-foreground text-xs font-medium">
+            {$t('ai_assistant.questions_to_review.title', { count: questionsToReview.length })}
+          </p>
+          <ul class="mt-1 space-y-0.5 text-xs">
+            {#each questionsToReview as pregunta, i (i)}
+              <li>{$t('ai_assistant.questions_to_review.line', { exercise: pregunta.exercise, question: pregunta.question })}</li>
+            {/each}
           </ul>
         </div>
       {/if}

@@ -265,6 +265,11 @@ export interface AiAssistantMessageMetadata {
    * en una ronda que no tocó ninguna pregunta. Ver `afirmaciones-sin-cambio.ts`.
    */
   unverifiedClaims?: { pieces: string[]; questions: boolean };
+  /**
+   * Las preguntas que esta ronda dejó sin fundamento: una edición sacó la
+   * frase de la lección en la que se basaban. Ver `preguntas-a-revisar.ts`.
+   */
+  questionsToReview?: Array<{ exercise: string; question: string }>;
   /** La ronda cerró por el «Detener» de la docente, después del paso en curso. */
   stoppedByTeacher?: boolean;
   continuation?: AiAssistantMessageContinuation;

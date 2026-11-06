@@ -2806,6 +2806,11 @@
         },
         "exercises": {
           "heading": "All Exercises",
+          "questions_to_review": {
+            "title": "{count, plural, one {# question to review} other {# questions to review}}",
+            "body": "The lesson sentence it was based on is no longer in any lesson of the course: the lesson changed after it was written, and its answer may now be wrong.",
+            "based_on": "it was based on “{evidence}”"
+          },
           "add_button": "Add",
           "no_exercises": "No exercises added for this lesson",
           "no_assigned_exercises": "Your tutor hasn't assigned any exercise to this lesson. For the main time, you can",
@@ -5478,6 +5483,10 @@
       "piece": "The message says it changed “{title}”, but no change was recorded there in this round.",
       "questions": "The message talks about changes to questions or quizzes, but no question was changed in this round.",
       "nothing_changed": "Nothing in the course was changed in this round."
+    },
+    "questions_to_review": {
+      "title": "{count, plural, one {This round left # question to review: its lesson changed} other {This round left # questions to review: their lessons changed}}",
+      "line": "“{exercise}”: {question}"
     },
     "error_timeout_chat": "The assistant is still working and it's taking longer than usual. The chat updates on its own when it's done."
   },

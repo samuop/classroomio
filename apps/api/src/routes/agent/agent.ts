@@ -29,6 +29,7 @@ import {
   ZAgentGenerateTextBody,
   ZAgentResearchBody,
   ZAgentStatusQuery,
+  ZAgentQuestionsToReviewQuery,
   ZAgentSummarizeBody,
   ZTutorUsageQuery,
   ZTutorUsagePeriod,
@@ -144,6 +145,13 @@ import {
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 import { historiaDeLaRonda, mensajesGuardados } from '@api/services/agent/historia-del-servidor';
+import {
+  avisoDePreguntasARevisar,
+  HERRAMIENTAS_QUE_CAMBIAN_LECCIONES,
+  lineaDePreguntaARevisar,
+  preguntasARevisarDelCurso,
+  type PreguntaARevisar
+} from '@api/services/agent/preguntas-a-revisar';
 import {
   afirmacionesSinCambio,
   HERRAMIENTAS_DE_PREGUNTAS,
@@ -415,6 +423,35 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to upload document');
     }
   })
+  /**
+   * GET /agent/questions-to-review
+   *
+   * Las preguntas del curso cuyo fundamento ya no está en ninguna lección, para
+   * el aviso de la pantalla del ejercicio. Sólo el equipo del curso: es una
+   * lectura del curso como lo ve quien lo edita. Ver `preguntas-a-revisar.ts`.
+   */
+  .get(
+    '/questions-to-review',
+    authMiddleware,
+    orgMemberMiddleware,
+    zValidator('query', ZAgentQuestionsToReviewQuery),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const { courseId, locale } = c.req.valid('query');
+
+        if (!(await isCourseTeamMemberOrOrgAdmin(courseId, user.id))) {
+          throw new AppError('Only the course team can see this', 'FORBIDDEN', 403);
+        }
+
+        const questions = await preguntasARevisarDelCurso(courseId, locale ?? 'en');
+
+        return c.json({ success: true as const, data: { questions } });
+      } catch (error) {
+        return handleError(c, error, 'Failed to measure the questions to review');
+      }
+    }
+  )
   /**
    * POST /agent/research
    *
@@ -1122,6 +1159,26 @@ const agentCoreRouter = new Hono()
         role === AgentRole.TEACHER
           ? juntarIndicaciones(indicacionesDelForm, indicacionesDeLasReglas(reglasDeLaDocente(approvedPlan)))
           : undefined;
+
+      /**
+       * Las preguntas cuyo fundamento ya no está en las lecciones, al arrancar.
+       *
+       * Medido (2026-11): las lecciones cambiaron y los cuestionarios siguieron
+       * preguntando lo viejo, sin que nada lo dijera. Se miden acá contra las
+       * lecciones de ahora, así que cubren también lo que se editó a mano. Ver
+       * `preguntas-a-revisar.ts`. Si la base falla, la ronda sigue sin esto.
+       */
+      const preguntasAlEmpezar =
+        role === AgentRole.TEACHER
+          ? await preguntasARevisarDelCurso(courseId, agentContext.locale).catch((error: unknown) => {
+              console.error('[agent.chat] no se pudieron medir las preguntas a revisar:', error);
+              return [];
+            })
+          : [];
+      const avisoDePreguntas = avisoDePreguntasARevisar(preguntasAlEmpezar);
+      if (avisoDePreguntas) {
+        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${avisoDePreguntas}` : avisoDePreguntas;
+      }
 
       // "The material really rides in THIS request" — nothing more. Two things
       // downstream ask that question: where to put the Anthropic cache_control
@@ -1983,6 +2040,23 @@ const agentCoreRouter = new Hono()
       /** Lo que ese texto dice haber cambiado y el servidor no vio cambiar. */
       let relatoSinCambio: AfirmacionesSinCambio | undefined;
       let titulosDelCurso: string[] | undefined;
+      /**
+       * Las preguntas que quedaron a revisar POR esta ronda: su frase estaba en
+       * una lección al arrancar y una edición de la ronda la sacó. Las que ya
+       * estaban a revisar van en el mensaje de contexto.
+       */
+      let preguntasQueQuedaronARevisar: PreguntaARevisar[] = [];
+
+      async function medirPreguntasTrasEditar(): Promise<void> {
+        try {
+          const yaEstaban = new Set(preguntasAlEmpezar.map((pregunta) => pregunta.questionId));
+          const ahora = await preguntasARevisarDelCurso(courseId, agentContext.locale);
+
+          preguntasQueQuedaronARevisar = ahora.filter((pregunta) => !yaEstaban.has(pregunta.questionId));
+        } catch (error) {
+          console.error('[agent.chat] no se pudieron medir las preguntas tras editar:', error);
+        }
+      }
 
       /**
        * El relato del modelo contra lo que pasó. Corre al final de cada paso con
@@ -2071,7 +2145,8 @@ const agentCoreRouter = new Hono()
         const nota = isStudentRound
           ? undefined
           : notaDeLaBitacora(bitacora, {
-              avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined
+              avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined,
+              preguntasARevisar: preguntasQueQuedaronARevisar.map(lineaDePreguntaARevisar)
             });
 
         // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
@@ -2158,6 +2233,12 @@ const agentCoreRouter = new Hono()
 
         if (pasoPudoCambiarElCurso(step.toolCalls.map((call) => call.toolName))) {
           await recalcularProgresoDelPlan();
+        }
+
+        // Una lección cambió: ¿alguna pregunta se quedó sin su frase? Se le dice
+        // al modelo en la nota del paso siguiente, en la misma ronda.
+        if (!isStudentRound && step.toolCalls.some((call) => HERRAMIENTAS_QUE_CAMBIAN_LECCIONES.has(call.toolName))) {
+          await medirPreguntasTrasEditar();
         }
       }
 
@@ -2665,6 +2746,15 @@ const agentCoreRouter = new Hono()
             // panel lo dibuja como advertencia al lado del registro.
             ...(relatoSinCambio && hayAfirmacionesSinCambio(relatoSinCambio)
               ? { unverifiedClaims: { pieces: relatoSinCambio.piezas, questions: relatoSinCambio.preguntas } }
+              : {}),
+            // Las preguntas que esta ronda dejó sin fundamento, para el panel.
+            ...(preguntasQueQuedaronARevisar.length > 0
+              ? {
+                  questionsToReview: preguntasQueQuedaronARevisar.map((pregunta) => ({
+                    exercise: pregunta.exerciseTitle,
+                    question: pregunta.questionTitle
+                  }))
+                }
               : {}),
             planProgress: checklistProgress
               ? {

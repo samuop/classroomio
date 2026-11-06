@@ -551,6 +551,10 @@
       "questions": "El mensaje habla de cambios en preguntas o cuestionarios, pero en esta ronda no se cambió ninguna pregunta.",
       "nothing_changed": "En esta ronda no se cambió nada del curso."
     },
+    "questions_to_review": {
+      "title": "{count, plural, one {Esta ronda dejó # pregunta a revisar: su lección cambió} other {Esta ronda dejó # preguntas a revisar: sus lecciones cambiaron}}",
+      "line": "«{exercise}»: {question}"
+    },
     "error_timeout_chat": "El asistente sigue trabajando y está tardando más de lo normal. El chat se actualiza solo cuando termine."
   },
   "analytics": {
@@ -1960,6 +1964,11 @@
         },
         "exercises": {
           "heading": "Todos los ejercicios",
+          "questions_to_review": {
+            "title": "{count, plural, one {# pregunta a revisar} other {# preguntas a revisar}}",
+            "body": "La frase de la lección en la que se basaba ya no está en ninguna lección del curso: la lección cambió después de escribirla, y la respuesta puede haber quedado mal.",
+            "based_on": "se basaba en «{evidence}»"
+          },
           "add_button": "Añadir",
           "no_exercises": "No se agregaron ejercicios para esta lección.",
           "no_assigned_exercises": "Tu tutor todavía no asignó ejercicios a esta lección. Mientras tanto, podés",

@@ -156,6 +156,13 @@ vi.mock('@api/config/storage', async (original) => ({
   getStorageConfig: () => ({ mediaPublicBaseUrl: 'https://medios.ejemplo.test' })
 }));
 
+// Lo que mide las preguntas sin fundamento va contra la base: acá no hay
+// ninguna salvo en el test que la pone. El resto del módulo, de verdad.
+vi.mock('@api/services/agent/preguntas-a-revisar', async (original) => ({
+  ...(await original<typeof import('@api/services/agent/preguntas-a-revisar')>()),
+  preguntasARevisarDelCurso: vi.fn(async () => [])
+}));
+
 // Los escritores de verdad, espiados: se prueba con qué los arma la ronda.
 vi.mock('@api/services/agent/lesson-writer', async (original) => {
   const real = await original<typeof import('@api/services/agent/lesson-writer')>();
@@ -987,5 +994,37 @@ describe('el relato del modelo contra el registro de la ronda', () => {
     const { partes } = await leerPartes(await chat({ conversationId: conversacionNueva() }));
 
     expect(metadataDelCierre(partes)).not.toHaveProperty('unverifiedClaims');
+  });
+});
+
+/**
+ * Medido (2026-11): las lecciones cambiaron y los cuestionarios siguieron
+ * preguntando lo viejo. Una pregunta cuya frase ya no está en ninguna lección
+ * le llega al modelo en el mensaje de contexto de la ronda.
+ */
+describe('las preguntas a revisar, en la ronda', () => {
+  it('el modelo las recibe al arrancar, con su ejercicio y la frase de la que salieron', async () => {
+    const { preguntasARevisarDelCurso } = await import('@api/services/agent/preguntas-a-revisar');
+    vi.mocked(preguntasARevisarDelCurso).mockResolvedValueOnce([
+      {
+        exerciseId: 'ej-1',
+        exerciseTitle: 'Cuestionario de caja',
+        questionId: '7',
+        questionTitle: '¿Cuándo se hace el arqueo?',
+        evidence: 'el arqueo se hace al abrir la caja'
+      }
+    ]);
+
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(promptsRecibidos[0]).toContain('## Questions to review');
+    expect(promptsRecibidos[0]).toContain('¿Cuándo se hace el arqueo?');
+    expect(promptsRecibidos[0]).toContain('el arqueo se hace al abrir la caja');
+  });
+
+  it('sin preguntas a revisar, el bloque no aparece', async () => {
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(promptsRecibidos[0]).not.toContain('## Questions to review');
   });
 });

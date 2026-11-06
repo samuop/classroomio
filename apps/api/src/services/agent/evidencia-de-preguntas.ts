@@ -70,6 +70,15 @@ function tramoBuscable(evidence: string): string | undefined {
   return tramo && tramo.length >= MIN_CARACTERES_EVIDENCIA ? tramo : undefined;
 }
 
+/**
+ * Si la evidencia tiene un tramo que se puede buscar. Una demasiado corta no
+ * prueba nada ni en un sentido ni en el otro: no se usa para marcar una
+ * pregunta como sin fundamento (`preguntas-a-revisar.ts`).
+ */
+export function esEvidenciaBuscable(evidence: string): boolean {
+  return tramoBuscable(evidence) !== undefined;
+}
+
 /** ¿La evidencia aparece en alguno de estos textos? */
 export function evidenciaAparece(evidence: string, textosPlanos: readonly string[]): boolean {
   const tramo = tramoBuscable(evidence);
