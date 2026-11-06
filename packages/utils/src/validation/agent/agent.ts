@@ -19,21 +19,39 @@ export type TAgentRunStatus = z.infer<typeof ZAgentRunStatus>;
 
 // ─── POST /agent/chat ────────────────────────────────────────────────────────
 
-export const ZAgentChatBody = z.object({
-  courseId: ZAgentCourseId,
-  conversationId: z.string().uuid().optional(),
-  messages: z.array(z.any()), // UIMessage[] from Vercel AI SDK — validated by the SDK itself
-  model: z.enum(AGENT_MODEL_IDS).optional(),
-  context: z
-    .object({
-      lessonId: z.string().uuid().optional(),
-      exerciseId: z.string().uuid().optional(),
-      documentId: z.string().optional(),
-      /** The locale the lesson editor is currently showing — content is written in this language. */
-      locale: z.string().optional()
-    })
-    .optional()
-});
+export const ZAgentChatBody = z
+  .object({
+    courseId: ZAgentCourseId,
+    conversationId: z.string().uuid().optional(),
+    /**
+     * El mensaje nuevo (un UIMessage del SDK). Con conversación, el servidor lo
+     * pega a la historia que tiene guardada: el navegador ya no la manda.
+     */
+    message: z.any().optional(),
+    /** `regenerate-message` es «Reintentar»: se vuelve a responder el último pedido. */
+    trigger: z.enum(['submit-message', 'regenerate-message']).optional(),
+    messageId: z.string().optional(),
+    /**
+     * La conversación entera, como la mandaban los paneles anteriores. Con
+     * conversación sólo se usa su último mensaje; sin ella (o un pedido de un
+     * cliente viejo) es la historia.
+     */
+    messages: z.array(z.any()).optional(), // UIMessage[] from Vercel AI SDK — validated by the SDK itself
+    model: z.enum(AGENT_MODEL_IDS).optional(),
+    context: z
+      .object({
+        lessonId: z.string().uuid().optional(),
+        exerciseId: z.string().uuid().optional(),
+        documentId: z.string().optional(),
+        /** The locale the lesson editor is currently showing — content is written in this language. */
+        locale: z.string().optional()
+      })
+      .optional()
+  })
+  .refine(
+    (body) => body.message !== undefined || (body.messages?.length ?? 0) > 0 || body.trigger === 'regenerate-message',
+    { message: 'A message is required', path: ['message'] }
+  );
 
 export type TAgentChatBody = z.infer<typeof ZAgentChatBody>;
 

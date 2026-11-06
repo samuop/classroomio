@@ -483,11 +483,19 @@ export function responderRonda(params: {
   latidoMs?: number;
   /** Para los logs: de qué conversación es la ronda. */
   etiqueta?: string;
+  /**
+   * Llamado al terminar cada tramo, con la conversación como quedó. Si
+   * devuelve otro resultado, la respuesta sigue con él DENTRO del mismo mensaje
+   * del asistente: el `finish` del tramo que terminó no sale, y el `start` del
+   * siguiente tampoco. Ver `continuacion-del-servidor.ts`.
+   */
+  siguienteTramo?: (tramo: { numero: number; mensajes: UIMessage[] }) => Promise<ResultadoDeLaRonda | null>;
 }): Response {
   const etiqueta = params.etiqueta ?? 'sin conversación';
   const latidoMs = params.latidoMs ?? LATIDO_MS;
   let clienteSeFue = false;
-  // Si el guardado del final ya se intentó. Sale bien o mal, no se repite.
+  // Si el guardado ya se intentó alguna vez. Sale bien o mal, el del `finally`
+  // no se repite.
   let guardadoIntentado = false;
 
   const guardar = async (mensajes: UIMessage[]): Promise<void> => {
@@ -506,23 +514,65 @@ export function responderRonda(params: {
     }
   };
 
-  const deLaRonda = params.resultado.toUIMessageStream({
-    // Con los mensajes originales y un generador, la parte `start` lleva el id
-    // del mensaje de la respuesta: el mismo con el que se guarda abajo.
-    originalMessages: params.mensajesOriginales,
-    generateMessageId: generateId,
-    onError: params.onError,
-    messageMetadata: params.messageMetadata,
-    onEnd: async ({ messages, responseMessage, isContinuation }) => {
-      // Una respuesta sin ninguna parte es una ronda que falló antes de
-      // escribir nada (el proveedor no contestó, por ejemplo). Guardarla
-      // dejaría una burbuja vacía en la conversación: se guarda lo que mandó
-      // el cliente, que es lo que el cliente guardaba antes en ese caso.
-      const sinRespuesta = !isContinuation && responseMessage.parts.length === 0;
+  /**
+   * Un tramo leído hasta el final y guardado. Devuelve la conversación como
+   * quedó, si la respuesta no vino vacía, y el `finish` retenido.
+   */
+  async function leerTramo(
+    resultado: ResultadoDeLaRonda,
+    originales: UIMessage[],
+    numero: number,
+    escribir: (parte: UIMessageChunk) => void
+  ): Promise<{ mensajes: UIMessage[]; vacia: boolean; fin?: UIMessageChunk }> {
+    let alTerminar: { mensajes: UIMessage[]; vacia: boolean } = { mensajes: originales, vacia: true };
 
-      await guardar(sinRespuesta ? params.mensajesOriginales : messages);
+    const delTramo = resultado.toUIMessageStream({
+      // Con los mensajes originales y un generador, la parte `start` lleva el id
+      // del mensaje de la respuesta: el mismo con el que se guarda abajo. En el
+      // segundo tramo los originales terminan en ese mensaje del asistente, y
+      // el SDK lo CONTINÚA: mismo id, partes agregadas al final.
+      originalMessages: originales,
+      generateMessageId: generateId,
+      onError: params.onError,
+      messageMetadata: params.messageMetadata,
+      onEnd: async ({ messages, responseMessage, isContinuation }) => {
+        // Una respuesta sin ninguna parte es una ronda que falló antes de
+        // escribir nada (el proveedor no contestó, por ejemplo). Guardarla
+        // dejaría una burbuja vacía en la conversación: se guarda lo que mandó
+        // el cliente, que es lo que el cliente guardaba antes en ese caso.
+        const vacia = !isContinuation && responseMessage.parts.length === 0;
+
+        alTerminar = { mensajes: vacia ? originales : messages, vacia };
+        await guardar(alTerminar.mensajes);
+      }
+    });
+
+    let fin: UIMessageChunk | undefined;
+    // Leída ACÁ hasta el final, pase lo que pase con el navegador. Si se fue,
+    // `writer.write` descarta la parte en silencio y el bucle sigue: es lo que
+    // hace que la ronda termine, se cobre y se guarde.
+    const lector = delTramo.getReader();
+
+    while (true) {
+      const { done, value } = await lector.read();
+
+      if (done) break;
+
+      // El mensaje ya empezó en el primer tramo: otro `start` no agrega nada.
+      if (numero > 1 && value.type === 'start') continue;
+
+      // El `finish` se retiene hasta saber si viene otro tramo: si sale, el
+      // panel cierra el mensaje y lo que sigue llegaría a ninguna parte.
+      if (value.type === 'finish') {
+        fin = value;
+        continue;
+      }
+
+      escribir(value);
     }
-  });
+
+    return { ...alTerminar, ...(fin ? { fin } : {}) };
+  }
 
   const stream = createUIMessageStream({
     onError: params.onError,
@@ -533,17 +583,29 @@ export function responderRonda(params: {
       }, latidoMs);
 
       try {
-        // Leída ACÁ hasta el final, pase lo que pase con el navegador. Si se
-        // fue, `writer.write` descarta la parte en silencio y el bucle sigue:
-        // es lo que hace que la ronda termine, se cobre y se guarde.
-        const lector = deLaRonda.getReader();
+        let resultado: ResultadoDeLaRonda | null = params.resultado;
+        let originales = params.mensajesOriginales;
+        let numero = 1;
 
-        while (true) {
-          const { done, value } = await lector.read();
+        while (resultado) {
+          const tramo = await leerTramo(resultado, originales, numero, (parte) => writer.write(parte));
 
-          if (done) break;
+          const siguiente =
+            !tramo.vacia && params.siguienteTramo
+              ? await params.siguienteTramo({ numero, mensajes: tramo.mensajes }).catch((error: unknown) => {
+                  console.error(`[agent.chat] no se pudo arrancar otro tramo de ${etiqueta}:`, error);
+                  return null;
+                })
+              : null;
 
-          writer.write(value);
+          if (!siguiente) {
+            if (tramo.fin) writer.write(tramo.fin);
+            break;
+          }
+
+          resultado = siguiente;
+          originales = tramo.mensajes;
+          numero += 1;
         }
       } finally {
         clearInterval(latido);

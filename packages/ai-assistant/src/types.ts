@@ -456,12 +456,20 @@ export const MAX_AGENT_DOCUMENT_SIZE = 25 * 1024 * 1024;
 export const DOCUMENT_REDIS_TTL = 3600;
 
 /**
- * Maximum steps per streamText() round. A full course build (sections + lessons +
- * content + exercises + questions) easily needs 30–50 tool calls; at 15 the agent
- * ran out mid-plan and stopped. 40 lets most courses finish in one round; anything
- * longer is picked up by the step-limit continuation flow.
+ * El techo de EMERGENCIA de una ronda del docente. No es un presupuesto.
+ *
+ * Era 40 y era la forma de la ronda: una construcción de cualquier tamaño se
+ * cortaba ahí y el navegador mandaba «seguí» para la siguiente. Eso partía el
+ * trabajo en pedazos que no recordaban lo hecho, y hacía depender la
+ * construcción de una pestaña abierta. Desde 2026-11 la ronda sigue mientras
+ * el modelo trabaje, y el servidor la continúa si cierra con el plan a medias.
+ *
+ * Lo que la frena de verdad es otra cosa: «Detener», el cupo de la empresa, y
+ * un tramo que no avanza. Esto queda sólo como red contra un bucle que ninguno
+ * de esos frenos vea, puesto muy por encima de lo que usaba una construcción
+ * entera repartida en rondas de 40.
  */
-export const MAX_STEPS_PER_ROUND = 40;
+export const MAX_STEPS_PER_ROUND = 250;
 
 /**
  * The learner-facing tutor answers questions; it does not build anything. Its

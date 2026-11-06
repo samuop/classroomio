@@ -357,6 +357,28 @@ export async function enforceTokenBalance(orgId: string): Promise<TokenBalance> 
   return balance;
 }
 
+/**
+ * Si la empresa se quedó sin cupo, preguntado a mitad de una ronda.
+ *
+ * El cupo se controlaba sólo al arrancar, y alcanzaba porque la ronda tenía un
+ * techo de 40 pasos. Sin ese techo, una ronda larga puede pasar el cupo por
+ * mucho: esto la cierra entre dos pasos.
+ *
+ * No tira. Si la base falla, contesta que no: cortar una construcción por un
+ * error de lectura es peor que gastar un poco de más, y el próximo control lo
+ * vuelve a preguntar.
+ */
+export async function cupoAgotado(orgId: string): Promise<boolean> {
+  if (isSelfHosted()) return false;
+
+  try {
+    return (await getTokenBalance(orgId)).remaining <= 0;
+  } catch (error) {
+    console.warn(`[agent.chat] no se pudo leer el cupo de ${orgId} a mitad de la ronda:`, error);
+    return false;
+  }
+}
+
 export function computePurchasedTokenOverflow(params: {
   allowance: number;
   monthlyUsageBefore: number;

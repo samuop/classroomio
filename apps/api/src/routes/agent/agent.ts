@@ -8,13 +8,20 @@ import { zValidator } from '@hono/zod-validator';
 import {
   streamText,
   generateText,
-  stepCountIs,
   convertToModelMessages,
   pruneMessages,
   InvalidToolInputError,
   NoSuchToolError,
+  type ModelMessage,
   type UIMessage
 } from 'ai';
+import {
+  AVISO_SIN_CUPO,
+  decidirOtroTramo,
+  MOTIVOS_EN_CASTELLANO,
+  PASOS_ENTRE_CONTROLES_DE_CUPO,
+  textoDeContinuacion
+} from '@api/services/agent/continuacion-del-servidor';
 import {
   ZAgentChatBody,
   ZAgentChatStopBody,
@@ -28,6 +35,7 @@ import {
   ZTutorUsageUserParam
 } from '@cio/utils/validation/agent';
 import {
+  cupoAgotado,
   enforceTokenBalance,
   getDetailedUsage,
   getPurchasedSummary,
@@ -134,6 +142,7 @@ import {
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
+import { historiaDeLaRonda, mensajesGuardados } from '@api/services/agent/historia-del-servidor';
 import {
   bitacoraVacia,
   conBitacora,
@@ -639,7 +648,17 @@ const agentCoreRouter = new Hono()
     let candadoEntregadoALaRonda = false;
 
     try {
-      const { courseId, conversationId, messages, context } = c.req.valid('json');
+      const pedido = c.req.valid('json');
+      const { courseId, conversationId, context } = pedido;
+      /**
+       * Lo que llegó del navegador: el mensaje nuevo, o la conversación entera
+       * de un panel viejo. Con conversación, sólo vale el último mensaje: la
+       * historia la pone el servidor más abajo (`historiaDeLaRonda`), leída
+       * después de tomar el candado para no perder lo que la ronda anterior
+       * terminó de guardar.
+       */
+      const mensajeNuevo = (pedido.message ?? pedido.messages?.at(-1)) as UIMessage | undefined;
+      let messages: UIMessage[] = (pedido.messages as UIMessage[] | undefined) ?? (mensajeNuevo ? [mensajeNuevo] : []);
 
       const isTeamMember = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
       const role = isTeamMember ? AgentRole.TEACHER : AgentRole.STUDENT;
@@ -705,6 +724,20 @@ const agentCoreRouter = new Hono()
         }
 
         candado = tomado;
+
+        // Releída con el candado en la mano: la ronda anterior guarda antes de
+        // soltarlo, así que esto trae su respuesta entera.
+        const guardada = await getChatConversation(conversationId, user.id);
+
+        messages = historiaDeLaRonda({
+          guardada: mensajesGuardados<UIMessage>(guardada?.messages),
+          mensaje: mensajeNuevo,
+          disparo: pedido.trigger
+        });
+
+        if (messages.length === 0) {
+          throw new AppError('Nothing to answer in this conversation', 'EMPTY_CONVERSATION', 400);
+        }
       }
 
       const isOrgPaid = role === AgentRole.TEACHER ? await isOrgOnPaidPlan(orgId) : false;
@@ -1477,7 +1510,7 @@ const agentCoreRouter = new Hono()
         conversationId,
         courseId,
         userId: user.id,
-        messages
+        messages: messages as Parameters<typeof buildModelContextMessages>[0]['messages']
       });
       // Paso 1 (context diet): after converting the persisted history, strip tool
       // call/result content (including the huge INPUTS — full lesson HTML in
@@ -1909,7 +1942,167 @@ const agentCoreRouter = new Hono()
         recordTokenUsage(orgId, user.id, courseId, uso, modeloReal, providerConfig.provider)
       );
 
-      const result = streamText({
+      /**
+       * Los tramos de la respuesta. Sin techo de 40 pasos, una construcción
+       * corre en un solo `streamText` mientras el modelo trabaje; si cierra con
+       * el plan a medias, el servidor arranca otro con lo que ya hizo (ver
+       * `continuacion-del-servidor.ts`). Los pasos se cuentan de corrido entre
+       * tramos: la bitácora, la nota y el techo de emergencia los ven así.
+       */
+      let pasosDeTramosAnteriores = 0;
+      let tramoActual = 1;
+      /** Lo que entraría al paso siguiente: los mensajes del último paso más su respuesta. */
+      let mensajesParaSeguir: ModelMessage[] = modelMessages as ModelMessage[];
+      let textoDelUltimoPaso = '';
+      let escriturasAlEmpezarElTramo = 0;
+      /** El cupo se acabó a mitad de la ronda: el paso siguiente sólo responde. */
+      let sinCupo = false;
+
+      // Paso 2 (context diet, intra-round): a build round runs many steps in one
+      // loop, and by default every step re-sends ALL prior steps' tool calls
+      // verbatim — including full lesson-HTML inputs and 150KB fetched docs. From
+      // step 5 on, prune tool content older than the last 4 messages; the recent
+      // pair the model is actively working with stays intact, and the override
+      // carries forward so the window stays flat instead of growing quadratically.
+      async function prepararPaso({ stepNumber, messages: stepMessages }: { stepNumber: number; messages: ModelMessage[] }) {
+        // Contado de corrido entre tramos: la bitácora, la nota y el techo de
+        // emergencia hablan de la ronda entera, no del tramo.
+        const pasoDeLaRonda = pasosDeTramosAnteriores + stepNumber;
+
+        // 1-based para el modelo: `stepNumber` viene en base 0 y "paso 0" no le
+        // dice nada a nadie. Se escribe ANTES del paso, así que las
+        // herramientas que corran dentro de él leen el número correcto.
+        presupuestoDePasos.paso = pasoDeLaRonda + 1;
+
+        // Un pedido de cambios al plan empieza SIEMPRE por el plan nuevo: sin
+        // esto el modelo contestaba en prosa. Ver `plan-revision.ts`.
+        if (tramoActual === 1 && stepNumber === 0 && forzarPlanRevisado) {
+          return { toolChoice: { type: 'tool' as const, toolName: 'generate_course_plan' as const } };
+        }
+
+        // Sin techo de 40 pasos, el cupo ya no alcanza con mirarlo al arrancar.
+        // Ver `cupoAgotado`.
+        if (
+          !isStudentRound &&
+          !sinCupo &&
+          pasoDeLaRonda > 0 &&
+          pasoDeLaRonda % PASOS_ENTRE_CONTROLES_DE_CUPO === 0 &&
+          (await cupoAgotado(orgId))
+        ) {
+          sinCupo = true;
+          console.warn(`[agent.chat] la empresa ${orgId} se quedó sin cupo en el paso ${pasoDeLaRonda + 1}: la ronda cierra`);
+        }
+
+        // Ninguna ronda cierra muda: el último paso va sin herramientas y con el
+        // pedido de responder. Ver `student-final-step.ts` para por qué las dos
+        // cosas, y por qué el aviso del docente no es el del estudiante.
+        const ultimoPaso =
+          sinCupo ||
+          esUltimoPasoDeLaRonda({
+            paso: pasoDeLaRonda,
+            maximoDePasos: maxStepsForRound
+          });
+        const cierre = sinCupo ? AVISO_SIN_CUPO : avisoDeCierre(isStudentRound);
+
+        /**
+         * Lo que la ronda ya hizo, al final de los mensajes del paso. La del
+         * paso anterior se saca: el SDK arrastra estos mensajes al siguiente.
+         * Ver `bitacora-de-la-ronda.ts`.
+         */
+        const nota = isStudentRound
+          ? undefined
+          : notaDeLaBitacora(bitacora, {
+              avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined
+            });
+
+        // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
+        if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: pasoDeLaRonda })) {
+          const conNota = isStudentRound ? stepMessages : conNotaDelPaso(stepMessages, nota);
+
+          return ultimoPaso
+            ? cerrarConRespuesta(conNota, cierre)
+            : conNota === stepMessages
+              ? {}
+              : { messages: conNota };
+        }
+
+        return podarParaElPaso(stepMessages, nota, ultimoPaso ? cierre : undefined);
+      }
+
+      /**
+       * La poda de un paso, y también la de los mensajes con que arranca un
+       * tramo nuevo.
+       *
+       * La poda con una excepción: la última lectura de cada pieza se queda.
+       * Antes acá iba `toolCalls: 'before-last-4-messages'` a secas, y eso
+       * borraba el resultado de `get_lesson_content` antes de que el modelo
+       * llegara a editar esa lección. Medido el 2026-09-22: 35 de 40 pasos
+       * gastados releyendo las mismas cinco piezas. Ver `poda-de-lecturas.ts`.
+       *
+       * Salvo que esa lectura esté VENCIDA: la pieza se editó después de leerla,
+       * y su texto viejo era lo que invitaba a rehacer la edición (medido el
+       * 2026-11-03: nueve reemplazos del mismo bloque).
+       */
+      function podarParaElPaso(
+        mensajes: ModelMessage[],
+        nota: string | undefined,
+        cierre: string | undefined
+      ): { messages: ModelMessage[]; activeTools?: [] } {
+        const vencidas = idsDeLecturasVencidas(bitacora);
+        const conservar = new Set(
+          [...lecturasAConservar(mensajes)].filter((toolCallId) => !vencidas.has(toolCallId))
+        );
+        const sinLecturasViejas = podarHerramientas({
+          messages: conNotaDelPaso(mensajes, undefined),
+          ultimos: 4,
+          conservar
+        });
+
+        const podados = pruneMessages({
+          messages: sinLecturasViejas,
+          // Las herramientas ya las podó la función de arriba: acá queda sólo
+          // el manejo del razonamiento, que `pruneMessages` sigue haciendo.
+          toolCalls: 'none',
+          // With thinking on, every step adds a reasoning block that
+          // `pruneMessages` keeps by default (`reasoning: 'none'`), so a long
+          // build would carry one per step by the end and undo the context diet
+          // this pruning exists for. Keeping only the latest is also what
+          // Anthropic's tool-use protocol requires: the thinking that precedes
+          // the tool_use being continued must survive.
+          ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
+          emptyMessages: 'remove'
+        });
+        const conNota = conNotaDelPaso(podados, nota);
+
+        return cierre ? cerrarConRespuesta(conNota, cierre) : { messages: conNota };
+      }
+
+      async function alTerminarElPaso(step: {
+        usage: Parameters<typeof consumo.alTerminarPaso>[0];
+        finishReason: string;
+        toolCalls: ReadonlyArray<{ toolName: string }>;
+      }) {
+        completedStepCount += 1;
+        // Size of the LAST request actually sent to the provider. This — not
+        // `totalUsage` — is what "how full is the context window" means.
+        // `totalUsage` aggregates every step of the round, so a 2-step turn
+        // over a 110k-token document reports ~220k and makes a brand-new
+        // conversation look 100% full against the 200k budget.
+        lastStepInputTokens = step.usage?.inputTokens ?? lastStepInputTokens;
+        // El del último paso es el de la ronda. Se toma acá porque el de
+        // `onFinish` llega tarde para la metadata — ver
+        // `recalcularProgresoDelPlan`.
+        finishReason = step.finishReason;
+
+        // Se cobra apenas el proveedor lo informa. Nunca tira.
+        await consumo.alTerminarPaso(step.usage);
+
+        if (pasoPudoCambiarElCurso(step.toolCalls.map((call) => call.toolName))) {
+          await recalcularProgresoDelPlan();
+        }
+      }
+
+      const correrTramo = (mensajesDelModelo: ModelMessage[]) => streamText({
         model,
         maxRetries: 2,
         /**
@@ -1984,13 +2177,14 @@ const agentCoreRouter = new Hono()
         // MAX_OUTPUT_TOKENS_STUDENT.
         maxOutputTokens: maxOutputTokens,
         system: systemContent,
-        messages: modelMessages,
+        messages: mensajesDelModelo,
         tools: agentTools,
         ...(activeToolNames ? { activeTools: activeToolNames as any } : {}),
         ...(providerOptions ? { providerOptions } : {}),
         /**
-         * Dos formas de cerrar la ronda entre un paso y el siguiente: el tope de
-         * pasos, y el «Detener» de la docente.
+         * Las formas de cerrar la ronda entre un paso y el siguiente: el techo
+         * de emergencia (contado entre tramos), el cupo agotado, y el «Detener»
+         * de la docente.
          *
          * «Detener» NO corta en el acto: `stopWhen` se evalúa cuando el paso
          * terminó (la herramienta en curso devolvió y guardó), así que lo que se
@@ -1999,7 +2193,9 @@ const agentCoreRouter = new Hono()
          * la pantalla no llega acá: la ronda sigue hasta su final (`ronda-viva.ts`).
          */
         stopWhen: [
-          stepCountIs(maxStepsForRound),
+          ({ steps }) => pasosDeTramosAnteriores + steps.length >= maxStepsForRound,
+          // El paso que cerró por falta de cupo ya fue la respuesta.
+          () => sinCupo,
           async () => {
             if (!candado || !(await candado.pidieronDetener())) return false;
 
@@ -2053,108 +2249,20 @@ const agentCoreRouter = new Hono()
         // step 5 on, prune tool content older than the last 4 messages; the recent
         // pair the model is actively working with stays intact, and the override
         // carries forward so the window stays flat instead of growing quadratically.
-        prepareStep: ({ stepNumber, messages: stepMessages }) => {
-          // 1-based para el modelo: `stepNumber` viene en base 0 y "paso 0 de
-          // 40" no le dice nada a nadie. Se escribe ANTES del paso, así que las
-          // herramientas que corran dentro de él leen el número correcto.
-          presupuestoDePasos.paso = stepNumber + 1;
+        prepareStep: async (argumentosDelPaso) => {
+          const preparado = await prepararPaso(argumentosDelPaso);
 
-          // Un pedido de cambios al plan empieza SIEMPRE por el plan nuevo: sin
-          // esto el modelo contestaba en prosa. Ver `plan-revision.ts`.
-          if (stepNumber === 0 && forzarPlanRevisado) {
-            return { toolChoice: { type: 'tool', toolName: 'generate_course_plan' } };
-          }
+          // Lo que entra a este paso, para armar el tramo siguiente si hace
+          // falta: el SDK arma el paso que sigue con esto más la respuesta.
+          mensajesParaSeguir = (preparado as { messages?: ModelMessage[] }).messages ?? argumentosDelPaso.messages;
 
-          // Ninguna ronda cierra muda: el último paso va sin herramientas y con el
-          // pedido de responder. Ver `student-final-step.ts` para por qué las dos
-          // cosas, y por qué el aviso del docente no es el del estudiante.
-          const ultimoPaso = esUltimoPasoDeLaRonda({
-            paso: stepNumber,
-            maximoDePasos: maxStepsForRound
-          });
-          const cierre = avisoDeCierre(isStudentRound);
-
-          /**
-           * Lo que la ronda ya hizo, al final de los mensajes del paso. La del
-           * paso anterior se saca: el SDK arrastra estos mensajes al siguiente.
-           * Ver `bitacora-de-la-ronda.ts`.
-           */
-          const nota = isStudentRound
-            ? undefined
-            : notaDeLaBitacora(bitacora, {
-                avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined
-              });
-
-          // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
-          if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: stepNumber })) {
-            const conNota = isStudentRound ? stepMessages : conNotaDelPaso(stepMessages, nota);
-
-            return ultimoPaso
-              ? cerrarConRespuesta(conNota, cierre)
-              : conNota === stepMessages
-                ? {}
-                : { messages: conNota };
-          }
-
-          /**
-           * La poda con una excepción: la última lectura de cada pieza se queda.
-           *
-           * Antes acá iba `toolCalls: 'before-last-4-messages'` a secas, y eso
-           * borraba el resultado de `get_lesson_content` antes de que el modelo
-           * llegara a editar esa lección. Medido el 2026-09-22: 35 de 40 pasos
-           * gastados releyendo las mismas cinco piezas. Ver `poda-de-lecturas.ts`.
-           *
-           * Salvo que esa lectura esté VENCIDA: la pieza se editó después de
-           * leerla, y su texto viejo era lo que invitaba a rehacer la edición
-           * (medido el 2026-11-03: nueve reemplazos del mismo bloque).
-           */
-          const vencidas = idsDeLecturasVencidas(bitacora);
-          const conservar = new Set(
-            [...lecturasAConservar(stepMessages)].filter((toolCallId) => !vencidas.has(toolCallId))
-          );
-          const sinLecturasViejas = podarHerramientas({
-            messages: conNotaDelPaso(stepMessages, undefined),
-            ultimos: 4,
-            conservar
-          });
-
-          const podados = pruneMessages({
-            messages: sinLecturasViejas,
-            // Las herramientas ya las podó la función de arriba: acá queda sólo
-            // el manejo del razonamiento, que `pruneMessages` sigue haciendo.
-            toolCalls: 'none',
-            // With thinking on, every step adds a reasoning block that
-            // `pruneMessages` keeps by default (`reasoning: 'none'`), so a
-            // 40-step build would carry ~40 of them by the end and undo the
-            // context diet this pruning exists for. Keeping only the latest is
-            // also what Anthropic's tool-use protocol requires: the thinking
-            // that precedes the tool_use being continued must survive.
-            ...(thinkingBudget > 0 || includeGoogleThoughts ? { reasoning: 'before-last-message' as const } : {}),
-            emptyMessages: 'remove'
-          });
-          const conNota = conNotaDelPaso(podados, nota);
-
-          return ultimoPaso ? cerrarConRespuesta(conNota, cierre) : { messages: conNota };
+          return preparado;
         },
         onStepFinish: async (step) => {
-          completedStepCount += 1;
-          // Size of the LAST request actually sent to the provider. This — not
-          // `totalUsage` — is what "how full is the context window" means.
-          // `totalUsage` aggregates every step of the round, so a 2-step turn
-          // over a 110k-token document reports ~220k and makes a brand-new
-          // conversation look 100% full against the 200k budget.
-          lastStepInputTokens = step.usage?.inputTokens ?? lastStepInputTokens;
-          // El del último paso es el de la ronda. Se toma acá porque el de
-          // `onFinish` llega tarde para la metadata — ver
-          // `recalcularProgresoDelPlan`.
-          finishReason = step.finishReason;
+          mensajesParaSeguir = [...mensajesParaSeguir, ...step.response.messages];
+          textoDelUltimoPaso = step.text ?? '';
 
-          // Se cobra apenas el proveedor lo informa. Nunca tira.
-          await consumo.alTerminarPaso(step.usage);
-
-          if (pasoPudoCambiarElCurso(step.toolCalls.map((call) => call.toolName))) {
-            await recalcularProgresoDelPlan();
-          }
+          await alTerminarElPaso(step);
         },
         /**
          * Hoy ninguna ronda se aborta: no hay `abortSignal`, porque la ronda
@@ -2170,7 +2278,8 @@ const agentCoreRouter = new Hono()
           );
         },
         onFinish: async ({ totalUsage, finishReason: resultFinishReason, steps }) => {
-          completedStepCount = steps.length;
+          // De corrido: el `steps` del SDK es sólo el de este tramo.
+          completedStepCount = pasosDeTramosAnteriores + steps.length;
           finishReason = resultFinishReason;
           const durationMs = Date.now() - startTime;
 
@@ -2304,6 +2413,64 @@ const agentCoreRouter = new Hono()
         }
       });
 
+      const result = correrTramo(modelMessages as ModelMessage[]);
+
+      /**
+       * Si el modelo cerró con el plan a medias, el tramo que sigue: los
+       * mensajes del último paso podados, y la orden de seguir. `null` si no
+       * corresponde seguir. Ver `decidirOtroTramo` para cada freno.
+       */
+      function escriturasDelTramo(): number {
+        return bitacora.escrituras.filter((escritura) => escritura.hecho).length - escriturasAlEmpezarElTramo;
+      }
+
+      /**
+       * La misma decisión para los dos que la necesitan: la metadata del
+       * `finish` (que sale antes de que el tramo termine de cerrarse) y
+       * `siguienteTramo`. Lee lo que dejó el último `onStepFinish`.
+       */
+      function decidirElTramo() {
+        return decidirOtroTramo({
+          esConstruccion: role === AgentRole.TEACHER && teacherPromptMode === 'build' && !!approvedPlan,
+          planPendiente: planIncomplete,
+          detenida: detenidaPorLaDocente,
+          sinCupo,
+          finishReason,
+          pasosTotales: completedStepCount,
+          maxPasos: maxStepsForRound,
+          escriturasDelTramo: escriturasDelTramo(),
+          tramo: tramoActual,
+          textoFinal: textoDelUltimoPaso
+        });
+      }
+
+      async function siguienteTramo({ numero }: { numero: number }) {
+        const decision = decidirElTramo();
+
+        if (!decision.seguir) {
+          if (numero > 1 || decision.motivo !== 'no_es_construccion') {
+            console.log(
+              `[agent.chat] la respuesta cierra tras ${numero} tramo(s) y ${completedStepCount} pasos: ${MOTIVOS_EN_CASTELLANO[decision.motivo]}`
+            );
+          }
+
+          return null;
+        }
+
+        console.log(
+          `[agent.chat] el modelo cerró con el plan a medias (${planIncomplete?.pendingCount ?? 0} faltan, ` +
+            `${planIncomplete?.emptyCount ?? 0} vacíos): el servidor sigue con el tramo ${numero + 1}`
+        );
+
+        escriturasAlEmpezarElTramo += escriturasDelTramo();
+        pasosDeTramosAnteriores = completedStepCount;
+        tramoActual = numero + 1;
+
+        const { messages: podados } = podarParaElPaso(mensajesParaSeguir, undefined, undefined);
+
+        return correrTramo([...podados, { role: 'user', content: textoDeContinuacion(planIncomplete!) }]);
+      }
+
       /**
        * La respuesta: con latido, leída por el servidor hasta el final, guardada
        * al terminar y con el candado soltado recién después. Ver `ronda-viva.ts`.
@@ -2321,6 +2488,7 @@ const agentCoreRouter = new Hono()
        */
       const respuesta = responderRonda({
         resultado: result,
+        siguienteTramo,
         mensajesOriginales: messages as UIMessage[],
         // Sin conversación (el primer mensaje de un chat nuevo) no hay dónde
         // guardar: la crea y la guarda el cliente, como siempre.
@@ -2415,6 +2583,23 @@ const agentCoreRouter = new Hono()
             roundChanges: lineasDelRegistro(registroDeRonda),
             // La ronda cerró por el «Detener» de la docente, no por su cuenta.
             ...(detenidaPorLaDocente ? { stoppedByTeacher: true } : {}),
+            // Cuántos tramos encadenó el servidor y por qué dejó de seguir. Sólo
+            // en una construcción: es lo que reemplaza a la continuación del
+            // navegador, y lo que mira el arnés de escenarios.
+            ...(role === AgentRole.TEACHER && teacherPromptMode === 'build'
+              ? (() => {
+                  const decision = decidirElTramo();
+
+                  return {
+                    serverRun: {
+                      segments: tramoActual,
+                      steps: completedStepCount,
+                      ...(decision.seguir ? {} : { stopReason: decision.motivo })
+                    }
+                  };
+                })()
+              : {}),
+            ...(sinCupo ? { outOfCredit: true } : {}),
             planProgress: checklistProgress
               ? {
                   total: checklistProgress.total,

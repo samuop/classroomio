@@ -184,7 +184,21 @@ function rondaQueEspera() {
 
 const vivaEn = (conversationId: string) => ({ conversationId, startedAt: '2026-09-29T18:00:00.000Z' });
 
-let cuerpos: Array<{ trigger: string; messages: Array<Record<string, unknown>>; context?: Record<string, unknown> }>;
+let cuerpos: Array<{
+  trigger: string;
+  message?: Record<string, unknown>;
+  messageId?: string;
+  messages?: Array<Record<string, unknown>>;
+  context?: Record<string, unknown>;
+}>;
+
+/**
+ * La conversación que llevaba un pedido. Desde 2026-11 viaja sólo el mensaje
+ * nuevo (el servidor tiene el resto), y en estos tests la conversación es ese
+ * único mensaje.
+ */
+const historiaDelPedido = (cuerpo: (typeof cuerpos)[number]) =>
+  cuerpo.messages ?? (cuerpo.message ? [cuerpo.message] : []);
 
 function responder(...respuestas: Array<() => Response | Promise<Response>>) {
   for (const respuesta of respuestas) {
@@ -230,16 +244,20 @@ beforeEach(() => {
 });
 
 describe('una ronda que termina bien', () => {
-  it('se guarda como siempre, y la fuente más nueva NO viaja pegada como documento', async () => {
+  it('viaja sólo el mensaje nuevo, el panel no la guarda (la guardó el servidor), y la fuente más nueva NO viaja pegada', async () => {
     responder(() => respuestaSse(sse(rondaCompleta('Listo, armé la sección.'))));
 
     render(AiCourseChat);
     await escribirYMandar('Armá la sección de cierre');
 
     await screen.findByText('Listo, armé la sección.');
-    await waitFor(() => expect(falso.aiAssistantApi.saveMessages).toHaveBeenCalledTimes(1));
 
-    expect(falso.aiAssistantApi.saveMessages.mock.calls[0][0]).toBe('conv-1');
+    // El servidor es el dueño de la conversación: el pedido lleva el mensaje
+    // nuevo y nada más, y al terminar el panel no sube su copia.
+    expect(cuerpos[0].messages).toBeUndefined();
+    expect(cuerpos[0].message).toMatchObject({ role: 'user', parts: [{ type: 'text', text: 'Armá la sección de cierre' }] });
+    await waitFor(() => expect(falso.aiAssistantApi.generateTitle).toHaveBeenCalled());
+    expect(falso.aiAssistantApi.saveMessages).not.toHaveBeenCalled();
     // Hay una fuente en el curso, y aun así no se adjunta sola.
     expect(cuerpos[0].context?.documentId).toBeUndefined();
     // El pedido lleva su propio reloj hasta las cabeceras, sin reintento.
@@ -257,7 +275,7 @@ describe('un corte del stream', () => {
         falso.aiAssistantApi.currentConversation = {
           id,
           messages: [
-            ...cuerpos[0].messages,
+            ...historiaDelPedido(cuerpos[0]),
             { id: 'resp-1', role: 'assistant', parts: [{ type: 'text', text: 'Lección escrita en el servidor.' }] }
           ]
         };
@@ -299,7 +317,7 @@ describe('un reinicio del servidor a mitad de ronda', () => {
       falso.aiAssistantApi.leerRondaViva.mockResolvedValueOnce(vivaEn('conv-1')).mockResolvedValue(null);
       // Lo único que llegó a la base: el pedido, guardado apenas se aceptó.
       falso.aiAssistantApi.loadConversation.mockImplementation(async (id: string) => {
-        falso.aiAssistantApi.currentConversation = { id, messages: [...cuerpos[0].messages] };
+        falso.aiAssistantApi.currentConversation = { id, messages: [...historiaDelPedido(cuerpos[0])] };
       });
 
       render(AiCourseChat);
@@ -388,7 +406,7 @@ describe('un 409: la conversación ya tiene una ronda viva', () => {
 describe('una ronda que falla: la banda de error se queda', () => {
   // El servidor guarda el pedido apenas lo acepta, antes de trabajar: es lo que
   // encuentra la recarga de una ronda que después falló.
-  const pedidoGuardado = () => [...cuerpos[0].messages];
+  const pedidoGuardado = () => [...historiaDelPedido(cuerpos[0])];
 
   it(
     'un error del proveedor a mitad de ronda: lo hecho se ve, y el error sigue con su «Reintentar»',
@@ -496,13 +514,9 @@ describe('«Detener»', () => {
       expect(await screen.findByText(texto('ai_assistant.stopped_by_teacher'))).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByText(texto('ai_assistant.stopping_notice'))).toBeNull());
 
-      // Un final normal: se guarda la conversación entera, una vez.
-      await waitFor(() => expect(falso.aiAssistantApi.saveMessages).toHaveBeenCalledTimes(1));
-      const guardada = falso.aiAssistantApi.saveMessages.mock.calls[0][1] as Array<{
-        role: string;
-        parts: Array<{ type: string; state?: string }>;
-      }>;
-      expect(guardada.at(-1)?.parts.find((parte) => parte.type === 'tool-write_lesson')?.state).toBe('output-available');
+      // Un final normal: la conversación la guardó el servidor, y el panel no
+      // sube la suya encima.
+      expect(falso.aiAssistantApi.saveMessages).not.toHaveBeenCalled();
       // Y no arrancó otra ronda sola.
       expect(falso.request).toHaveBeenCalledTimes(1);
     },
@@ -556,15 +570,17 @@ describe('«Reintentar» después de una aprobación que venció', () => {
     await screen.findByText('Construyendo la sección 1.');
 
     expect(cuerpos).toHaveLength(2);
-    expect(cuerpos[0].messages.at(-1)).toMatchObject({
+    expect(historiaDelPedido(cuerpos[0]).at(-1)).toMatchObject({
       role: 'user',
       parts: [{ type: 'text', text: TEXTO_DE_APROBACION }],
       metadata: { plan: { action: 'implement_course_plan' } }
     });
     expect(cuerpos[1].trigger).toBe('regenerate-message');
-    expect(cuerpos[1].messages).toHaveLength(1);
-    expect(cuerpos[1].messages[0].id).toBe(cuerpos[0].messages.at(-1)?.id);
-    expect(cuerpos[1].messages[0]).toMatchObject({ metadata: { plan: { action: 'implement_course_plan' } } });
+    // Viaja el mismo mensaje, y solo: el servidor lo reconoce por su id y no
+    // apila una copia (`historiaDeLaRonda`).
+    expect(cuerpos[1].messages).toBeUndefined();
+    expect(cuerpos[1].message?.id).toBe(historiaDelPedido(cuerpos[0]).at(-1)?.id);
+    expect(cuerpos[1].message).toMatchObject({ metadata: { plan: { action: 'implement_course_plan' } } });
   });
 });
 

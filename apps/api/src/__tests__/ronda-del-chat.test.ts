@@ -79,9 +79,16 @@ vi.mock('@cio/db/queries/group', async (original) => ({
   isCourseTeamMemberOrOrgAdmin: vi.fn(async () => true)
 }));
 
+/**
+ * Lo que el servidor tiene guardado de cada conversación. Desde 2026-11 el
+ * servidor arma la historia con esto y el panel manda sólo el mensaje nuevo:
+ * `chat()` reparte lo que cada test quiere como historia entre los dos lados.
+ */
+const guardadas = vi.hoisted(() => new Map<string, unknown[]>());
+
 vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
-  getChatConversation: vi.fn(async (id: string) => ({ id, courseId: CURSO })),
+  getChatConversation: vi.fn(async (id: string) => ({ id, courseId: CURSO, messages: guardadas.get(id) ?? [] })),
   readPlanRegistry: vi.fn(async () => []),
   syncPlanRegistry: vi.fn(async () => []),
   leerAnalisisDeFuente: vi.fn(async () => []),
@@ -285,11 +292,25 @@ function conversacionNueva(): string {
   return `c0a8012e-0000-4000-8000-${String(contador).padStart(12, '0')}`;
 }
 
+/**
+ * El pedido como lo manda el panel: con conversación, la historia queda del
+ * lado del servidor (`guardadas`) y viaja sólo el último mensaje.
+ */
 function chat(cuerpo: Record<string, unknown>) {
+  const { messages = PEDIDO, ...resto } = cuerpo as { messages?: unknown[] } & Record<string, unknown>;
+  const conversationId = typeof resto.conversationId === 'string' ? resto.conversationId : undefined;
+
+  if (conversationId) guardadas.set(conversationId, messages.slice(0, -1));
+
   return app().request('/agent/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'cio-org-id': EMPRESA },
-    body: JSON.stringify({ courseId: CURSO, messages: PEDIDO, context: { locale: 'es' }, ...cuerpo })
+    body: JSON.stringify({
+      courseId: CURSO,
+      ...(conversationId ? { message: messages.at(-1) } : { messages }),
+      context: { locale: 'es' },
+      ...resto
+    })
   });
 }
 

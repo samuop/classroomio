@@ -98,12 +98,7 @@
     AI_ASSISTANT_QUICK_ACTION_ENTRIES,
     STUDENT_QUICK_ACTION_ENTRIES
   } from '$features/ai-assistant/utils/constants';
-  import {
-    decidirContinuacion,
-    frenoArmado,
-    frenoInicial,
-    type FrenoDeContinuacion
-  } from '$features/ai-assistant/utils/auto-continue';
+  import { cuerpoDelPedido } from '$features/ai-assistant/utils/pedido-del-chat';
 
   /** Every ~30% / 60% / 90% of tool steps completed, refetch course so UI reflects partial mutations */
   const AGENT_STEP_PROGRESS_REFRESH_RATIOS = [0.3, 0.6, 0.9] as const;
@@ -111,13 +106,6 @@
   /** Completed-step thresholds already refreshed for this streaming session */
   let agentMutationProgressThresholdsTriggered = new SvelteSet<number>();
   let lastSeenStreamingFlag = false;
-
-  /**
-   * Automatic build continuation. Starts OFF: only approving a plan or pressing
-   * "Continue" turns it on — see `utils/auto-continue.ts` for why opening the
-   * panel must not.
-   */
-  let freno = $state<FrenoDeContinuacion>(frenoInicial());
 
   // Read course id from the route. The chat panel is only mounted inside the
   // course content layout, so `page.params.id` is always the active course.
@@ -526,7 +514,9 @@
 
   async function persistFinishedChat(messages: AiAssistantMessage[], conversationId: string | null) {
     if (conversationId) {
-      await aiAssistantApi.saveMessages(conversationId, messages);
+      // La conversación ya la guardó el servidor al terminar la ronda: es el
+      // dueño. Guardar acá la copia del panel subía la conversación entera
+      // otra vez (medido: 1,4 MB) y podía pisar lo que el servidor guardó.
 
       // Generate a smart title after the first exchange (when title is still default)
       const activeConv = aiAssistantApi.conversations.find((c) => c.id === conversationId);
@@ -582,6 +572,11 @@
           // editor show lessons as "empty". Fall back to the user's profile locale.
           locale: page.params?.lessonId ? lessonApi.currentLocale : $profile.locale
         }
+      }),
+      // Sólo el mensaje nuevo: la conversación la tiene el servidor. Ver
+      // `pedido-del-chat.ts`.
+      prepareSendMessagesRequest: ({ id, messages, body, trigger, messageId }) => ({
+        body: cuerpoDelPedido({ body, id, messages, trigger, messageId })
       }),
       fetch: async (input, init) => {
         respuestaIniciada = false;
@@ -659,11 +654,6 @@
         limpiarErrorSiTrae: laRecargaResuelveElError(fin, chat.error),
         guardarLaParcial: fin === 'cortada' || fin === 'fallida'
       });
-    },
-    onError: () => {
-      // A failed round must not be retried automatically — that is how a single
-      // bad tool input turns into a loop that burns tokens. Hand control back.
-      freno = { ...freno, habilitada: false };
     }
   });
 
@@ -868,15 +858,7 @@
   async function handleRetry() {
     if (!puedeReintentar) return;
 
-    const turno = ultimoTurnoDelDocente(chat.messages as AiAssistantMessage[]);
-
-    if (!turno) return;
-
-    // El error apagó la continuación automática. Reintentar una aprobación es
-    // volver a aprobar, y reintentar «Continuar» es volver a elegir construir:
-    // los dos la encienden, como el gesto original.
-    if (turno.control === 'aprobacion') resetAutoContinue();
-    else if (turno.control === 'continuacion') freno = { ...freno, habilitada: true };
+    if (!ultimoTurnoDelDocente(chat.messages as AiAssistantMessage[])) return;
 
     avisoDeCorte = false;
 
@@ -1174,10 +1156,6 @@
    * avisa que la ronda va a terminar igual, y espera a que el servidor la guarde.
    */
   async function handleStop() {
-    // Stopping is also the teacher's opt-out of the automatic build: without this
-    // the effect below would immediately start the next round.
-    freno = { ...freno, habilitada: false };
-
     if (deteniendo) return;
 
     const conversationId = activeConversationId;
@@ -1239,15 +1217,14 @@
     const conversationId = await ensureActiveConversation(courseId);
     if (!conversationId) return;
 
-    // A freshly approved plan is a new build: clear any brake left over from the
-    // previous one so it can run to completion on its own.
-    resetAutoContinue();
     inputValue = '';
     avisoDeCorte = false;
 
     // Una aprobación anterior que falló (es el último mensaje: no tuvo respuesta)
     // se reemplaza por ésta, que puede traer ediciones. Apilarlas dejaba en la
-    // conversación una aprobación sin responder por cada intento.
+    // conversación una aprobación sin responder por cada intento. El servidor,
+    // que es el dueño de la conversación, hace lo mismo con la suya
+    // (`historiaDeLaRonda`); esto es para que la pantalla diga lo mismo.
     const ultimo = chat.messages.at(-1) as AiAssistantMessage | undefined;
 
     if (ultimo && mensajeDeControl(ultimo) === 'aprobacion') {
@@ -1291,54 +1268,22 @@
     });
   }
 
+  /**
+   * «Continuar»: la docente elige seguir una construcción que el servidor dejó.
+   *
+   * Ya no hay continuación automática en el navegador. La ronda no tiene techo
+   * de 40 pasos, y si el modelo cierra con el plan a medias el SERVIDOR sigue
+   * solo, en la misma respuesta (`continuacion-del-servidor.ts`). Cuando el
+   * servidor para —un tramo que no avanzó, una pregunta a la docente, el
+   * cupo—, lo que sigue es decisión de ella, y por eso queda sólo el botón.
+   */
   function handleResume() {
     if (!puedeMandarAhora()) return;
 
-    // Pressing "Continue" is the teacher choosing to build: it turns the
-    // automatic continuation on for the rounds that follow.
-    freno = { ...freno, habilitada: true };
     // Como texto armado y no por el compositor: lo que la docente tenía a medio
     // escribir (y sus imágenes) no se pisa ni viaja con la continuación.
     void handleSend(TEXTO_DE_CONTINUACION);
   }
-
-  /**
-   * Automatic continuation of an approved build.
-   *
-   * A course of any size needs more tool calls than MAX_STEPS_PER_ROUND allows, so
-   * the round ends with `continuation` set and the teacher used to have to press
-   * "Continue" — repeatedly, for a single approved plan they had already accepted.
-   * This drives the next round itself.
-   *
-   * Three brakes, because a loop that spends tokens must not be able to run away:
-   *  - a hard cap on rounds;
-   *  - a stagnation check — if a whole round completes no new plan item, stop and
-   *    leave the button to the teacher;
-   *  - Stop (and any error) disables it until the teacher acts again.
-   *
-   * It only ever fires on server-measured progress (`planProgress`), never on the
-   * model's claim that it has more to do.
-   */
-  function resetAutoContinue() {
-    freno = frenoArmado();
-  }
-
-  $effect(() => {
-    if (isStreaming || esperandoRonda) return;
-
-    const messages = chat.messages as AiAssistantMessage[];
-    const decision = decidirContinuacion(freno, messages[messages.length - 1]);
-
-    if (decision.tipo === 'esperar') return;
-
-    if (decision.tipo === 'frenar') {
-      freno = { ...freno, habilitada: false };
-      return;
-    }
-
-    freno = decision.freno;
-    void handleSend(TEXTO_DE_CONTINUACION);
-  });
 
   /**
    * Where a click on one of the agent's links goes.
@@ -1440,7 +1385,10 @@
           metadata: { compaction: { compactedAt: new Date().toISOString(), originalMessageCount: chat.messages.length } }
         } as AiAssistantMessage;
         chat.messages = [seed];
-        await persistFinishedChat(chat.messages as AiAssistantMessage[], created.id);
+        // La semilla sí se guarda desde acá: no salió de ninguna ronda, y el
+        // servidor arma la historia de la conversación nueva con lo guardado.
+        await aiAssistantApi.saveMessages(created.id, [seed]);
+        await persistFinishedChat([seed], created.id);
       } else {
         chat.messages = [];
       }
