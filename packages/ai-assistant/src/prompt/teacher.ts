@@ -693,7 +693,9 @@ ${options.template.coreInstructions}${depthTierBlock}
       ? `## The teacher's rules for this course
 
 The teacher stated these rules in the conversation you cannot see. They bind every lesson, exercise and question you write or ask a writer to write, and they win over anything else, including what a source says:
-${reglas.map((regla) => `- ${regla}`).join('\n')}`
+${reglas.map((regla) => `- ${regla}`).join('\n')}
+
+A rule about what the course must not say is not content: never put the rule itself into a lesson, a brief or a question ("you must not give discounts" is a company policy nobody stated). Leave the subject out.`
       : '';
 
   const approvedPlanSection =

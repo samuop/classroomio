@@ -58,6 +58,10 @@ describe('teacherRules en el plan', () => {
 
     expect(bloque).toContain("## The teacher's rules for this course");
     expect(bloque).toContain('- No inventes devoluciones.');
+    // Medido en desarrollo (2026-11-06): con la regla «no inventes descuentos»
+    // una lección escribió «no debés aplicar descuentos», que es una política
+    // que nadie dijo. La regla no es contenido.
+    expect(bloque).toContain('is NOT content');
     expect(indicacionesDeLasReglas([])).toBeUndefined();
     expect(juntarIndicaciones(undefined, bloque, '  ')).toBe(bloque);
     expect(juntarIndicaciones(undefined)).toBeUndefined();

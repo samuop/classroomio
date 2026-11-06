@@ -125,6 +125,7 @@ export function indicacionesDeLasReglas(reglas: readonly string[]): string | und
     "## The teacher's rules for this course (from the approved plan)",
     '',
     'The teacher stated these rules in the conversation. They bind every lesson, exercise and question of this course, and they win over the sources, the plan and any brief. If following the source would break one, follow the rule and leave that part out.',
+    'A rule about what the course must not say is NOT content: never turn it into a sentence of the lesson. If the sources say nothing about discounts, the lesson says nothing about discounts — not "you must not give discounts", which is a company policy nobody stated.',
     '',
     ...reglas.map((regla) => `- ${regla}`)
   ].join('\n');

@@ -3621,6 +3621,7 @@ export function buildAgentTools(
           // Sólo las nuevas: el servicio no toca las preguntas que no recibe. Reenviar
           // las viejas era reescribirlas, y así se perdía la respuesta de las numéricas.
           await updateExerciseService(exerciseId, { questions: newQuestions });
+          anotarCambio(registro, 'pregunto', existingExercise.title ?? exerciseId);
           return {
             exerciseId,
             exerciseTitle: existingExercise.title,
@@ -4117,6 +4118,11 @@ export function buildAgentTools(
           );
 
           await updateExerciseService(exerciseId, { questions: merged });
+
+          // Anotado como las demás escrituras. Faltaba: una ronda que corrigió
+          // preguntas existentes cerraba con el registro vacío, y la docente no
+          // veía «Cambió las preguntas de…» justo cuando más importaba.
+          anotarCambio(registro, 'pregunto', existing.title ?? exerciseId);
 
           return {
             exerciseId,

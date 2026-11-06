@@ -51,6 +51,7 @@ import { computeExerciseDiff } from '@api/services/exercise/utils';
 import { getExercise, updateExerciseService } from '@api/services/exercise/exercise';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
+import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 
 const NUMERICA = 6;
 const OPCION_UNICA = 1;
@@ -201,5 +202,39 @@ describe('add_questions: agrega sin reescribir lo que ya estaba', () => {
       settings: { correctValue: 5000, evidence: 'se hace cada vez que se acumulan 5.000 pesos' }
     });
     expect(enviadas.some((pregunta) => pregunta.id !== undefined)).toBe(false);
+  });
+
+  /**
+   * Medido en desarrollo (2026-11-06, escenario E3): una ronda corrigió una
+   * pregunta y el registro que ve la docente salió vacío. Las herramientas de
+   * preguntas no anotaban nada.
+   */
+  it('queda en el registro de la ronda', async () => {
+    const registro = registroVacio();
+    const tools = buildAgentTools('org', 'usuario', 'curso', [], {
+      conversationId: 'conversacion',
+      isBuilding: true,
+      locale: 'es',
+      registro
+    }) as Record<string, { execute: (args: unknown, opciones: unknown) => Promise<Record<string, unknown>> }>;
+
+    await tools.add_questions.execute(
+      {
+        exerciseId: ID_EXAMEN,
+        questions: [
+          {
+            question: '¿Cada cuánto se hace un retiro?',
+            questionTypeId: NUMERICA,
+            points: 1,
+            options: [],
+            evidence: 'se hace cada vez que se acumulan 5.000 pesos',
+            settings: { correctValue: 5000 }
+          }
+        ]
+      },
+      OPCIONES
+    );
+
+    expect(lineasDelRegistro(registro)).toEqual(['Cambió las preguntas de «Examen final»']);
   });
 });
