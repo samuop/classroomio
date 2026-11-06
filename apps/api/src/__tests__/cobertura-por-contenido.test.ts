@@ -138,6 +138,7 @@ describe('generate_course_plan mide con el texto de las fuentes', () => {
       {
         plan: {
           title: 'Planillas para el mostrador',
+          teacherRules: [],
           sections: [
             {
               title: 'Resúmenes',

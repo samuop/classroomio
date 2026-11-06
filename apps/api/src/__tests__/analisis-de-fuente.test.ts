@@ -297,6 +297,7 @@ describe('proponer un plan de cambios', () => {
   const planDeCambios = (target: string, sectionId = 'S1') => ({
     plan: {
       title: 'Actualización de la circular',
+      teacherRules: [],
       scope: 'changes',
       sections: [
         {
@@ -419,6 +420,7 @@ describe('un plan de cambios que deja piezas afuera', () => {
   const plan = (items: Array<Record<string, unknown>>) => ({
     plan: {
       title: 'Actualización de la circular',
+      teacherRules: [],
       scope: 'changes',
       sections: [{ title: 'Mesa de Ayuda', order: 0, sectionId: 'S1', items }]
     }
