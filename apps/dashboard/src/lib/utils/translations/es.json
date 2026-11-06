@@ -522,6 +522,7 @@
       "teacher_rules_hint": "Lo que pediste que el curso diga o no diga. Quien escribe las lecciones no ve esta conversación, sólo esto: agregá acá cualquier regla que falte.",
       "teacher_rule": "Regla {order}",
       "remove_teacher_rule": "Quitar la regla {order}",
+      "empty_title": "Hay un título o una descripción vacíos: completalos para aprobar el plan.",
       "add_teacher_rule": "Agregar una regla",
       "no_teacher_rules": "No anotó ninguna regla tuya.",
       "no_source_title": "Hay lecciones sin material",

@@ -63,6 +63,20 @@
   });
 
   const plan = $derived(editable ? borrador : (mostrado?.plan ?? null));
+  /**
+   * Un título o una descripción vaciados al editar. Con uno así el plan no
+   * valida: el servidor rechaza esa aprobación (antes la salteaba en silencio y
+   * construía con el plan aprobado anterior). Mejor no dejar aprobar y decir por qué.
+   */
+  const tituloVacio = $derived(
+    !!borrador &&
+      (!borrador.title?.trim() ||
+        borrador.sections.some(
+          (seccion) =>
+            !seccion.title?.trim() ||
+            seccion.items.some((item) => !item.title?.trim() || !item.description?.trim())
+        ))
+  );
   const cuenta = $derived(plan ? contarPlan(plan) : null);
   const estados = $derived(aprobado && plan ? estadosSobreElPlan(plan, pantallaDelPlan.progreso) : new Map());
   /**
@@ -130,6 +144,10 @@
    * Es la última oportunidad de agregar la que el asistente no anotó: quien
    * construye el curso no ve la conversación, sólo el plan. Ver `teacherRules`.
    */
+  /** Lo que acepta el esquema del plan (`teacherRules` en `@cio/ai-assistant`). */
+  const LARGO_MAXIMO_DE_UNA_REGLA = 400;
+  const MAXIMO_DE_REGLAS = 30;
+
   function agregarRegla() {
     if (!borrador) return;
 
@@ -156,7 +174,7 @@
   }
 
   function aprobar() {
-    if (!borrador || !mostrado || ocupado || !pantallaDelPlan.acciones) return;
+    if (!borrador || !mostrado || ocupado || tituloVacio || !pantallaDelPlan.acciones) return;
 
     const pendientes = leccionesSinFuente(mostrado.plan, borrador);
 
@@ -398,6 +416,7 @@
                 <textarea
                   rows="1"
                   value={regla}
+                  maxlength={LARGO_MAXIMO_DE_UNA_REGLA}
                   oninput={(event) => cambiarRegla(r, event.currentTarget.value)}
                   use:autoAltura={regla}
                   onkeydown={sinSaltos}
@@ -416,11 +435,13 @@
             {:else}
               <p class="ui:text-muted-foreground text-sm italic">{$t('ai_assistant.plan_screen.no_teacher_rules')}</p>
             {/each}
-            <div>
-              <Button variant="outline" size="sm" onclick={() => agregarRegla()}>
-                {$t('ai_assistant.plan_screen.add_teacher_rule')}
-              </Button>
-            </div>
+            {#if (borrador.teacherRules?.length ?? 0) < MAXIMO_DE_REGLAS}
+              <div>
+                <Button variant="outline" size="sm" onclick={() => agregarRegla()}>
+                  {$t('ai_assistant.plan_screen.add_teacher_rule')}
+                </Button>
+              </div>
+            {/if}
           </section>
         {:else if plan.teacherRules && plan.teacherRules.length > 0}
           <section class="mt-6 flex flex-col gap-2 rounded-xl border px-4 py-3" aria-labelledby="plan-screen-rules">
@@ -622,6 +643,8 @@
                   </span>
                 {:else if cambiosEnviadosPara && cambiosEnviadosPara === pantallaDelPlan.vigenteId}
                   {$t('ai_assistant.plan_screen.changes_sent')}
+                {:else if tituloVacio}
+                  <span class="text-amber-700 dark:text-amber-400">{$t('ai_assistant.plan_screen.empty_title')}</span>
                 {:else if porcentajeDelCupo !== null}
                   {$t('ai_assistant.plan_estimated_cost_pct', { pct: porcentajeDelCupo })}
                 {/if}
@@ -630,7 +653,7 @@
                 <Button variant="outline" size="sm" disabled={ocupado} onclick={() => (pidiendoCambios = true)}>
                   {$t('ai_assistant.plan_screen.request_changes')}
                 </Button>
-                <Button size="sm" disabled={ocupado || !pantallaDelPlan.acciones} onclick={() => aprobar()}>
+                <Button size="sm" disabled={ocupado || tituloVacio || !pantallaDelPlan.acciones} onclick={() => aprobar()}>
                   {$t('ai_assistant.plan_screen.approve')}
                 </Button>
               </div>

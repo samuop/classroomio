@@ -5455,6 +5455,7 @@
       "teacher_rules_hint": "What you asked the course to say or not say. Whoever writes the lessons does not see this conversation, only this: add any rule that is missing.",
       "teacher_rule": "Rule {order}",
       "remove_teacher_rule": "Remove rule {order}",
+      "empty_title": "A title or a description is empty: fill it in to approve the plan.",
       "add_teacher_rule": "Add a rule",
       "no_teacher_rules": "No rule of yours was noted.",
       "no_source_title": "Some lessons have no material",

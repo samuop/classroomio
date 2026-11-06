@@ -92,6 +92,35 @@ describe('las reglas de la docente en el plan', () => {
     expect(abierto.aprobar.mock.calls[0][0].teacherRules).toEqual(['Sólo lo que dicen las fuentes.']);
   });
 
+  it('una regla no pasa de 400 caracteres, y no se agregan más de 30', () => {
+    const treinta = Array.from({ length: 30 }, (_, i) => `Regla número ${i + 1}.`);
+    desconectar = abrir(plan(treinta)).desconectar;
+
+    expect(
+      screen.getByRole('textbox', { name: texto('ai_assistant.plan_screen.teacher_rule', { order: 1 }) })
+    ).toHaveAttribute('maxlength', '400');
+    expect(screen.queryByRole('button', { name: texto('ai_assistant.plan_screen.add_teacher_rule') })).toBeNull();
+  });
+
+  it.each([
+    ['un título', 'Recibir al cliente'],
+    ['una descripción', 'Saludo.']
+  ])('con %s vaciado no se puede aprobar, y la pantalla dice por qué', async (_caso, valor) => {
+    const abierto = abrir(plan());
+    desconectar = abierto.desconectar;
+    const aprobar = screen.getByRole('button', { name: texto('ai_assistant.plan_screen.approve') });
+
+    expect(aprobar).not.toBeDisabled();
+
+    await fireEvent.input(screen.getByDisplayValue(valor), { target: { value: '   ' } });
+
+    expect(aprobar).toBeDisabled();
+    expect(screen.getByText(texto('ai_assistant.plan_screen.empty_title'))).toBeInTheDocument();
+
+    await fireEvent.click(aprobar);
+    expect(abierto.aprobar).not.toHaveBeenCalled();
+  });
+
   it('un plan sin reglas lo dice, y deja agregar la primera', () => {
     desconectar = abrir(plan()).desconectar;
 
