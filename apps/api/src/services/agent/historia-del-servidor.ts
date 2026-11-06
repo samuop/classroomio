@@ -95,6 +95,51 @@ export function historiaDeLaRonda<M extends MensajeDeLaConversacion>(params: {
   return [...guardada, mensaje];
 }
 
+/** Las partes que escribe una persona en el panel: su texto y sus imágenes adjuntas. */
+const PARTES_DE_LA_DOCENTE: ReadonlySet<string> = new Set(['text', 'file']);
+
+export type MotivoDeRechazo = 'no_es_de_la_docente' | 'partes_invalidas' | 'pisa_una_respuesta';
+
+/**
+ * Por qué el servidor no acepta este mensaje nuevo, o `null` si lo acepta.
+ *
+ * Con la historia en manos del servidor, lo único que pone el navegador es el
+ * mensaje de la persona. Un mensaje con rol de asistente, o con partes de
+ * herramienta, sería una respuesta inventada que el modelo leería como propia
+ * —«ya guardé la lección», «el plan está aprobado»— y que quedaría guardada. Y
+ * un mensaje con el id de una respuesta guardada la reemplazaría: la regla del
+ * mismo id es para reenviar el pedido de la docente, no para pisar lo que
+ * contestó el asistente.
+ */
+export function motivoParaRechazarElMensaje(
+  mensaje: MensajeDeLaConversacion | undefined,
+  guardada: readonly MensajeDeLaConversacion[] = []
+): MotivoDeRechazo | null {
+  if (!mensaje) return null;
+
+  if (mensaje.role !== 'user') return 'no_es_de_la_docente';
+
+  const partes = mensaje.parts;
+
+  if (
+    !Array.isArray(partes) ||
+    partes.some((parte) => {
+      const tipo = (parte as { type?: unknown } | null)?.type;
+
+      return typeof tipo !== 'string' || !PARTES_DE_LA_DOCENTE.has(tipo);
+    })
+  ) {
+    return 'partes_invalidas';
+  }
+
+  const id = idDe(mensaje);
+  const pisada = id ? guardada.find((existente) => idDe(existente) === id) : undefined;
+
+  if (pisada && pisada.role !== 'user') return 'pisa_una_respuesta';
+
+  return null;
+}
+
 /** Lo guardado en la fila, como lista de mensajes; cualquier otra cosa es vacío. */
 export function mensajesGuardados<M extends MensajeDeLaConversacion>(valor: unknown): M[] {
   return Array.isArray(valor) ? (valor.filter((m) => typeof m === 'object' && m !== null) as M[]) : [];

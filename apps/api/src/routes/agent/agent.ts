@@ -136,6 +136,7 @@ import {
   collectDocumentIds,
   esRondaDeAprobacionDelPlan,
   getActiveCourseTemplateId,
+  aprobacionDelMensaje,
   getLatestImplementationPlan,
   loadDocumentsContext,
   resolveTeacherPromptMode,
@@ -144,7 +145,11 @@ import {
 } from '@api/services/agent/chat-context';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
-import { historiaDeLaRonda, mensajesGuardados } from '@api/services/agent/historia-del-servidor';
+import {
+  historiaDeLaRonda,
+  mensajesGuardados,
+  motivoParaRechazarElMensaje
+} from '@api/services/agent/historia-del-servidor';
 import {
   avisoDePreguntasARevisar,
   HERRAMIENTAS_QUE_CAMBIAN_LECCIONES,
@@ -438,13 +443,13 @@ const agentCoreRouter = new Hono()
     async (c) => {
       try {
         const user = c.get('user')!;
-        const { courseId, locale } = c.req.valid('query');
+        const { courseId } = c.req.valid('query');
 
         if (!(await isCourseTeamMemberOrOrgAdmin(courseId, user.id))) {
           throw new AppError('Only the course team can see this', 'FORBIDDEN', 403);
         }
 
-        const questions = await preguntasARevisarDelCurso(courseId, locale ?? 'en');
+        const questions = await preguntasARevisarDelCurso(courseId);
 
         return c.json({ success: true as const, data: { questions } });
       } catch (error) {
@@ -709,6 +714,24 @@ const agentCoreRouter = new Hono()
       const mensajeNuevo = (pedido.message ?? pedido.messages?.at(-1)) as UIMessage | undefined;
       let messages: UIMessage[] = (pedido.messages as UIMessage[] | undefined) ?? (mensajeNuevo ? [mensajeNuevo] : []);
 
+      if (motivoParaRechazarElMensaje(mensajeNuevo)) {
+        throw new AppError('Only a message written by the user can be sent', 'INVALID_CHAT_MESSAGE', 400);
+      }
+
+      // Una aprobación con un plan que no valida (un título vaciado en la
+      // pantalla del plan, por ejemplo) se salteaba en silencio y la ronda
+      // construía con el plan aprobado antes. Se rechaza acá, antes de tocar nada.
+      const aprobacion = aprobacionDelMensaje(mensajeNuevo);
+
+      if (aprobacion && !aprobacion.valida) {
+        console.warn(`[agent.chat] aprobación con un plan inválido: ${aprobacion.problemas.join('; ')}`);
+        throw new AppError(
+          `The approved plan is not valid: ${aprobacion.problemas.join('; ')}`,
+          'INVALID_APPROVED_PLAN',
+          400
+        );
+      }
+
       const isTeamMember = await isCourseTeamMemberOrOrgAdmin(courseId, user.id);
       const role = isTeamMember ? AgentRole.TEACHER : AgentRole.STUDENT;
 
@@ -777,9 +800,14 @@ const agentCoreRouter = new Hono()
         // Releída con el candado en la mano: la ronda anterior guarda antes de
         // soltarlo, así que esto trae su respuesta entera.
         const guardada = await getChatConversation(conversationId, user.id);
+        const historiaGuardada = mensajesGuardados<UIMessage>(guardada?.messages);
+
+        if (motivoParaRechazarElMensaje(mensajeNuevo, historiaGuardada)) {
+          throw new AppError('A message cannot replace a reply of the assistant', 'INVALID_CHAT_MESSAGE', 400);
+        }
 
         messages = historiaDeLaRonda({
-          guardada: mensajesGuardados<UIMessage>(guardada?.messages),
+          guardada: historiaGuardada,
           mensaje: mensajeNuevo,
           disparo: pedido.trigger
         });
@@ -1170,7 +1198,7 @@ const agentCoreRouter = new Hono()
        */
       const preguntasAlEmpezar =
         role === AgentRole.TEACHER
-          ? await preguntasARevisarDelCurso(courseId, agentContext.locale).catch((error: unknown) => {
+          ? await preguntasARevisarDelCurso(courseId).catch((error: unknown) => {
               console.error('[agent.chat] no se pudieron medir las preguntas a revisar:', error);
               return [];
             })
@@ -2050,7 +2078,7 @@ const agentCoreRouter = new Hono()
       async function medirPreguntasTrasEditar(): Promise<void> {
         try {
           const yaEstaban = new Set(preguntasAlEmpezar.map((pregunta) => pregunta.questionId));
-          const ahora = await preguntasARevisarDelCurso(courseId, agentContext.locale);
+          const ahora = await preguntasARevisarDelCurso(courseId);
 
           preguntasQueQuedaronARevisar = ahora.filter((pregunta) => !yaEstaban.has(pregunta.questionId));
         } catch (error) {
@@ -2239,6 +2267,22 @@ const agentCoreRouter = new Hono()
         // al modelo en la nota del paso siguiente, en la misma ronda.
         if (!isStudentRound && step.toolCalls.some((call) => HERRAMIENTAS_QUE_CAMBIAN_LECCIONES.has(call.toolName))) {
           await medirPreguntasTrasEditar();
+        }
+
+        // El tramo cierra con el plan a medias: antes de que el servidor siga
+        // con otro, el cupo. Mirarlo sólo cada 10 pasos dejaba arrancar un
+        // tramo entero con la empresa ya sin crédito. Acá y no en
+        // `siguienteTramo`, para que la metadata del cierre lo diga.
+        if (
+          !isStudentRound &&
+          !sinCupo &&
+          step.finishReason === 'stop' &&
+          planIncomplete &&
+          teacherPromptMode === 'build' &&
+          (await cupoAgotado(orgId))
+        ) {
+          sinCupo = true;
+          console.warn(`[agent.chat] la empresa ${orgId} se quedó sin cupo al cerrar el tramo ${tramoActual}: no sigue otro`);
         }
       }
 

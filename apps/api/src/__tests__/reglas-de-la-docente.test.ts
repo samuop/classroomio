@@ -12,6 +12,7 @@ import { toJSONSchema } from 'zod';
 import { CoursePlanFieldsSchema, reglasDeLaDocente } from '@cio/ai-assistant';
 
 import { coursePlanParam } from '@api/services/agent/agent-tool-schemas';
+import { aprobacionDelMensaje, getLatestImplementationPlan } from '@api/services/agent/chat-context';
 import { indicacionesDeLasReglas, juntarIndicaciones } from '@api/services/agent/respuestas-del-formulario';
 
 const PLAN = {
@@ -65,5 +66,49 @@ describe('teacherRules en el plan', () => {
     expect(indicacionesDeLasReglas([])).toBeUndefined();
     expect(juntarIndicaciones(undefined, bloque, '  ')).toBe(bloque);
     expect(juntarIndicaciones(undefined)).toBeUndefined();
+  });
+});
+
+/**
+ * Las reglas las escribe la docente en la pantalla del plan. Una regla de 401
+ * caracteres hacía que el plan entero no validara, y el servidor salteaba esa
+ * aprobación en silencio: construía con el plan aprobado antes, o sin ninguno.
+ */
+describe('la aprobación con lo que escribió la docente', () => {
+  const aprobacionDe = (payload: unknown) => ({
+    id: 'u9',
+    role: 'user',
+    metadata: { plan: { action: 'implement_course_plan', payload } },
+    parts: [{ type: 'text', text: 'Construí el curso según el plan aprobado.' }]
+  });
+  const ANTERIOR = { ...PLAN, title: 'El plan aprobado antes' };
+
+  it('una regla larga se recorta, y el plan aprobado es ESTE y no el anterior', () => {
+    const larga = `No ${'inventes '.repeat(60)}`.trim();
+    const plan = getLatestImplementationPlan([
+      aprobacionDe(ANTERIOR),
+      aprobacionDe({ ...PLAN, teacherRules: [larga, '  ', 'Sin precios.'] })
+    ]);
+
+    expect(plan?.title).toBe('Venta en salón');
+    expect(plan?.teacherRules).toHaveLength(2);
+    expect(plan?.teacherRules?.[0].length).toBeLessThanOrEqual(400);
+    expect(plan?.teacherRules?.[1]).toBe('Sin precios.');
+  });
+
+  it('más de 30 reglas: quedan las primeras 30', () => {
+    const muchas = Array.from({ length: 35 }, (_, i) => `Regla ${i + 1}.`);
+
+    expect(getLatestImplementationPlan([aprobacionDe({ ...PLAN, teacherRules: muchas })])?.teacherRules).toHaveLength(30);
+  });
+
+  it('una aprobación que igual no valida se reconoce como inválida, con el campo que falla', () => {
+    const vaciado = { ...PLAN, sections: [{ ...PLAN.sections[0], items: [{ ...PLAN.sections[0].items[0], title: '' }] }] };
+    const resultado = aprobacionDelMensaje(aprobacionDe(vaciado));
+
+    expect(resultado).toMatchObject({ valida: false });
+    expect(resultado && !resultado.valida && resultado.problemas[0]).toContain('sections.0.items.0.title');
+    expect(aprobacionDelMensaje(aprobacionDe({ ...PLAN, teacherRules: [] }))).toEqual({ valida: true });
+    expect(aprobacionDelMensaje({ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Hola' }] })).toBeNull();
   });
 });

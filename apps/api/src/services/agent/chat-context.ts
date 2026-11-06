@@ -190,6 +190,54 @@ type PlanMetadataMessage = {
   };
 };
 
+/** Lo que el esquema del plan acepta de las reglas de la docente. */
+const LARGO_MAXIMO_DE_UNA_REGLA = 400;
+const MAXIMO_DE_REGLAS = 30;
+
+/**
+ * El plan aprobado con las reglas de la docente en la forma que el esquema
+ * acepta: sin vacías, recortadas a 400 caracteres y como mucho 30.
+ *
+ * Las reglas las escribe la docente en la pantalla del plan antes de aprobar.
+ * Una de 401 caracteres hacía que el plan entero no validara, y el servidor
+ * salteaba esa aprobación EN SILENCIO: construía con el plan aprobado antes, o
+ * sin ninguno. Recortar una regla larga es mejor que perder el plan.
+ */
+export function planConReglasLimpias(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+
+  const reglas = (payload as { teacherRules?: unknown }).teacherRules;
+
+  if (!Array.isArray(reglas)) return payload;
+
+  return {
+    ...payload,
+    teacherRules: reglas
+      .filter((regla): regla is string => typeof regla === 'string')
+      .map((regla) => regla.trim().slice(0, LARGO_MAXIMO_DE_UNA_REGLA).trim())
+      .filter((regla) => regla.length > 0)
+      .slice(0, MAXIMO_DE_REGLAS)
+  };
+}
+
+/** La aprobación del plan de este mensaje, si es una: válida, o con lo que el esquema rechazó. */
+export function aprobacionDelMensaje(
+  message: unknown
+): { valida: true } | { valida: false; problemas: string[] } | null {
+  const conPlan = message as PlanMetadataMessage | undefined;
+
+  if (conPlan?.role !== 'user' || conPlan.metadata?.plan?.action !== 'implement_course_plan') return null;
+
+  const parsed = CoursePlanFieldsSchema.safeParse(planConReglasLimpias(conPlan.metadata.plan.payload));
+
+  return parsed.success
+    ? { valida: true }
+    : {
+        valida: false,
+        problemas: parsed.error.issues.slice(0, 5).map((issue) => `${issue.path.join('.') || 'plan'}: ${issue.message}`)
+      };
+}
+
 export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof CoursePlanFieldsSchema> | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index] as PlanMetadataMessage;
@@ -202,7 +250,7 @@ export function getLatestImplementationPlan(messages: unknown[]): z.infer<typeof
       continue;
     }
 
-    const parsedPlan = CoursePlanFieldsSchema.safeParse(message.metadata.plan.payload);
+    const parsedPlan = CoursePlanFieldsSchema.safeParse(planConReglasLimpias(message.metadata.plan.payload));
 
     if (parsedPlan.success) {
       return parsedPlan.data;

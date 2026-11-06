@@ -79,6 +79,96 @@ describe('el relato contra el registro', () => {
     expect(hayAfirmacionesSinCambio(resultado)).toBe(false);
   });
 
+  it.each([
+    ['el subjuntivo, que sin tilde se escribe igual', 'Si querés, actualice las preguntas del cuestionario más tarde.'],
+    ['una oferta en pregunta', '¿Querés que actualice las preguntas del @[Examen final integrador](exercise:S6.E1)?'],
+    ['«cree», de creer', 'El modelo cree que las preguntas del examen siguen bien.'],
+    ['una negación antes del verbo', 'No actualicé las preguntas del cuestionario: no me lo pediste.'],
+    ['la negación con un pronombre en el medio', 'Todavía no las modifiqué, las preguntas siguen como antes.'],
+    ['la pasiva negada', 'Las preguntas del examen no fueron modificadas.'],
+    ['el impersonal negado', 'No se actualizaron las preguntas en esta ronda.'],
+    ['el impersonal en futuro', 'Cuando apruebes, se actualizarán las preguntas del examen.'],
+    ['el impersonal en subjuntivo', 'Avisame si querés que se actualicen los cuestionarios.'],
+    ['«pero» separa lo hecho de lo no hecho', 'Corregí la lección Controlar precios en góndola, pero no toqué el examen.'],
+    ['lo pendiente después del «pero»', 'Corregí el ejemplo del cálculo, pero las preguntas siguen pendientes.'],
+    ['una pregunta con participio', '¿Ya están actualizadas las preguntas del cuestionario, o preferís revisarlas?'],
+    ['una «y no» después','Corregí la lección Controlar precios en góndola y no toqué el examen.'],
+    ['las preguntas que quedaron igual', 'Agregué un ejemplo nuevo y las preguntas quedaron igual.'],
+    ['otra ronda', 'En la ronda anterior actualicé las preguntas del @[Examen final integrador](exercise:S6.E1).'],
+    ['inglés negado', "I haven't updated the questions of the quiz yet."],
+    ['inglés en futuro', 'The questions will be updated once you approve.'],
+    ['un título como frase común, en minúscula', 'Agregué un ejemplo para controlar precios en góndola cuando falta la etiqueta.'],
+    ['una pieza nombrada con negación', 'Corregí @[Controlar precios en góndola](lesson:S3.L1) y no toqué @[Recibir mercadería](lesson:S1.L2).'],
+    ['revisar no es cambiar', 'Revisé @[Recibir mercadería](lesson:S1.L2) y @[Controlar precios en góndola](lesson:S3.L1) quedó actualizada.'],
+    ['un «no» de la cláusula anterior no niega', 'Si no te gusta, cambié el ejemplo de @[Controlar precios en góndola](lesson:S3.L1).']
+  ])('no advierte: %s', (_caso, texto) => {
+    const resultado = afirmacionesSinCambio({
+      texto,
+      cambiadas: ['Controlar precios en góndola'],
+      cambioPreguntas: false,
+      titulosDelCurso: TITULOS
+    });
+
+    expect(resultado).toEqual({ piezas: [], preguntas: false });
+  });
+
+  it.each([
+    ['la frase medida, impersonal', 'Se actualizaron las preguntas del cuestionario.', { piezas: [], preguntas: true }],
+    ['con la pasiva', 'Las preguntas del examen quedaron actualizadas con el criterio nuevo.', { piezas: [], preguntas: true }],
+    ['con «han sido»', 'Las preguntas han sido corregidas.', { piezas: [], preguntas: true }],
+    ['«no sólo» no niega', 'No sólo corregí la lección: también actualicé las preguntas.', { piezas: [], preguntas: true }],
+    ['lo hecho, antes del «pero»', 'Actualicé las preguntas del cuestionario, pero no agregué ninguna.', { piezas: [], preguntas: true }],
+    ['lo afirmado después de lo negado', 'No cambié la lección y actualicé las preguntas del cuestionario.', { piezas: [], preguntas: true }],
+    ['inglés', 'I updated the questions of the quiz.', { piezas: [], preguntas: true }],
+    ['inglés con «have been»', 'The questions have been updated.', { piezas: [], preguntas: true }],
+    [
+      'la pieza de la pasiva, y no la revisada',
+      'Revisé @[Controlar precios en góndola](lesson:S3.L1) y @[Recibir mercadería](lesson:S1.L2) quedó actualizada.',
+      { piezas: ['Recibir mercadería'], preguntas: false }
+    ],
+    [
+      'una lista de enlaces, todas afirmadas',
+      'Actualicé @[Recibir mercadería](lesson:S1.L2), @[Cuestionario de precios y salón](exercise:S3.E1) y @[Examen final integrador](exercise:S6.E1).',
+      { piezas: ['Recibir mercadería', 'Cuestionario de precios y salón', 'Examen final integrador'], preguntas: false }
+    ],
+    [
+      'un título que empieza la frase, con su mayúscula',
+      'Recibir mercadería quedó actualizada con el horario nuevo.',
+      { piezas: ['Recibir mercadería'], preguntas: false }
+    ]
+  ])('advierte: %s', (_caso, texto, esperado) => {
+    const resultado = afirmacionesSinCambio({
+      texto,
+      cambiadas: ['Controlar precios en góndola'],
+      cambioPreguntas: false,
+      titulosDelCurso: TITULOS
+    });
+
+    expect(resultado).toEqual(esperado);
+  });
+
+  it('un título que contiene a otro cuenta una vez, el más largo', () => {
+    const resultado = afirmacionesSinCambio({
+      texto: 'Corregí la lección Recibir mercadería en depósito con el remito nuevo.',
+      cambiadas: [],
+      cambioPreguntas: false,
+      titulosDelCurso: [...TITULOS, 'Recibir mercadería en depósito']
+    });
+
+    expect(resultado.piezas).toEqual(['Recibir mercadería en depósito']);
+  });
+
+  it('un título con puntos dentro del enlace no parte la frase', () => {
+    const resultado = afirmacionesSinCambio({
+      texto: 'Actualicé @[Unidad 2. Precios y etiquetas](lesson:S2.L1) y quedó lista.',
+      cambiadas: [],
+      cambioPreguntas: false,
+      titulosDelCurso: ['Unidad 2. Precios y etiquetas']
+    });
+
+    expect(resultado.piezas).toEqual(['Unidad 2. Precios y etiquetas']);
+  });
+
   it('no confunde mayúsculas ni tildes al comparar con lo cambiado', () => {
     const resultado = afirmacionesSinCambio({
       texto: 'Actualicé @[controlar precios en gondola](lesson:S3.L1).',

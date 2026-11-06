@@ -25,9 +25,10 @@
  * Una pregunta sin evidencia (anterior a 2026-09, o escrita a mano) no se
  * puede juzgar y no se marca.
  */
-import type { TLocale } from '@cio/db/types';
-import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
+import { db } from '@cio/db';
+import * as schema from '@cio/db/schema';
 import { getExercisesByCourseId, getQuestionsByExerciseIds } from '@cio/db/queries/exercise/exercise';
+import { eq } from 'drizzle-orm';
 
 import { textoDeLeccion } from '@api/services/agent/grounding';
 import { esEvidenciaBuscable, verificarEvidencias } from '@api/services/agent/evidencia-de-preguntas';
@@ -107,21 +108,39 @@ export function preguntasSinFundamento(params: {
   });
 }
 
-/** Las preguntas a revisar de un curso, contra sus lecciones en ese idioma. */
-export async function preguntasARevisarDelCurso(courseId: string, locale: string): Promise<PreguntaARevisar[]> {
+/**
+ * El texto de cada lección del curso, en TODOS sus idiomas.
+ *
+ * Con un solo idioma —el de la pantalla de la docente— una lección traducida al
+ * inglés en un curso escrito en castellano dejaba como único texto ese inglés,
+ * y todas las preguntas con su frase en castellano quedaban a revisar. La frase
+ * de una pregunta está en el idioma en que se escribió; se busca en todos.
+ */
+async function textosDeLasLecciones(courseId: string): Promise<string[]> {
+  const filas = await db
+    .select({ content: schema.lessonLanguage.content })
+    .from(schema.lessonLanguage)
+    .innerJoin(schema.lesson, eq(schema.lessonLanguage.lessonId, schema.lesson.id))
+    .where(eq(schema.lesson.courseId, courseId));
+
+  return filas.map((fila) => textoDeLeccion(fila.content ?? ''));
+}
+
+/** Las preguntas a revisar de un curso, contra el texto de sus lecciones. */
+export async function preguntasARevisarDelCurso(courseId: string): Promise<PreguntaARevisar[]> {
   const ejercicios = await getExercisesByCourseId(courseId);
 
   if (ejercicios.length === 0) return [];
 
-  const [preguntas, lecciones] = await Promise.all([
+  const [preguntas, textos] = await Promise.all([
     getQuestionsByExerciseIds(ejercicios.map((ejercicio) => ejercicio.id)),
-    getCourseLessonContents(courseId, locale as TLocale)
+    textosDeLasLecciones(courseId)
   ]);
 
   return preguntasSinFundamento({
     ejercicios,
     preguntas: preguntas as PreguntaGuardada[],
-    textosDeLecciones: lecciones.map((leccion) => textoDeLeccion(leccion.content ?? ''))
+    textosDeLecciones: textos
   });
 }
 

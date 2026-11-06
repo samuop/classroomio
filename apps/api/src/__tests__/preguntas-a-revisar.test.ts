@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { avisoDePreguntasARevisar, preguntasSinFundamento } from '@api/services/agent/preguntas-a-revisar';
+import { textoDeLeccion } from '@api/services/agent/grounding';
 
 const EJERCICIOS = [
   { id: 'ej-1', title: 'Cuestionario de precios' },
@@ -69,6 +70,66 @@ describe('preguntas a revisar', () => {
 
   it('sin texto de lecciones (otro idioma, curso vacío) no juzga nada', () => {
     expect(preguntasSinFundamento({ ejercicios: EJERCICIOS, preguntas: PREGUNTAS, textosDeLecciones: ['', '  '] })).toEqual([]);
+  });
+
+  describe('lo que NO la deja a revisar: la frase sigue ahí, escrita distinto', () => {
+    const PREGUNTA = {
+      id: 21,
+      title: '¿Quién firma el remito?',
+      exerciseId: 'ej-2',
+      settings: { evidence: 'El encargado del turno firma el remito y lo guarda en la carpeta azul.' }
+    };
+
+    it.each([
+      ['partida por negritas y cursivas', '<p>El <strong>encargado del turno</strong> firma el <em>remito</em> y lo guarda en la carpeta azul.</p>'],
+      ['con espacios duros y saltos', '<p>El encargado del&nbsp;turno firma el remito\n y lo guarda en la carpeta&nbsp;azul.</p>'],
+      ['con otra puntuación y mayúsculas', '<li>EL ENCARGADO DEL TURNO FIRMA EL REMITO, Y LO GUARDA EN LA CARPETA AZUL</li>'],
+      ['sin tildes, o con otras', '<p>El encargádo del turno firma el remito y lo guarda en la carpeta azul.</p>'],
+      ['en otra lección del curso', '<p>Nada que ver.</p>']
+    ])('%s', (caso, html) => {
+      const textos =
+        caso === 'en otra lección del curso'
+          ? [textoDeLeccion(html), textoDeLeccion(`<p>${PREGUNTA.settings.evidence}</p>`)]
+          : [textoDeLeccion(html)];
+
+      expect(preguntasSinFundamento({ ejercicios: EJERCICIOS, preguntas: [PREGUNTA], textosDeLecciones: textos })).toEqual([]);
+    });
+
+    it('una frase citada con puntos suspensivos se busca por su tramo más largo', () => {
+      const citada = { ...PREGUNTA, settings: { evidence: 'El encargado … firma el remito y lo guarda en la carpeta azul' } };
+
+      expect(
+        preguntasSinFundamento({
+          ejercicios: EJERCICIOS,
+          preguntas: [citada],
+          textosDeLecciones: [textoDeLeccion('<p>El encargado del turno firma el remito y lo guarda en la carpeta azul.</p>')]
+        })
+      ).toEqual([]);
+    });
+  });
+
+  it('una lección borrada se lleva su frase: con otras lecciones en el curso, la pregunta queda a revisar', () => {
+    const marcadas = preguntasSinFundamento({
+      ejercicios: EJERCICIOS,
+      preguntas: [PREGUNTAS[1]],
+      textosDeLecciones: [textoDeLeccion('<p>Otra lección, de otro tema.</p>')]
+    });
+
+    expect(marcadas.map((pregunta) => pregunta.questionId)).toEqual(['12']);
+  });
+
+  it('una pregunta sin ejercicio, o con evidencia que no es texto, no se juzga', () => {
+    expect(
+      preguntasSinFundamento({
+        ejercicios: EJERCICIOS,
+        preguntas: [
+          { id: 31, title: '¿Huérfana?', exerciseId: null, settings: { evidence: 'una frase que no está en ningún lado' } },
+          { id: 32, title: '¿Rara?', exerciseId: 'ej-1', settings: { evidence: { texto: 'no es una cadena' } } },
+          { id: 33, title: '¿Sin settings?', exerciseId: 'ej-1', settings: null }
+        ] as never,
+        textosDeLecciones: [LECCION_NUEVA]
+      })
+    ).toEqual([]);
   });
 
   it('el aviso para el modelo dice qué hacer y lista cada pregunta con su frase', () => {
