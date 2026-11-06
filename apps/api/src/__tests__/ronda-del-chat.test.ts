@@ -243,7 +243,7 @@ const RESPUESTA_FINAL = 'Revisé la estructura: el curso tiene una sección y un
 let promptsRecibidos: string[] = [];
 
 /** Paso 1: llama a una herramienta sin argumentos (la estructura del curso). Paso 2: contesta. */
-function modeloDeDosPasos(herramienta = 'get_course_structure') {
+function modeloDeDosPasos(herramienta = 'get_course_structure', textoFinal = RESPUESTA_FINAL) {
   let paso = 0;
 
   return new MockLanguageModelV4({
@@ -261,7 +261,7 @@ function modeloDeDosPasos(herramienta = 'get_course_structure') {
           : [
               { type: 'stream-start' as const, warnings: [] },
               { type: 'text-start' as const, id: 't1' },
-              { type: 'text-delta' as const, id: 't1', delta: RESPUESTA_FINAL },
+              { type: 'text-delta' as const, id: 't1', delta: textoFinal },
               { type: 'text-end' as const, id: 't1' },
               { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: uso(1200, 80) }
             ];
@@ -956,5 +956,36 @@ describe('las fuentes agregadas después del plan', () => {
       expect(promptsRecibidos[0]).toContain('## Approved Plan');
       expect(promptsRecibidos[0]).not.toContain("## The teacher's rules for this course");
     });
+  });
+});
+
+/**
+ * Medido (2026-11): «se actualizaron las preguntas del cuestionario» en una
+ * ronda que no tocó ninguna pregunta, y nada en la pantalla lo contradecía.
+ */
+describe('el relato del modelo contra el registro de la ronda', () => {
+  const metadataDelCierre = (partes: Array<{ type: string; messageMetadata?: unknown }>) =>
+    partes.filter((parte) => parte.type === 'finish').at(-1)?.messageMetadata as Record<string, unknown> | undefined;
+
+  it('una ronda que sólo leyó y dice haber cambiado una lección y los cuestionarios sale con la advertencia', async () => {
+    vi.mocked(createModel).mockImplementation(
+      () =>
+        modeloDeDosPasos(
+          'get_course_structure',
+          'Listo: actualicé @[Abrir la caja](lesson:S1.L1).\nYa están actualizados los cuestionarios.'
+        ) as never
+    );
+
+    const { partes } = await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(metadataDelCierre(partes)).toMatchObject({
+      unverifiedClaims: { pieces: ['Abrir la caja'], questions: true }
+    });
+  });
+
+  it('un cierre que no afirma ningún cambio no lleva advertencia', async () => {
+    const { partes } = await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(metadataDelCierre(partes)).not.toHaveProperty('unverifiedClaims');
   });
 });

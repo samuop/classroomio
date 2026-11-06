@@ -145,6 +145,12 @@ import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 import { historiaDeLaRonda, mensajesGuardados } from '@api/services/agent/historia-del-servidor';
 import {
+  afirmacionesSinCambio,
+  HERRAMIENTAS_DE_PREGUNTAS,
+  hayAfirmacionesSinCambio,
+  type AfirmacionesSinCambio
+} from '@api/services/agent/afirmaciones-sin-cambio';
+import {
   bitacoraVacia,
   conBitacora,
   conNotaDelPaso,
@@ -1972,6 +1978,44 @@ const agentCoreRouter = new Hono()
       let escriturasAlEmpezarElTramo = 0;
       /** El cupo se acabó a mitad de la ronda: el paso siguiente sólo responde. */
       let sinCupo = false;
+      /** Lo que la docente lee de esta respuesta, de todos los tramos. */
+      let textoDeLaRespuesta = '';
+      /** Lo que ese texto dice haber cambiado y el servidor no vio cambiar. */
+      let relatoSinCambio: AfirmacionesSinCambio | undefined;
+      let titulosDelCurso: string[] | undefined;
+
+      /**
+       * El relato del modelo contra lo que pasó. Corre al final de cada paso con
+       * texto, porque la metadata del mensaje es síncrona y sale con el
+       * `finish`. Ver `afirmaciones-sin-cambio.ts` para el caso medido.
+       *
+       * Nunca tira: si la base falla, la respuesta sale sin la advertencia.
+       */
+      async function contrastarElRelato(): Promise<void> {
+        if (role !== AgentRole.TEACHER || !textoDeLaRespuesta.trim()) return;
+
+        try {
+          titulosDelCurso ??= (await getCourseContentItems(courseId))
+            .map((item) => (item as { title?: string | null }).title ?? '')
+            .filter(Boolean);
+
+          const escriturasHechas = bitacora.escrituras.filter((escritura) => escritura.hecho);
+
+          relatoSinCambio = afirmacionesSinCambio({
+            texto: textoDeLaRespuesta,
+            cambiadas: [
+              ...registroDeRonda.cambios.map((cambio) => cambio.objeto),
+              ...escriturasHechas.map((escritura) => escritura.titulo ?? '')
+            ].filter(Boolean),
+            cambioPreguntas:
+              registroDeRonda.cambios.some((cambio) => cambio.accion === 'pregunto') ||
+              escriturasHechas.some((escritura) => HERRAMIENTAS_DE_PREGUNTAS.has(escritura.herramienta)),
+            titulosDelCurso
+          });
+        } catch (error) {
+          console.error('[agent.chat] no se pudo contrastar el relato con el registro:', error);
+        }
+      }
 
       // Paso 2 (context diet, intra-round): a build round runs many steps in one
       // loop, and by default every step re-sends ALL prior steps' tool calls
@@ -2276,8 +2320,10 @@ const agentCoreRouter = new Hono()
         onStepFinish: async (step) => {
           mensajesParaSeguir = [...mensajesParaSeguir, ...step.response.messages];
           textoDelUltimoPaso = step.text ?? '';
+          if (step.text) textoDeLaRespuesta += `\n${step.text}`;
 
           await alTerminarElPaso(step);
+          if (step.text) await contrastarElRelato();
         },
         /**
          * Hoy ninguna ronda se aborta: no hay `abortSignal`, porque la ronda
@@ -2615,6 +2661,11 @@ const agentCoreRouter = new Hono()
                 })()
               : {}),
             ...(sinCupo ? { outOfCredit: true } : {}),
+            // Lo que el mensaje dice haber cambiado y el servidor no vio. El
+            // panel lo dibuja como advertencia al lado del registro.
+            ...(relatoSinCambio && hayAfirmacionesSinCambio(relatoSinCambio)
+              ? { unverifiedClaims: { pieces: relatoSinCambio.piezas, questions: relatoSinCambio.preguntas } }
+              : {}),
             planProgress: checklistProgress
               ? {
                   total: checklistProgress.total,

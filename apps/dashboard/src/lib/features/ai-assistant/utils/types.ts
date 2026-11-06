@@ -259,6 +259,12 @@ export interface AiAssistantMessageMetadata {
    * cerró con «era la única lección donde figuraba» después de editar cinco.
    */
   roundChanges?: string[];
+  /**
+   * Lo que el mensaje dice haber cambiado y el servidor NO vio cambiar en esta
+   * ronda. Medido (2026-11): «se actualizaron las preguntas del cuestionario»
+   * en una ronda que no tocó ninguna pregunta. Ver `afirmaciones-sin-cambio.ts`.
+   */
+  unverifiedClaims?: { pieces: string[]; questions: boolean };
   /** La ronda cerró por el «Detener» de la docente, después del paso en curso. */
   stoppedByTeacher?: boolean;
   continuation?: AiAssistantMessageContinuation;

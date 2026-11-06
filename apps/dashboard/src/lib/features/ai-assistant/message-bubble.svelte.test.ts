@@ -118,6 +118,52 @@ describe('los gestos del docente se ven como fichas', () => {
   });
 });
 
+/**
+ * Medido (2026-11): «se actualizaron las preguntas del cuestionario» en una
+ * ronda que no tocó ninguna pregunta. El servidor manda la diferencia en
+ * `unverifiedClaims` y la burbuja la muestra al lado del texto.
+ */
+describe('lo que el mensaje dice haber cambiado y no cambió', () => {
+  const conAfirmaciones = (metadata: Record<string, unknown>) =>
+    ({
+      id: 'a3',
+      role: 'assistant',
+      parts: [{ type: 'step-start' }, { type: 'text', text: 'Listo, se actualizaron las preguntas del cuestionario.' }],
+      metadata
+    }) as unknown as AiAssistantMessage;
+
+  it('se ve como advertencia, con la pieza nombrada y lo de las preguntas', () => {
+    const mensaje = conAfirmaciones({
+      roundChanges: ['Editó «Controlar precios»'],
+      unverifiedClaims: { pieces: ['Cuestionario de precios'], questions: true }
+    });
+
+    dibujar(mensaje, [pedido, mensaje]);
+
+    expect(screen.getByRole('note')).toHaveTextContent(texto('ai_assistant.unverified_claims.title'));
+    expect(screen.getByText(get(t)('ai_assistant.unverified_claims.piece', { title: 'Cuestionario de precios' }))).toBeInTheDocument();
+    expect(screen.getByText(texto('ai_assistant.unverified_claims.questions'))).toBeInTheDocument();
+    // Hubo cambios: no dice que no cambió nada.
+    expect(screen.queryByText(texto('ai_assistant.unverified_claims.nothing_changed'))).toBeNull();
+  });
+
+  it('si la ronda no cambió nada, lo dice', () => {
+    const mensaje = conAfirmaciones({ unverifiedClaims: { pieces: [], questions: true } });
+
+    dibujar(mensaje, [pedido, mensaje]);
+
+    expect(screen.getByText(texto('ai_assistant.unverified_claims.nothing_changed'))).toBeInTheDocument();
+  });
+
+  it('sin diferencias, no hay advertencia', () => {
+    const mensaje = conAfirmaciones({ roundChanges: ['Cambió las preguntas de «Cuestionario de precios»'] });
+
+    dibujar(mensaje, [pedido, mensaje]);
+
+    expect(screen.queryByRole('note')).toBeNull();
+  });
+});
+
 describe('la tarjeta del plan dice «Aprobado» sólo con una aprobación que tuvo respuesta', () => {
   const aprobado = () => screen.queryByText(texto('ai_assistant.plan_screen.approved'));
   const propuesto = () => screen.queryByText(texto('ai_assistant.plan_screen.proposed'));

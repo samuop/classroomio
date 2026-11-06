@@ -284,6 +284,26 @@
   /** La ronda cerró por el «Detener» de la docente. Ver `stoppedByTeacher`. */
   const stoppedByTeacher = $derived(message.role === 'assistant' && message.metadata?.stoppedByTeacher === true);
 
+  /**
+   * Lo que el mensaje dice haber cambiado y el servidor no vio cambiar.
+   *
+   * Leído a la defensiva como `roundChanges`. Se dibuja como advertencia: el
+   * texto del asistente ya está a la vista, y lo único que se puede garantizar
+   * es que la docente vea la diferencia antes de darlo por hecho.
+   */
+  const unverifiedClaims = $derived.by(() => {
+    const crudo = message.role === 'assistant' ? message.metadata?.unverifiedClaims : undefined;
+
+    if (!crudo || typeof crudo !== 'object') return null;
+
+    const pieces = Array.isArray(crudo.pieces)
+      ? crudo.pieces.filter((pieza): pieza is string => typeof pieza === 'string' && !!pieza.trim())
+      : [];
+    const questions = crudo.questions === true;
+
+    return pieces.length > 0 || questions ? { pieces, questions } : null;
+  });
+
   const isStreamingThisMessage = $derived(isStreaming && isLast && message.role === 'assistant');
   const hasToolParts = $derived((message.parts ?? []).some((part) => isAgentToolPart(part)));
 
@@ -295,6 +315,7 @@
       hasToolParts ||
       writerNotes.length > 0 ||
       roundChanges.length > 0 ||
+      !!unverifiedClaims ||
       stoppedByTeacher ||
       showPlanProgress
   );
@@ -610,6 +631,26 @@
             {#each roundChanges as cambio (cambio)}
               <li>{cambio}</li>
             {/each}
+          </ul>
+        </div>
+      {/if}
+
+      {#if unverifiedClaims}
+        <div
+          role="note"
+          class="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          <p class="font-medium">{$t('ai_assistant.unverified_claims.title')}</p>
+          <ul class="mt-1 space-y-0.5">
+            {#each unverifiedClaims.pieces as pieza (pieza)}
+              <li>{$t('ai_assistant.unverified_claims.piece', { title: pieza })}</li>
+            {/each}
+            {#if unverifiedClaims.questions}
+              <li>{$t('ai_assistant.unverified_claims.questions')}</li>
+            {/if}
+            {#if roundChanges.length === 0}
+              <li>{$t('ai_assistant.unverified_claims.nothing_changed')}</li>
+            {/if}
           </ul>
         </div>
       {/if}

@@ -5473,6 +5473,12 @@
     "stopping_notice": "Stopping: the assistant finishes what it is doing, saves it and stops.",
     "stop_not_delivered": "We couldn't tell the assistant to stop: it will finish this batch of work and save it. The chat updates on its own when it's done.",
     "stopped_by_teacher": "You stopped the assistant here. What it had already done was saved.",
+    "unverified_claims": {
+      "title": "Check this before taking it as done",
+      "piece": "The message says it changed “{title}”, but no change was recorded there in this round.",
+      "questions": "The message talks about changes to questions or quizzes, but no question was changed in this round.",
+      "nothing_changed": "Nothing in the course was changed in this round."
+    },
     "error_timeout_chat": "The assistant is still working and it's taking longer than usual. The chat updates on its own when it's done."
   },
   "side_panel": {

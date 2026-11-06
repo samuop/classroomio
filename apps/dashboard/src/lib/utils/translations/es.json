@@ -545,6 +545,12 @@
     "stopping_notice": "Deteniendo: el asistente termina lo que está haciendo, lo guarda y se detiene.",
     "stop_not_delivered": "No pudimos avisarle al asistente que se detenga: va a terminar esta tanda de trabajo y guardarla. El chat se actualiza solo cuando termine.",
     "stopped_by_teacher": "Detuviste al asistente acá. Lo que ya hizo quedó guardado.",
+    "unverified_claims": {
+      "title": "Revisá esto antes de darlo por hecho",
+      "piece": "El mensaje dice que cambió «{title}», pero en esta ronda no se registró ningún cambio ahí.",
+      "questions": "El mensaje habla de cambios en preguntas o cuestionarios, pero en esta ronda no se cambió ninguna pregunta.",
+      "nothing_changed": "En esta ronda no se cambió nada del curso."
+    },
     "error_timeout_chat": "El asistente sigue trabajando y está tardando más de lo normal. El chat se actualiza solo cuando termine."
   },
   "analytics": {
