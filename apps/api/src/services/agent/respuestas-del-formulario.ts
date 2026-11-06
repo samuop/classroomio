@@ -109,6 +109,34 @@ export function indicacionesDelFormulario(respuestas: readonly RespuestaDelFormu
   ].join('\n');
 }
 
+/**
+ * Las reglas que la docente dijo en la conversación, como las leen los
+ * escritores: vienen del plan aprobado (`teacherRules`).
+ *
+ * Los escritores ven sólo su consigna, y el constructor corre sin la
+ * conversación. Medido el 2026-11-03: una prohibición dicha en el chat («no
+ * enseñes la matriz de descuentos como vigente») no le llegó a nadie, y la
+ * lección la enseñó como vigente.
+ */
+export function indicacionesDeLasReglas(reglas: readonly string[]): string | undefined {
+  if (reglas.length === 0) return undefined;
+
+  return [
+    "## The teacher's rules for this course (from the approved plan)",
+    '',
+    'The teacher stated these rules in the conversation. They bind every lesson, exercise and question of this course, and they win over the sources, the plan and any brief. If following the source would break one, follow the rule and leave that part out.',
+    '',
+    ...reglas.map((regla) => `- ${regla}`)
+  ].join('\n');
+}
+
+/** Junta los bloques de indicaciones que haya; ninguno es nada. */
+export function juntarIndicaciones(...bloques: Array<string | undefined>): string | undefined {
+  const presentes = bloques.filter((bloque): bloque is string => !!bloque?.trim());
+
+  return presentes.length > 0 ? presentes.join('\n\n') : undefined;
+}
+
 /** La línea que va después de la consigna de cada pieza: lo último que lee quien escribe. */
 export const RECORDATORIO_DE_LA_DOCENTE =
-  "Where this brief or the source material disagrees with the teacher's choices (in your instructions), the choices win — tables and examples included.";
+  "Where this brief or the source material disagrees with the teacher's choices or rules (in your instructions), they win — tables and examples included.";

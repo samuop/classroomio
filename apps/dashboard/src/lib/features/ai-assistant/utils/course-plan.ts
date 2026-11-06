@@ -62,6 +62,12 @@ export interface CoursePlan {
    */
   scope?: 'course' | 'changes';
   sections: CoursePlanSection[];
+  /**
+   * Las reglas que la docente dijo en la conversación (prohibiciones, límites).
+   * Viajan en el plan porque quien construye no ve la conversación. Ausente en
+   * los planes anteriores a esto.
+   */
+  teacherRules?: string[];
   /** Ausente cuando todo el plan tiene material, o el curso no tiene fuentes. */
   coverage?: CoursePlanCoverage;
 }

@@ -106,6 +106,7 @@ import {
   MAX_STEPS_PER_ROUND_STUDENT,
   MAX_OUTPUT_TOKENS_STUDENT,
   getCourseTemplate,
+  reglasDeLaDocente,
   resolveAgentContextBudget,
   type AgentContext,
   type AgentStatus,
@@ -156,7 +157,12 @@ import { transformarEnlacesDelChat } from '@api/services/agent/enlaces-del-chat'
 import { mapaDelCurso } from '@api/services/agent/manijas';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
 import { crearEscritorDeLecciones, temarioDelPlan } from '@api/services/agent/lesson-writer';
-import { indicacionesDelFormulario, respuestasDelFormulario } from '@api/services/agent/respuestas-del-formulario';
+import {
+  indicacionesDeLasReglas,
+  indicacionesDelFormulario,
+  juntarIndicaciones,
+  respuestasDelFormulario
+} from '@api/services/agent/respuestas-del-formulario';
 import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
@@ -1096,11 +1102,20 @@ const agentCoreRouter = new Hono()
       // suya y para los dos escritores: el constructor corre aislado de la
       // conversación y los escritores ven sólo su consigna. Ver
       // `respuestas-del-formulario.ts`.
-      const indicacionesDeLaDocente =
+      const indicacionesDelForm =
         role === AgentRole.TEACHER ? indicacionesDelFormulario(respuestasDelFormulario(messages)) : undefined;
-      if (indicacionesDeLaDocente) {
-        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${indicacionesDeLaDocente}` : indicacionesDeLaDocente;
+      if (indicacionesDelForm) {
+        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${indicacionesDelForm}` : indicacionesDelForm;
       }
+
+      // Los escritores reciben además las reglas que la docente dijo en la
+      // conversación, que viajan en el plan aprobado. El constructor ya las ve
+      // en el mensaje de contexto (`buildContextMessage`), por eso no van dos
+      // veces ahí.
+      const indicacionesDeLaDocente =
+        role === AgentRole.TEACHER
+          ? juntarIndicaciones(indicacionesDelForm, indicacionesDeLasReglas(reglasDeLaDocente(approvedPlan)))
+          : undefined;
 
       // "The material really rides in THIS request" — nothing more. Two things
       // downstream ask that question: where to put the Anthropic cache_control

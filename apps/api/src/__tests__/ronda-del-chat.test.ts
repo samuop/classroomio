@@ -925,4 +925,36 @@ describe('las fuentes agregadas después del plan', () => {
       expect(vi.mocked(crearEscritorDeLecciones).mock.calls[0][0].indicaciones).toBeUndefined();
     });
   });
+
+  /**
+   * Medido el 2026-11-03: una prohibición dicha en la conversación («no
+   * enseñes la matriz de descuentos como vigente») no le llegó a nadie, porque
+   * el constructor corre sin la conversación y el plan sólo traía título y
+   * secciones. Ahora viaja en el plan aprobado.
+   */
+  describe('las reglas de la docente, dentro del plan aprobado', () => {
+    const REGLA = 'No enseñes la matriz de descuentos como vigente.';
+    const conReglas = construccion({ ...PLAN_A_MEDIAS, teacherRules: [REGLA] } as typeof PLAN_A_MEDIAS);
+
+    it('el constructor las ve en su propia sección, aunque corre sin la conversación', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: conReglas }));
+
+      expect(promptsRecibidos[0]).toContain("## The teacher's rules for this course");
+      expect(promptsRecibidos[0]).toContain(`- ${REGLA}`);
+    });
+
+    it('y las reciben los dos escritores', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: conReglas }));
+
+      expect(vi.mocked(crearEscritorDeLecciones).mock.calls[0][0].indicaciones).toContain(REGLA);
+      expect(vi.mocked(crearEscritorDePreguntas).mock.calls[0][0].indicaciones).toContain(REGLA);
+    });
+
+    it('un plan aprobado antes de esto, sin reglas, sigue construyendo igual', async () => {
+      await leerPartes(await chat({ conversationId: conversacionNueva(), messages: CONSTRUCCION }));
+
+      expect(promptsRecibidos[0]).toContain('## Approved Plan');
+      expect(promptsRecibidos[0]).not.toContain("## The teacher's rules for this course");
+    });
+  });
 });

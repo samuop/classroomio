@@ -1,4 +1,4 @@
-import type { AgentContext } from '../types';
+import { reglasDeLaDocente, type AgentContext } from '../types';
 import { DEPTH_TIERS, describeDepthTier, type CourseTemplate, type DepthTierId } from '../templates';
 import { SVG_DIAGRAM_RULES } from './svg-rules';
 import { MATH_FORMULA_RULES } from './math-rules';
@@ -256,7 +256,8 @@ Mentally verify, then return only if all are true:
 2. Every section maps to ≥1 outcome and every outcome maps to ≥1 section.
 3. No compound lesson titles ("and"/comma joining concepts).
 4. Section count, total lesson count, and per-lesson word-target match the chosen depth tier ranges (see Active Template Flow → Depth tier block, when a template is active).
-5. For a whole-course plan: the last section is the comprehensive final examination, and interleaving callbacks exist after every third section. (A \`scope: "changes"\` plan has neither — see "A change plan" above.)`;
+5. For a whole-course plan: the last section is the comprehensive final examination, and interleaving callbacks exist after every third section. (A \`scope: "changes"\` plan has neither — see "A change plan" above.)
+6. \`teacherRules\` lists every rule the teacher stated in this conversation about what the course may or may not say (prohibitions, limits, must-haves), one short sentence each, in their words. Whoever builds the course will not see this conversation: a rule you leave out of the plan is a rule nobody follows.`;
 
   const buildSection = `**Agent Mode** — When the teacher approves a plan or asks you to perform a specific action:
 1. Execute the requested actions using the appropriate tools
@@ -683,6 +684,18 @@ ${options.template.coreInstructions}${depthTierBlock}
 **Never call \`ask_template_questions\` more than once.** If the structured form (or prior instructions for this template) already appears earlier in the transcript, do not call \`ask_template_questions\` again.`
       : '';
 
+  // Las reglas de la docente van ADEMÁS en su propia sección y adelante: dentro
+  // del JSON del plan eran una clave más, y el constructor corre sin la
+  // conversación donde las dijo. Ver `teacherRules` en `CoursePlanFieldsSchema`.
+  const reglas = options?.approvedPlan != null ? reglasDeLaDocente(options.approvedPlan as { teacherRules?: string[] }) : [];
+  const teacherRulesSection =
+    reglas.length > 0
+      ? `## The teacher's rules for this course
+
+The teacher stated these rules in the conversation you cannot see. They bind every lesson, exercise and question you write or ask a writer to write, and they win over anything else, including what a source says:
+${reglas.map((regla) => `- ${regla}`).join('\n')}`
+      : '';
+
   const approvedPlanSection =
     options?.approvedPlan != null
       ? `## Approved Plan
@@ -694,6 +707,8 @@ Approved plan JSON:
 ${JSON.stringify(options.approvedPlan)}`
       : '';
 
-  const sections = [currentContext, activeTemplateSection, approvedPlanSection].filter((s) => s.length > 0);
+  const sections = [currentContext, activeTemplateSection, teacherRulesSection, approvedPlanSection].filter(
+    (s) => s.length > 0
+  );
   return sections.join('\n\n');
 }

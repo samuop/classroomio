@@ -199,6 +199,9 @@ export const CoursePlanSectionSchema = z.object({
     )
 });
 
+const TEACHER_RULES_DESCRIPTION =
+  'Every rule the teacher stated in this conversation about WHAT the course may or may not say: prohibitions ("do not teach the discount matrix as current", "do not invent a returns policy"), limits ("only what the sources say", "no prices"), must-haves ("always name the shift supervisor"). One short imperative sentence each, in the teacher\'s language, as close to their words as possible. Include the answers they gave in the discovery form only if they are rules. These travel to everyone who writes the course, who will NOT see this conversation — a rule left out here is a rule nobody follows. Empty list only if the teacher stated none.';
+
 export const CoursePlanFieldsSchema = z.object({
   title: z.string().min(1),
   /**
@@ -221,7 +224,29 @@ export const CoursePlanFieldsSchema = z.object({
     .min(1)
     .describe(
       'Instructional sections in teaching order, then a final section for the comprehensive course examination. The LAST section must hold the final exam (validated when the plan is submitted). Earlier sections cover the curriculum; each prior section should be represented in the exam by its own in-exercise question block with 3–5 questions when the plan is implemented.'
-    )
+    ),
+  /**
+   * Las reglas que la docente puso en la conversación, dentro del plan.
+   *
+   * ── Por qué ────────────────────────────────────────────────────────────────
+   *
+   * Medido el 2026-11-03: la docente dijo en la conversación que no se
+   * enseñara una matriz de descuentos como vigente y que no se inventaran
+   * procedimientos que las fuentes no traen. El constructor corre AISLADO de la
+   * conversación (sólo ve el plan aprobado) y los escritores ven sólo su
+   * consigna: ninguna de esas reglas les llegó, y el curso salió con la matriz
+   * como vigente, una política de devoluciones y diagnósticos de humedad
+   * inventados. El plan sólo traía título y secciones.
+   *
+   * Opcional ACÁ porque los planes ya aprobados que viven en las conversaciones
+   * guardadas tienen que seguir parseando (ver `scope`). Para el modelo es
+   * obligatorio: ver `CoursePlanToolSchema`.
+   */
+  teacherRules: z
+    .array(z.string().min(1).max(400))
+    .max(30)
+    .optional()
+    .describe(TEACHER_RULES_DESCRIPTION)
 });
 
 /**
@@ -233,7 +258,7 @@ export const CoursePlanFieldsSchema = z.object({
  * su propia regla: un ítem que dice tocar algo existente tiene que decir QUÉ
  * toca y QUÉ le cambia, o no hay nada que el servidor pueda atar ni medir.
  */
-export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine((plan, ctx) => {
+function refinarPlan(plan: z.infer<typeof CoursePlanFieldsSchema>, ctx: z.RefinementCtx): void {
   if (plan.scope === 'changes') {
     plan.sections.forEach((section, sectionIndex) => {
       section.items.forEach((item, itemIndex) => {
@@ -290,7 +315,25 @@ export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine((plan, ctx) =
       path: ['sections', lastIndex]
     });
   }
-});
+}
+
+export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine(refinarPlan);
+
+/**
+ * El plan como lo pide la herramienta: con `teacherRules` OBLIGATORIO.
+ *
+ * Gemini deja vacío lo que el esquema no exige, aunque el prompt lo pida (ver
+ * la trampa medida con `sources`). Exigido, tiene que pensar qué dijo la
+ * docente; `[]` sigue valiendo cuando no puso ninguna regla.
+ */
+export const CoursePlanToolSchema = CoursePlanFieldsSchema.extend({
+  teacherRules: z.array(z.string().min(1).max(400)).max(30).describe(TEACHER_RULES_DESCRIPTION)
+}).superRefine(refinarPlan);
+
+/** Las reglas de la docente de un plan aprobado, limpias. Planes viejos: ninguna. */
+export function reglasDeLaDocente(plan: { teacherRules?: readonly string[] } | undefined): string[] {
+  return (plan?.teacherRules ?? []).map((regla) => regla.trim()).filter((regla) => regla.length > 0);
+}
 
 export type CoursePlanItem = z.infer<typeof CoursePlanItemSchema>;
 export type CoursePlanSection = z.infer<typeof CoursePlanSectionSchema>;

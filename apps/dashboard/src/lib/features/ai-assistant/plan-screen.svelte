@@ -124,6 +124,37 @@
   let sinFuente = $state<LeccionSinFuente[] | null>(null);
   let noSePudoQuitar = $state(false);
 
+  /**
+   * Las reglas de la docente, editables antes de aprobar.
+   *
+   * Es la última oportunidad de agregar la que el asistente no anotó: quien
+   * construye el curso no ve la conversación, sólo el plan. Ver `teacherRules`.
+   */
+  function agregarRegla() {
+    if (!borrador) return;
+
+    borrador.teacherRules = [...(borrador.teacherRules ?? []), ''];
+  }
+
+  function cambiarRegla(indice: number, texto: string) {
+    if (!borrador?.teacherRules) return;
+
+    borrador.teacherRules = borrador.teacherRules.map((regla, i) => (i === indice ? texto : regla));
+  }
+
+  function quitarRegla(indice: number) {
+    if (!borrador?.teacherRules) return;
+
+    borrador.teacherRules = borrador.teacherRules.filter((_, i) => i !== indice);
+  }
+
+  /** Lo que sale al aprobar: sin las reglas que quedaron vacías. */
+  function aprobarPlan(plan: CoursePlan) {
+    const reglas = (plan.teacherRules ?? []).map((regla) => regla.trim()).filter((regla) => regla.length > 0);
+
+    pantallaDelPlan.acciones?.aprobar({ ...plan, teacherRules: reglas });
+  }
+
   function aprobar() {
     if (!borrador || !mostrado || ocupado || !pantallaDelPlan.acciones) return;
 
@@ -135,7 +166,7 @@
       return;
     }
 
-    pantallaDelPlan.acciones.aprobar(borrador);
+    aprobarPlan(borrador);
   }
 
   /** Aprueba como está: esas lecciones se escriben con conocimiento general. */
@@ -143,7 +174,7 @@
     if (!borrador || !pantallaDelPlan.acciones) return;
 
     sinFuente = null;
-    pantallaDelPlan.acciones.aprobar(borrador);
+    aprobarPlan(borrador);
   }
 
   /** Aprueba el plan sin esas lecciones, si el plan que queda es válido. */
@@ -158,7 +189,7 @@
     }
 
     sinFuente = null;
-    pantallaDelPlan.acciones.aprobar(resultado.plan);
+    aprobarPlan(resultado.plan);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -351,6 +382,55 @@
               <div class="h-full rounded-full bg-(--primary) transition-all duration-500" style="width: {porcentaje}%"></div>
             </div>
           </div>
+        {/if}
+
+        <!--
+          Las reglas que la docente dijo en la conversación, dentro del plan:
+          quien construye y quien escribe no ven la conversación, sólo esto. Se
+          editan antes de aprobar; después quedan a la vista de lo que se aprobó.
+        -->
+        {#if editable && borrador}
+          <section class="mt-6 flex flex-col gap-2 rounded-xl border px-4 py-3" aria-labelledby="plan-screen-rules">
+            <h2 id="plan-screen-rules" class="text-sm font-semibold">{$t('ai_assistant.plan_screen.teacher_rules')}</h2>
+            <p class="ui:text-muted-foreground text-xs">{$t('ai_assistant.plan_screen.teacher_rules_hint')}</p>
+            {#each borrador.teacherRules ?? [] as regla, r (r)}
+              <div class="flex items-start gap-1">
+                <textarea
+                  rows="1"
+                  value={regla}
+                  oninput={(event) => cambiarRegla(r, event.currentTarget.value)}
+                  use:autoAltura={regla}
+                  onkeydown={sinSaltos}
+                  aria-label={$t('ai_assistant.plan_screen.teacher_rule', { order: r + 1 })}
+                  class="{campoClass} -ml-1.5 flex-1 resize-none overflow-hidden text-sm"
+                ></textarea>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onclick={() => quitarRegla(r)}
+                  aria-label={$t('ai_assistant.plan_screen.remove_teacher_rule', { order: r + 1 })}
+                >
+                  ×
+                </Button>
+              </div>
+            {:else}
+              <p class="ui:text-muted-foreground text-sm italic">{$t('ai_assistant.plan_screen.no_teacher_rules')}</p>
+            {/each}
+            <div>
+              <Button variant="outline" size="sm" onclick={() => agregarRegla()}>
+                {$t('ai_assistant.plan_screen.add_teacher_rule')}
+              </Button>
+            </div>
+          </section>
+        {:else if plan.teacherRules && plan.teacherRules.length > 0}
+          <section class="mt-6 flex flex-col gap-2 rounded-xl border px-4 py-3" aria-labelledby="plan-screen-rules">
+            <h2 id="plan-screen-rules" class="text-sm font-semibold">{$t('ai_assistant.plan_screen.teacher_rules')}</h2>
+            <ul class="list-disc pl-5 text-sm">
+              {#each plan.teacherRules as regla, r (r)}
+                <li>{regla}</li>
+              {/each}
+            </ul>
+          </section>
         {/if}
 
         <ol class="mt-8 flex flex-col gap-9">

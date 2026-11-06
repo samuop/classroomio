@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CoursePlanSchema } from '@cio/ai-assistant';
+import { CoursePlanToolSchema } from '@cio/ai-assistant';
 import {
   LANDING_PAGE_COURSE_DESCRIPTION_PLAIN_HINT,
   LANDING_PAGE_METADATA_DESCRIPTION_SECTION_HINT,
@@ -693,7 +693,8 @@ export const updateQuestionsParam = z.object({
   exerciseId: z.string().describe(piezaPorManija('exercise whose questions change')),
   questions: z.array(updateQuestionPatchSchema).min(1)
 });
-export const coursePlanParam = z.object({ plan: CoursePlanSchema });
+// Con `teacherRules` obligatorio: ver `CoursePlanToolSchema`.
+export const coursePlanParam = z.object({ plan: CoursePlanToolSchema });
 
 const courseTemplateIdParam = z.enum(['product_101', 'product_onboarding', 'expert_on_x']);
 
