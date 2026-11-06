@@ -1,6 +1,17 @@
 import * as matchers from '@testing-library/jest-dom/matchers';
+import { configure } from '@testing-library/svelte';
 
 import { loadTranslations } from '$lib/utils/functions/translations';
+
+/**
+ * Cuánto espera un `findBy…` o un `waitFor` a que aparezca lo que busca.
+ *
+ * El valor de fábrica es 1 s. Medido el 2026-11-06: el panel del asistente
+ * (`ai-course-chat-ronda.svelte.test.ts`) pasa entero solo, y en la suite
+ * completa, con la máquina cargada, 6 tests no llegaban a ver su texto en 1 s.
+ * Un test que pasa no tarda más por esto: el `findBy` vuelve apenas aparece.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 /**
  * Los matchers de jest-dom (`toBeInTheDocument`, `toHaveValue`, `toBeDisabled`).

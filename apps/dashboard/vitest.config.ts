@@ -96,6 +96,9 @@ export default defineConfig({
           globals: true,
           include: ['src/**/*.svelte.test.ts'],
           setupFiles: [r('test/setup-componentes.ts')],
+          // Por encima de la espera de `findBy` (5 s, ver setup-componentes.ts):
+          // si no, un test lento se corta por el reloj del test y no por lo que esperaba.
+          testTimeout: 20_000,
           /**
            * Las bibliotecas de componentes se compilan acá adentro.
            *
