@@ -235,6 +235,39 @@ describe('add_questions: agrega sin reescribir lo que ya estaba', () => {
       OPCIONES
     );
 
-    expect(lineasDelRegistro(registro)).toEqual(['Cambió las preguntas de «Examen final»']);
+    // Con cuántas y cuántos puntos: «cambió las preguntas» a secas escondió doce
+    // preguntas nuevas en un examen ya rendido (ver `resumen-de-preguntas.ts`).
+    expect(lineasDelRegistro(registro)).toEqual(['Cambió las preguntas de «Examen final»: agregó 1 pregunta (1 punto)']);
+  });
+
+  /**
+   * Medido en producción (2026-11-07): una pregunta reescrita pasó a afirmar lo
+   * contrario con la misma respuesta correcta, y el chat le contó otra cosa a
+   * la docente. El resumen tiene que decir lo que quedó guardado.
+   */
+  it('update_questions deja en el registro el enunciado antes y después, y la correcta', async () => {
+    const registro = registroVacio();
+    const tools = buildAgentTools('org', 'usuario', 'curso', [], {
+      conversationId: 'conversacion',
+      isBuilding: true,
+      locale: 'es',
+      registro
+    }) as Record<string, { execute: (args: unknown, opciones: unknown) => Promise<Record<string, unknown>> }>;
+
+    await tools.update_questions.execute(
+      {
+        exerciseId: ID_EXAMEN,
+        questions: [
+          { id: 102, question: '¿Quién NO puede hacer los retiros?' },
+          { id: 101, settings: { correctValue: 1200 } }
+        ]
+      },
+      OPCIONES
+    );
+
+    expect(lineasDelRegistro(registro)).toEqual([
+      'Cambió las preguntas de «Examen final»: «¿Quién hace los retiros?» → «¿Quién NO puede hacer los retiros?», ' +
+        'correcta: El encargado de caja; correcta: 1250 → 1200'
+    ]);
   });
 });

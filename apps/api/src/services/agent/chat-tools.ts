@@ -116,6 +116,7 @@ import {
 } from '@api/services/agent/step-budget';
 import { buscarEnLecciones } from '@api/services/agent/lesson-search';
 import { anotarCambio, registroVacio, type RegistroDeRonda } from '@api/services/agent/round-ledger';
+import { cambiosDePreguntas, resumenDeAgregadas } from '@api/services/agent/resumen-de-preguntas';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
@@ -464,7 +465,9 @@ async function writeLessonBody(params: {
   // Anotado DESPUÉS de guardar, nunca antes: el registro dice lo que pasó, no
   // lo que se intentó. Si el guardado falla, esto no se ejecuta y la ronda no
   // reclama un cambio que no existe.
-  if (params.registro) anotarCambio(params.registro, 'escribio', params.lessonTitle);
+  if (params.registro) {
+    anotarCambio(params.registro, 'escribio', params.lessonTitle, { entidad: { tipo: 'Lesson', id: params.lessonId } });
+  }
 
   // El chequeo de fundamento sale a la red, así que arranca ANTES de las
   // comprobaciones locales y se espera al final: los avisos de SVG y de fórmulas
@@ -2191,7 +2194,12 @@ export function buildAgentTools(
 
           imagesGenerated += 1;
           if (lessonId) leccionesConImagen.add(lessonId);
-          anotarCambio(registro, 'ilustro', args.subject.slice(0, 60));
+          anotarCambio(
+            registro,
+            'ilustro',
+            args.subject.slice(0, 60),
+            lessonId ? { entidad: { tipo: 'Lesson', id: lessonId } } : {}
+          );
 
           // Handed over ready to paste. The model is told never to invent an
           // <img>, so giving it the exact element removes the temptation to
@@ -2495,6 +2503,7 @@ export function buildAgentTools(
           // las que van detrás pueden haberse corrido.
           manijas.invalidar();
           await recordBinding(args.planKey, section.id);
+          anotarCambio(registro, 'creo', section.title ?? args.title, { entidad: { tipo: 'Section', id: section.id } });
           return {
             id: section.id,
             handle: await manijas.manijaDe(section.id),
@@ -3191,7 +3200,9 @@ export function buildAgentTools(
           });
 
           // Anotado despues de guardar: el registro dice lo que paso.
-          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId, {
+            entidad: { tipo: 'Lesson', id: lessonId }
+          });
           reemplazosPorBloque.set(claveDelBloque, [...pasosDelBloque, _options?.presupuesto?.paso ?? 0]);
 
           // El informe que ve la docente, al día con lo que la lección dice
@@ -3321,7 +3332,9 @@ export function buildAgentTools(
           });
 
           // Anotado despues de guardar: el registro dice lo que paso.
-          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId);
+          anotarCambio(registro, 'edito', (lesson as { title?: string | null })?.title ?? lessonId, {
+            entidad: { tipo: 'Lesson', id: lessonId }
+          });
 
           // El informe que ve la docente, al día. Ver `recalcularInforme`.
           await recalcularInforme({
@@ -3467,6 +3480,10 @@ export function buildAgentTools(
           });
           // Un ejercicio más en una sección: su manija no existía hasta recién.
           manijas.invalidar();
+          anotarCambio(registro, 'creo', exercise.title ?? args.title, {
+            entidad: { tipo: 'Exercise', id: exercise.id },
+            agregadas: resumenDeAgregadas(args.questions)
+          });
           await recordBinding(args.planKey, exercise.id);
           return {
             id: exercise.id,
@@ -3637,7 +3654,10 @@ export function buildAgentTools(
           // Sólo las nuevas: el servicio no toca las preguntas que no recibe. Reenviar
           // las viejas era reescribirlas, y así se perdía la respuesta de las numéricas.
           await updateExerciseService(exerciseId, { questions: newQuestions });
-          anotarCambio(registro, 'pregunto', existingExercise.title ?? exerciseId);
+          anotarCambio(registro, 'pregunto', existingExercise.title ?? exerciseId, {
+            entidad: { tipo: 'Exercise', id: exerciseId },
+            agregadas: resumenDeAgregadas(newQuestions)
+          });
           return {
             exerciseId,
             exerciseTitle: existingExercise.title,
@@ -4047,7 +4067,10 @@ export function buildAgentTools(
             });
           }
 
-          anotarCambio(registro, 'pregunto', exerciseTitle);
+          anotarCambio(registro, creado ? 'creo' : 'pregunto', exerciseTitle, {
+            entidad: { tipo: 'Exercise', id: exerciseId },
+            agregadas: resumenDeAgregadas(filasDePregunta(preguntasQueYaTiene))
+          });
 
           return {
             exerciseId,
@@ -4138,7 +4161,12 @@ export function buildAgentTools(
           // Anotado como las demás escrituras. Faltaba: una ronda que corrigió
           // preguntas existentes cerraba con el registro vacío, y la docente no
           // veía «Cambió las preguntas de…» justo cuando más importaba.
-          anotarCambio(registro, 'pregunto', existing.title ?? exerciseId);
+          anotarCambio(registro, 'pregunto', existing.title ?? exerciseId, {
+            entidad: { tipo: 'Exercise', id: exerciseId },
+            // El enunciado y la correcta, antes y después: una afirmación
+            // invertida con la misma respuesta tiene que poder leerse.
+            cambios: cambiosDePreguntas(existing.questions ?? [], merged)
+          });
 
           return {
             exerciseId,
@@ -4287,12 +4315,13 @@ export function buildAgentTools(
           await deleteLessonService(lessonId);
           // Borrar corre a las que venían detrás: la manija de cada una bajó uno.
           manijas.invalidar();
+          anotarCambio(registro, 'borro', lesson.title ?? lessonId, { entidad: { tipo: 'Lesson', id: lessonId } });
 
           return {
             deleted: true,
             id: lessonId,
             title: lesson.title,
-            note: 'The lesson is gone, and the handles after it have shifted: call get_course_structure before using one. If it was part of an approved plan, the Plan Progress block will now show it as missing and you must NOT rebuild it — tell the teacher it is out of the plan too.'
+            note: 'The lesson is gone, and the handles after it have shifted: call get_course_structure before using one. If it was part of an approved plan, the Plan Progress block will now show it as removed (🗑️) and you must NOT rebuild it — tell the teacher it is out of the plan too.'
           };
         });
       }
@@ -4321,6 +4350,7 @@ export function buildAgentTools(
 
           await deleteExerciseForCourseService(courseId, exerciseId);
           manijas.invalidar();
+          anotarCambio(registro, 'borro', exercise.title ?? exerciseId, { entidad: { tipo: 'Exercise', id: exerciseId } });
 
           return {
             deleted: true,
@@ -4386,6 +4416,7 @@ export function buildAgentTools(
 
           await deleteCourseSectionService(sectionId);
           manijas.invalidar();
+          anotarCambio(registro, 'borro', section.title, { entidad: { tipo: 'Section', id: sectionId } });
 
           return {
             deleted: true,

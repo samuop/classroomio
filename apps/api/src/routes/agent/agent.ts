@@ -186,6 +186,9 @@ import {
 import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
+import { auditarCambiosDeLaRonda, type IdentidadDelPedido } from '@api/services/agent/auditoria-del-asistente';
+import { resolveOrgRole } from '@api/middlewares/audit-request';
+import { clientInfoFromHeaders } from '@api/utils/client-info';
 import {
   estadoDelPlanAlEmpezar,
   huellaDelPlan,
@@ -2765,10 +2768,35 @@ const agentCoreRouter = new Hono()
        * antes, y las cabeceras las pone `createUIMessageStreamResponse` igual
        * que `toUIMessageStreamResponse`.
        */
+      /**
+       * Quién pidió la ronda, tomado AHORA: al cerrar, el request ya respondió.
+       * Lo que cambió va a la auditoría con su firma. Ver `auditoria-del-asistente.ts`.
+       */
+      const clienteDelPedido = clientInfoFromHeaders(c.req.raw.headers);
+      const identidadDelPedido: IdentidadDelPedido = {
+        orgId,
+        userId: user.id,
+        userLabel: user.email ?? null,
+        userRole: (user as { role?: string | null }).role ?? null,
+        orgRole: resolveOrgRole(c.get('orgRoles') as Record<string, number> | undefined, orgId),
+        sessionId: (c.get('session') as { id?: string } | undefined)?.id ?? null,
+        ip: clienteDelPedido.ip,
+        device: clienteDelPedido.device,
+        browser: clienteDelPedido.browser,
+        userAgent: clienteDelPedido.userAgent
+      };
+
       const respuesta = responderRonda({
         resultado: result,
         siguienteTramo,
         mensajesOriginales: messages as UIMessage[],
+        alTerminarLaRonda: () =>
+          auditarCambiosDeLaRonda({
+            identidad: identidadDelPedido,
+            registro: registroDeRonda,
+            courseId,
+            conversationId
+          }),
         // Sin conversación (el primer mensaje de un chat nuevo) no hay dónde
         // guardar: la crea y la guarda el cliente, como siempre.
         guardar: conversationId

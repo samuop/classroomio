@@ -36,12 +36,32 @@
  * distinto de como estaba.
  */
 
+/** Qué fila del curso se tocó: lo que la auditoría registra como entidad. */
+export interface EntidadDelCambio {
+  tipo: 'Lesson' | 'Exercise' | 'Section' | 'Course';
+  id: string;
+}
+
 /** Una cosa que cambió. `objeto` es lo que el docente reconoce: el título. */
 export interface CambioDeRonda {
   accion: 'escribio' | 'edito' | 'creo' | 'borro' | 'ilustro' | 'pregunto' | 'saco_del_plan' | 'cambio_el_plan';
   objeto: string;
   /** Cuántas veces pasó lo mismo sobre lo mismo. */
   veces: number;
+  entidad?: EntidadDelCambio;
+  /**
+   * Sólo en `pregunto`: cuántas se agregaron y con cuántos puntos, y una línea
+   * por pregunta reescrita. «Cambió las preguntas (3 veces)» escondió doce
+   * preguntas nuevas en un examen ya rendido. Ver `resumen-de-preguntas.ts`.
+   */
+  preguntas?: { agregadas: number; puntos: number; cambios: string[] };
+}
+
+/** Lo que una escritura puede agregar a su renglón. */
+export interface DetalleDelCambio {
+  entidad?: EntidadDelCambio;
+  agregadas?: { cantidad: number; puntos: number };
+  cambios?: string[];
 }
 
 export interface RegistroDeRonda {
@@ -59,16 +79,53 @@ export function registroVacio(): RegistroDeRonda {
  * tres veces»— y no tres hechos, y una lista de treinta líneas repetidas es
  * tan ilegible como no tener nada.
  */
-export function anotarCambio(registro: RegistroDeRonda, accion: CambioDeRonda['accion'], objeto: string): void {
+export function anotarCambio(
+  registro: RegistroDeRonda,
+  accion: CambioDeRonda['accion'],
+  objeto: string,
+  detalle: DetalleDelCambio = {}
+): void {
   const limpio = objeto.trim() || '(sin título)';
-  const ya = registro.cambios.find((c) => c.accion === accion && c.objeto === limpio);
+  let cambio = registro.cambios.find((c) => c.accion === accion && c.objeto === limpio);
 
-  if (ya) {
-    ya.veces += 1;
-    return;
+  if (cambio) {
+    cambio.veces += 1;
+  } else {
+    cambio = { accion, objeto: limpio, veces: 1 };
+    registro.cambios.push(cambio);
   }
 
-  registro.cambios.push({ accion, objeto: limpio, veces: 1 });
+  if (detalle.entidad && !cambio.entidad) cambio.entidad = detalle.entidad;
+  if (detalle.agregadas || detalle.cambios?.length) {
+    const preguntas = (cambio.preguntas ??= { agregadas: 0, puntos: 0, cambios: [] });
+
+    preguntas.agregadas += detalle.agregadas?.cantidad ?? 0;
+    preguntas.puntos += detalle.agregadas?.puntos ?? 0;
+    for (const linea of detalle.cambios ?? []) {
+      if (!preguntas.cambios.includes(linea)) preguntas.cambios.push(linea);
+    }
+  }
+}
+
+/** Hasta cuántas reescrituras se nombran en un renglón; el resto se cuenta. */
+const REESCRITURAS_A_LA_VISTA = 5;
+
+function detalleDePreguntas(preguntas: NonNullable<CambioDeRonda['preguntas']>): string {
+  const partes: string[] = [];
+
+  if (preguntas.agregadas > 0) {
+    partes.push(
+      `agregó ${preguntas.agregadas} ${preguntas.agregadas === 1 ? 'pregunta' : 'preguntas'} (${preguntas.puntos} ${preguntas.puntos === 1 ? 'punto' : 'puntos'})`
+    );
+  }
+
+  const aLaVista = preguntas.cambios.slice(0, REESCRITURAS_A_LA_VISTA);
+  const resto = preguntas.cambios.length - aLaVista.length;
+
+  partes.push(...aLaVista);
+  if (resto > 0) partes.push(`y ${resto} ${resto === 1 ? 'cambio' : 'cambios'} más`);
+
+  return partes.join('; ');
 }
 
 const COMO_SE_DICE: Record<CambioDeRonda['accion'], string> = {
@@ -93,7 +150,8 @@ const COMO_SE_DICE: Record<CambioDeRonda['accion'], string> = {
 export function lineasDelRegistro(registro: RegistroDeRonda): string[] {
   return registro.cambios.map((c) => {
     const veces = c.veces > 1 ? ` (${c.veces} veces)` : '';
+    const detalle = c.preguntas ? detalleDePreguntas(c.preguntas) : '';
 
-    return `${COMO_SE_DICE[c.accion]} «${c.objeto}»${veces}`;
+    return `${COMO_SE_DICE[c.accion]} «${c.objeto}»${veces}${detalle ? `: ${detalle}` : ''}`;
   });
 }

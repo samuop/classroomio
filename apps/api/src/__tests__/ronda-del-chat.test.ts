@@ -39,6 +39,12 @@ vi.mock('@api/utils/redis/redis', async () => {
   return { redis: redisDePrueba(), logRedisUnavailableOnce: vi.fn() };
 });
 
+// La auditoría de lo que cambió: sin base en los unitarios. Se mira CUÁNTAS
+// veces corre (una por ronda, no una por tramo).
+vi.mock('@api/services/agent/auditoria-del-asistente', () => ({
+  auditarCambiosDeLaRonda: vi.fn(async () => {})
+}));
+
 vi.mock('@api/services/agent/usage', async (original) => ({
   ...(await original<typeof import('@api/services/agent/usage')>()),
   enforceTokenBalance: vi.fn(async () => {}),
@@ -204,6 +210,7 @@ const { AppError } = await import('@api/utils/errors');
 const { hasta, leerPartes } = await import('./ayuda/sse');
 const { leerCierreDelPlan, cerrarPlan, abrirPlan } = await import('@cio/db/queries/agent');
 const { huellaDelPlan } = await import('@api/services/agent/plan-vivo');
+const { auditarCambiosDeLaRonda } = await import('@api/services/agent/auditoria-del-asistente');
 
 // Ids con forma de UUID donde el validador los pide.
 const EMPRESA = '00000000-0000-4000-8000-00000000e002';
@@ -1076,6 +1083,9 @@ describe('la construcción sigue sola, en tramos', () => {
     expect(metadataDelCierre(partes)).toMatchObject({
       serverRun: { segments: MAX_TRAMOS, steps: 2 * MAX_TRAMOS, stopReason: 'tope_de_tramos' }
     });
+
+    // Seis tramos, una sola auditoría: lo que cambió la ronda se registra una vez.
+    expect(auditarCambiosDeLaRonda).toHaveBeenCalledTimes(1);
 
     const guardado = loGuardado();
     expect(guardado.map((mensaje) => mensaje.id)).toEqual(['u1', 'a1', 'u2', expect.any(String)]);

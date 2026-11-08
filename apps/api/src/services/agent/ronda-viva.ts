@@ -490,6 +490,13 @@ export function responderRonda(params: {
    * siguiente tampoco. Ver `continuacion-del-servidor.ts`.
    */
   siguienteTramo?: (tramo: { numero: number; mensajes: UIMessage[] }) => Promise<ResultadoDeLaRonda | null>;
+  /**
+   * Llamado UNA vez, cuando la ronda terminó del todo (todos sus tramos, o el
+   * corte), antes de soltar el candado. `guardar` corre al final de cada tramo;
+   * lo que tiene que pasar una sola vez por ronda —la auditoría de lo que
+   * cambió— va acá. Nunca rompe la ronda: un error se loguea.
+   */
+  alTerminarLaRonda?: () => Promise<void>;
 }): Response {
   const etiqueta = params.etiqueta ?? 'sin conversación';
   const latidoMs = params.latidoMs ?? LATIDO_MS;
@@ -616,6 +623,10 @@ export function responderRonda(params: {
         // que al menos tiene que estar lo que mandó: si no, su último mensaje
         // desaparecería de la pantalla.
         if (!guardadoIntentado) await guardar(params.mensajesOriginales);
+
+        await params.alTerminarLaRonda?.().catch((error: unknown) => {
+          console.error(`[agent.chat] falló el cierre de la ronda de ${etiqueta}:`, error);
+        });
 
         await params.candado?.soltar();
       }
