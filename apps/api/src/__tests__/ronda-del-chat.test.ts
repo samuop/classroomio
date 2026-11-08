@@ -105,7 +105,19 @@ vi.mock('@cio/db/queries/agent', async (original) => ({
   leerCierreDelPlan: vi.fn(async () => null),
   cerrarPlan: vi.fn(async () => {}),
   abrirPlan: vi.fn(async () => {}),
-  enmendarItemDelPlan: vi.fn(async () => true)
+  enmendarItemDelPlan: vi.fn(async () => true),
+  // Los cambios con entregas (ver `cambios-con-entregas.ts`): sin base.
+  propuestasParaLaRonda: vi.fn(async () => []),
+  marcarPropuestasInformadas: vi.fn(async () => {}),
+  entregasDelEjercicio: vi.fn(async () => ({ cantidad: 0, promedio: null })),
+  leerPropuesta: vi.fn(async () => null),
+  tomarPropuesta: vi.fn(async () => true),
+  marcarPropuestaFallida: vi.fn(async () => {})
+}));
+
+vi.mock('@api/services/agent/cambios-con-entregas', async (original) => ({
+  ...(await original<typeof import('@api/services/agent/cambios-con-entregas')>()),
+  aplicarPropuesta: vi.fn(async () => {})
 }));
 
 vi.mock('@cio/db/queries/agent/chat-document', async (original) => ({
@@ -211,6 +223,10 @@ const { hasta, leerPartes } = await import('./ayuda/sse');
 const { leerCierreDelPlan, cerrarPlan, abrirPlan } = await import('@cio/db/queries/agent');
 const { huellaDelPlan } = await import('@api/services/agent/plan-vivo');
 const { auditarCambiosDeLaRonda } = await import('@api/services/agent/auditoria-del-asistente');
+const { leerPropuesta, tomarPropuesta, marcarPropuestaFallida, propuestasParaLaRonda, marcarPropuestasInformadas } =
+  await import('@cio/db/queries/agent');
+const { aplicarPropuesta } = await import('@api/services/agent/cambios-con-entregas');
+const { isCourseTeamMemberOrOrgAdmin } = await import('@cio/db/queries/group');
 
 // Ids con forma de UUID donde el validador los pide.
 const EMPRESA = '00000000-0000-4000-8000-00000000e002';
@@ -1439,5 +1455,109 @@ describe('las preguntas a revisar, en la ronda', () => {
     await leerPartes(await chat({ conversationId: conversacionNueva() }));
 
     expect(promptsRecibidos[0]).not.toContain('## Questions to review');
+  });
+});
+
+/**
+ * La docente decide los cambios que tocan notas (ver `cambios-con-entregas.ts`).
+ *
+ * La tarjeta llama a estos endpoints; aplicarlo lo hace el servidor con lo que
+ * quedó guardado, una sola vez, y sólo para quien es del equipo del curso.
+ */
+describe('las propuestas con entregas: la docente decide', () => {
+  const PROPUESTA = '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b';
+  const guardada = (estado: 'pendiente' | 'aplicada' | 'cancelada' = 'pendiente') => ({
+    id: PROPUESTA,
+    estado,
+    herramienta: 'write_questions',
+    exerciseId: '00000000-0000-4000-8000-0000000e0001',
+    exerciseTitle: 'Examen final',
+    cuerpo: { tipo: 'agregar', preguntas: [] },
+    impacto: { tipo: 'agregar', entregas: 50, maximoAntes: 12, maximoDespues: 25 },
+    courseId: CURSO,
+    conversationId: 'conversacion',
+    creadaEn: '2026-11-08T10:00:00Z'
+  });
+
+  const resolver = (decision: 'approve' | 'cancel') =>
+    app().request(`/agent/proposals/${PROPUESTA}/resolve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cio-org-id': EMPRESA },
+      body: JSON.stringify({ courseId: CURSO, decision })
+    });
+
+  beforeEach(() => {
+    vi.mocked(leerPropuesta).mockResolvedValue(guardada() as never);
+    vi.mocked(tomarPropuesta).mockResolvedValue(true);
+    vi.mocked(aplicarPropuesta).mockResolvedValue(undefined);
+  });
+
+  it('aprobada, el servidor la aplica con lo guardado', async () => {
+    const respuesta = await resolver('approve');
+
+    expect(respuesta.status).toBe(200);
+    expect(await respuesta.json()).toMatchObject({ success: true, data: { estado: 'aplicada' } });
+    expect(tomarPropuesta).toHaveBeenCalledWith(expect.objectContaining({ id: PROPUESTA, estado: 'aplicada' }));
+    expect(aplicarPropuesta).toHaveBeenCalledWith(expect.objectContaining({ id: PROPUESTA, exerciseTitle: 'Examen final' }));
+  });
+
+  it('cancelada, no se aplica nada', async () => {
+    const respuesta = await resolver('cancel');
+
+    expect(await respuesta.json()).toMatchObject({ data: { estado: 'cancelada' } });
+    expect(aplicarPropuesta).not.toHaveBeenCalled();
+  });
+
+  it('dos clics no la aplican dos veces: la segunda contesta cómo quedó', async () => {
+    vi.mocked(tomarPropuesta).mockResolvedValueOnce(false);
+    vi.mocked(leerPropuesta).mockResolvedValueOnce(guardada() as never).mockResolvedValueOnce(guardada('aplicada') as never);
+
+    const respuesta = await resolver('approve');
+
+    expect(await respuesta.json()).toMatchObject({ data: { estado: 'aplicada' } });
+    expect(aplicarPropuesta).not.toHaveBeenCalled();
+  });
+
+  it('si no se pudo aplicar, queda marcada como fallida y responde el error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(aplicarPropuesta).mockRejectedValueOnce(new Error('la base no contesta'));
+
+    const respuesta = await resolver('approve');
+
+    expect(respuesta.status).toBe(500);
+    expect(marcarPropuestaFallida).toHaveBeenCalledWith({ id: PROPUESTA, error: 'la base no contesta' });
+  });
+
+  it('quien no es del equipo del curso no la resuelve', async () => {
+    vi.mocked(isCourseTeamMemberOrOrgAdmin).mockResolvedValueOnce(false);
+
+    const respuesta = await resolver('approve');
+
+    expect(respuesta.status).toBe(403);
+    expect(tomarPropuesta).not.toHaveBeenCalled();
+    expect(aplicarPropuesta).not.toHaveBeenCalled();
+  });
+
+  it('una propuesta que no es suya (o no existe) es un 404', async () => {
+    vi.mocked(leerPropuesta).mockResolvedValueOnce(null);
+
+    expect((await resolver('approve')).status).toBe(404);
+    expect(aplicarPropuesta).not.toHaveBeenCalled();
+  });
+
+  it('la ronda siguiente se entera de cómo quedaron, y marca informadas las resueltas', async () => {
+    vi.mocked(createModel).mockImplementation(() => modeloDeDosPasos() as never);
+    vi.mocked(propuestasParaLaRonda).mockResolvedValueOnce([
+      { ...guardada('aplicada'), id: 'resuelta' },
+      { ...guardada('pendiente'), id: 'esperando' }
+    ] as never);
+    promptsRecibidos = [];
+
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(promptsRecibidos[0]).toContain('## Changes to graded exercises you proposed');
+    expect(promptsRecibidos[0]).toContain('APPROVED by her and APPLIED by the server');
+    expect(promptsRecibidos[0]).toContain('WAITING for her decision');
+    expect(marcarPropuestasInformadas).toHaveBeenCalledWith(['resuelta']);
   });
 });

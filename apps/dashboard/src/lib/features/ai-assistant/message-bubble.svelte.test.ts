@@ -204,3 +204,35 @@ describe('la tarjeta del plan dice «Aprobado» sólo con una aprobación que tu
     expect(aprobado()).toBeInTheDocument();
   });
 });
+
+/**
+ * Un cambio que toca notas y quedó propuesto (ver `cambio-con-entregas-card.svelte`)
+ * se ve como su tarjeta, con los botones: no como un paso más del trabajo.
+ */
+describe('un cambio propuesto sobre un ejercicio con entregas', () => {
+  it('se dibuja como la tarjeta de aprobación', () => {
+    const propuesta = {
+      id: 'a3',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'tool-write_questions',
+          toolCallId: 'call-9',
+          state: 'output-available',
+          input: {},
+          output: {
+            status: 'needs_teacher_approval',
+            proposalId: '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b',
+            exerciseTitle: 'Examen final',
+            impact: { tipo: 'agregar', entregas: 50, maximoAntes: 12, maximoDespues: 25, promedioAntes: 87, promedioDespues: 42 }
+          }
+        },
+        { type: 'text', text: 'Te propongo sumar el bloque del módulo 3.' }
+      ]
+    } as unknown as AiAssistantMessage;
+
+    dibujar(propuesta, [pedido, propuesta]);
+
+    expect(screen.getByRole('group', { name: texto('ai_assistant.graded_change.title') })).toBeInTheDocument();
+  });
+});

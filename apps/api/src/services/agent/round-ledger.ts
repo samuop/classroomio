@@ -44,7 +44,17 @@ export interface EntidadDelCambio {
 
 /** Una cosa que cambió. `objeto` es lo que el docente reconoce: el título. */
 export interface CambioDeRonda {
-  accion: 'escribio' | 'edito' | 'creo' | 'borro' | 'ilustro' | 'pregunto' | 'saco_del_plan' | 'cambio_el_plan';
+  accion:
+    | 'escribio'
+    | 'edito'
+    | 'creo'
+    | 'borro'
+    | 'ilustro'
+    | 'pregunto'
+    | 'saco_del_plan'
+    | 'cambio_el_plan'
+    /** Un cambio que toca notas, guardado como propuesta: NO se aplicó. Ver `cambios-con-entregas.ts`. */
+    | 'propuso';
   objeto: string;
   /** Cuántas veces pasó lo mismo sobre lo mismo. */
   veces: number;
@@ -136,7 +146,8 @@ const COMO_SE_DICE: Record<CambioDeRonda['accion'], string> = {
   ilustro: 'Ilustró',
   pregunto: 'Cambió las preguntas de',
   saco_del_plan: 'Sacó del plan',
-  cambio_el_plan: 'Cambió en el plan'
+  cambio_el_plan: 'Cambió en el plan',
+  propuso: 'Propuso, para tu aprobación, un cambio en'
 };
 
 /**

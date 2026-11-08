@@ -112,6 +112,17 @@ function readPositiveInt(record: Record<string, unknown>, key: string): number {
 export function getCompletedToolLine(toolName: string, result: unknown): ToolLineUi {
   const r = (result ?? {}) as Record<string, unknown>;
 
+  // Un cambio sobre un ejercicio con entregas NO se hizo: quedó propuesto. Sin
+  // esto, la línea de un `delete_exercise` propuesto diría «Ejercicio borrado».
+  // Ver `cambio-con-entregas-card.svelte`.
+  if (r.status === 'needs_teacher_approval') {
+    return {
+      shape: 'i18n',
+      key: 'ai_assistant.tool.done.needs_approval',
+      vars: { title: readString(r, 'exerciseTitle') ?? '' }
+    };
+  }
+
   switch (toolName) {
     case 'create_section':
       return {

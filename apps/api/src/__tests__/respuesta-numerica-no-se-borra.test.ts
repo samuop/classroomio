@@ -36,6 +36,12 @@ vi.mock('@api/services/exercise/exercise', () => ({
   deleteExerciseForCourseService: vi.fn()
 }));
 
+vi.mock('@cio/db/queries/agent', async (original) => ({
+  ...(await original<typeof import('@cio/db/queries/agent')>()),
+  // Sin entregas: escribe como siempre (ver `cambios-con-entregas.ts`).
+  entregasDelEjercicio: vi.fn(async () => ({ cantidad: 0, promedio: null })),
+}));
+
 vi.mock('@api/services/agent/chat-context', async (original) => ({
   ...(await original<typeof import('@api/services/agent/chat-context')>()),
   verifyExerciseBelongsToCourse: vi.fn()

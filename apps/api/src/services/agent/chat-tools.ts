@@ -11,6 +11,7 @@ import {
   bindPlanItem,
   confirmarItemDelPlan,
   enmendarItemDelPlan,
+  entregasDelEjercicio,
   getChatConversation,
   readPlanRegistry,
   resolvePlanBinding
@@ -117,6 +118,12 @@ import {
 import { buscarEnLecciones } from '@api/services/agent/lesson-search';
 import { anotarCambio, registroVacio, type RegistroDeRonda } from '@api/services/agent/round-ledger';
 import { cambiosDePreguntas, resumenDeAgregadas } from '@api/services/agent/resumen-de-preguntas';
+import {
+  calcularImpacto,
+  proponerCambioConEntregas,
+  resumenDelImpacto,
+  type CuerpoDePropuesta
+} from '@api/services/agent/cambios-con-entregas';
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
@@ -1703,6 +1710,58 @@ export function buildAgentTools(
   /** Dos son un pedido suelto; a la tercera ya es un curso, y eso va por el plan. */
   const MAX_LECCIONES_SIN_PLAN = 2;
   const runScope = { orgId, courseId, conversationId, userId };
+
+  /**
+   * Si el ejercicio ya tiene entregas, el cambio no se escribe: se propone.
+   *
+   * Devuelve lo que la herramienta le contesta al modelo cuando quedó como
+   * propuesta, o `undefined` si no hay entregas y se puede escribir como
+   * siempre. Ver `cambios-con-entregas.ts`: doce preguntas agregadas a un examen
+   * ya rendido bajaron cincuenta notas, y nadie las había pedido.
+   */
+  async function proponerSiTieneEntregas(params: {
+    herramienta: string;
+    exerciseId: string;
+    exerciseTitle: string;
+    /** Las preguntas de hoy, para el máximo de antes. */
+    preguntasDeHoy: ReadonlyArray<{ points?: number | null }>;
+    cuerpo: CuerpoDePropuesta;
+    /** El máximo después del cambio. Ausente: el de hoy más lo agregado. */
+    maximoDespues?: number;
+    agregadas?: { cantidad: number; puntos: number };
+    cambios?: string[];
+  }): Promise<Record<string, unknown> | undefined> {
+    const entregas = await entregasDelEjercicio(params.exerciseId);
+
+    if (entregas.cantidad === 0) return undefined;
+
+    const maximoAntes = params.preguntasDeHoy.reduce((suma, pregunta) => suma + Number(pregunta.points ?? 0), 0);
+    const impacto = calcularImpacto({
+      tipo: params.cuerpo.tipo,
+      entregas,
+      maximoAntes,
+      maximoDespues:
+        params.cuerpo.tipo === 'borrar' ? 0 : (params.maximoDespues ?? maximoAntes + (params.agregadas?.puntos ?? 0)),
+      ...(params.agregadas ? { agregadas: params.agregadas } : {}),
+      ...(params.cambios ? { cambios: params.cambios } : {})
+    });
+
+    const respuesta = await proponerCambioConEntregas({
+      alcance: runScope,
+      herramienta: params.herramienta,
+      exerciseId: params.exerciseId,
+      exerciseTitle: params.exerciseTitle,
+      cuerpo: params.cuerpo,
+      impacto
+    });
+
+    anotarCambio(registro, 'propuso', params.exerciseTitle, {
+      entidad: { tipo: 'Exercise', id: params.exerciseId },
+      cambios: [resumenDelImpacto(impacto)]
+    });
+
+    return respuesta;
+  }
 
   /**
    * Manijas cortas: toda herramienta acepta `S2.L3` donde acepta un id.
@@ -3651,6 +3710,21 @@ export function buildAgentTools(
             settings: settingsConEvidencia(q)
           }));
 
+          const propuesta = await proponerSiTieneEntregas({
+            herramienta: 'add_questions',
+            exerciseId,
+            exerciseTitle: existingExercise.title ?? exerciseId,
+            preguntasDeHoy: existingQuestions,
+            cuerpo: {
+              tipo: 'agregar',
+              preguntas: newQuestions.map(({ order: _order, exerciseSectionId: _bloque, ...pregunta }) => pregunta),
+              ...(exerciseSectionId ? { exerciseSectionId } : {})
+            },
+            agregadas: resumenDeAgregadas(newQuestions)
+          });
+
+          if (propuesta) return propuesta;
+
           // Sólo las nuevas: el servicio no toca las preguntas que no recibe. Reenviar
           // las viejas era reescribirlas, y así se perdía la respuesta de las numéricas.
           await updateExerciseService(exerciseId, { questions: newQuestions });
@@ -4046,6 +4120,27 @@ export function buildAgentTools(
             creado = true;
           }
 
+          // Un ejercicio que ya existía puede tener entregas: ahí no se agrega
+          // nada (ni el bloque nuevo) sin que la docente lo apruebe. Es el camino
+          // por donde entraron las doce preguntas al examen ya rendido.
+          if (!creado) {
+            const deHoy = await getExercise(exerciseId).catch(() => null);
+            const propuesta = await proponerSiTieneEntregas({
+              herramienta: 'write_questions',
+              exerciseId,
+              exerciseTitle,
+              preguntasDeHoy: deHoy?.questions ?? [],
+              cuerpo: {
+                tipo: 'agregar',
+                preguntas: filasDePregunta(0).map(({ order: _order, ...pregunta }) => pregunta),
+                ...(args.blockTitle ? { bloqueNuevo: args.blockTitle } : {})
+              },
+              agregadas: resumenDeAgregadas(aceptadas)
+            });
+
+            if (propuesta) return propuesta;
+          }
+
           let exerciseSectionId: string | undefined;
 
           if (args.blockTitle) {
@@ -4155,6 +4250,28 @@ export function buildAgentTools(
             parches,
             exerciseId
           );
+
+          // Reescribir una pregunta ya respondida cambia lo que dice la nota de
+          // quien la respondió (y una correcta nueva no recalcula nada): con
+          // entregas, lo decide la docente. El máximo nuevo sale de los puntos de
+          // las parchadas, que son las únicas que cambian.
+          const viejasPorId = new Map((existing.questions || []).map((q) => [String(q.id), q] as const));
+          const diferenciaDePuntos = merged.reduce(
+            (suma, nueva) => suma + Number(nueva.points ?? 0) - Number(viejasPorId.get(String(nueva.id))?.points ?? 0),
+            0
+          );
+          const maximoDeHoy = (existing.questions || []).reduce((suma, q) => suma + Number(q.points ?? 0), 0);
+          const propuesta = await proponerSiTieneEntregas({
+            herramienta: 'update_questions',
+            exerciseId,
+            exerciseTitle: existing.title ?? exerciseId,
+            preguntasDeHoy: existing.questions || [],
+            cuerpo: { tipo: 'reescribir', parches },
+            maximoDespues: maximoDeHoy + diferenciaDePuntos,
+            cambios: cambiosDePreguntas(existing.questions ?? [], merged)
+          });
+
+          if (propuesta) return propuesta;
 
           await updateExerciseService(exerciseId, { questions: merged });
 
@@ -4347,6 +4464,17 @@ export function buildAgentTools(
               })
             );
           }
+
+          // Borrar un ejercicio con entregas borra las entregas y sus notas.
+          const propuesta = await proponerSiTieneEntregas({
+            herramienta: 'delete_exercise',
+            exerciseId,
+            exerciseTitle: exercise.title ?? exerciseId,
+            preguntasDeHoy: exercise.questions || [],
+            cuerpo: { tipo: 'borrar' }
+          });
+
+          if (propuesta) return propuesta;
 
           await deleteExerciseForCourseService(courseId, exerciseId);
           manijas.invalidar();

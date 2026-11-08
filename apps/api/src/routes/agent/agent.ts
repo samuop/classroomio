@@ -97,6 +97,11 @@ import {
   getChatConversation,
   getChatDocumentCacheKey,
   leerAnalisisDeFuente,
+  leerPropuesta,
+  marcarPropuestaFallida,
+  marcarPropuestasInformadas,
+  propuestasParaLaRonda,
+  tomarPropuesta,
   readPlanRegistry,
   syncPlanRegistry,
   type PlanShape
@@ -187,6 +192,12 @@ import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
 import { auditarCambiosDeLaRonda, type IdentidadDelPedido } from '@api/services/agent/auditoria-del-asistente';
+import { aplicarPropuesta, avisoDePropuestas } from '@api/services/agent/cambios-con-entregas';
+import { anotarAuditoria } from '@api/utils/audit-detail';
+import { z } from 'zod';
+
+/** Las propuestas se nombran por un uuid: la tarjeta no necesita saber de qué conversación son. */
+const ZPropuestaParam = z.object({ proposalId: z.string().uuid() });
 import { resolveOrgRole } from '@api/middlewares/audit-request';
 import { clientInfoFromHeaders } from '@api/utils/client-info';
 import {
@@ -292,6 +303,109 @@ const agentCoreRouter = new Hono()
       return handleError(c, error, 'Failed to get agent status');
     }
   })
+  /**
+   * Un cambio del asistente que toca notas, esperando a la docente. La tarjeta
+   * lee su estado al dibujarse: si ya se resolvió (en otra pestaña, o antes de
+   * recargar), no vuelve a ofrecer los botones. Ver `cambios-con-entregas.ts`.
+   */
+  .get(
+    '/proposals/:proposalId',
+    authMiddleware,
+    orgMemberMiddleware,
+    zValidator('param', ZPropuestaParam),
+    zValidator('query', z.object({ courseId: z.string().uuid() })),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const { proposalId } = c.req.valid('param');
+        const { courseId } = c.req.valid('query');
+        const propuesta = await leerPropuesta({ id: proposalId, userId: user.id, courseId });
+
+        if (!propuesta) throw new AppError('Proposal not found', 'NOT_FOUND', 404);
+
+        return c.json({
+          success: true as const,
+          data: { estado: propuesta.estado, ...(propuesta.error ? { error: propuesta.error } : {}) }
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to read the proposal');
+      }
+    }
+  )
+  /**
+   * La docente aprueba o cancela. Aprobado, lo aplica el SERVIDOR con lo que
+   * quedó guardado al proponer: el modelo no vuelve a intervenir. Una propuesta
+   * se resuelve una sola vez, aunque lleguen dos clics.
+   */
+  .post(
+    '/proposals/:proposalId/resolve',
+    authMiddleware,
+    orgMemberMiddleware,
+    zValidator('param', ZPropuestaParam),
+    zValidator('json', z.object({ courseId: z.string().uuid(), decision: z.enum(['approve', 'cancel']) })),
+    async (c) => {
+      try {
+        const user = c.get('user')!;
+        const { proposalId } = c.req.valid('param');
+        const { courseId, decision } = c.req.valid('json');
+
+        if (!(await isCourseTeamMemberOrOrgAdmin(courseId, user.id))) {
+          throw new AppError('You must be a course team member to resolve a proposal', 'NOT_COURSE_TEAM_MEMBER', 403);
+        }
+
+        const propuesta = await leerPropuesta({ id: proposalId, userId: user.id, courseId });
+
+        if (!propuesta) throw new AppError('Proposal not found', 'NOT_FOUND', 404);
+
+        anotarAuditoria(c, {
+          action: decision === 'approve' ? 'APROBO_CAMBIO_DEL_ASISTENTE' : 'CANCELO_CAMBIO_DEL_ASISTENTE',
+          entity: 'Exercise',
+          entityId: propuesta.exerciseId,
+          metadata: {
+            courseId,
+            propuesta: proposalId,
+            herramienta: propuesta.herramienta,
+            ejercicio: propuesta.exerciseTitle,
+            impacto: propuesta.impacto
+          }
+        });
+
+        const tomada =
+          propuesta.estado === 'pendiente' &&
+          (await tomarPropuesta({
+            id: proposalId,
+            userId: user.id,
+            courseId,
+            estado: decision === 'approve' ? 'aplicada' : 'cancelada'
+          }));
+
+        // Ya estaba resuelta (otro clic, otra pestaña): se contesta cómo quedó.
+        if (!tomada) {
+          const ahora = await leerPropuesta({ id: proposalId, userId: user.id, courseId });
+
+          return c.json({ success: true as const, data: { estado: ahora?.estado ?? propuesta.estado } });
+        }
+
+        if (decision === 'approve') {
+          try {
+            await aplicarPropuesta(propuesta);
+          } catch (error) {
+            const mensaje = error instanceof Error ? error.message : String(error);
+
+            await marcarPropuestaFallida({ id: proposalId, error: mensaje });
+            throw new AppError(`The change could not be applied: ${mensaje}`, 'PROPOSAL_FAILED', 500);
+          }
+        }
+
+        return c.json({
+          success: true as const,
+          data: { estado: decision === 'approve' ? ('aplicada' as const) : ('cancelada' as const) }
+        });
+      } catch (error) {
+        return handleError(c, error, 'Failed to resolve the proposal');
+      }
+    }
+  )
   .post('/upload', authMiddleware, orgMemberMiddleware, async (c) => {
     try {
       const user = c.get('user')!;
@@ -1278,6 +1392,23 @@ const agentCoreRouter = new Hono()
       const avisoDePreguntas = avisoDePreguntasARevisar(preguntasAlEmpezar);
       if (avisoDePreguntas) {
         contextMessageText = contextMessageText ? `${contextMessageText}\n\n${avisoDePreguntas}` : avisoDePreguntas;
+      }
+
+      // Los cambios a ejercicios con entregas que el asistente propuso: cuáles
+      // esperan a la docente y cómo resolvió los demás. Ver `cambios-con-entregas.ts`.
+      const propuestasDeLaConversacion =
+        role === AgentRole.TEACHER
+          ? await propuestasParaLaRonda({ orgId, courseId, conversationId, userId: user.id }).catch((error: unknown) => {
+              console.error('[agent.chat] no se pudieron leer las propuestas de la conversación:', error);
+              return [];
+            })
+          : [];
+      const avisoDeLasPropuestas = avisoDePropuestas(propuestasDeLaConversacion);
+      if (avisoDeLasPropuestas) {
+        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${avisoDeLasPropuestas}` : avisoDeLasPropuestas;
+        void marcarPropuestasInformadas(
+          propuestasDeLaConversacion.filter((propuesta) => propuesta.estado !== 'pendiente').map((propuesta) => propuesta.id)
+        ).catch((error: unknown) => console.error('[agent.chat] no se pudieron marcar las propuestas informadas:', error));
       }
 
       // "The material really rides in THIS request" — nothing more. Two things

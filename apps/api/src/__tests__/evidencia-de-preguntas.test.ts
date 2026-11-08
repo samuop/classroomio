@@ -75,6 +75,9 @@ vi.mock('@cio/db/queries/exercise', async (original) => ({
 
 vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
+  // Sin entregas: escribe como siempre (ver `cambios-con-entregas.ts`).
+  entregasDelEjercicio: vi.fn(async () => ({ cantidad: 0, promedio: null })),
+  guardarPropuesta: vi.fn(async () => {}),
   bindPlanItem: vi.fn(),
   resolvePlanBinding: vi.fn().mockResolvedValue(null)
 }));
@@ -91,6 +94,7 @@ import { getCourseContentItems } from '@cio/db/queries/course/content';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
 import { createExercise, createExerciseSectionService, getExercise, updateExerciseService } from '@api/services/exercise/exercise';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
+import { entregasDelEjercicio, guardarPropuesta } from '@cio/db/queries/agent';
 import {
   avisoDeEvidencia,
   evidenciaAparece,
@@ -365,6 +369,40 @@ describe('write_questions: las escribe quien leyó las lecciones', () => {
     expect(enviadas).toHaveLength(1);
     expect(enviadas[0]).toMatchObject({ exerciseSectionId: ID.bloque });
     expect(resultado).toMatchObject({ exerciseSectionId: ID.bloque, added: 1 });
+  });
+
+  /**
+   * Producción, 2026-11-07: un bloque por llamada, doce preguntas sobre un
+   * examen que cincuenta alumnos ya habían rendido. Con entregas, nada se
+   * escribe —ni el bloque nuevo—: queda como propuesta para la docente.
+   */
+  it('sobre un ejercicio con entregas no escribe nada: lo propone, con el efecto en las notas', async () => {
+    vi.mocked(getExercise).mockResolvedValue({
+      id: ID.ejercicio,
+      title: 'Autoevaluación de recepción',
+      questions: [{ id: 1, points: 2 }, { id: 2, points: 2 }]
+    } as never);
+    vi.mocked(entregasDelEjercicio).mockResolvedValueOnce({ cantidad: 30, promedio: 3 });
+    escribirPreguntas.mockResolvedValue({ preguntas: [pregunta('El remito se revisa contra el pedido')] });
+
+    const resultado = await herramientas().write_questions.execute(
+      { exerciseId: ID.ejercicio, lessons: ['S1.L1'], blockTitle: 'Módulo 2' },
+      OPCIONES
+    );
+
+    expect(updateExerciseService).not.toHaveBeenCalled();
+    expect(createExerciseSectionService).not.toHaveBeenCalled();
+    expect(resultado).toMatchObject({
+      status: 'needs_teacher_approval',
+      impact: { tipo: 'agregar', entregas: 30, maximoAntes: 4, maximoDespues: 5, promedioAntes: 75, promedioDespues: 60 }
+    });
+    expect(guardarPropuesta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        herramienta: 'write_questions',
+        exerciseId: ID.ejercicio,
+        cuerpo: expect.objectContaining({ tipo: 'agregar', bloqueNuevo: 'Módulo 2' })
+      })
+    );
   });
 
   it('sobre un ejercicio que ya existe agrega a continuación de lo que tiene', async () => {

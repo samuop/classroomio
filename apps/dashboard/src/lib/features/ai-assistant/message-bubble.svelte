@@ -21,6 +21,9 @@
   import ChatImageViewer from '$features/ai-assistant/chat-image-viewer.svelte';
   import TemplateFormCard from '$features/ai-assistant/template-form-card.svelte';
   import DiscoveryFormCard from '$features/ai-assistant/discovery-form-card.svelte';
+  import CambioConEntregasCard, {
+    esPropuestaConEntregas
+  } from '$features/ai-assistant/cambio-con-entregas-card.svelte';
   import { isTemplateFormResolved } from '$features/ai-assistant/utils/template-form-resolved';
   import { isDiscoveryFormResolved } from '$features/ai-assistant/utils/discovery-form-resolved';
   import { mergeTemplateFieldsWithRegistry } from '$features/ai-assistant/utils/template-fields';
@@ -157,7 +160,14 @@
 
     const name = getAgentToolName(part);
 
-    return name === 'generate_course_plan' || name === 'ask_template_questions' || name === 'ask_discovery_questions';
+    return (
+      name === 'generate_course_plan' ||
+      name === 'ask_template_questions' ||
+      name === 'ask_discovery_questions' ||
+      // Un cambio que toca notas y espera a la docente es una decisión suya,
+      // no un paso del trabajo: va como tarjeta, a la vista.
+      esPropuestaConEntregas(getAgentToolResult(part))
+    );
   }
 
   function truncateErrorText(errorText: string): string {
@@ -541,7 +551,9 @@
         {@const toolResult = getAgentToolResult(part)}
         {@const toolStatus = getAgentToolStatus(part)}
         {@const errorText = getPartErrorText(part)}
-        {#if toolName === 'generate_course_plan' && toolStatus === 'completed'}
+        {#if toolStatus === 'completed' && esPropuestaConEntregas(toolResult)}
+          <CambioConEntregasCard propuesta={toolResult} {courseId} />
+        {:else if toolName === 'generate_course_plan' && toolStatus === 'completed'}
           {@const planId = idDelPlan(message.id, part, index)}
           <!--
             Aprobar marca como aprobada sólo la versión vigente: con la marca por

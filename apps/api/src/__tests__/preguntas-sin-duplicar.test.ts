@@ -52,6 +52,8 @@ vi.mock('@api/services/exercise/exercise', () => ({
 
 vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
+  // Sin entregas: escribe como siempre (ver `cambios-con-entregas.ts`).
+  entregasDelEjercicio: vi.fn(async () => ({ cantidad: 0, promedio: null })),
   bindPlanItem: vi.fn(),
   resolvePlanBinding: vi.fn()
 }));
