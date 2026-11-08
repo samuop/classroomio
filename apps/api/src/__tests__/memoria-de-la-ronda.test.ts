@@ -270,6 +270,52 @@ describe('la bitácora de la ronda', () => {
     expect(nota).toContain('- «Cuestionario 1»: «¿Cuál es el plazo?»');
   });
 
+  // Medido en vivo (2026-11-08): la propuesta se contaba como hecha, la nota la
+  // listaba entre «Changes ALREADY saved» y el modelo contestó «Listo, sumé las
+  // preguntas» sobre un examen que seguía igual.
+  it('una propuesta no está guardada ni negada: espera a la docente, y la nota lo dice', () => {
+    const bitacora = bitacoraVacia();
+
+    anotarLlamada(bitacora, {
+      paso: 2,
+      herramienta: 'get_lesson_content',
+      toolCallId: 'lectura',
+      entrada: { lessonId: 'S1.L1' },
+      resultado: { id: ID.leccion, title: 'El presupuesto' }
+    });
+    anotarLlamada(bitacora, {
+      paso: 3,
+      herramienta: 'write_questions',
+      entrada: { exerciseId: 'S1.L1' },
+      resultado: {
+        status: 'needs_teacher_approval',
+        proposalId: 'p-1',
+        exerciseId: ID.leccion,
+        exerciseTitle: 'El presupuesto',
+        note: 'NOTHING WAS SAVED.'
+      }
+    });
+
+    const nota = notaDeLaBitacora(bitacora)!;
+
+    expect(bitacora.escrituras[0]).toMatchObject({ hecho: false, propuesta: true });
+    expect(nota).toContain('No change has been saved yet in this round.');
+    expect(nota).toContain('PROPOSED and NOT saved');
+    expect(nota).toContain('write_questions · S1.L1');
+    expect(nota).not.toContain('Changes ALREADY saved');
+    expect(nota).not.toContain('Refused or failed');
+    // Nada cambió: la lectura de antes no queda vencida.
+    expect(nota).not.toContain('Outdated reads');
+  });
+
+  it('cómo quedaron las propuestas de antes va en la nota, al final de los mensajes', () => {
+    const nota = notaDeLaBitacora(bitacoraVacia(), {
+      propuestasAnteriores: '- write_questions on «Examen final»: APPROVED by her and APPLIED by the server'
+    })!;
+
+    expect(nota).toContain('APPROVED by her and APPLIED by the server');
+  });
+
   it('las negativas se leen de la respuesta, sean de la forma que sean', () => {
     expect(salioBien({ ok: false, error: 'no' })).toEqual({ hecho: false, motivo: 'no' });
     expect(salioBien({ updated: false, note: 'repetido' })).toEqual({ hecho: false, motivo: 'repetido' });

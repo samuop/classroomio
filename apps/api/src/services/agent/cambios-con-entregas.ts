@@ -168,7 +168,11 @@ export function avisoDePropuestas(propuestas: ReadonlyArray<PropuestaGuardada>):
       (propuesta.error ? ` (${propuesta.error})` : '')
   );
 
-  return `## Changes to graded exercises you proposed\n\nThese touched exercises students already submitted, so they wait for the teacher's approval on a card:\n${lineas.join('\n')}`;
+  return (
+    'Changes to graded exercises you proposed in earlier rounds — this is their CURRENT state, newer than any tool result ' +
+    'or reply earlier in the conversation (an earlier "NOTHING WAS SAVED" is outdated once she decided):\n' +
+    lineas.join('\n')
+  );
 }
 
 /** Las preguntas de un ejercicio como las quiere `buildUpdatedQuestions`. */

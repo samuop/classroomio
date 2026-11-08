@@ -259,6 +259,26 @@ function titulosNombrados(tramo: string, titulos: readonly string[]): string[] {
   return nombrados;
 }
 
+/**
+ * Los títulos de lo que la ronda cambió DE VERDAD, para contrastar el relato:
+ * lo que anotó el registro, menos lo propuesto, más lo que la bitácora vio
+ * guardar.
+ *
+ * Lo propuesto no cuenta: un cambio sobre un ejercicio con entregas queda
+ * esperando a la docente y el ejercicio sigue igual. Contado como cambio,
+ * «sumé las preguntas al @[Examen final]» pasaba sin advertencia cuando el
+ * examen no había cambiado (medido en vivo, 2026-11-08).
+ */
+export function piezasCambiadas(params: {
+  cambios: ReadonlyArray<{ accion: string; objeto: string }>;
+  escriturasHechas: ReadonlyArray<{ titulo?: string }>;
+}): string[] {
+  return [
+    ...params.cambios.filter((cambio) => cambio.accion !== 'propuso').map((cambio) => cambio.objeto),
+    ...params.escriturasHechas.map((escritura) => escritura.titulo ?? '')
+  ].filter(Boolean);
+}
+
 export function afirmacionesSinCambio(params: {
   /** El texto que la docente ve, de toda la respuesta. */
   texto: string;

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { afirmacionesSinCambio, hayAfirmacionesSinCambio } from '@api/services/agent/afirmaciones-sin-cambio';
+import { afirmacionesSinCambio, hayAfirmacionesSinCambio, piezasCambiadas } from '@api/services/agent/afirmaciones-sin-cambio';
 
 const TITULOS = ['Controlar precios en góndola', 'Cuestionario de precios y salón', 'Examen final integrador', 'Recibir mercadería'];
 
@@ -178,5 +178,35 @@ describe('el relato contra el registro', () => {
     });
 
     expect(hayAfirmacionesSinCambio(resultado)).toBe(false);
+  });
+});
+
+describe('lo propuesto no cuenta como cambiado', () => {
+  // Medido en vivo (2026-11-08): el examen tenía entregas, así que el cambio
+  // quedó propuesto y el examen siguió igual. El modelo cerró con esto.
+  const CIERRE = 'Listo, sumé las preguntas sobre cobro y facturación al @[Examen final integrador](exercise:S6.E1).';
+
+  it('«sumé las preguntas al examen» sobre una propuesta sale con la advertencia', () => {
+    const resultado = afirmacionesSinCambio({
+      texto: CIERRE,
+      cambiadas: piezasCambiadas({ cambios: [{ accion: 'propuso', objeto: 'Examen final integrador' }], escriturasHechas: [] }),
+      cambioPreguntas: false,
+      titulosDelCurso: TITULOS
+    });
+
+    expect(resultado.piezas).toEqual(['Examen final integrador']);
+  });
+
+  it('lo creado, editado o enmendado sí cuenta, y lo que la bitácora vio guardar también', () => {
+    expect(
+      piezasCambiadas({
+        cambios: [
+          { accion: 'edito', objeto: 'Recibir mercadería' },
+          { accion: 'propuso', objeto: 'Examen final integrador' },
+          { accion: 'creo', objeto: 'Cuestionario de precios y salón' }
+        ],
+        escriturasHechas: [{ titulo: 'Controlar precios en góndola' }, {}]
+      })
+    ).toEqual(['Recibir mercadería', 'Cuestionario de precios y salón', 'Controlar precios en góndola']);
   });
 });

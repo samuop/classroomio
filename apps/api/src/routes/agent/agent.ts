@@ -167,6 +167,7 @@ import {
   afirmacionesSinCambio,
   HERRAMIENTAS_DE_PREGUNTAS,
   hayAfirmacionesSinCambio,
+  piezasCambiadas,
   type AfirmacionesSinCambio
 } from '@api/services/agent/afirmaciones-sin-cambio';
 import {
@@ -1396,6 +1397,8 @@ const agentCoreRouter = new Hono()
 
       // Los cambios a ejercicios con entregas que el asistente propuso: cuáles
       // esperan a la docente y cómo resolvió los demás. Ver `cambios-con-entregas.ts`.
+      // Viajan en la nota de cada paso (al final), no en este contexto: ver
+      // `propuestasAnteriores` en `notaDeLaBitacora`.
       const propuestasDeLaConversacion =
         role === AgentRole.TEACHER
           ? await propuestasParaLaRonda({ orgId, courseId, conversationId, userId: user.id }).catch((error: unknown) => {
@@ -1405,7 +1408,6 @@ const agentCoreRouter = new Hono()
           : [];
       const avisoDeLasPropuestas = avisoDePropuestas(propuestasDeLaConversacion);
       if (avisoDeLasPropuestas) {
-        contextMessageText = contextMessageText ? `${contextMessageText}\n\n${avisoDeLasPropuestas}` : avisoDeLasPropuestas;
         void marcarPropuestasInformadas(
           propuestasDeLaConversacion.filter((propuesta) => propuesta.estado !== 'pendiente').map((propuesta) => propuesta.id)
         ).catch((error: unknown) => console.error('[agent.chat] no se pudieron marcar las propuestas informadas:', error));
@@ -2332,10 +2334,7 @@ const agentCoreRouter = new Hono()
 
           relatoSinCambio = afirmacionesSinCambio({
             texto: textoDeLaRespuesta,
-            cambiadas: [
-              ...registroDeRonda.cambios.map((cambio) => cambio.objeto),
-              ...escriturasHechas.map((escritura) => escritura.titulo ?? '')
-            ].filter(Boolean),
+            cambiadas: piezasCambiadas({ cambios: registroDeRonda.cambios, escriturasHechas }),
             cambioPreguntas:
               registroDeRonda.cambios.some((cambio) => cambio.accion === 'pregunto') ||
               escriturasHechas.some((escritura) => HERRAMIENTAS_DE_PREGUNTAS.has(escritura.herramienta)),
@@ -2401,7 +2400,8 @@ const agentCoreRouter = new Hono()
           ? undefined
           : notaDeLaBitacora(bitacora, {
               avanceDelPlan: teacherPromptMode === 'build' ? planProgress?.anchorText : undefined,
-              preguntasARevisar: preguntasQueQuedaronARevisar.map(lineaDePreguntaARevisar)
+              preguntasARevisar: preguntasQueQuedaronARevisar.map(lineaDePreguntaARevisar),
+              propuestasAnteriores: avisoDeLasPropuestas || undefined
             });
 
         // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.

@@ -72,6 +72,11 @@ export interface Escritura {
   hecho: boolean;
   /** Por qué la negaron, recortado. */
   motivo?: string;
+  /**
+   * No se guardó: quedó PROPUESTA y espera a la docente (un ejercicio con
+   * entregas, ver `cambios-con-entregas.ts`). Ni hecha ni negada.
+   */
+  propuesta?: true;
 }
 
 export interface Lectura {
@@ -211,19 +216,33 @@ export function anotarLlamada(
 
   if (HERRAMIENTAS_DE_LECTURA.has(llamada.herramienta)) return;
 
-  const { hecho, motivo } = salioBien(llamada.resultado);
   const bloque = comoTexto(entrada?.blockId);
-
-  bitacora.escrituras.push({
+  const comun = {
     paso: llamada.paso,
     herramienta: llamada.herramienta,
     claves: clavesDe(pedida, respuesta.id),
     ...(pedida ? { pieza: pedida } : {}),
     ...(respuesta.titulo ? { titulo: respuesta.titulo } : {}),
-    ...(bloque ? { bloque } : {}),
-    hecho,
-    ...(motivo ? { motivo } : {})
-  });
+    ...(bloque ? { bloque } : {})
+  };
+
+  // Una propuesta no falló, pero tampoco guardó nada. Contada como hecha, la
+  // nota se la listaba al modelo entre los «cambios ya guardados» y le pedía
+  // informar como hecho lo guardado: medido en vivo (2026-11-08), contestó
+  // «Listo, sumé las preguntas» sobre un examen que seguía igual.
+  if (esPropuesta(llamada.resultado)) {
+    bitacora.escrituras.push({ ...comun, hecho: false, propuesta: true });
+    return;
+  }
+
+  const { hecho, motivo } = salioBien(llamada.resultado);
+
+  bitacora.escrituras.push({ ...comun, hecho, ...(motivo ? { motivo } : {}) });
+}
+
+/** La respuesta de una herramienta que no escribió y dejó el cambio esperando a la docente. */
+function esPropuesta(resultado: unknown): boolean {
+  return comoObjeto(resultado)?.status === 'needs_teacher_approval';
 }
 
 /**
@@ -346,14 +365,32 @@ export function notaDeLaBitacora(
     avanceDelPlan?: string;
     /** Preguntas cuya evidencia desapareció de las lecciones. */
     preguntasARevisar?: readonly string[];
+    /**
+     * Cómo quedaron los cambios con entregas propuestos en rondas anteriores
+     * (`avisoDePropuestas`). Va acá, al final de los mensajes, y no en el
+     * contexto de arriba: más abajo la conversación todavía tiene el resultado
+     * viejo «NOTHING WAS SAVED», y el modelo le creía a lo más reciente
+     * (medido en vivo: aprobada y aplicada, contestó «todavía no se agregaron»).
+     */
+    propuestasAnteriores?: string;
   } = {}
 ): string | undefined {
   const hechas = agrupar(bitacora.escrituras.filter((escritura) => escritura.hecho));
-  const negadas = agrupar(bitacora.escrituras.filter((escritura) => !escritura.hecho));
+  const negadas = agrupar(bitacora.escrituras.filter((escritura) => !escritura.hecho && !escritura.propuesta));
+  const propuestas = agrupar(bitacora.escrituras.filter((escritura) => escritura.propuesta));
   const vencidas = lecturasVencidas(bitacora);
   const preguntas = extra.preguntasARevisar ?? [];
 
-  if (hechas.length === 0 && negadas.length === 0 && preguntas.length === 0 && !extra.avanceDelPlan) return undefined;
+  if (
+    hechas.length === 0 &&
+    negadas.length === 0 &&
+    propuestas.length === 0 &&
+    preguntas.length === 0 &&
+    !extra.avanceDelPlan &&
+    !extra.propuestasAnteriores
+  ) {
+    return undefined;
+  }
 
   const partes: string[] = [
     `${ENCABEZADO_DE_LA_NOTA} — written by the server, not by the teacher. It is not a new request: keep working on what the teacher asked.]`
@@ -368,12 +405,22 @@ export function notaDeLaBitacora(
     partes.push('No change has been saved yet in this round.');
   }
 
+  if (propuestas.length > 0) {
+    partes.push(
+      'PROPOSED and NOT saved — students already submitted these exercises, so each change waits for the teacher, who approves or cancels it on a card in the chat:',
+      ...lineasConTope(propuestas.map(lineaDeGrupo), Math.ceil(MAX_LINEAS_DE_LA_NOTA / 2)),
+      'In your reply, tell her it waits for her approval on the card. Never say it is done or "listo", and never save it another way.'
+    );
+  }
+
   if (negadas.length > 0) {
     partes.push(
       'Refused or failed (fix the cause, or move on; repeating the same call returns the same refusal):',
       ...lineasConTope(negadas.map(lineaDeGrupo), Math.ceil(MAX_LINEAS_DE_LA_NOTA / 2))
     );
   }
+
+  if (extra.propuestasAnteriores) partes.push(extra.propuestasAnteriores);
 
   if (vencidas.length > 0) {
     const piezas = [...new Set(vencidas.map((lectura) => nombreDePieza(lectura)))];

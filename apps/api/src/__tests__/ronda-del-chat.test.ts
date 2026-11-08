@@ -1555,9 +1555,18 @@ describe('las propuestas con entregas: la docente decide', () => {
 
     await leerPartes(await chat({ conversationId: conversacionNueva() }));
 
-    expect(promptsRecibidos[0]).toContain('## Changes to graded exercises you proposed');
-    expect(promptsRecibidos[0]).toContain('APPROVED by her and APPLIED by the server');
-    expect(promptsRecibidos[0]).toContain('WAITING for her decision');
+    // Al FINAL de los mensajes (la nota del paso), no en el contexto de arriba:
+    // más abajo la conversación todavía tiene el «NOTHING WAS SAVED» de cuando
+    // se propuso, y en vivo el modelo le creyó a eso (2026-11-08).
+    for (const prompt of promptsRecibidos) {
+      const mensajes = JSON.parse(prompt) as unknown[];
+      const ultimo = JSON.stringify(mensajes.at(-1));
+
+      expect(ultimo).toContain('Changes to graded exercises you proposed');
+      expect(ultimo).toContain('APPROVED by her and APPLIED by the server');
+      expect(ultimo).toContain('WAITING for her decision');
+      expect(JSON.stringify(mensajes.slice(0, -1))).not.toContain('Changes to graded exercises you proposed');
+    }
     expect(marcarPropuestasInformadas).toHaveBeenCalledWith(['resuelta']);
   });
 });
