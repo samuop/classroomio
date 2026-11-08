@@ -238,7 +238,8 @@
     "plan_applying_changes": "Aplicando cambios",
     "plan_working": "Trabajando",
     "todo_checklist": {
-      "title": "Progreso de construcción"
+      "title": "Progreso de construcción",
+      "removed": "quitado del plan"
     },
     "plan_progress": "{completed} / {total} pasos completados",
     "plan_steps_collapsed": "{count, plural, one {# paso completado} other {# pasos completados}}",
@@ -502,6 +503,7 @@
       "left_as_is": "Se deja como está: {reason}",
       "status_empty": "Creado, sin contenido",
       "status_missing": "Pendiente",
+      "status_removed": "Quitado del plan",
       "section": "Sección {order}",
       "exercise": "Ejercicio",
       "with_exercise": "Incluye ejercicio",

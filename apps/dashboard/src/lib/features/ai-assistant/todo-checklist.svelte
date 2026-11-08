@@ -2,6 +2,7 @@
   import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
   import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
   import CircleIcon from '@lucide/svelte/icons/circle';
+  import CircleMinusIcon from '@lucide/svelte/icons/circle-minus';
   import ListChecksIcon from '@lucide/svelte/icons/list-checks';
   import { t } from '$lib/utils/functions/translations';
   import type { AiAssistantPlanProgress } from '$features/ai-assistant/utils/types';
@@ -55,6 +56,12 @@
                can see the difference between an empty shell and nothing at all. -->
           <CircleDashedIcon size={14} class="ui:text-primary mt-0.5 shrink-0" />
           <span class="min-w-0 flex-1 break-words font-medium">{item.title}</span>
+        {:else if item.status === 'removed'}
+          <!-- Fuera del plan por decisión de la docente: no es un pendiente. -->
+          <CircleMinusIcon size={14} class="ui:text-muted-foreground mt-0.5 shrink-0" />
+          <span class="ui:text-muted-foreground min-w-0 flex-1 break-words italic"
+            >{item.title} · {$t('ai_assistant.todo_checklist.removed')}</span
+          >
         {:else}
           <CircleIcon size={14} class="ui:text-muted-foreground mt-0.5 shrink-0" />
           <span class="ui:text-muted-foreground min-w-0 flex-1 break-words">{item.title}</span>

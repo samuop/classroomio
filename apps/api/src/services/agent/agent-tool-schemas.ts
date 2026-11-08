@@ -163,6 +163,47 @@ export const confirmChangeAppliedParam = z.object({
     )
 });
 
+/**
+ * Una decisión de la docente que cambia el plan a mitad de la construcción.
+ *
+ * `teacherWords` es lo que la hace suya: el servidor la busca en sus mensajes y
+ * rechaza la enmienda si no está. Ver `plan-vivo.ts`.
+ */
+export const updatePlanParam = z.object({
+  changes: z
+    .array(
+      z.object({
+        planKey: z
+          .string()
+          .min(1)
+          .describe(
+            'The [key] shown beside the item or section in the Plan Progress block (for example "s6" or "s6.1"). Copy it, never guess.'
+          ),
+        action: z
+          .enum(['remove', 'change'])
+          .describe(
+            '"remove": the teacher does not want this item (or section) anymore — it will not be built. "change": she wants something different built for it — pass the new description.'
+          ),
+        description: z
+          .string()
+          .max(600)
+          .optional()
+          .describe(
+            'Only with "change": what to build now, as the plan description would say it, in the course language (for example: "Final exam covering ONLY modules 1 and 2: one question block per module, 5 questions each").'
+          )
+      })
+    )
+    .min(1)
+    .max(20),
+  teacherWords: z
+    .string()
+    .min(10)
+    .max(600)
+    .describe(
+      "The teacher's own words that ask for this change, copied EXACTLY from one of her messages in this conversation (a sentence or the relevant part of one). The server checks they are there and refuses the change if they are not: never paraphrase, never use your own words."
+    )
+});
+
 export const exerciseReadParam = z.object({
   exerciseId: z.string().describe(piezaPorManija('exercise to read'))
 });

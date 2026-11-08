@@ -1,8 +1,14 @@
 import { AgentRole, type AgentContext } from '../types';
-import { buildTeacherSystemPrompt, buildTeacherContextMessage, type TeacherPromptMode } from './teacher';
+import {
+  buildTeacherSystemPrompt,
+  buildTeacherContextMessage,
+  type TeacherContextOptions,
+  type TeacherPromptMode
+} from './teacher';
 import { buildStudentSystemPrompt, buildStudentContextMessage } from './student';
-import type { CourseTemplate } from '../templates';
 import type { AiTutorSettings } from '../tutor-config';
+
+export type { TeacherContextOptions };
 
 /**
  * Builds a role-aware system prompt for the AI assistant. The output is stable
@@ -36,7 +42,7 @@ export function buildSystemPrompt(
  */
 export function buildContextMessage(
   context: AgentContext,
-  options?: { template?: CourseTemplate; approvedPlan?: unknown }
+  options?: TeacherContextOptions
 ): string {
   switch (context.role) {
     case AgentRole.STUDENT:

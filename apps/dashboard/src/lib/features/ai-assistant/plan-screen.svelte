@@ -3,6 +3,7 @@
   import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
   import CircleDashedIcon from '@lucide/svelte/icons/circle-dashed';
   import CircleIcon from '@lucide/svelte/icons/circle';
+  import CircleMinusIcon from '@lucide/svelte/icons/circle-minus';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import FileQuestionIcon from '@lucide/svelte/icons/file-question';
   import LoaderIcon from '@lucide/svelte/icons/loader';
@@ -218,7 +219,8 @@
   const etiquetaDeEstado: Record<EstadoDelItem, string> = {
     done: 'ai_assistant.plan_screen.status_done',
     empty: 'ai_assistant.plan_screen.status_empty',
-    missing: 'ai_assistant.plan_screen.status_missing'
+    missing: 'ai_assistant.plan_screen.status_missing',
+    removed: 'ai_assistant.plan_screen.status_removed'
   };
 
   /**
@@ -506,6 +508,8 @@
                         <CircleDashedIcon size={15} class="ui:text-primary" />
                       {:else if estado === 'missing'}
                         <CircleIcon size={15} class="ui:text-muted-foreground" />
+                      {:else if estado === 'removed'}
+                        <CircleMinusIcon size={15} class="ui:text-muted-foreground" />
                       {:else if item.type === 'exercise'}
                         <FileQuestionIcon size={15} class="ui:text-primary" />
                       {:else}

@@ -94,7 +94,12 @@ vi.mock('@cio/db/queries/agent', async (original) => ({
   readPlanRegistry: vi.fn(async () => []),
   syncPlanRegistry: vi.fn(async () => []),
   leerAnalisisDeFuente: vi.fn(async () => []),
-  getChatDocumentCacheKey: vi.fn(async () => null)
+  getChatDocumentCacheKey: vi.fn(async () => null),
+  // El cierre del plan (ver `plan-vivo.ts`): sin base en los unitarios.
+  leerCierreDelPlan: vi.fn(async () => null),
+  cerrarPlan: vi.fn(async () => {}),
+  abrirPlan: vi.fn(async () => {}),
+  enmendarItemDelPlan: vi.fn(async () => true)
 }));
 
 vi.mock('@cio/db/queries/agent/chat-document', async (original) => ({
@@ -197,6 +202,8 @@ const { crearEscritorDeLecciones } = await import('@api/services/agent/lesson-wr
 const { crearEscritorDePreguntas } = await import('@api/services/agent/question-writer');
 const { AppError } = await import('@api/utils/errors');
 const { hasta, leerPartes } = await import('./ayuda/sse');
+const { leerCierreDelPlan, cerrarPlan, abrirPlan } = await import('@cio/db/queries/agent');
+const { huellaDelPlan } = await import('@api/services/agent/plan-vivo');
 
 // Ids con forma de UUID donde el validador los pide.
 const EMPRESA = '00000000-0000-4000-8000-00000000e002';
@@ -1145,6 +1152,120 @@ describe('la construcción sigue sola, en tramos', () => {
 
     expect(llamadasAlModelo).toBe(2);
     expect(metadataDelCierre(partes)).toMatchObject({ serverRun: { segments: 1, stopReason: 'sin_avance' } });
+  });
+});
+
+/**
+ * Un plan terminado es historia, no una orden (ver `plan-vivo.ts`).
+ *
+ * El incidente: tres semanas después de construido el plan, «revisá la pregunta
+ * sugerida» llegó junto al JSON viejo presentado como «aprobado en el último
+ * mensaje, para ejecutar ya», y el modelo «alineó» un examen ya rendido.
+ */
+describe('un plan terminado no vuelve como orden', () => {
+  /** Lo que el curso de prueba ya tiene entero: una sección y su lección. */
+  const PLAN_COMPLETO = {
+    title: 'Caja del Almacén Demo',
+    sections: [
+      {
+        title: 'Cobrar en la caja',
+        order: 0,
+        items: [{ type: 'lesson', title: 'Abrir la caja', description: 'Abrir la caja al empezar.', order: 0, sources: [] }]
+      }
+    ]
+  };
+  const PLAN_A_MEDIAS = {
+    ...PLAN_COMPLETO,
+    sections: [
+      {
+        ...PLAN_COMPLETO.sections[0],
+        items: [
+          ...PLAN_COMPLETO.sections[0].items,
+          { type: 'lesson', title: 'Hacer el arqueo', description: 'Contar al cerrar.', order: 1, sources: [] }
+        ]
+      }
+    ]
+  };
+
+  /**
+   * Lo que sólo trae el contexto de un plan terminado. «## Approved Plan» y el
+   * título de esta sección los nombra también el prompt de sistema, en la regla
+   * que dice cuándo vale cada uno; por eso se buscan frases del contexto.
+   */
+  const PLAN_TERMINADO = 'The plan the teacher approved in this conversation was built in full';
+
+  const conversacionCon = (plan: typeof PLAN_COMPLETO, pedido: string) => [
+    { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'Armá un curso de caja.' }] },
+    {
+      id: 'a1',
+      role: 'assistant',
+      parts: [{ type: 'tool-generate_course_plan', toolCallId: 'plan-1', state: 'output-available', input: plan, output: { success: true } }]
+    },
+    {
+      id: 'u2',
+      role: 'user',
+      metadata: { plan: { action: 'implement_course_plan', payload: plan } },
+      parts: [{ type: 'text', text: 'Construí el curso según el plan aprobado.' }]
+    },
+    { id: 'a2', role: 'assistant', parts: [{ type: 'text', text: 'Listo, el curso quedó construido.' }] },
+    { id: 'u3', role: 'user', parts: [{ type: 'text', text: pedido }] }
+  ];
+
+  beforeEach(() => {
+    promptsRecibidos = [];
+    vi.mocked(createModel).mockImplementation(() => modeloDeDosPasos() as never);
+    vi.mocked(leerCierreDelPlan).mockResolvedValue(null);
+    vi.mocked(cerrarPlan).mockClear();
+    vi.mocked(abrirPlan).mockClear();
+  });
+
+  it('con el cierre de ESE plan guardado, la ronda no trae el JSON: dice que el plan terminó', async () => {
+    vi.mocked(leerCierreDelPlan).mockResolvedValue({ huella: huellaDelPlan(PLAN_A_MEDIAS), at: '2026-10-15T12:00:00Z' });
+
+    await leerPartes(
+      await chat({ conversationId: conversacionNueva(), messages: conversacionCon(PLAN_A_MEDIAS, 'Revisá la pregunta sugerida.') })
+    );
+
+    // Aunque al plan le falte «Hacer el arqueo»: terminado es terminado.
+    expect(promptsRecibidos[0]).toContain(PLAN_TERMINADO);
+    expect(promptsRecibidos[0]).not.toContain('Approved plan JSON:');
+    // Y sin el ancla que mandaría construir lo que falta.
+    expect(promptsRecibidos[0]).not.toContain('YOU ARE NOT DONE');
+  });
+
+  it('un plan que el curso ya tiene entero se cierra al empezar, aunque nadie lo haya cerrado', async () => {
+    await leerPartes(
+      await chat({ conversationId: conversacionNueva(), messages: conversacionCon(PLAN_COMPLETO, 'Revisá la pregunta sugerida.') })
+    );
+
+    expect(cerrarPlan).toHaveBeenCalledWith(expect.objectContaining({ huella: huellaDelPlan(PLAN_COMPLETO) }));
+    expect(promptsRecibidos[0]).toContain(PLAN_TERMINADO);
+    expect(promptsRecibidos[0]).not.toContain('Approved plan JSON:');
+  });
+
+  it('a medio construir sigue siendo orden, pero no dice que el último mensaje lo aprobó', async () => {
+    await leerPartes(
+      await chat({ conversationId: conversacionNueva(), messages: conversacionCon(PLAN_A_MEDIAS, 'Seguí.') })
+    );
+
+    expect(cerrarPlan).not.toHaveBeenCalled();
+    expect(promptsRecibidos[0]).toContain('## Approved Plan (being built)');
+    expect(promptsRecibidos[0]).not.toContain('The latest user message approved');
+    expect(promptsRecibidos[0]).not.toContain(PLAN_TERMINADO);
+  });
+
+  it('en la ronda de aprobación reabre, y al medirlo completo después de un paso lo cierra', async () => {
+    // Un paso que ESCRIBE: después de una lectura el plan no se vuelve a medir.
+    vi.mocked(createModel).mockImplementation(() => modeloDeDosPasos('update_section') as never);
+    const aprobacion = conversacionCon(PLAN_COMPLETO, '').slice(0, 3);
+
+    await leerPartes(await chat({ conversationId: conversacionNueva(), messages: aprobacion }));
+
+    expect(abrirPlan).toHaveBeenCalled();
+    expect(promptsRecibidos[0]).toContain('The latest user message approved a final course plan');
+    // El paso del modelo pudo cambiar el curso: se mide, está completo, se cierra.
+    await hasta(() => vi.mocked(cerrarPlan).mock.calls.length > 0);
+    expect(cerrarPlan).toHaveBeenCalledWith(expect.objectContaining({ huella: huellaDelPlan(PLAN_COMPLETO) }));
   });
 });
 

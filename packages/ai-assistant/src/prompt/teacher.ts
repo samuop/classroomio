@@ -322,7 +322,7 @@ Reads (\`get_*\`, \`check_course_go_live_readiness\`, \`fetch_documentation_url\
 - A lesson you "created" but never wrote content into counts as ⚠️ EMPTY — it is NOT done. Every lesson in the plan must end with real content, written with \`write_lesson\`.
 - Only when the block shows every item ✅ (or says the course matches the plan) may you report completion.
 
-**Re-engaging a course where an approved plan exists** — When an approved plan exists in this conversation (a prior \`generate_course_plan\` tool call followed by teacher approval) AND the teacher's next request touches course content (continuing, asking what's done, asking what's left, requesting a specific section/lesson, or just resuming work after any kind of interruption — step-limit pause, cancellation, refresh, gap in conversation), your FIRST action MUST be \`get_course_structure\`. Then:
+**Re-engaging a course where an approved plan exists** — This applies ONLY while the plan is still being built, which is when the Current Context carries a "## Approved Plan" section. When it says "## The course plan is finished" instead, the old plan card in the conversation is history: do what the teacher asks now and nothing from that plan. When an approved plan is being built in this conversation (a prior \`generate_course_plan\` tool call followed by teacher approval) AND the teacher's next request touches course content (continuing, asking what's done, asking what's left, requesting a specific section/lesson, or just resuming work after any kind of interruption — step-limit pause, cancellation, refresh, gap in conversation), your FIRST action MUST be \`get_course_structure\`. Then:
 1. Compare what exists against the approved plan, matching by title.
 2. Skip every item already present — never recreate a section, lesson, or exercise that exists.
 3. If a section exists but some of its lessons/exercises are missing, resume inside that section. Do NOT create a duplicate section.
@@ -567,10 +567,24 @@ You can delete a lesson, an exercise or an empty section. It is permanent: the c
   return sections.filter((s): s is string => s !== null).join('\n\n');
 }
 
-export function buildTeacherContextMessage(
-  context: AgentContext,
-  options?: { template?: CourseTemplate; approvedPlan?: unknown }
-): string {
+export interface TeacherContextOptions {
+  template?: CourseTemplate;
+  /** El plan que se está construyendo, ya con las enmiendas de la docente. Ausente si no hay o si terminó. */
+  approvedPlan?: unknown;
+  /**
+   * Las reglas de la docente, aparte del plan: siguen valiendo cuando el plan
+   * terminó y ya no viaja. Ausente = las del `approvedPlan`.
+   */
+  teacherRules?: readonly string[];
+  /**
+   * Si ESTA ronda es la de aprobación. Sólo ahí es verdad «el último mensaje
+   * aprobó el plan»; dicho tres semanas después convertía un plan viejo en una
+   * orden urgente.
+   */
+  esRondaDeAprobacion?: boolean;
+}
+
+export function buildTeacherContextMessage(context: AgentContext, options?: TeacherContextOptions): string {
   const contextLines: string[] = [];
 
   contextLines.push(`Course: "${context.courseTitle}" (ID: ${context.courseId})`);
@@ -687,7 +701,11 @@ ${options.template.coreInstructions}${depthTierBlock}
   // Las reglas de la docente van ADEMÁS en su propia sección y adelante: dentro
   // del JSON del plan eran una clave más, y el constructor corre sin la
   // conversación donde las dijo. Ver `teacherRules` en `CoursePlanFieldsSchema`.
-  const reglas = options?.approvedPlan != null ? reglasDeLaDocente(options.approvedPlan as { teacherRules?: string[] }) : [];
+  const reglas = options?.teacherRules
+    ? reglasDeLaDocente({ teacherRules: options.teacherRules })
+    : options?.approvedPlan != null
+      ? reglasDeLaDocente(options.approvedPlan as { teacherRules?: string[] })
+      : [];
   const teacherRulesSection =
     reglas.length > 0
       ? `## The teacher's rules for this course
@@ -699,15 +717,23 @@ A rule about what the course must not say is not content: never put the rule its
       : '';
 
   const approvedPlanSection =
-    options?.approvedPlan != null
-      ? `## Approved Plan
+    options?.approvedPlan == null
+      ? ''
+      : options.esRondaDeAprobacion
+        ? `## Approved Plan
 
 The latest user message approved a final course plan for immediate execution.
 Implement that exact plan directly without asking the user to restate it.
 Treat this approved plan as the canonical source if it differs from any earlier draft.
 Approved plan JSON:
 ${JSON.stringify(options.approvedPlan)}`
-      : '';
+        : `## Approved Plan (being built)
+
+This is the plan the teacher approved, WITH the changes she decided since then (\`update_plan\`): it is what is still being built. Build what the "## Plan Progress" block lists as pending.
+- Items Plan Progress shows ✅ are done: never add to, remove from or rewrite them to make them match this JSON. The teacher may have changed them on purpose.
+- If the teacher's latest message changes something this plan lists (drop it, or build something else), call \`update_plan\` with her exact words BEFORE acting on it. Never change the plan on your own initiative.
+Approved plan JSON:
+${JSON.stringify(options.approvedPlan)}`;
 
   const sections = [currentContext, activeTemplateSection, teacherRulesSection, approvedPlanSection].filter(
     (s) => s.length > 0

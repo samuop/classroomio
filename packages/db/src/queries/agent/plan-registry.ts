@@ -90,6 +90,33 @@ export interface PlanItemConfirmed {
   at: string;
 }
 
+/**
+ * Lo que la docente decidió sobre un ítem DESPUÉS de aprobar el plan.
+ *
+ * ── Por qué existe ───────────────────────────────────────────────────────────
+ *
+ * El plan aprobado era inmutable hasta otra aprobación: si a mitad de la
+ * construcción la docente decía «el examen final sólo de los módulos 1 y 2», el
+ * plan seguía diciendo «cinco bloques», y cada ronda le mandaba al modelo ese JSON
+ * como la fuente canónica. En producción (2026-11-07) el modelo terminó
+ * agregando doce preguntas a un examen que cincuenta alumnos ya habían rendido,
+ * «alineándolo» a un plan que la docente había cambiado.
+ *
+ * `palabras` es la frase de la docente que respalda el cambio, comprobada en la
+ * conversación por la herramienta `update_plan`: la enmienda es una decisión de
+ * ella, no un atajo del modelo para dar algo por terminado.
+ */
+export interface PlanItemEnmienda {
+  /** `sacar`: el ítem sale del plan. `cambiar`: lo que hay que construir es otra cosa. */
+  accion: 'sacar' | 'cambiar';
+  /** Sólo en `cambiar`: la descripción que reemplaza a la del plan. */
+  descripcion?: string;
+  /** Lo que dijo la docente, tal cual. */
+  palabras: string;
+  /** Cuándo, ISO. */
+  at: string;
+}
+
 export interface PlanRegistryEntry {
   /** Stable short key the model echoes back in create_* calls (e.g. `s1`, `s1.2`). */
   key: string;
@@ -118,6 +145,8 @@ export interface PlanRegistryEntry {
    * así. Ver `generate_course_plan` en la API.
    */
   skip?: boolean;
+  /** Lo que la docente decidió sobre este ítem después de aprobar. Ver {@link PlanItemEnmienda}. */
+  enmienda?: PlanItemEnmienda;
 }
 
 /**
@@ -161,6 +190,7 @@ type RegistryStepInput = {
   replacements?: PlanItemReplacement[];
   confirmed?: PlanItemConfirmed;
   skip?: boolean;
+  enmienda?: PlanItemEnmienda;
 };
 
 type RegistryStepOutput = {
@@ -207,7 +237,8 @@ async function readAllEntries(runId: string) {
       baseline: input.baseline,
       replacements: input.replacements,
       confirmed: input.confirmed,
-      skip: input.skip
+      skip: input.skip,
+      enmienda: input.enmienda
     };
   });
 }
@@ -409,7 +440,7 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
 
   return entries
     .filter((entry) => entry.status !== 'canceled')
-    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements, confirmed, skip }) => ({
+    .map(({ key, kind, title, sectionKey, position, entityId, action, baseline, replacements, confirmed, skip, enmienda }) => ({
       key,
       kind,
       title,
@@ -422,7 +453,8 @@ export async function readPlanRegistry(params: RunScope & { runId?: string }): P
       ...(confirmed ? { confirmed } : {}),
       // Sin esto el `skip` se guardaba y no se leía nunca: el ancla caía siempre
       // en el plan que viaja en la conversación, que es justo lo que se recorta.
-      ...(skip ? { skip: true } : {})
+      ...(skip ? { skip: true } : {}),
+      ...(enmienda ? { enmienda } : {})
     }))
     .sort((a, b) => a.position - b.position);
 }
@@ -503,6 +535,145 @@ export async function confirmarItemDelPlan(
     );
 
   return true;
+}
+
+/**
+ * Guarda una decisión de la docente sobre un ítem del plan. Ver {@link PlanItemEnmienda}.
+ *
+ * Como `confirmarItemDelPlan`: relee la fila y escribe sólo `enmienda` dentro de
+ * `input`, porque el resto (acción, línea de base, reemplazos) es lo que el ancla
+ * mide. Devuelve `false` si la clave no existe, para que quien llama se lo diga
+ * al modelo en vez de tragárselo.
+ */
+export async function enmendarItemDelPlan(
+  params: RunScope & { planKey: string; enmienda: PlanItemEnmienda }
+): Promise<boolean> {
+  const run = await ensureChatRun(params);
+  const now = new Date().toISOString();
+  const donde = and(
+    eq(schema.aiAgentRunStep.runId, run.id),
+    eq(schema.aiAgentRunStep.stepKey, params.planKey),
+    eq(schema.aiAgentRunStep.stepType, PLAN_ITEM_STEP_TYPE)
+  );
+
+  const [fila] = await db.select().from(schema.aiAgentRunStep).where(donde).limit(1);
+
+  if (!fila || fila.status === 'canceled') return false;
+
+  const input: RegistryStepInput = { ...((fila.input ?? {}) as RegistryStepInput), enmienda: params.enmienda };
+
+  await db.update(schema.aiAgentRunStep).set({ input, updatedAt: now }).where(donde);
+
+  return true;
+}
+
+/**
+ * El cierre del plan: «este plan ya se construyó entero».
+ *
+ * ── Por qué ──────────────────────────────────────────────────────────────────
+ *
+ * Una conversación con un plan aprobado quedaba en modo construir PARA SIEMPRE:
+ * tres semanas después de terminado, cada mensaje de la docente llegaba junto al
+ * JSON del plan presentado como «la fuente canónica, para ejecutar ya». Cerrado,
+ * el plan pasa a ser historia: manda el curso como está y lo que ella pida ahora.
+ *
+ * Se guarda y no se recalcula en cada ronda porque, una vez terminado, el plan no
+ * se tiene que reabrir solo: si la docente borra después algo que el plan
+ * construyó, eso es una decisión suya, no un faltante.
+ *
+ * `huella` identifica QUÉ plan se cerró: una aprobación nueva trae otra huella y
+ * arranca abierta. Vive en el mismo run que el registro, con otro `stepType`, así
+ * que no necesita cambio de esquema y el registro no lo ve.
+ */
+const PLAN_CIERRE_STEP_TYPE = 'plan_cierre';
+const PLAN_CIERRE_STEP_KEY = 'cierre';
+
+export interface CierreDelPlan {
+  huella: string;
+  at: string;
+}
+
+export async function leerCierreDelPlan(params: RunScope): Promise<CierreDelPlan | null> {
+  const whereConversation = params.conversationId
+    ? and(
+        eq(schema.aiAgentRun.conversationId, params.conversationId),
+        eq(schema.aiAgentRun.userId, params.userId),
+        eq(schema.aiAgentRun.phase, CHAT_RUN_PHASE)
+      )
+    : and(
+        eq(schema.aiAgentRun.courseId, params.courseId),
+        eq(schema.aiAgentRun.userId, params.userId),
+        eq(schema.aiAgentRun.phase, CHAT_RUN_PHASE)
+      );
+
+  const [run] = await db
+    .select({ id: schema.aiAgentRun.id })
+    .from(schema.aiAgentRun)
+    .where(whereConversation)
+    .orderBy(asc(schema.aiAgentRun.createdAt))
+    .limit(1);
+
+  if (!run) return null;
+
+  const [fila] = await db
+    .select()
+    .from(schema.aiAgentRunStep)
+    .where(
+      and(
+        eq(schema.aiAgentRunStep.runId, run.id),
+        eq(schema.aiAgentRunStep.stepKey, PLAN_CIERRE_STEP_KEY),
+        eq(schema.aiAgentRunStep.stepType, PLAN_CIERRE_STEP_TYPE)
+      )
+    )
+    .limit(1);
+
+  const input = (fila?.input ?? {}) as Partial<CierreDelPlan>;
+
+  return fila?.status === 'completed' && input.huella && input.at ? { huella: input.huella, at: input.at } : null;
+}
+
+/** Marca cerrado el plan de esta huella. Idempotente. */
+export async function cerrarPlan(params: RunScope & { huella: string }): Promise<void> {
+  const run = await ensureChatRun(params);
+  const now = new Date().toISOString();
+  const input = { huella: params.huella, at: now };
+
+  await db
+    .insert(schema.aiAgentRunStep)
+    .values({
+      runId: run.id,
+      stepKey: PLAN_CIERRE_STEP_KEY,
+      stepType: PLAN_CIERRE_STEP_TYPE,
+      status: 'completed',
+      input,
+      finishedAt: now
+    })
+    .onConflictDoUpdate({
+      target: [schema.aiAgentRunStep.runId, schema.aiAgentRunStep.stepKey],
+      set: { status: 'completed', input, finishedAt: now, updatedAt: now }
+    });
+}
+
+/**
+ * Reabre: la docente acaba de aprobar un plan, aunque sea el mismo de antes.
+ *
+ * Sin esto, re-aprobar un plan idéntico a uno ya cerrado no construiría nada:
+ * la huella coincidiría con el cierre viejo.
+ */
+export async function abrirPlan(params: RunScope): Promise<void> {
+  const run = await ensureChatRun(params);
+  const now = new Date().toISOString();
+
+  await db
+    .update(schema.aiAgentRunStep)
+    .set({ status: 'canceled', updatedAt: now })
+    .where(
+      and(
+        eq(schema.aiAgentRunStep.runId, run.id),
+        eq(schema.aiAgentRunStep.stepKey, PLAN_CIERRE_STEP_KEY),
+        eq(schema.aiAgentRunStep.stepType, PLAN_CIERRE_STEP_TYPE)
+      )
+    );
 }
 
 /**

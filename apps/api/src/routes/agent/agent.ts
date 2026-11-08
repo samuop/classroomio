@@ -93,6 +93,7 @@ import { generateCourseMeta } from '@api/services/agent/title-generation';
 import { generateFieldText } from '@api/services/agent/text-generation';
 import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import {
+  cerrarPlan,
   getChatConversation,
   getChatDocumentCacheKey,
   leerAnalisisDeFuente,
@@ -185,6 +186,13 @@ import {
 import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
+import {
+  estadoDelPlanAlEmpezar,
+  huellaDelPlan,
+  planConEnmiendas,
+  SECCION_DEL_PLAN_TERMINADO,
+  textosDeLaDocente
+} from '@api/services/agent/plan-vivo';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
 import {
   descargarComoDataUrl,
@@ -978,7 +986,60 @@ const agentCoreRouter = new Hono()
       // Cada modo produce un prefijo estable y cacheable; el único fallo de caché
       // ocurre en la transición plan→build, y de ahí en adelante el prefijo de
       // construcción se cachea toda la corrida.
-      const approvedPlan = role === AgentRole.TEACHER ? getLatestImplementationPlan(messages) : undefined;
+      /**
+       * El plan aprobado de esta conversación, abierto o terminado.
+       *
+       * Terminado (medido completo alguna vez) deja de ser una orden: `approvedPlan`
+       * queda vacío y con él el modo construir, el ancla y el JSON del plan en el
+       * contexto. Sin esto, una conversación con plan quedaba en construir para
+       * siempre, y tres semanas después un «revisá la pregunta sugerida» llegaba
+       * junto al plan viejo presentado como «la fuente canónica, para ejecutar ya».
+       * Ver `plan-vivo.ts` y el incidente del examen final (2026-11-07).
+       *
+       * Las reglas de la docente salen de `planGuardado`: siguen valiendo después.
+       */
+      const planGuardado = role === AgentRole.TEACHER ? getLatestImplementationPlan(messages) : undefined;
+      const estadoDelPlan = planGuardado
+        ? await estadoDelPlanAlEmpezar({
+            alcance: { orgId, courseId, conversationId, userId: user.id },
+            plan: planGuardado,
+            esRondaDeAprobacion: esRondaDeAprobacionDelPlan(messages),
+            medir: async () => {
+              const [items, secciones, registro] = await Promise.all([
+                getCourseContentItems(courseId),
+                listCourseSections(courseId),
+                readPlanRegistry({ orgId, courseId, conversationId, userId: user.id })
+              ]);
+              const conOrdenes =
+                planGuardado.scope === 'changes' ||
+                planGuardado.sections.some((seccion) => seccion.items.some((item) => (item.action ?? 'create') !== 'create'));
+              // El mismo idioma que `agentContext.locale`, que todavía no existe acá.
+              const estado = conOrdenes
+                ? await estadoDelContenido(courseId, (context?.locale ?? 'en') as Parameters<typeof estadoDelContenido>[1])
+                : undefined;
+
+              return {
+                progreso: buildPlanProgressAnchor(planGuardado, secciones, items, registro, estado),
+                registro
+              };
+            }
+          })
+        : undefined;
+      const approvedPlan = estadoDelPlan?.terminado ? undefined : planGuardado;
+      const planTerminado = !!planGuardado && !!estadoDelPlan?.terminado;
+      /**
+       * Lo que el modelo lee como plan: el aprobado CON lo que la docente decidió
+       * después (`update_plan`). El ancla sigue midiendo contra el aprobado, para
+       * poder decir «esto lo sacó la docente, no lo construyas».
+       */
+      const planParaElModelo = approvedPlan
+        ? planConEnmiendas(approvedPlan, estadoDelPlan?.registro ?? [])
+        : undefined;
+
+      if (planTerminado) {
+        console.log(`[agent.chat] el plan de la conversación ${conversationId} ya está terminado: la ronda no construye`);
+      }
+
       const teacherPromptMode: TeacherPromptMode = resolveTeacherPromptMode({
         isTeacher: role === AgentRole.TEACHER,
         hasApprovedPlan: !!approvedPlan,
@@ -1166,8 +1227,16 @@ const agentCoreRouter = new Hono()
 
       let contextMessageText = buildContextMessage(agentContext, {
         template: activeTemplate,
-        approvedPlan
+        approvedPlan: planParaElModelo,
+        teacherRules: reglasDeLaDocente(planGuardado),
+        esRondaDeAprobacion: esRondaDeAprobacionDelPlan(messages)
       });
+
+      if (planTerminado) {
+        contextMessageText = contextMessageText
+          ? `${contextMessageText}\n\n${SECCION_DEL_PLAN_TERMINADO}`
+          : SECCION_DEL_PLAN_TERMINADO;
+      }
 
       // Lo que la docente eligió en el formulario de preguntas, en toda ronda
       // suya y para los dos escritores: el constructor corre aislado de la
@@ -1185,7 +1254,7 @@ const agentCoreRouter = new Hono()
       // veces ahí.
       const indicacionesDeLaDocente =
         role === AgentRole.TEACHER
-          ? juntarIndicaciones(indicacionesDelForm, indicacionesDeLasReglas(reglasDeLaDocente(approvedPlan)))
+          ? juntarIndicaciones(indicacionesDelForm, indicacionesDeLasReglas(reglasDeLaDocente(planGuardado)))
           : undefined;
 
       /**
@@ -1389,7 +1458,13 @@ const agentCoreRouter = new Hono()
           );
 
           if (progress) {
-            const pendientes = new Set(progress.items.filter((item) => item.status !== 'done').map((item) => item.key));
+            // Pendiente es lo que falta o está vacío: lo que salió del plan no
+            // queda bajo orden de trabajo aunque no esté ✅.
+            const pendientes = new Set(
+              progress.items
+                .filter((item) => item.status === 'missing' || item.status === 'empty')
+                .map((item) => item.key)
+            );
             const bajoOrden = registry.filter(
               (entrada) =>
                 entrada.kind === 'lesson' &&
@@ -1550,6 +1625,9 @@ const agentCoreRouter = new Hono()
               // chequeo al pedido más natural que existe ("completá la sección
               // 2"), que es exactamente por donde se coló una sección inventada.
               isBuilding: teacherPromptMode === 'build',
+              // `update_plan`: sólo con un plan abierto, y citando a la docente.
+              planEnConstruccion: !!approvedPlan,
+              textosDeLaDocente: textosDeLaDocente(messages),
               // El chequeo de fundamento. Lee las fuentes por su cuenta en vez
               // de mirar `sourcePack`: el paquete viaja o no según si hay una
               // pestaña de lección abierta (ver la nota de `useSourcePack`), y
@@ -1573,7 +1651,7 @@ const agentCoreRouter = new Hono()
                 redis,
                 providerConfig,
                 courseTitle: courseRow.title,
-                temario: temarioDelPlan(approvedPlan),
+                temario: temarioDelPlan(planParaElModelo),
                 indicaciones: indicacionesDeLaDocente
               }),
               // El sub-agente que escribe las preguntas de un ejercicio con el
@@ -1663,6 +1741,8 @@ const agentCoreRouter = new Hono()
        * `recalcularProgresoDelPlan`: `onFinish` corre demasiado tarde.
        */
       let planIncomplete: { pendingCount: number; emptyCount: number } | undefined;
+      /** Para guardar el cierre del plan una sola vez aunque se mida en cada paso. */
+      let planCerradoEnLaRonda = false;
 
       /**
        * El plan contra el curso vivo, después de las escrituras de la ronda.
@@ -1729,6 +1809,19 @@ const agentCoreRouter = new Hono()
             progreso.pendingCount > 0 || progreso.emptyCount > 0
               ? { pendingCount: progreso.pendingCount, emptyCount: progreso.emptyCount }
               : undefined;
+
+          // Completo ⇒ cerrado, una vez por ronda. La ronda siguiente arranca
+          // con el plan como historia y no como orden (ver `plan-vivo.ts`).
+          if (!planIncomplete && !planCerradoEnLaRonda) {
+            planCerradoEnLaRonda = true;
+            void cerrarPlan({
+              orgId,
+              courseId,
+              conversationId,
+              userId: user.id,
+              huella: huellaDelPlan(approvedPlan)
+            }).catch((err: unknown) => console.error('[agent.chat] no se pudo cerrar el plan terminado:', err));
+          }
 
           // Un checklist es un informe de AVANCE, no un encabezado permanente —
           // ver `isChecklistWorthShowing`.

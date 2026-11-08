@@ -10,10 +10,12 @@ import { QUESTION_TYPE_IDS as QUESTION_TYPE } from '@cio/question-types';
 import {
   bindPlanItem,
   confirmarItemDelPlan,
+  enmendarItemDelPlan,
   getChatConversation,
   readPlanRegistry,
   resolvePlanBinding
 } from '@cio/db/queries/agent';
+import { lasEscribioLaDocente } from '@api/services/agent/plan-vivo';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TLocale } from '@cio/db/types';
@@ -132,6 +134,7 @@ import {
   askTemplateQuestionsParam,
   askDiscoveryQuestionsParam,
   confirmChangeAppliedParam,
+  updatePlanParam,
   coursePlanParam,
   createExerciseParam,
   createExerciseSectionParam,
@@ -1166,6 +1169,17 @@ export function buildAgentTools(
      * — ver `negarReescrituraBajoOrden`.
      */
     accionPorLeccion?: ReadonlyMap<string, 'edit' | 'rewrite'>;
+    /**
+     * Si en esta conversación hay un plan aprobado TODAVÍA en construcción.
+     * Sólo entonces `update_plan` tiene algo que enmendar: un plan terminado es
+     * historia (ver `plan-vivo.ts`).
+     */
+    planEnConstruccion?: boolean;
+    /**
+     * Lo que escribió la docente en esta conversación, para comprobar que las
+     * palabras que cita `update_plan` son suyas.
+     */
+    textosDeLaDocente?: readonly string[];
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -1186,6 +1200,8 @@ export function buildAgentTools(
   const leccionesBajoOrdenDeTrabajo = _options?.leccionesBajoOrdenDeTrabajo;
   const accionPorLeccion = _options?.accionPorLeccion;
   const progresoDelPlan = _options?.progresoDelPlan;
+  const planEnConstruccion = _options?.planEnConstruccion ?? false;
+  const textosDeLaDocenteDeLaRonda = _options?.textosDeLaDocente ?? [];
 
   /**
    * El riel: bajo una orden de EDICIÓN, la lección no se reescribe entera.
@@ -4723,6 +4739,91 @@ export function buildAgentTools(
      * esto sería un botón de «dar por hecho» sin editar nada, que es peor que
      * el bucle: primero hay que haber hecho el cambio.
      */
+    /**
+     * La docente cambia de idea a mitad de la construcción, y el plan se entera.
+     *
+     * ── Por qué ──────────────────────────────────────────────────────────────
+     *
+     * El plan aprobado era inmutable hasta otra aprobación entera: si ella decía
+     * «el examen final sólo de los módulos 1 y 2», el plan seguía diciendo
+     * «cinco bloques», y cada ronda le pasaba ese JSON al modelo como la fuente
+     * canónica. Ver `plan-vivo.ts` y el incidente del examen final (2026-11-07).
+     *
+     * ── Por qué exige sus palabras ───────────────────────────────────────────
+     *
+     * Sacar ítems es también la forma más barata de «terminar» un plan. Que la
+     * enmienda tenga que citar algo que ELLA escribió —comprobado acá contra sus
+     * mensajes, no confiado al modelo— es lo que la hace una decisión suya.
+     */
+    update_plan: tool({
+      description:
+        'Change the approved plan WHILE it is being built, because the TEACHER decided something: remove an item or a whole section she no longer wants, or change what an item must be. Pass her exact words in teacherWords — the server checks them against her messages and refuses otherwise. Call it BEFORE acting on her request (then do what she asked). Removed items show as ➖ in Plan Progress and are never built. Only for her decisions: never to shrink the plan on your own, and never when no plan is being built.',
+      inputSchema: updatePlanParam,
+      execute: async (args) => {
+        return executeAgentTool('update_plan', { orgId, userId, courseId, args }, async () => {
+          if (!planEnConstruccion) {
+            throw new Error(
+              'There is no plan being built in this conversation (it was finished, or never approved), so there is nothing to update. Do what the teacher asks directly.'
+            );
+          }
+
+          if (!lasEscribioLaDocente(args.teacherWords, textosDeLaDocenteDeLaRonda)) {
+            throw new Error(
+              "Those words are not in any of the teacher's messages in this conversation. Copy her EXACT words — the sentence where she asks for this change. If she did not ask for it, do not change the plan."
+            );
+          }
+
+          const registroDelPlan = await readPlanRegistry(runScope);
+          const porClave = new Map(registroDelPlan.map((fila) => [fila.key, fila] as const));
+
+          // Todo se valida antes de escribir nada: una enmienda a medias dejaría
+          // un plan que no es ni el de antes ni el que ella pidió.
+          for (const cambio of args.changes) {
+            const fila = porClave.get(cambio.planKey);
+
+            if (!fila) {
+              throw new Error(
+                `No plan item with key "${cambio.planKey}". Copy the [key] the Plan Progress block shows beside the item — do not invent one.`
+              );
+            }
+            if (cambio.action === 'change' && fila.kind === 'section') {
+              throw new Error(
+                `"${cambio.planKey}" is a section: a section cannot be "changed". Change its items one by one, or remove it.`
+              );
+            }
+            if (cambio.action === 'change' && !cambio.description?.trim()) {
+              throw new Error(`"change" needs the new description for "${cambio.planKey}": what to build now.`);
+            }
+          }
+
+          const palabras = args.teacherWords.trim();
+          const at = new Date().toISOString();
+          const actualizados: Array<{ key: string; title: string; action: 'remove' | 'change' }> = [];
+
+          for (const cambio of args.changes) {
+            const fila = porClave.get(cambio.planKey)!;
+
+            await enmendarItemDelPlan({
+              ...runScope,
+              planKey: cambio.planKey,
+              enmienda:
+                cambio.action === 'remove'
+                  ? { accion: 'sacar', palabras, at }
+                  : { accion: 'cambiar', descripcion: cambio.description!.trim(), palabras, at }
+            });
+            anotarCambio(registro, cambio.action === 'remove' ? 'saco_del_plan' : 'cambio_el_plan', fila.title);
+            actualizados.push({ key: cambio.planKey, title: fila.title, action: cambio.action });
+          }
+
+          return {
+            updated: actualizados,
+            note:
+              'The plan now says this, and Plan Progress will show it from the next step on: removed items as ➖ (never build them), changed items with the new description. Tell the teacher in one sentence what changed in the plan, then do what she asked.'
+          };
+        });
+      }
+    }),
+
     confirm_change_applied: tool({
       description:
         'Declare that a change-plan item is done even though the Plan Progress still finds the old value, because the remaining occurrences belong to a DIFFERENT rule or context than the one the source changed (for example a "2 horas" that is the P1 deadline, not the P2 one the new document changed). The server cannot tell those apart; you can. It accepts this only for an item you have already edited in this conversation, and records your reason next to the item so the teacher sees it was a judgement, not a measurement. Never rewrite a correct sentence just to make the check go quiet, and never use this instead of making a change you have not made.',

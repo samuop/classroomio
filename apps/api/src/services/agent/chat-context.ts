@@ -606,7 +606,16 @@ function describirPendiente(params: {
  * `items`/`total`/`completed` are the same reconciliation as structured data, so the
  * UI checklist can render server truth instead of the model's self-report.
  */
-export type PlanProgressStatus = 'done' | 'empty' | 'missing';
+/**
+ * `removed`: fuera del plan, y no por faltar.
+ *
+ * Dos caminos llegan acá, y los dos son decisiones de la docente: lo sacó del
+ * plan con sus palabras (`update_plan`), o lo construido desapareció del curso
+ * (lo borró ella, en el chat o en el editor). Antes las dos cosas se leían ⬜
+ * «missing — create it», y el ancla, con la frase más fuerte del prompt, mandaba
+ * reconstruir lo que ella acababa de quitar.
+ */
+export type PlanProgressStatus = 'done' | 'empty' | 'missing' | 'removed';
 
 export interface PlanProgressItem {
   /** Registry key (`s1`, `s1.2`); empty for legacy plans with no registry. */
@@ -614,6 +623,8 @@ export interface PlanProgressItem {
   kind: 'section' | 'lesson' | 'exercise';
   title: string;
   status: PlanProgressStatus;
+  /** Sólo en `removed`: la docente lo sacó con estas palabras, o se borró después de construido. */
+  removed?: { by: 'teacher'; words: string } | { by: 'deleted' };
   /**
    * El ítem se da por hecho porque el asistente lo declaró, con este motivo.
    *
@@ -765,6 +776,23 @@ export function buildPlanProgressAnchor(
   /** `[s1.2] ` prefix so the model can echo the key back in its create_* call. */
   const tag = (key: string) => (key ? `[${key}] ` : '');
 
+  /** Un renglón de algo que salió del plan: no cuenta como pendiente ni se construye. */
+  const fueraDelPlan = (
+    destino: string[],
+    sangria: string,
+    key: string,
+    kind: PlanProgressItem['kind'],
+    title: string,
+    porque: NonNullable<PlanProgressItem['removed']>
+  ) => {
+    destino.push(
+      porque.by === 'teacher'
+        ? `${sangria}${tag(key)}${kind} "${title}" ➖ taken out of the plan by the teacher («${porque.words}») — do NOT build it`
+        : `${sangria}${tag(key)}${kind} "${title}" 🗑️ was built and later deleted — it is out of the plan: do NOT rebuild it unless the teacher asks`
+    );
+    progressItems.push({ key, kind, title, status: 'removed', removed: porque });
+  };
+
   for (const [planIndex, planSection] of plan.sections.entries()) {
     const regSection = registrySectionByTitle.get(normalizeTitle(planSection.title));
     const sectionKey = regSection?.key ?? '';
@@ -773,6 +801,29 @@ export function buildPlanProgressAnchor(
     const boundSectionId =
       regSection?.entityId && sectionById.has(regSection.entityId) ? regSection.entityId : undefined;
     const realSectionId = boundSectionId ?? sectionIdByTitle.get(claveDeTitulo(planSection.title));
+
+    /**
+     * La sección entera fuera del plan: la docente la sacó, o se construyó y
+     * después se borró. Sus ítems se van con ella, sin importar en qué estaba
+     * cada uno: no tiene sentido pedir una lección dentro de una sección que ella
+     * quitó.
+     */
+    const seccionFuera: PlanProgressItem['removed'] =
+      regSection?.enmienda?.accion === 'sacar'
+        ? { by: 'teacher', words: regSection.enmienda.palabras }
+        : !realSectionId && regSection?.entityId
+          ? { by: 'deleted' }
+          : undefined;
+
+    if (seccionFuera) {
+      fueraDelPlan(lines, '', sectionKey, 'section', planSection.title, seccionFuera);
+      for (const item of planSection.items) {
+        const itemKey = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`)?.key ?? '';
+
+        fueraDelPlan(lines, '  - ', itemKey, item.type, item.title, seccionFuera);
+      }
+      continue;
+    }
 
     if (!realSectionId) {
       lines.push(`${tag(sectionKey)}Section "${planSection.title}" ⬜ NOT CREATED — create it and everything below.`);
@@ -798,6 +849,20 @@ export function buildPlanProgressAnchor(
       const regItem = registryItemByPath.get(`${sectionKey}::${normalizeTitle(item.title)}`);
       const itemKey = regItem?.key ?? '';
       const accion = (item.action ?? 'create') as AccionDelItem;
+
+      if (regItem?.enmienda?.accion === 'sacar') {
+        fueraDelPlan(itemStatuses, '  - ', itemKey, item.type, item.title, {
+          by: 'teacher',
+          words: regItem.enmienda.palabras
+        });
+        continue;
+      }
+
+      /** Lo que la docente decidió construir en vez de lo que decía el plan. */
+      const cambiado =
+        regItem?.enmienda?.accion === 'cambiar' && regItem.enmienda.descripcion
+          ? ` — the teacher changed what to build: «${regItem.enmienda.descripcion}»`
+          : '';
 
       /**
        * Un ítem que MODIFICA algo no se mide por existencia.
@@ -868,10 +933,17 @@ export function buildPlanProgressAnchor(
       const boundItem = regItem?.entityId ? itemById.get(regItem.entityId) : undefined;
       const real = boundItem ?? itemsBySectionAndTitle.get(`${realSectionId}::${claveDeTitulo(item.title)}`);
 
+      // Se construyó (el registro lo ató) y ya no está: alguien lo borró, y eso
+      // es una decisión, no un faltante.
+      if (!real && regItem?.entityId) {
+        fueraDelPlan(itemStatuses, '  - ', itemKey, item.type, item.title, { by: 'deleted' });
+        continue;
+      }
+
       if (!real) {
         pendingCount += 1;
         sectionComplete = false;
-        itemStatuses.push(`  - ${tag(itemKey)}${item.type} "${item.title}" ⬜ missing — create it`);
+        itemStatuses.push(`  - ${tag(itemKey)}${item.type} "${item.title}" ⬜ missing — create it${cambiado}`);
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'missing' });
         continue;
       }
@@ -882,14 +954,14 @@ export function buildPlanProgressAnchor(
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(
-          `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT EMPTY — write its content, do NOT create it again`
+          `  - ${tag(itemKey)}lesson "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT EMPTY — write its content, do NOT create it again${cambiado}`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else if (tipoReal === 'exercise' && (real.questionCount ?? 0) === 0) {
         emptyCount += 1;
         sectionComplete = false;
         itemStatuses.push(
-          `  - ${tag(itemKey)}exercise "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT HAS NO QUESTIONS — add questions, do NOT create it again`
+          `  - ${tag(itemKey)}exercise "${real.title ?? item.title}" ⚠️ EXISTS (${manijaOInterrogante(mapa, real.id)}) BUT HAS NO QUESTIONS — add questions, do NOT create it again${cambiado}`
         );
         progressItems.push({ key: itemKey, kind: item.type, title: item.title, status: 'empty' });
       } else {
@@ -908,7 +980,9 @@ export function buildPlanProgressAnchor(
     });
   }
 
-  const total = progressItems.length;
+  // Lo que salió del plan no es parte de la cuenta: «15/15» tiene que poder
+  // decirse con una lección quitada, sin que la quitada lo deje en «15/16».
+  const total = progressItems.filter((entry) => entry.status !== 'removed').length;
   const completed = progressItems.filter((entry) => entry.status === 'done').length;
 
   // Order check: walk the sections as the COURSE has them and see whether their

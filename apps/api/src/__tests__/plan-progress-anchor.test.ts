@@ -103,8 +103,24 @@ describe('buildPlanProgressAnchor — resolution by registry binding', () => {
     expect(progress?.items.find((entry) => entry.key === 's1.2')?.status).toBe('empty');
   });
 
-  it('ignores a binding whose row no longer exists (teacher deleted it)', () => {
+  /**
+   * Antes decía `missing`, y el ancla mandaba «create it» con la frase más
+   * fuerte del prompt: reconstruía lo que la docente acababa de borrar. Lo que el
+   * registro ató y ya no está se borró después de construido — una decisión.
+   */
+  it('a bound row that no longer exists was deleted on purpose: out of the plan, not missing', () => {
     const progress = buildPlanProgressAnchor(plan, sections, [], registry([{ key: 's1.1', entityId: 'deleted-uuid' }]));
+    const item = progress?.items.find((entry) => entry.key === 's1.1');
+
+    expect(item).toMatchObject({ status: 'removed', removed: { by: 'deleted' } });
+    // Sólo «Autoevaluación» (sin atar, sin construir) sigue pendiente.
+    expect(progress?.pendingCount).toBe(1);
+    expect(progress?.anchorText).toContain('"Introducción" 🗑️ was built and later deleted');
+    expect(progress?.anchorText).not.toMatch(/Introducción" ⬜ missing/);
+  });
+
+  it('an unbound item that does not exist is still missing', () => {
+    const progress = buildPlanProgressAnchor(plan, sections, [], registry());
 
     expect(progress?.items.find((entry) => entry.key === 's1.1')?.status).toBe('missing');
   });

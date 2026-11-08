@@ -5153,7 +5153,8 @@
     "plan_applying_changes": "Applying changes",
     "plan_working": "Working",
     "todo_checklist": {
-      "title": "Build progress"
+      "title": "Build progress",
+      "removed": "removed from the plan"
     },
     "plan_thinking": "Thinking…",
     "plan_progress": "{completed} / {total} steps completed",
@@ -5435,6 +5436,7 @@
       "left_as_is": "Left as is: {reason}",
       "status_empty": "Created, no content yet",
       "status_missing": "Pending",
+      "status_removed": "Removed from the plan",
       "section": "Section {order}",
       "exercise": "Exercise",
       "with_exercise": "Includes an exercise",

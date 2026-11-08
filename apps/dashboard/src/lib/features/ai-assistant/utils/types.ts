@@ -224,8 +224,14 @@ export interface AiAssistantPlanProgressItem {
   key: string;
   kind: 'section' | 'lesson' | 'exercise';
   title: string;
-  /** `empty` = the row exists but has no content / no questions yet. */
-  status: 'done' | 'empty' | 'missing';
+  /**
+   * `empty` = the row exists but has no content / no questions yet.
+   * `removed` = fuera del plan por decisión de la docente: lo sacó con sus
+   * palabras, o se construyó y después se borró. No es un pendiente.
+   */
+  status: 'done' | 'empty' | 'missing' | 'removed';
+  /** Sólo en `removed`: por qué salió. */
+  removed?: { by: 'teacher'; words: string } | { by: 'deleted' };
   /**
    * El ítem se da por hecho porque el asistente lo declaró, con este motivo.
    *
