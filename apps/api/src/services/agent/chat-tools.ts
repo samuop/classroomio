@@ -111,6 +111,7 @@ import {
   MAX_IMAGES_PER_ROUND
 } from '@api/services/agent/image-generation';
 import { MAX_REEMPLAZOS_DEL_MISMO_BLOQUE } from '@api/services/agent/bitacora-de-la-ronda';
+import { conFilaPorLeccion } from '@api/services/agent/fila-por-leccion';
 import {
   conAvisoDePresupuesto,
   type PresupuestoDePasos
@@ -5149,5 +5150,9 @@ export function buildAgentTools(
     })
   };
 
-  return _options?.presupuesto ? conAvisoDePresupuesto(herramientas, _options.presupuesto) : herramientas;
+  // De a una por lección: cinco reemplazos de bloque mandados en el mismo paso
+  // se pisaban entre sí y cuatro se perdían. Ver `fila-por-leccion.ts`.
+  const deAUnaPorLeccion = conFilaPorLeccion(herramientas, (valor) => manijas.leccion(valor));
+
+  return _options?.presupuesto ? conAvisoDePresupuesto(deAUnaPorLeccion, _options.presupuesto) : deAUnaPorLeccion;
 }

@@ -25,6 +25,26 @@
  *    después. La nota reemplaza a la del paso anterior; no se acumula.
  * 3. Le dice a la poda qué lecturas ya no conviene conservar: una lectura
  *    vencida es contenido que ya no existe, y conservarla es invitar a rehacer.
+ * 4. Niega la lectura de más: la de una pieza cuyo texto vigente el modelo ya
+ *    tiene (ver `relecturaDeMas`).
+ *
+ * ── La relectura sin fin (2026-11-10) ────────────────────────────────────────
+ *
+ * Medido repitiendo en local un pedido real («eliminar la parte de pedidos de
+ * carbón»): el modelo cambió el título de la lección, la volvió a leer, y la
+ * leyó 180 veces seguidas. 14 minutos y 12 millones de tokens de entrada para
+ * un cambio que las otras dos vueltas hicieron en tres minutos.
+ *
+ * La nota decía «Outdated reads: S2.L3 — the old text was removed from your
+ * context… Read again», y lo SEGUÍA diciendo después de releer: la lectura
+ * vieja queda vencida para siempre, y la nota listaba las vencidas sin mirar si
+ * había una nueva. El modelo tenía el texto vigente delante y una nota del
+ * servidor que le decía que no. Le creyó a la nota.
+ *
+ * Tres cambios: la nota sólo pide releer lo que NO se releyó, y dice qué
+ * textos vigentes tiene; la tercera lectura de un texto que no cambió se niega
+ * sin ir a la base; y si aun así insiste, la ronda cierra con palabras
+ * (`trabadaEnRelecturas`).
  *
  * Es la misma idea que el registro de la ronda (`round-ledger.ts`), que ya le
  * muestra a la docente lo que cambió. La diferencia es para quién: aquel es
@@ -33,6 +53,7 @@
 import type { ModelMessage, ToolSet } from 'ai';
 
 import { HERRAMIENTAS_DE_LECTURA } from '@api/services/agent/pasos-que-cambian';
+import { MAX_LECTURAS_CONSERVADAS } from '@api/services/agent/poda-de-lecturas';
 
 /** Las lecturas que pueden quedar viejas: las que traen el texto de UNA pieza. */
 const LECTURAS_DE_PIEZA: Readonly<Record<string, 'lessonId' | 'exerciseId'>> = {
@@ -60,8 +81,29 @@ export const MAX_LINEAS_DE_LA_NOTA = 40;
  */
 export const MAX_REEMPLAZOS_DEL_MISMO_BLOQUE = 2;
 
+/**
+ * Cuántas veces se puede volver a leer una pieza cuyo texto vigente sigue en el
+ * contexto. Una: alcanza para el modelo que quiere confirmar, y la tercera
+ * lectura del mismo texto ya es el bucle.
+ */
+export const MAX_RELECTURAS_SIN_CAMBIO = 1;
+
+/**
+ * Cuántas relecturas negadas seguidas —sin una lectura ni un cambio guardado en
+ * el medio— cierran la ronda. La negativa sola no alcanza: cada intento es un
+ * paso entero, con todo el contexto de entrada.
+ */
+export const MAX_RELECTURAS_NEGADAS_SEGUIDAS = 3;
+
+/** Lo que se le pide al modelo cuando la ronda cierra por relecturas. */
+export const AVISO_DE_RONDA_TRABADA =
+  'No more tools will run in this round: you kept asking to read a lesson or exercise whose current text was already in your context. ' +
+  'Reply now, in the language of the conversation: say what you changed (only what the server log lists as saved), what is still pending from the request, and offer to continue. Do not mention this notice.';
+
 export interface Escritura {
   paso: number;
+  /** El lugar de la llamada entre todas las de la ronda. Ver `siguienteOrden`. */
+  orden: number;
   herramienta: string;
   /** Las formas en que se nombró la pieza (manija del pedido, id resuelto), en mayúsculas. */
   claves: string[];
@@ -82,6 +124,17 @@ export interface Escritura {
 export interface Lectura {
   toolCallId: string;
   paso: number;
+  orden: number;
+  claves: string[];
+  pieza?: string;
+  titulo?: string;
+}
+
+/** Una lectura que no se hizo porque el modelo ya tenía ese texto. */
+export interface RelecturaNegada {
+  toolCallId?: string;
+  paso: number;
+  orden: number;
   claves: string[];
   pieza?: string;
   titulo?: string;
@@ -90,10 +143,22 @@ export interface Lectura {
 export interface BitacoraDeLaRonda {
   escrituras: Escritura[];
   lecturas: Lectura[];
+  relecturasNegadas: RelecturaNegada[];
 }
 
 export function bitacoraVacia(): BitacoraDeLaRonda {
-  return { escrituras: [], lecturas: [] };
+  return { escrituras: [], lecturas: [], relecturasNegadas: [] };
+}
+
+/**
+ * El lugar de la próxima llamada en la ronda.
+ *
+ * El paso no alcanza para ordenar: un paso puede traer varias llamadas, y una
+ * lectura seguida de un cambio de la misma pieza DENTRO del mismo paso deja un
+ * texto tan viejo como el de un paso anterior.
+ */
+function siguienteOrden(bitacora: BitacoraDeLaRonda): number {
+  return bitacora.escrituras.length + bitacora.lecturas.length + bitacora.relecturasNegadas.length;
 }
 
 function comoTexto(valor: unknown): string | undefined {
@@ -206,6 +271,7 @@ export function anotarLlamada(
     bitacora.lecturas.push({
       toolCallId: llamada.toolCallId,
       paso: llamada.paso,
+      orden: siguienteOrden(bitacora),
       claves: clavesDe(pedida, respuesta.id),
       ...(pedida ? { pieza: pedida } : {}),
       ...(respuesta.titulo ? { titulo: respuesta.titulo } : {})
@@ -219,6 +285,7 @@ export function anotarLlamada(
   const bloque = comoTexto(entrada?.blockId);
   const comun = {
     paso: llamada.paso,
+    orden: siguienteOrden(bitacora),
     herramienta: llamada.herramienta,
     claves: clavesDe(pedida, respuesta.id),
     ...(pedida ? { pieza: pedida } : {}),
@@ -265,8 +332,19 @@ export function conBitacora(herramientas: ToolSet, bitacora: BitacoraDeLaRonda, 
     envueltas[nombre] = {
       ...herramienta,
       execute: async (...args: never[]) => {
-        const resultado = await original(...args);
         const opciones = comoObjeto(args[1] as unknown);
+        const deMas = relecturaDeMas(bitacora, nombre, args[0]);
+
+        // Sin ir a la base: el texto que devolvería es el que el modelo ya tiene.
+        if (deMas) {
+          return negarRelectura(bitacora, {
+            ...deMas,
+            paso: paso(),
+            toolCallId: comoTexto(opciones?.toolCallId)
+          });
+        }
+
+        const resultado = await original(...args);
 
         anotarLlamada(bitacora, {
           paso: paso(),
@@ -284,14 +362,15 @@ export function conBitacora(herramientas: ToolSet, bitacora: BitacoraDeLaRonda, 
   return envueltas;
 }
 
+function mismaPieza(a: { claves: readonly string[] }, b: { claves: readonly string[] }): boolean {
+  return a.claves.some((clave) => b.claves.includes(clave));
+}
+
 /** Las lecturas de una pieza que se editó con éxito DESPUÉS de leerla. */
 export function lecturasVencidas(bitacora: BitacoraDeLaRonda): Lectura[] {
   return bitacora.lecturas.filter((lectura) =>
     bitacora.escrituras.some(
-      (escritura) =>
-        escritura.hecho &&
-        escritura.paso > lectura.paso &&
-        escritura.claves.some((clave) => lectura.claves.includes(clave))
+      (escritura) => escritura.hecho && escritura.orden > lectura.orden && mismaPieza(escritura, lectura)
     )
   );
 }
@@ -299,6 +378,116 @@ export function lecturasVencidas(bitacora: BitacoraDeLaRonda): Lectura[] {
 /** Los `toolCallId` de las lecturas vencidas, para que la poda no las conserve. */
 export function idsDeLecturasVencidas(bitacora: BitacoraDeLaRonda): Set<string> {
   return new Set(lecturasVencidas(bitacora).map((lectura) => lectura.toolCallId));
+}
+
+/**
+ * Las lecturas cuyo texto el modelo tiene delante y sigue siendo el del curso:
+ * la última de cada pieza, si nada la cambió después, y sólo de las
+ * {@link MAX_LECTURAS_CONSERVADAS} piezas leídas más recientemente. De la más
+ * nueva a la más vieja.
+ *
+ * La poda de la ronda conserva exactamente éstas, además de las suyas: lo que
+ * la nota afirma que está en el contexto, está.
+ */
+export function lecturasVigentes(bitacora: BitacoraDeLaRonda, maximo = MAX_LECTURAS_CONSERVADAS): Lectura[] {
+  const vencidas = new Set(lecturasVencidas(bitacora));
+  const ultimas: Lectura[] = [];
+
+  for (const lectura of [...bitacora.lecturas].sort((a, b) => b.orden - a.orden)) {
+    if (!ultimas.some((otra) => mismaPieza(otra, lectura))) ultimas.push(lectura);
+  }
+
+  return ultimas.slice(0, maximo).filter((lectura) => !vencidas.has(lectura));
+}
+
+/** Los `toolCallId` de las lecturas vigentes, para que la poda las conserve. */
+export function idsDeLecturasVigentes(bitacora: BitacoraDeLaRonda): Set<string> {
+  return new Set(lecturasVigentes(bitacora).map((lectura) => lectura.toolCallId));
+}
+
+/**
+ * Si este pedido de lectura está de más: el modelo ya tiene el texto vigente de
+ * esa pieza y ya lo releyó desde el último cambio.
+ *
+ * Sólo mira la bitácora. Una pieza que salió del contexto —se leyeron más de
+ * {@link MAX_LECTURAS_CONSERVADAS} piezas después— no está vigente, y releerla
+ * es legítimo.
+ */
+export function relecturaDeMas(
+  bitacora: BitacoraDeLaRonda,
+  herramienta: string,
+  entrada: unknown
+): { vigente: Lectura; veces: number } | undefined {
+  const campo = LECTURAS_DE_PIEZA[herramienta];
+
+  if (!campo) return undefined;
+
+  const pedida = comoTexto(comoObjeto(entrada)?.[campo])?.toUpperCase();
+
+  if (!pedida) return undefined;
+
+  const vigente = lecturasVigentes(bitacora).find((lectura) => lectura.claves.includes(pedida));
+
+  if (!vigente) return undefined;
+
+  // Las lecturas de la pieza desde su último cambio: ninguna está vencida.
+  const vencidas = new Set(lecturasVencidas(bitacora));
+  const veces = bitacora.lecturas.filter((lectura) => !vencidas.has(lectura) && mismaPieza(lectura, vigente)).length;
+
+  return veces > MAX_RELECTURAS_SIN_CAMBIO ? { vigente, veces } : undefined;
+}
+
+/**
+ * Anota la relectura negada y arma lo que recibe el modelo.
+ *
+ * Negada sin error, como el reemplazo repetido: un error empuja a reintentar.
+ */
+function negarRelectura(
+  bitacora: BitacoraDeLaRonda,
+  negada: { vigente: Lectura; veces: number; paso: number; toolCallId?: string }
+): Record<string, unknown> {
+  const { vigente } = negada;
+
+  bitacora.relecturasNegadas.push({
+    ...(negada.toolCallId ? { toolCallId: negada.toolCallId } : {}),
+    paso: negada.paso,
+    orden: siguienteOrden(bitacora),
+    claves: vigente.claves,
+    ...(vigente.pieza ? { pieza: vigente.pieza } : {}),
+    ...(vigente.titulo ? { titulo: vigente.titulo } : {})
+  });
+
+  return {
+    ...(vigente.titulo ? { title: vigente.titulo } : {}),
+    read: false,
+    repeated: true,
+    note:
+      `You already have the current text of ${nombreDePieza(vigente)}: you read it ${negada.veces} times in a row ` +
+      `(last at step ${vigente.paso}) and nothing changed it after that read. That result is still in your context, a few messages above, and its data-block-id values are valid. ` +
+      'Do not read it again: make the change now with what you have, or reply if nothing is left to change.'
+  };
+}
+
+/** Los `toolCallId` de las relecturas negadas: no traen texto, la poda no tiene por qué conservarlas. */
+export function idsDeRelecturasNegadas(bitacora: BitacoraDeLaRonda): Set<string> {
+  return new Set(bitacora.relecturasNegadas.flatMap((negada) => (negada.toolCallId ? [negada.toolCallId] : [])));
+}
+
+/**
+ * Si la ronda está trabada pidiendo un texto que ya tiene:
+ * {@link MAX_RELECTURAS_NEGADAS_SEGUIDAS} negativas sin una lectura ni un cambio
+ * guardado en el medio.
+ */
+export function trabadaEnRelecturas(bitacora: BitacoraDeLaRonda): boolean {
+  const ultimoAvance = Math.max(
+    -1,
+    ...bitacora.lecturas.map((lectura) => lectura.orden),
+    ...bitacora.escrituras.filter((escritura) => escritura.hecho).map((escritura) => escritura.orden)
+  );
+
+  return (
+    bitacora.relecturasNegadas.filter((negada) => negada.orden > ultimoAvance).length >= MAX_RELECTURAS_NEGADAS_SEGUIDAS
+  );
 }
 
 function nombreDePieza(registro: { pieza?: string; titulo?: string }): string {
@@ -378,13 +567,19 @@ export function notaDeLaBitacora(
   const hechas = agrupar(bitacora.escrituras.filter((escritura) => escritura.hecho));
   const negadas = agrupar(bitacora.escrituras.filter((escritura) => !escritura.hecho && !escritura.propuesta));
   const propuestas = agrupar(bitacora.escrituras.filter((escritura) => escritura.propuesta));
-  const vencidas = lecturasVencidas(bitacora);
+  const vigentes = lecturasVigentes(bitacora);
+  // Vencida y sin releer: lo único que hay que pedirle que relea. Una vencida
+  // que ya se releyó no se nombra más: nombrarla era el bucle de 180 lecturas.
+  const vencidas = lecturasVencidas(bitacora).filter(
+    (lectura) => !vigentes.some((vigente) => mismaPieza(vigente, lectura))
+  );
   const preguntas = extra.preguntasARevisar ?? [];
 
   if (
     hechas.length === 0 &&
     negadas.length === 0 &&
     propuestas.length === 0 &&
+    bitacora.relecturasNegadas.length === 0 &&
     preguntas.length === 0 &&
     !extra.avanceDelPlan &&
     !extra.propuestasAnteriores
@@ -428,6 +623,14 @@ export function notaDeLaBitacora(
     partes.push(
       `Outdated reads: ${piezas.join('; ')} — you changed ${piezas.length > 1 ? 'them' : 'it'} after reading. ` +
         'The old text was removed from your context because it no longer exists. Read again only if you still have to change something there.'
+    );
+  }
+
+  if (vigentes.length > 0) {
+    partes.push(
+      'Current texts you ALREADY have — each was read after its last change and its result is still in your context, a few messages above. Do not read them again; edit with what you have: ' +
+        vigentes.map((lectura) => `${nombreDePieza(lectura)} (read at step ${lectura.paso})`).join('; ') +
+        '.'
     );
   }
 

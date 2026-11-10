@@ -171,11 +171,15 @@ import {
   type AfirmacionesSinCambio
 } from '@api/services/agent/afirmaciones-sin-cambio';
 import {
+  AVISO_DE_RONDA_TRABADA,
   bitacoraVacia,
   conBitacora,
   conNotaDelPaso,
   idsDeLecturasVencidas,
-  notaDeLaBitacora
+  idsDeLecturasVigentes,
+  idsDeRelecturasNegadas,
+  notaDeLaBitacora,
+  trabadaEnRelecturas
 } from '@api/services/agent/bitacora-de-la-ronda';
 import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
 import { lecturasAConservar, podarHerramientas } from '@api/services/agent/poda-de-lecturas';
@@ -2292,6 +2296,8 @@ const agentCoreRouter = new Hono()
       let escriturasAlEmpezarElTramo = 0;
       /** El cupo se acabó a mitad de la ronda: el paso siguiente sólo responde. */
       let sinCupo = false;
+      /** El modelo insiste en releer un texto que ya tiene: el paso siguiente sólo responde. */
+      let trabada = false;
       /** Lo que la docente lee de esta respuesta, de todos los tramos. */
       let textoDeLaRespuesta = '';
       /** Lo que ese texto dice haber cambiado y el servidor no vio cambiar. */
@@ -2383,13 +2389,23 @@ const agentCoreRouter = new Hono()
         // Ninguna ronda cierra muda: el último paso va sin herramientas y con el
         // pedido de responder. Ver `student-final-step.ts` para por qué las dos
         // cosas, y por qué el aviso del docente no es el del estudiante.
+        // Pidiendo una y otra vez un texto que ya tiene: negarle la lectura no
+        // alcanza, cada intento es un paso entero. Ver `trabadaEnRelecturas`.
+        if (!isStudentRound && !trabada && trabadaEnRelecturas(bitacora)) {
+          trabada = true;
+          console.warn(
+            `[agent.chat] la ronda de la conversación ${conversationId ?? '(sin conversación)'} quedó trabada releyendo en el paso ${pasoDeLaRonda + 1}: cierra`
+          );
+        }
+
         const ultimoPaso =
           sinCupo ||
+          trabada ||
           esUltimoPasoDeLaRonda({
             paso: pasoDeLaRonda,
             maximoDePasos: maxStepsForRound
           });
-        const cierre = sinCupo ? AVISO_SIN_CUPO : avisoDeCierre(isStudentRound);
+        const cierre = sinCupo ? AVISO_SIN_CUPO : trabada ? AVISO_DE_RONDA_TRABADA : avisoDeCierre(isStudentRound);
 
         /**
          * Lo que la ronda ya hizo, al final de los mensajes del paso. La del
@@ -2438,9 +2454,17 @@ const agentCoreRouter = new Hono()
         cierre: string | undefined
       ): { messages: ModelMessage[]; activeTools?: [] } {
         const vencidas = idsDeLecturasVencidas(bitacora);
-        const conservar = new Set(
-          [...lecturasAConservar(mensajes)].filter((toolCallId) => !vencidas.has(toolCallId))
-        );
+        const negadas = idsDeRelecturasNegadas(bitacora);
+        // Las vigentes de la bitácora entran siempre: la nota le dice al modelo
+        // que esos textos están en su contexto, y una relectura negada —que es
+        // la «última llamada» de esa pieza para `lecturasAConservar`— no puede
+        // desplazar a la lectura que sí trajo el texto.
+        const conservar = new Set([
+          ...[...lecturasAConservar(mensajes)].filter(
+            (toolCallId) => !vencidas.has(toolCallId) && !negadas.has(toolCallId)
+          ),
+          ...idsDeLecturasVigentes(bitacora)
+        ]);
         const sinLecturasViejas = podarHerramientas({
           messages: conNotaDelPaso(mensajes, undefined),
           ultimos: 4,
@@ -2607,6 +2631,8 @@ const agentCoreRouter = new Hono()
           ({ steps }) => pasosDeTramosAnteriores + steps.length >= maxStepsForRound,
           // El paso que cerró por falta de cupo ya fue la respuesta.
           () => sinCupo,
+          // Lo mismo el que cerró por relecturas.
+          () => trabada,
           async () => {
             if (!candado || !(await candado.pidieronDetener())) return false;
 

@@ -14,6 +14,8 @@
  * ── Qué se prueba ────────────────────────────────────────────────────────────
  *
  * - la bitácora: qué anota, qué lectura queda vencida y qué nota arma;
+ * - la relectura sin fin: la nota deja de pedir releer lo releído, la tercera
+ *   lectura del mismo texto se niega, y tres negativas traban la ronda;
  * - que la nota del paso reemplaza a la anterior y no se acumula;
  * - el tercer reemplazo del mismo bloque se niega sin guardar;
  * - `generate_image` exige la lección y, al negar, devuelve la imagen y dice
@@ -105,9 +107,13 @@ import {
   ENCABEZADO_DE_LA_NOTA,
   esNotaDeLaBitacora,
   idsDeLecturasVencidas,
+  idsDeLecturasVigentes,
+  idsDeRelecturasNegadas,
   notaDeLaBitacora,
-  salioBien
+  salioBien,
+  trabadaEnRelecturas
 } from '@api/services/agent/bitacora-de-la-ronda';
+import { enFila } from '@api/services/agent/fila-por-leccion';
 
 const ID = {
   seccion: '11111111-1111-4111-8111-111111111111',
@@ -368,6 +374,201 @@ describe('la bitácora de la ronda', () => {
   });
 });
 
+/**
+ * Medido el 2026-11-10, repitiendo en local un pedido real («eliminar la parte
+ * de pedidos de carbón»): el modelo cambió el título, releyó la lección, y la
+ * leyó 180 veces seguidas —14 minutos, 12 millones de tokens de entrada—. La
+ * nota seguía diciendo «Outdated reads… Read again» DESPUÉS de la relectura.
+ */
+describe('la relectura sin fin', () => {
+  const leer = (bitacora: ReturnType<typeof bitacoraVacia>, paso: number, id: string, pieza = 'S1.L1', titulo = 'El presupuesto') =>
+    anotarLlamada(bitacora, {
+      paso,
+      herramienta: 'get_lesson_content',
+      toolCallId: id,
+      entrada: { lessonId: pieza },
+      resultado: { id: pieza === 'S1.L1' ? ID.leccion : `id-de-${pieza}`, title: titulo, content: CONTENIDO }
+    });
+  const cambiar = (bitacora: ReturnType<typeof bitacoraVacia>, paso: number, pieza = 'S1.L1') =>
+    anotarLlamada(bitacora, {
+      paso,
+      herramienta: 'update_lesson',
+      entrada: { lessonId: pieza, title: 'El presupuesto, en el día' },
+      resultado: { id: pieza === 'S1.L1' ? ID.leccion : `id-de-${pieza}`, title: 'El presupuesto, en el día', updated: true }
+    });
+
+  /** Un juego de herramientas que cuenta cuántas veces se fue a buscar el texto. */
+  function envueltas(bitacora: ReturnType<typeof bitacoraVacia>, paso: () => number) {
+    const lecturas = vi.fn(async (args: { lessonId: string }) => ({
+      id: args.lessonId === 'S1.L1' ? ID.leccion : `id-de-${args.lessonId}`,
+      title: 'El presupuesto',
+      content: CONTENIDO
+    }));
+    const juego = conBitacora(
+      {
+        get_lesson_content: { execute: lecturas },
+        replace_lesson_block: {
+          execute: async () => ({ lessonId: ID.leccion, lessonTitle: 'El presupuesto', blockId: 'b1', updated: true })
+        }
+      } as unknown as ToolSet,
+      bitacora,
+      paso
+    ) as unknown as Record<string, Herramienta>;
+
+    return { juego, lecturas };
+  }
+
+  it('una pieza que ya se releyó después del cambio no figura más como vencida: la nota dice que ese texto está', () => {
+    const bitacora = bitacoraVacia();
+
+    leer(bitacora, 3, 'lectura-1');
+    cambiar(bitacora, 4);
+
+    // Cambiada y sin releer: ahí sí hay que pedirlo.
+    expect(notaDeLaBitacora(bitacora)).toContain('Outdated reads: S1.L1 «El presupuesto»');
+    expect(notaDeLaBitacora(bitacora)).not.toContain('Current texts you ALREADY have');
+
+    leer(bitacora, 5, 'lectura-2', 'S1.L1', 'El presupuesto, en el día');
+
+    const nota = notaDeLaBitacora(bitacora)!;
+
+    expect(nota).not.toContain('Outdated reads');
+    expect(nota).toContain('Current texts you ALREADY have');
+    expect(nota).toContain('S1.L1 «El presupuesto, en el día» (read at step 5)');
+    // La poda: la vieja se va, la nueva se queda.
+    expect([...idsDeLecturasVencidas(bitacora)]).toEqual(['lectura-1']);
+    expect([...idsDeLecturasVigentes(bitacora)]).toEqual(['lectura-2']);
+  });
+
+  it('otra pieza cambiada y sin releer sigue pidiéndose, sola', () => {
+    const bitacora = bitacoraVacia();
+
+    leer(bitacora, 2, 'l1');
+    leer(bitacora, 2, 'l2', 'S1.L2', 'La entrega');
+    cambiar(bitacora, 3);
+    cambiar(bitacora, 4, 'S1.L2');
+    leer(bitacora, 5, 'l3');
+
+    const nota = notaDeLaBitacora(bitacora)!;
+
+    expect(nota).toContain('Outdated reads: S1.L2 «La entrega» — you changed it after reading.');
+    expect(nota).toContain('Current texts you ALREADY have');
+    expect(nota).toContain('S1.L1 «El presupuesto» (read at step 5)');
+  });
+
+  it('una lectura y un cambio de la misma pieza en el MISMO paso: la lectura queda vencida', () => {
+    const bitacora = bitacoraVacia();
+
+    leer(bitacora, 3, 'lectura');
+    cambiar(bitacora, 3);
+
+    expect([...idsDeLecturasVencidas(bitacora)]).toEqual(['lectura']);
+
+    // Y al revés: leída después del cambio, dentro del mismo paso, vale.
+    leer(bitacora, 3, 'lectura-nueva');
+
+    expect([...idsDeLecturasVigentes(bitacora)]).toEqual(['lectura-nueva']);
+  });
+
+  it('la tercera lectura de un texto que no cambió se niega sin ir a buscarlo, y dice dónde está', async () => {
+    const bitacora = bitacoraVacia();
+    let paso = 2;
+    const { juego, lecturas } = envueltas(bitacora, () => paso);
+
+    const primera = await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l1'));
+    paso = 3;
+    const segunda = await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l2'));
+    paso = 4;
+    const tercera = await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l3'));
+
+    expect(primera.content).toBe(CONTENIDO);
+    expect(segunda.content).toBe(CONTENIDO);
+    expect(lecturas).toHaveBeenCalledTimes(2);
+    expect(tercera).toMatchObject({ read: false, repeated: true });
+    expect(tercera).not.toHaveProperty('content');
+    expect(String(tercera.note)).toContain('last at step 3');
+    expect(String(tercera.note)).toContain('Do not read it again');
+    // Pedida por el id y no por la manija: es la misma pieza.
+    expect(await juego.get_lesson_content.execute({ lessonId: ID.leccion }, opciones('l4'))).toMatchObject({ repeated: true });
+    expect(lecturas).toHaveBeenCalledTimes(2);
+
+    // La negada no es una lectura: no trae texto y la poda no la conserva.
+    expect(bitacora.lecturas.map((lectura) => lectura.toolCallId)).toEqual(['l1', 'l2']);
+    expect([...idsDeRelecturasNegadas(bitacora)]).toEqual(['l3', 'l4']);
+    expect([...idsDeLecturasVigentes(bitacora)]).toEqual(['l2']);
+    expect(salioBien(tercera).hecho).toBe(true);
+    expect(bitacora.escrituras).toHaveLength(0);
+  });
+
+  it('después de un cambio guardado, la lectura vuelve a estar permitida', async () => {
+    const bitacora = bitacoraVacia();
+    let paso = 2;
+    const { juego, lecturas } = envueltas(bitacora, () => paso);
+
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l1'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l2'));
+    expect(await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l3'))).toMatchObject({ repeated: true });
+
+    paso = 3;
+    await juego.replace_lesson_block.execute({ lessonId: 'S1.L1', blockId: 'b1', html: '<p>q</p>' }, opciones('e1'));
+    paso = 4;
+
+    const despues = await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l4'));
+
+    expect(despues.content).toBe(CONTENIDO);
+    expect(lecturas).toHaveBeenCalledTimes(3);
+  });
+
+  it('una pieza que ya salió del contexto se puede volver a leer: no es una relectura de más', async () => {
+    const bitacora = bitacoraVacia();
+    const { juego, lecturas } = envueltas(bitacora, () => 2);
+
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('a1'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('a2'));
+
+    // Ocho piezas más: la poda conserva ocho lecturas, la de S1.L1 se va.
+    for (let i = 2; i <= 9; i += 1) {
+      await juego.get_lesson_content.execute({ lessonId: `S1.L${i}` }, opciones(`o${i}`));
+    }
+
+    expect(idsDeLecturasVigentes(bitacora).has('a2')).toBe(false);
+
+    const otraVez = await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('a3'));
+
+    expect(otraVez.content).toBe(CONTENIDO);
+    expect(lecturas).toHaveBeenCalledTimes(11);
+    // Recién leída: ahora sí, pedirla otra vez está de más.
+    expect(await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('a4'))).toMatchObject({ repeated: true });
+  });
+
+  it('tres relecturas negadas seguidas traban la ronda; una lectura o un cambio en el medio, no', async () => {
+    const bitacora = bitacoraVacia();
+    const { juego } = envueltas(bitacora, () => 2);
+
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l1'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l2'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('n1'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('n2'));
+
+    expect(trabadaEnRelecturas(bitacora)).toBe(false);
+
+    // Hizo algo: la cuenta vuelve a empezar.
+    await juego.replace_lesson_block.execute({ lessonId: 'S1.L1', blockId: 'b1', html: '<p>q</p>' }, opciones('e1'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l3'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('l4'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('n3'));
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('n4'));
+
+    expect(trabadaEnRelecturas(bitacora)).toBe(false);
+
+    await juego.get_lesson_content.execute({ lessonId: 'S1.L1' }, opciones('n5'));
+
+    expect(trabadaEnRelecturas(bitacora)).toBe(true);
+    // Y la nota existe aunque la ronda no haya guardado nada más.
+    expect(notaDeLaBitacora(bitacora)).toContain('Current texts you ALREADY have');
+  });
+});
+
 describe('replace_lesson_block no reemplaza el mismo bloque una tercera vez', () => {
   it('dos reemplazos guardan; el tercero se niega sin tocar la lección y dice en qué pasos fueron', async () => {
     const presupuesto = { paso: 4, maxPasos: 250 };
@@ -403,6 +604,88 @@ describe('replace_lesson_block no reemplaza el mismo bloque una tercera vez', ()
     );
 
     expect(otroBloque).toMatchObject({ updated: true });
+  });
+});
+
+/**
+ * Medido el 2026-11-10: cinco `replace_lesson_block` mandados en el mismo paso
+ * (el SDK los corre en paralelo). Cada uno leyó la lección entera, sacó su
+ * bloque y la guardó entera; el último pisó a los otros. Los cinco dijeron
+ * `updated: true` y en la base se borró un bloque solo.
+ */
+describe('varias ediciones de la misma lección mandadas a la vez', () => {
+  /** La base, con la demora que hace visible la carrera: se lee, se piensa, se guarda. */
+  function baseConDemora() {
+    vi.mocked(getLesson).mockImplementation(async (id: string) => {
+      const leido = cuerpoGuardado;
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
+
+      return { id, title: 'El presupuesto', order: 0, lessonLanguages: [{ locale: 'es', content: leido }] } as never;
+    });
+    vi.mocked(upsertLessonLanguageService).mockImplementation((async (_id: string, datos: { content: string }) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      cuerpoGuardado = datos.content;
+    }) as never);
+  }
+
+  it('dos reemplazos de bloques distintos en paralelo: quedan los dos', async () => {
+    baseConDemora();
+
+    const tools = herramientas();
+    const [uno, dos] = await Promise.all([
+      tools.replace_lesson_block.execute(
+        { lessonId: 'S1.L1', blockId: 'b1', html: '<p>El presupuesto se entrega en 24 horas.</p>' },
+        opciones('p1')
+      ),
+      // La misma lección nombrada por su id: cae en la misma fila que la manija.
+      tools.replace_lesson_block.execute(
+        { lessonId: ID.leccion, blockId: 'b2', html: '<p>Se firma y se archiva.</p>' },
+        opciones('p2')
+      )
+    ]);
+
+    expect(uno).toMatchObject({ updated: true });
+    expect(dos).toMatchObject({ updated: true });
+    expect(cuerpoGuardado).toContain('en 24 horas');
+    expect(cuerpoGuardado).toContain('Se firma y se archiva.');
+  });
+
+  it('borrar los dos bloques en paralelo los borra a los dos', async () => {
+    baseConDemora();
+
+    const tools = herramientas();
+
+    await Promise.all([
+      tools.replace_lesson_block.execute({ lessonId: 'S1.L1', blockId: 'b1', html: '' }, opciones('b1')),
+      tools.replace_lesson_block.execute({ lessonId: 'S1.L1', blockId: 'b2', html: '' }, opciones('b2'))
+    ]).catch(() => undefined);
+
+    expect(cuerpoGuardado).not.toContain('se entrega en el día');
+    expect(cuerpoGuardado).not.toContain('Se firma.');
+  });
+
+  it('una que falla no frena a la que viene detrás, y otra lección no espera', async () => {
+    const orden: string[] = [];
+    const tarea = (nombre: string, ms: number, falla = false) => async () => {
+      orden.push(`empieza ${nombre}`);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      orden.push(`termina ${nombre}`);
+      if (falla) throw new Error(nombre);
+
+      return nombre;
+    };
+
+    const resultados = await Promise.allSettled([
+      enFila('leccion-a', tarea('a1', 20, true)),
+      enFila('leccion-a', tarea('a2', 1)),
+      enFila('leccion-b', tarea('b1', 1))
+    ]);
+
+    expect(resultados.map((r) => r.status)).toEqual(['rejected', 'fulfilled', 'fulfilled']);
+    // a2 espera a a1 aunque a1 falle; b1 no espera a nadie.
+    expect(orden.indexOf('empieza a2')).toBeGreaterThan(orden.indexOf('termina a1'));
+    expect(orden.indexOf('termina b1')).toBeLessThan(orden.indexOf('termina a1'));
   });
 });
 

@@ -97,6 +97,7 @@ vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
   getChatConversation: vi.fn(async (id: string) => ({ id, courseId: CURSO, messages: guardadas.get(id) ?? [] })),
   getCourseSectionBinding: vi.fn(async () => ({ courseId: CURSO })),
+  getLessonCourseBinding: vi.fn(async () => ({ courseId: CURSO })),
   readPlanRegistry: vi.fn(async () => []),
   syncPlanRegistry: vi.fn(async () => []),
   leerAnalisisDeFuente: vi.fn(async () => []),
@@ -227,6 +228,7 @@ const { leerPropuesta, tomarPropuesta, marcarPropuestaFallida, propuestasParaLaR
   await import('@cio/db/queries/agent');
 const { aplicarPropuesta } = await import('@api/services/agent/cambios-con-entregas');
 const { isCourseTeamMemberOrOrgAdmin } = await import('@cio/db/queries/group');
+const { getLesson } = await import('@api/services/lesson/lesson');
 
 // Ids con forma de UUID donde el validador los pide.
 const EMPRESA = '00000000-0000-4000-8000-00000000e002';
@@ -1568,5 +1570,96 @@ describe('las propuestas con entregas: la docente decide', () => {
       expect(JSON.stringify(mensajes.slice(0, -1))).not.toContain('Changes to graded exercises you proposed');
     }
     expect(marcarPropuestasInformadas).toHaveBeenCalledWith(['resuelta']);
+  });
+});
+
+/**
+ * Medido el 2026-11-10 repitiendo en local un pedido real: el modelo leyó la
+ * misma lección 180 veces seguidas (14 minutos, 12 millones de tokens). Acá un
+ * modelo que hace eso mismo: pide la lección una y otra vez, y sólo contesta
+ * cuando el servidor le saca las herramientas.
+ */
+describe('un modelo que relee la misma lección sin parar', () => {
+  const TEXTO_DE_LA_LECCION = 'ARQUEO-AL-ABRIR: se cuenta el fondo fijo antes de la primera venta.';
+  const CIERRE = 'Leí la lección «Abrir la caja» y no llegué a cambiarla. ¿Querés que siga?';
+
+  /** Pide `get_lesson_content` hasta que el pedido de cerrar llegue en los mensajes. */
+  function modeloQueRelee() {
+    let llamada = 0;
+
+    return new MockLanguageModelV4({
+      doStream: async ({ prompt }) => {
+        const texto = JSON.stringify(prompt);
+
+        promptsRecibidos.push(texto);
+        llamada += 1;
+
+        const chunks = texto.includes('No more tools will run in this round')
+          ? [
+              { type: 'stream-start' as const, warnings: [] },
+              { type: 'text-start' as const, id: 't1' },
+              { type: 'text-delta' as const, id: 't1', delta: CIERRE },
+              { type: 'text-end' as const, id: 't1' },
+              { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: 'stop' }, usage: uso(1200, 80) }
+            ]
+          : [
+              { type: 'stream-start' as const, warnings: [] },
+              {
+                type: 'tool-call' as const,
+                toolCallId: `lectura-${llamada}`,
+                toolName: 'get_lesson_content',
+                input: JSON.stringify({ lessonId: 'S1.L1' })
+              },
+              { type: 'finish' as const, finishReason: { unified: 'tool-calls' as const, raw: 'tool_use' }, usage: uso(1000, 50) }
+            ];
+
+        return { stream: simulateReadableStream({ chunks }) };
+      }
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(createModel).mockImplementation(() => modeloQueRelee() as never);
+    vi.mocked(getLesson).mockImplementation(
+      async (id: string) =>
+        ({
+          id,
+          title: 'Abrir la caja',
+          lessonLanguages: [{ locale: 'es', content: `<p data-block-id="b1">${TEXTO_DE_LA_LECCION}</p>` }]
+        }) as never
+    );
+  });
+
+  it('va a buscar el texto dos veces, niega las siguientes y cierra la ronda con palabras', async () => {
+    const { partes } = await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    // Dos lecturas de verdad; las tres siguientes se niegan sin ir a la base.
+    expect(getLesson).toHaveBeenCalledTimes(2);
+    // 2 lecturas + 3 negadas + el paso que cierra: seis pedidos al modelo, no 250.
+    expect(promptsRecibidos).toHaveLength(6);
+
+    const texto = partes
+      .filter((parte) => parte.type === 'text-delta')
+      .map((parte) => String(parte.delta))
+      .join('');
+
+    expect(texto).toContain(CIERRE);
+  });
+
+  it('el texto que sí leyó sigue en su contexto hasta el final: la negada no lo desplaza', async () => {
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    // Desde el segundo pedido, el modelo ya leyó la lección: la tiene que ver
+    // en todos, incluido el último, donde la poda ya corre (paso 6) y la
+    // «última llamada» de esa pieza es una relectura negada.
+    for (const prompt of promptsRecibidos.slice(1)) {
+      expect(prompt).toContain(TEXTO_DE_LA_LECCION);
+    }
+
+    const ultimo = promptsRecibidos.at(-1)!;
+
+    // Y la nota le dice que lo tiene, no que lo vuelva a leer.
+    expect(ultimo).toContain('Current texts you ALREADY have');
+    expect(ultimo).not.toContain('Outdated reads');
   });
 });
