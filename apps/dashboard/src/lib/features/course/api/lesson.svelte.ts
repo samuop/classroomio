@@ -32,6 +32,10 @@ import type {
   TCourseSectionUpdate
 } from '@cio/utils/validation/course/section';
 import type { TLessonCreate, TLessonReorder, TLessonUpdate } from '@cio/utils/validation/lesson';
+import { huellaDelTexto } from '../utils/huella-del-texto';
+
+/** El código con que la API rechaza un guardado sobre una lección que cambió en otro lado (409). */
+export const CODIGO_LECCION_CAMBIADA = 'LESSON_CHANGED_ELSEWHERE';
 import {
   ZCourseSectionCreate,
   ZCourseSectionPromoteUngrouped,
@@ -97,9 +101,32 @@ export class LessonApi extends BaseApiWithErrors {
   note = $state('');
 
   /**
-   * Gets a lesson by ID
+   * El texto de cada lección tal como lo entregó o lo aceptó el servidor por
+   * última vez: la base sobre la que se está editando. Su huella viaja con cada
+   * guardado, y contra ella se nota que la lección cambió en otro lado.
    */
-  async get(courseId: string, lessonId: string) {
+  private base: Record<string, Partial<Record<TLocale, string>>> = {};
+
+  /**
+   * La lección cambió en el servidor —otra persona, o el asistente— mientras
+   * acá había texto sin guardar. Mientras esté puesto, nada se guarda solo: lo
+   * decide la docente (ver lo nuevo, o guardar lo suyo igual).
+   */
+  conflicto = $state<{ lessonId: string; locale: TLocale } | null>(null);
+
+  /**
+   * Gets a lesson by ID
+   *
+   * Un refresco NUNCA reemplaza texto sin guardar. Medido el 2026-11-10: la
+   * docente tecleaba mientras el asistente terminaba un cambio, el panel
+   * refrescaba la lección y lo tecleado desaparecía de la pantalla sin aviso.
+   * Con cambios sin guardar, lo que llega se deja a un lado; si el texto del
+   * servidor ya es otro, queda marcado el choque para que ella decida.
+   *
+   * @param opciones.descartarLoMio el pedido es justamente tirar lo local y
+   *   quedarse con lo del servidor («ver lo nuevo», restaurar una versión).
+   */
+  async get(courseId: string, lessonId: string, opciones: { descartarLoMio?: boolean } = {}) {
     return this.execute<GetLessonRequest>({
       requestFn: () =>
         classroomio.course[':courseId'].lesson[':lessonId'].$get({
@@ -107,12 +134,28 @@ export class LessonApi extends BaseApiWithErrors {
         }),
       logContext: 'fetching lesson',
       onSuccess: (response) => {
-        if (response.data) {
-          this.lesson = response.data;
+        if (!response.data) return;
 
-          if (this.lesson.lessonLanguages) {
-            this.setTranslations();
+        const llegada = response.data;
+
+        if (!opciones.descartarLoMio && this.isDirty && this.lesson?.id === llegada.id) {
+          const delServidor =
+            llegada.lessonLanguages?.find((idioma) => idioma.locale === this.currentLocale)?.content ?? '';
+
+          if (delServidor !== (this.base[llegada.id]?.[this.currentLocale] ?? '')) {
+            this.conflicto = { lessonId: llegada.id, locale: this.currentLocale };
           }
+
+          return;
+        }
+
+        this.lesson = llegada;
+
+        if (opciones.descartarLoMio) this.isDirty = false;
+        if (this.conflicto?.lessonId === llegada.id) this.conflicto = null;
+
+        if (this.lesson.lessonLanguages) {
+          this.setTranslations();
         }
       }
     });
@@ -680,8 +723,15 @@ export class LessonApi extends BaseApiWithErrors {
       ...this.translations,
       [this.lesson.id]: translations
     };
+    // Lo que acaba de llegar del servidor es la base de lo que se edite ahora.
+    this.base[this.lesson.id] = { ...translations };
   }
 
+  /**
+   * Pone en pantalla un texto que el servidor acaba de guardar (un diagrama o
+   * una imagen rehechos): pasa a ser también la base, o el próximo guardado
+   * del editor chocaría contra un cambio que hizo esta misma pantalla.
+   */
   updateTranslation(lessonId: string, locale: TLocale, content: string) {
     this.translations = {
       ...this.translations,
@@ -690,6 +740,7 @@ export class LessonApi extends BaseApiWithErrors {
         [locale]: content
       }
     };
+    this.base[lessonId] = { ...this.base[lessonId], [locale]: content };
   }
 
   /** Position of the diagram currently being redrawn, or null when idle. */
@@ -992,19 +1043,45 @@ export class LessonApi extends BaseApiWithErrors {
    * @param locale Locale
    * @param content Translation content
    */
-  async upsertLanguage(courseId: string, lessonId: string, locale: TLocale, content: string) {
+  /**
+   * Con el texto viaja la huella de la base: si la lección ya es otra en el
+   * servidor, el guardado se rechaza (409) y queda marcado el choque en vez de
+   * pisar lo que otro guardó. `forzar` es la decisión de guardar lo propio
+   * igual: sin huella, el servidor no compara.
+   *
+   * @returns la respuesta si se guardó; nada si no (un choque incluido).
+   */
+  async upsertLanguage(
+    courseId: string,
+    lessonId: string,
+    locale: TLocale,
+    content: string,
+    opciones: { forzar?: boolean } = {}
+  ) {
+    const baseHash = opciones.forzar ? undefined : await huellaDelTexto(this.base[lessonId]?.[locale] ?? '');
+
     return this.execute<GetLessonLanguageRequest>({
       requestFn: () =>
         classroomio.course[':courseId'].lesson[':lessonId'].language.$post({
           param: { courseId, lessonId },
-          json: { locale, content }
+          json: { locale, content, ...(baseHash ? { baseHash } : {}) }
         }),
       logContext: 'upserting lesson language',
-      onSuccess: () => {
+      onSuccess: (response) => {
         this.success = true;
         this.errors = {};
+        // Lo que el servidor guardó (ya saneado) es la base del próximo guardado.
+        const guardado = (response.data as { content?: string | null } | undefined)?.content;
+
+        this.base[lessonId] = { ...this.base[lessonId], [locale]: guardado ?? content };
+        if (this.conflicto?.lessonId === lessonId) this.conflicto = null;
       },
-      onError: () => {
+      onError: (resultado) => {
+        if (typeof resultado !== 'string' && (resultado as { code?: string }).code === CODIGO_LECCION_CAMBIADA) {
+          this.conflicto = { lessonId, locale };
+          return;
+        }
+
         snackbar.error('snackbar.materials.update_translations');
       }
     });
@@ -1034,6 +1111,9 @@ export class LessonApi extends BaseApiWithErrors {
         this.translations[lessonId]?.[this.currentLocale] || ''
       )
     ]);
+
+    // Un choque no guardó el texto: sigue habiendo cambios sin guardar.
+    if (this.conflicto?.lessonId === lessonId) this.isDirty = true;
   }
 }
 

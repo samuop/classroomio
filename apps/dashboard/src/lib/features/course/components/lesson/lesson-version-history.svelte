@@ -179,7 +179,9 @@
         courseApi.course.id,
         selectedVersion.lesson_id,
         selectedVersion.locale,
-        selectedVersion.new_content
+        selectedVersion.new_content,
+        // Restaurar una versión es pisar a propósito lo que hay.
+        { forzar: true }
       );
     } catch (error) {
       console.error(error);

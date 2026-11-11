@@ -2685,6 +2685,10 @@
         "saved": "Guardado",
         "save_and_exit": "Guardar y dejar de editar",
         "exit_edit": "Dejar de editar sin guardar",
+        "conflict_title": "Esta lección cambió mientras la editabas",
+        "conflict_body": "Otra persona del equipo o el asistente la guardó después de que la abriste. Tu texto todavía no se guardó. Si guardás la tuya, la otra versión queda en el historial de la lección.",
+        "conflict_see_new": "Descartar lo mío y ver la nueva",
+        "conflict_keep_mine": "Guardar la mía igual",
         "draft_recovery": "Encontramos un borrador sin guardar de esta lección. ¿Lo restauramos?",
         "stats": {
           "sections": "Secciones",

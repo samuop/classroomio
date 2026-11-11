@@ -13,6 +13,7 @@ import {
 import { getLessonById } from '@cio/db/queries/lesson/lesson';
 import { touchCourseUpdatedAt } from '@cio/db/queries/course';
 import { reindexLessonLanguageInBackground } from '@api/services/agent/embeddings';
+import { CODIGO_LECCION_CAMBIADA, chocaConOtroGuardado } from '@api/services/lesson-conflict';
 
 /**
  * Gets all language translations for a lesson
@@ -59,9 +60,12 @@ export async function getLessonLanguage(lessonId: string, locale: TLocale): Prom
  */
 export async function upsertLessonLanguageService(
   lessonId: string,
-  data: Omit<TNewLessonLanguage, 'lessonId'>
+  entrada: Omit<TNewLessonLanguage, 'lessonId'> & { baseHash?: string }
 ): Promise<TLessonLanguage> {
   try {
+    // La huella es del pedido, no una columna: no viaja a la base.
+    const { baseHash, ...data } = entrada;
+
     // Verify lesson exists
     const lesson = await getLessonById(lessonId);
     if (!lesson) {
@@ -71,10 +75,17 @@ export async function upsertLessonLanguageService(
     // Leido ANTES de escribir: una vez hecho el upsert la version anterior ya no
     // existe en ningun lado, y es justo la que alguien va a querer de vuelta.
     const previous = await getLessonLanguageByLessonIdAndLocale(lessonId, (data.locale ?? 'en') as TLocale);
+    const contenido = sanitizeOptionalHtml(data.content);
+
+    // Otro guardó esta lección desde que el editor la cargó: no se pisa en
+    // silencio, lo decide la docente (ver `lesson-conflict.ts`).
+    if (chocaConOtroGuardado({ baseHash, guardado: previous?.content, nuevo: contenido })) {
+      throw new AppError('This lesson was changed since you opened it', CODIGO_LECCION_CAMBIADA, 409);
+    }
 
     const language = await upsertLessonLanguage({
       ...data,
-      content: sanitizeOptionalHtml(data.content),
+      content: contenido,
       lessonId
     });
 

@@ -54,6 +54,7 @@
   import { NOTE_TAB_VALUE, orderedTabs, tabs as materialTabs } from '$features/course/components/lesson/constants';
   import { getViewModeComponents } from '$features/course/components/lesson/utils';
   import { loadDraft, clearDraft } from '$features/course/utils/lesson-draft';
+  import { guardaAlSalirDeEditar } from '$features/course/utils/salida-del-editor';
 
   interface Props {
     courseId: string;
@@ -90,11 +91,25 @@
     goto(resolve(`${$page.url.pathname}?${params.toString()}`, {}), { replaceState: false });
   }
 
+  /**
+   * La salida de la edición ya quedó atendida por quien la pidió: el botón de
+   * guardar ya guardó, y «dejar de editar» decidió no guardar. Sin esto, el
+   * efecto que mira el paso de edición a vista guardaba igual: una segunda vez
+   * tras el botón de guardar, y —peor— también tras «dejar de editar sin
+   * guardar», que pisaba lo que otra sesión hubiera guardado mientras tanto
+   * (medido el 2026-11-10).
+   */
+  let salidaAtendida = false;
+
   function toggleMode() {
-    if (mode === MODES.edit && lessonApi.isDirty) {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = undefined;
-      saveLesson();
+    if (mode === MODES.edit) {
+      salidaAtendida = true;
+
+      if (lessonApi.isDirty) {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = undefined;
+        saveLesson();
+      }
     }
     hasUnsavedChanges = false;
     setModeQueryParam(mode === MODES.edit ? MODES.view : MODES.edit);
@@ -115,9 +130,31 @@
   function exitEditMode() {
     if (timeoutId) clearTimeout(timeoutId);
     timeoutId = undefined;
+    salidaAtendida = true;
     hasUnsavedChanges = false;
     setModeQueryParam(MODES.view);
   }
+
+  /**
+   * «Descartar lo mío y ver la nueva»: lo del servidor a la pantalla. Lo
+   * tecleado se pierde, y el botón lo dice: el borrador local se borra también,
+   * o al volver a abrir la lección ofrecería restaurar un texto ya descartado.
+   */
+  async function verLoNuevo() {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = undefined;
+    clearDraft(lessonId, lessonApi.currentLocale);
+    await lessonApi.get(courseId, lessonId, { descartarLoMio: true });
+  }
+
+  /** «Guardar la mía igual»: pisa a sabiendas; la otra versión queda en el historial. */
+  async function guardarLoMio() {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = undefined;
+    await saveLesson({ forzar: true });
+  }
+
+  const hayChoque = $derived(lessonApi.conflicto?.lessonId === lessonId);
 
   const refetchDataAfterVersionRestore = async () => {
     isVersionDrawerOpen = false;
@@ -126,7 +163,8 @@
 
       // Refetch lesson data after version restore
       lessonApi.isLoading = true;
-      await lessonApi.get(courseId, lessonId);
+      // La versión restaurada es la que tiene que quedar a la vista.
+      await lessonApi.get(courseId, lessonId, { descartarLoMio: true });
 
       if (lessonApi.success && lessonApi.lesson) {
         if ($profile.locale) {
@@ -191,13 +229,14 @@
     return tabValue;
   };
 
-  async function saveOrUpdateTranslation(locale: TLocale, lessonId: string) {
+  /** @returns si el texto quedó guardado. Un choque con otro guardado no lo guarda. */
+  async function saveOrUpdateTranslation(locale: TLocale, lessonId: string, opciones: { forzar?: boolean } = {}) {
     const content = lessonApi.translations[lessonId]?.[locale] || '';
 
-    if (!courseApi.course?.id) return;
+    if (!courseApi.course?.id) return false;
 
     // Use API to upsert lesson language (creates if doesn't exist, updates if exists)
-    await lessonApi.upsertLanguage(courseApi.course.id, lessonId, locale, content);
+    return Boolean(await lessonApi.upsertLanguage(courseApi.course.id, lessonId, locale, content, opciones));
   }
 
   function hasLessonNoteContent(targetLessonId: string) {
@@ -222,10 +261,10 @@
     });
   }
 
-  async function saveLesson() {
+  async function saveLesson(opciones: { forzar?: boolean } = {}) {
     if (!lessonApi.lesson) return false;
 
-    const [isLessonUpdated] = await Promise.all([
+    const [isLessonUpdated, textoGuardado] = await Promise.all([
       lessonApi.update(courseApi.course?.id || '', lessonId, {
         title: lessonApi.lesson.title || undefined,
         isUnlocked: lessonApi.lesson.isUnlocked ?? undefined,
@@ -234,10 +273,12 @@
         documents: lessonApi.lesson.documents || [],
         slug: isPublicCourse && lessonApi.lesson.slug ? lessonApi.lesson.slug : undefined
       }),
-      saveOrUpdateTranslation(lessonApi.currentLocale, lessonId)
+      saveOrUpdateTranslation(lessonApi.currentLocale, lessonId, opciones)
     ]);
 
-    if (isLessonUpdated) {
+    // Las dos mitades: antes alcanzaba con los datos de la lección, y un texto
+    // que NO se guardó se daba por guardado y se le borraba el borrador local.
+    if (isLessonUpdated && textoGuardado) {
       patchLessonListItemLocally();
       clearDraft(lessonId, lessonApi.currentLocale);
       lessonApi.isDirty = false;
@@ -271,12 +312,19 @@
     isDeletingLesson = false;
   }
 
-  function handleSave(prevMode: string) {
+  function handleSave(prevMode: string, atendida: boolean) {
     untrack(() => {
       if (prevMode === MODES.edit) {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = undefined;
-        saveLesson();
+
+        const guardar = guardaAlSalirDeEditar({
+          salidaAtendida: atendida,
+          hayCambios: lessonApi.isDirty,
+          hayChoque: lessonApi.conflicto?.lessonId === lessonId
+        });
+
+        if (guardar) saveLesson();
       }
     });
   }
@@ -284,6 +332,10 @@
   function autoSave() {
     if (mode === MODES.view) return;
     if (!lessonApi.isDirty) return;
+    // La lección cambió en otro lado: no se reintenta solo cada dos segundos.
+    // Leído sin seguimiento: si no, el efecto que llama acá volvía a correr al
+    // levantarse el choque y disparaba un guardado de más (medido en vivo).
+    if (untrack(() => lessonApi.conflicto?.lessonId === lessonId)) return;
 
     if (timeoutId) clearTimeout(timeoutId);
 
@@ -358,7 +410,11 @@
     if (didHandleExitEdit) return;
     didHandleExitEdit = true;
 
-    handleSave(MODES.edit);
+    // El botón de guardar ya guardó, y «dejar de editar» eligió no guardar.
+    const atendida = salidaAtendida;
+
+    salidaAtendida = false;
+    handleSave(MODES.edit, atendida);
   });
 </script>
 
@@ -465,6 +521,27 @@
 <Page.Body>
   {#snippet child()}
     <div class={`overflow-x-hidden py-6 ${mode === MODES.edit ? 'lg:w-full xl:w-11/12' : 'mx-auto w-full max-w-3xl'}`}>
+      {#if hayChoque}
+        <!--
+          La lección cambió en el servidor con texto sin guardar acá. No se pisa
+          ni se reemplaza nada solo: se dice, y decide la docente.
+        -->
+        <div
+          role="alert"
+          class="mb-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <p class="font-semibold">{$t('course.navItem.lessons.conflict_title')}</p>
+          <p class="mt-1">{$t('course.navItem.lessons.conflict_body')}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onclick={verLoNuevo} disabled={lessonApi.isSaving}>
+              {$t('course.navItem.lessons.conflict_see_new')}
+            </Button>
+            <Button size="sm" onclick={guardarLoMio} disabled={lessonApi.isSaving}>
+              {$t('course.navItem.lessons.conflict_keep_mine')}
+            </Button>
+          </div>
+        </div>
+      {/if}
       {#if $isOrgStudent && lessonApi.lesson && !isLessonUnlocked}
         <Empty
           title={$t('course.navItem.lessons.content_locked_title')}
