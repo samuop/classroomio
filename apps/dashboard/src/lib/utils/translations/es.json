@@ -555,6 +555,7 @@
     "error_timeout": "Está tardando más de lo normal. El pedido sigue en proceso: probá de nuevo en unos segundos.",
     "error_stream_cut": "Se cortó la conexión con el asistente. Lo que ya se creó quedó guardado.",
     "error_round_in_progress": "El asistente todavía está trabajando en este chat. Esperá a que termine.",
+    "error_round_interrupted": "El asistente se interrumpió antes de terminar este pedido. Lo que ya se creó quedó guardado.",
     "error_course_other_company": "Este curso pertenece a otra empresa. Recargá la página para que el asistente trabaje con la empresa del curso.",
     "error_not_enrolled": "No estás inscripto en este curso, así que el tutor no está disponible acá.",
     "error_forbidden": "No tenés permiso para usar el asistente en este curso.",

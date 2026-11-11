@@ -43,6 +43,12 @@
      */
     streamCut?: boolean;
     /**
+     * El último pedido quedó sin respuesta y el servidor no tiene ninguna ronda
+     * viva: se interrumpió (un reinicio del servidor, por ejemplo). Se avisa
+     * aunque no haya ningún error en la memoria del panel.
+     */
+    interrupted?: boolean;
+    /**
      * El servidor tiene una ronda viva en esta conversación y el panel espera a
      * que termine para recargarla. Mientras tanto no se puede mandar nada.
      */
@@ -86,6 +92,7 @@
     isUploading,
     error,
     streamCut = false,
+    interrupted = false,
     waitingForRound = false,
     stopping = false,
     canRetry = false,
@@ -243,7 +250,7 @@
   // Qué texto corresponde a cada error lo decide `mensajeDelErrorDelChat`, sin
   // pantalla, para poder probarlo: un vencimiento, un 409 de conversación
   // ocupada y un corte del stream tienen cada uno el suyo.
-  const mensajeDeError = $derived(mensajeDelErrorDelChat(error, { corte: streamCut }));
+  const mensajeDeError = $derived(mensajeDelErrorDelChat(error, { corte: streamCut, interrumpida: interrupted }));
   const displayErrorMessage = $derived(
     !mensajeDeError
       ? null

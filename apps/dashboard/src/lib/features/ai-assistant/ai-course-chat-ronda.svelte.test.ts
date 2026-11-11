@@ -618,6 +618,56 @@ describe('abrir una conversación con una ronda viva', () => {
   );
 });
 
+/**
+ * Medido el 2026-11-11 matando el servidor a mitad de una ronda: la conversación
+ * quedó guardada con la aprobación del plan y sin respuesta, y al abrirla de
+ * nuevo el panel no decía nada. El error de una ronda vive en la memoria del
+ * panel, así que tampoco sobrevivía a recargar la página.
+ */
+describe('abrir una conversación cuya ronda se interrumpió', () => {
+  const aprobacion = {
+    id: 'u1',
+    role: 'user',
+    parts: [{ type: 'text', text: TEXTO_DE_APROBACION }],
+    metadata: { plan: { action: 'implement_course_plan', payload: { title: 'Caja en sucursales', sections: [] } } }
+  };
+
+  it('avisa que se interrumpió, y «Reintentar» vuelve a pedir ese mismo turno', async () => {
+    localStorage.setItem('ai-chat-active-curso-1', 'conv-9');
+    guardado([aprobacion]);
+    falso.aiAssistantApi.leerRondaViva.mockResolvedValue(null);
+    responder(() => respuestaSse(sse(rondaCompleta('Sigo con la sección 2.'))));
+
+    render(AiCourseChat);
+
+    expect(await screen.findByText(texto('ai_assistant.error_round_interrupted'))).toBeInTheDocument();
+
+    await fireEvent.click(await screen.findByRole('button', { name: texto('ai_assistant.error_retry') }));
+
+    await screen.findByText('Sigo con la sección 2.');
+
+    expect(cuerpos).toHaveLength(1);
+    expect(cuerpos[0].trigger).toBe('regenerate-message');
+    expect(cuerpos[0].message).toMatchObject({ id: 'u1', metadata: { plan: { action: 'implement_course_plan' } } });
+    // Con la respuesta en pantalla, el aviso ya no tiene nada que decir.
+    await waitFor(() => expect(screen.queryByText(texto('ai_assistant.error_round_interrupted'))).toBeNull());
+  });
+
+  it('una conversación con su último pedido contestado se abre sin aviso', async () => {
+    localStorage.setItem('ai-chat-active-curso-1', 'conv-9');
+    guardado([aprobacion, { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'Curso terminado.' }] }]);
+    falso.aiAssistantApi.leerRondaViva.mockResolvedValue(null);
+
+    render(AiCourseChat);
+
+    expect(await screen.findByText('Curso terminado.')).toBeInTheDocument();
+    // La pregunta al servidor ya volvió: si fuera a avisar, ya habría avisado.
+    await waitFor(() => expect(falso.aiAssistantApi.leerRondaViva).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(screen.queryByText(texto('ai_assistant.error_round_interrupted'))).toBeNull();
+  });
+});
+
 describe('las fuentes del curso', () => {
   // Son del docente: a un alumno la API se las niega con un 403. Medido en
   // producción el 2026-10-30, con alumnas abriendo el tutor.

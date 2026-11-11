@@ -230,6 +230,57 @@ export function laRecargaResuelveElError(fin: FinDeRonda, error: unknown): boole
   return fin === 'fallida' && esTiempoAgotado(error);
 }
 
+/**
+ * El último pedido de la conversación quedó sin respuesta.
+ *
+ * Un mensaje del asistente sin nada adentro no contesta: es el que queda cuando
+ * una ronda se cae apenas arranca.
+ */
+export function turnoSinRespuesta<M extends { role: string; parts?: unknown[] }>(mensajes: readonly M[]): boolean {
+  for (let indice = mensajes.length - 1; indice >= 0; indice -= 1) {
+    const mensaje = mensajes[indice];
+
+    if (mensaje.role === 'user') return true;
+    if (mensaje.role === 'assistant' && (mensaje.parts?.length ?? 0) > 0) return false;
+  }
+
+  return false;
+}
+
+/**
+ * La ronda del último pedido se interrumpió y nadie la está siguiendo.
+ *
+ * ── Lo que pasaba ────────────────────────────────────────────────────────────
+ *
+ * Si el servidor se reiniciaba a mitad de una ronda (un deploy, por ejemplo),
+ * la conversación quedaba guardada con el pedido de la docente y sin respuesta.
+ * Al volver a abrirla el panel no decía nada: ni que se había interrumpido, ni
+ * cómo seguir. Un error de la ronda vive en la memoria del panel y se perdía
+ * igual al recargar la página (medido el 2026-11-11 matando el proceso).
+ *
+ * ── Qué se fija ──────────────────────────────────────────────────────────────
+ *
+ * Con el último pedido sin respuesta y el servidor diciendo que no hay ninguna
+ * ronda viva de esa conversación, se avisa y se ofrece «Reintentar». No mientras
+ * algo está en marcha, ni cuando ya hay otro aviso en pantalla (un error con su
+ * texto, o el corte de la conexión).
+ */
+export function rondaInterrumpida<M extends { role: string; parts?: unknown[] }>(datos: {
+  mensajes: readonly M[];
+  /** El servidor contestó que esta conversación no tiene una ronda viva. */
+  sinRondaEnElServidor: boolean;
+  /** Este panel tiene un pedido en vuelo. */
+  enCurso: boolean;
+  /** Este panel está esperando una ronda que sigue en el servidor. */
+  esperando: boolean;
+  /** Ya hay un error o un corte avisado, con su propio texto. */
+  conOtroAviso: boolean;
+}): boolean {
+  if (!datos.sinRondaEnElServidor || datos.enCurso || datos.esperando || datos.conOtroAviso) return false;
+
+  return turnoSinRespuesta(datos.mensajes);
+}
+
 /** La ronda viva que informa `GET /agent/status`. */
 export interface RondaViva {
   conversationId: string;

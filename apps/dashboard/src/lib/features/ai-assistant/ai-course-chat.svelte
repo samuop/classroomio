@@ -77,7 +77,8 @@
     esperarFinDeRonda,
     hayQueEsperarAlServidor,
     laLocalTieneMasQueElServidor,
-    laRecargaResuelveElError
+    laRecargaResuelveElError,
+    rondaInterrumpida
   } from '$features/ai-assistant/utils/ronda-cortada';
   import { claveDelErrorDeFuente, esRondaEnCurso } from '$features/ai-assistant/utils/errores-del-chat';
   import { claveDeConversacionActiva, planDelCurso } from '$features/ai-assistant/utils/plan-del-curso.svelte';
@@ -150,6 +151,13 @@
    * propio texto hasta que la conversación recargada trae el turno completo.
    */
   let avisoDeCorte = $state(false);
+
+  /**
+   * La conversación de la que el servidor contestó «no tiene una ronda viva».
+   * Con eso, y el último pedido sin respuesta, se sabe que la ronda se
+   * interrumpió (ver `rondaInterrumpida`). Se olvida cuando arranca un pedido.
+   */
+  let sinRondaEnElServidor = $state<string | null>(null);
 
   /**
    * La docente tocó «Detener» y el servidor recibió la orden: la ronda termina
@@ -338,6 +346,7 @@
       // una ronda cortada que un panel anterior guardó así— no va a terminar
       // nunca: se muestra cerrada en vez de girar para siempre.
       cerrarHerramientasSinTerminar();
+      sinRondaEnElServidor = conversationId;
       return;
     }
 
@@ -347,6 +356,10 @@
     const trajoElTurno = recarga === 'trajo';
 
     if (rondaEnCurso === conversationId) rondaEnCurso = null;
+
+    // La espera terminó porque el servidor ya no tiene la ronda: si lo recargado
+    // no trae respuesta al último pedido, se interrumpió.
+    sinRondaEnElServidor = conversationId;
 
     cerrarHerramientasSinTerminar();
     refreshCourseStateAfterChat();
@@ -1532,10 +1545,32 @@
    * o se cortó, no hay otra ronda en curso, y no fue un 409 (ahí la
    * conversación tiene otra ronda viva y el panel la espera).
    */
+  /**
+   * El último pedido quedó sin respuesta y el servidor no tiene su ronda: se
+   * interrumpió (un reinicio a mitad de camino). Se avisa y se puede reintentar,
+   * aunque en la memoria de este panel no haya ningún error.
+   */
+  const interrumpida = $derived(
+    rondaInterrumpida({
+      mensajes: chat.messages as AiAssistantMessage[],
+      sinRondaEnElServidor: sinRondaEnElServidor !== null && sinRondaEnElServidor === activeConversationId,
+      enCurso: isStreaming,
+      esperando: esperandoRonda,
+      conOtroAviso: chat.status === 'error' || avisoDeCorte
+    })
+  );
+
+  // Un pedido en marcha deja atrás lo que se sabía del servidor: la respuesta
+  // que venga decide. Sin esto, el aviso volvería a aparecer un instante entre
+  // que el mensaje nuevo entra a la conversación y arranca su ronda.
+  $effect(() => {
+    if (isStreaming) sinRondaEnElServidor = null;
+  });
+
   const puedeReintentar = $derived(
     !isStreaming &&
       !esperandoRonda &&
-      (chat.status === 'error' || avisoDeCorte) &&
+      (chat.status === 'error' || avisoDeCorte || interrumpida) &&
       !esRondaEnCurso(chat.error) &&
       ultimoTurnoDelDocente(chat.messages as AiAssistantMessage[]) !== null
   );
@@ -1903,6 +1938,7 @@
       focusSignal={focusInputSignal}
       error={chat.error}
       streamCut={avisoDeCorte}
+      interrupted={interrumpida}
       waitingForRound={esperandoRonda}
       stopping={deteniendo}
       canRetry={puedeReintentar}

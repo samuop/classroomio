@@ -8,7 +8,9 @@ import {
   hayQueEsperarAlServidor,
   laLocalTieneMasQueElServidor,
   laRecargaResuelveElError,
+  rondaInterrumpida,
   rondaVivaDe,
+  turnoSinRespuesta,
   type DatosDelFin
 } from './ronda-cortada';
 
@@ -319,5 +321,53 @@ describe('esperar a que la ronda termine', () => {
 
     expect(resultado).toBe('terminada');
     expect(leer).toHaveBeenCalledTimes(4);
+  });
+});
+
+/**
+ * Medido el 2026-11-11 matando el proceso del servidor a mitad de una ronda: la
+ * conversación quedó con el pedido de la docente y sin respuesta, y al volver
+ * a abrirla el panel no decía nada ni ofrecía cómo seguir.
+ */
+describe('un pedido que quedó sin respuesta', () => {
+  const pedido = { role: 'user', parts: [{ type: 'text', text: 'Armá el curso' }] };
+  const respuesta = { role: 'assistant', parts: [{ type: 'text', text: 'Listo.' }] };
+  const vacio = { role: 'assistant', parts: [] };
+
+  it('el último mensaje es de la docente: sin respuesta', () => {
+    expect(turnoSinRespuesta([pedido])).toBe(true);
+    expect(turnoSinRespuesta([pedido, respuesta, pedido])).toBe(true);
+  });
+
+  it('un mensaje del asistente vacío no contesta nada', () => {
+    expect(turnoSinRespuesta([pedido, vacio])).toBe(true);
+  });
+
+  it('con una respuesta, aunque sea parcial, no', () => {
+    expect(turnoSinRespuesta([pedido, respuesta])).toBe(false);
+    expect(turnoSinRespuesta([])).toBe(false);
+  });
+
+  const base = { mensajes: [pedido], sinRondaEnElServidor: true, enCurso: false, esperando: false, conOtroAviso: false };
+
+  it('sin respuesta y sin ronda viva en el servidor: se interrumpió', () => {
+    expect(rondaInterrumpida(base)).toBe(true);
+  });
+
+  it('mientras no se sabe si el servidor sigue trabajando, no se afirma nada', () => {
+    expect(rondaInterrumpida({ ...base, sinRondaEnElServidor: false })).toBe(false);
+  });
+
+  it('con un pedido en vuelo o una ronda que se está esperando, tampoco', () => {
+    expect(rondaInterrumpida({ ...base, enCurso: true })).toBe(false);
+    expect(rondaInterrumpida({ ...base, esperando: true })).toBe(false);
+  });
+
+  it('si ya hay un error o un corte avisado, ese texto es el que vale', () => {
+    expect(rondaInterrumpida({ ...base, conOtroAviso: true })).toBe(false);
+  });
+
+  it('con el pedido contestado no hay nada que avisar', () => {
+    expect(rondaInterrumpida({ ...base, mensajes: [pedido, respuesta] })).toBe(false);
   });
 });

@@ -72,10 +72,16 @@ export type MensajeDeError =
  *   porque el error que lo acompaña (un `TypeError` de red) es justamente el
  *   que culpaba a la conexión de la docente.
  */
-export function mensajeDelErrorDelChat(error: unknown, opciones: { corte?: boolean } = {}): MensajeDeError | null {
+export function mensajeDelErrorDelChat(
+  error: unknown,
+  opciones: { corte?: boolean; interrumpida?: boolean } = {}
+): MensajeDeError | null {
   if (opciones.corte) return { clave: 'ai_assistant.error_stream_cut' };
 
-  if (!error) return null;
+  // Sin error en memoria, pero el último pedido quedó sin respuesta y no hay
+  // ronda viva: se interrumpió (ver `rondaInterrumpida`). Un error con su texto
+  // gana, porque dice más.
+  if (!error) return opciones.interrumpida ? { clave: 'ai_assistant.error_round_interrupted' } : null;
 
   if (esRondaEnCurso(error)) return { clave: 'ai_assistant.error_round_in_progress' };
   // El del chat, no el de la investigación: acá el panel ya espera solo a que

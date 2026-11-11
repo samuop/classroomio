@@ -119,6 +119,19 @@ describe('el mensaje de la banda del chat', () => {
   it('sin error no hay banda', () => {
     expect(mensajeDelErrorDelChat(null)).toBeNull();
   });
+
+  it('sin error pero con el último pedido sin respuesta y sin ronda viva: dice que se interrumpió', () => {
+    expect(mensajeDelErrorDelChat(null, { interrumpida: true })).toEqual({
+      clave: 'ai_assistant.error_round_interrupted'
+    });
+  });
+
+  it('un error con su texto le gana al aviso de interrupción, y el corte le gana a los dos', () => {
+    expect(mensajeDelErrorDelChat(vencido, { interrumpida: true })).toEqual({ clave: 'ai_assistant.error_timeout_chat' });
+    expect(mensajeDelErrorDelChat(null, { interrumpida: true, corte: true })).toEqual({
+      clave: 'ai_assistant.error_stream_cut'
+    });
+  });
 });
 
 describe('los errores de fuentes', () => {
