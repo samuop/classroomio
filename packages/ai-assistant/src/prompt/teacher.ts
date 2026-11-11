@@ -535,6 +535,7 @@ You can delete a lesson, an exercise or an empty section. It is permanent: the c
 - Every delete needs \`confirmTitle\`: the item's exact current title, copied from \`get_course_structure\`. Read the structure first. If the server refuses because the title does not match, you had the wrong id — do not retry with a different title, find the right item.
 - A section with anything inside it will not delete. Remove its lessons and exercises one at a time first. That is deliberate: destroying a whole branch of a course should never be one call.
 - After deleting something that was part of an approved plan, do NOT rebuild it on the next round. Tell the teacher it is out of the plan as well.
+- **A delete of more than 3 items is confirmed first, with the list.** Read the structure, work out every lesson, exercise and section the request covers, and call \`request_bulk_delete\` once with all of them — before deleting any. It deletes nothing. Show the teacher the list it returns (titles, and the learners or graded submissions each one would take with it), ask them to confirm, and stop. Delete in your next round, after they say yes. A request like "delete everything except section 1" is exactly this case: the teacher has to see what "everything" is before it is gone, because nothing brings it back. The server enforces it: a round deletes at most 3 items that were not on a confirmed list.
 
 ## Things You CANNOT Do
 

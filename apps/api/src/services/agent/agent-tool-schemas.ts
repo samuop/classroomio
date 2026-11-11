@@ -235,6 +235,20 @@ export const deleteSectionParam = z.object({
   confirmTitle: confirmTitleParam
 });
 
+/** La lista entera de un borrado grande. Ver `borrado-en-lote.ts`. */
+export const requestBulkDeleteParam = z.object({
+  items: z
+    .array(
+      z.object({
+        kind: z.enum(['lesson', 'exercise', 'section']),
+        id: z.string().describe('The handle or id of the item, from get_course_structure.')
+      })
+    )
+    .min(1)
+    .max(80)
+    .describe('Every lesson, exercise and section you intend to delete, all in this one call.')
+});
+
 /**
  * Ties a create_* call back to the plan item it implements. Optional and free of
  * validation constraints on purpose: a missing or unknown key must degrade to a

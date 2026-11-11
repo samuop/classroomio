@@ -114,6 +114,11 @@ import {
 import { MAX_REEMPLAZOS_DEL_MISMO_BLOQUE } from '@api/services/agent/bitacora-de-la-ronda';
 import { conFilaPorLeccion } from '@api/services/agent/fila-por-leccion';
 import {
+  crearBorradoEnLote,
+  MAX_BORRADOS_SIN_LISTA,
+  type AlmacenDeListas
+} from '@api/services/agent/borrado-en-lote';
+import {
   conAvisoDePresupuesto,
   type PresupuestoDePasos
 } from '@api/services/agent/step-budget';
@@ -159,6 +164,7 @@ import {
   deleteExerciseParam,
   deleteLessonParam,
   deleteSectionParam,
+  requestBulkDeleteParam,
   editContentParam,
   emptyParam,
   exerciseReadParam,
@@ -1781,6 +1787,19 @@ export function buildAgentTools(
       mapaDelCurso(secciones, items)
     )
   );
+
+  /** El borrado de esta ronda: el tope sin lista y lo declarado antes. Ver `borrado-en-lote.ts`. */
+  const borradoEnLote = crearBorradoEnLote({
+    almacen: (_options?.redis as AlmacenDeListas | undefined) ?? null,
+    conversationId: _options?.conversationId ?? null
+  });
+
+  /** Se llama justo antes de borrar: si da permiso, cuenta la pieza como borrada. */
+  async function exigirPermisoParaBorrar(id: string): Promise<void> {
+    const permiso = await borradoEnLote.pedirPermiso(id);
+
+    if (!permiso.ok) throw new Error(permiso.motivo);
+  }
 
   /**
    * El bloque de preguntas de un ejercicio: `S1.E1.B2`, `B2`, o su id.
@@ -4416,6 +4435,83 @@ export function buildAgentTools(
     }),
 
     /*
+     * Un borrado grande se declara antes y se ejecuta después de que la
+     * docente contestó. Ver `borrado-en-lote.ts`.
+     */
+    request_bulk_delete: tool({
+      description: `Declare a delete of MORE than ${MAX_BORRADOS_SIN_LISTA} lessons, exercises or sections. It deletes NOTHING: it records the full list and returns it with what each item would take with it (graded submissions, learners who completed it). After calling it, show the teacher that list, ask them to confirm, and stop — the server refuses every delete for the rest of this round. In your next round, if the teacher confirmed, delete each item with delete_lesson / delete_exercise / delete_section. Call it once, with every item you intend to delete (the contents of a section before the section itself).`,
+      inputSchema: requestBulkDeleteParam,
+      execute: async (args) => {
+        return executeAgentTool('request_bulk_delete', { orgId, userId, courseId, args }, async () => {
+          const [sections, contenido] = await Promise.all([
+            listCourseSections(courseId),
+            getCourseContentItems(courseId)
+          ]);
+
+          const items = await Promise.all(
+            args.items.map(async (pedido) => {
+              if (pedido.kind === 'section') {
+                const id = await manijas.seccion(pedido.id);
+                const seccion = sections.find((s) => s.id === id);
+
+                if (!seccion) throw new Error(`No section with id "${pedido.id}" exists in this course.`);
+
+                return { kind: pedido.kind, id, title: seccion.title };
+              }
+
+              if (pedido.kind === 'lesson') {
+                const id = await manijas.leccion(pedido.id);
+                const fila = contenido.find((i) => i.id === id);
+
+                if (!fila) throw new Error(`No lesson with id "${pedido.id}" exists in this course.`);
+
+                const seVa = await loQueSeVaConLaLeccion(id);
+
+                return {
+                  kind: pedido.kind,
+                  id,
+                  title: fila.title,
+                  ...(seVa.alumnosQueLaCompletaron > 0 ? { learnersWhoCompletedIt: seVa.alumnosQueLaCompletaron } : {}),
+                  ...(seVa.ejerciciosConEntregas.length > 0
+                    ? {
+                        blockedBy: seVa.ejerciciosConEntregas.map(
+                          (e) => `attached exercise "${e.title}" has ${e.entregas} graded submission(s)`
+                        )
+                      }
+                    : {})
+                };
+              }
+
+              const id = await manijas.ejercicio(pedido.id);
+              const fila = contenido.find((i) => i.id === id);
+
+              if (!fila) throw new Error(`No exercise with id "${pedido.id}" exists in this course.`);
+
+              const entregas = await entregasDelEjercicio(id);
+
+              return {
+                kind: pedido.kind,
+                id,
+                title: fila.title,
+                ...(entregas.cantidad > 0 ? { gradedSubmissions: entregas.cantidad } : {})
+              };
+            })
+          );
+
+          await borradoEnLote.declarar(items.map((item) => item.id));
+
+          return {
+            status: 'needs_teacher_confirmation',
+            nothingWasDeleted: true,
+            count: items.length,
+            items,
+            note: 'NOTHING WAS DELETED. Show the teacher this exact list — every title, and for each one the learners or graded submissions it would take with it — and ask them to confirm. Then stop: do not call any delete tool in this round. An exercise with graded submissions will still go to the approval card when you delete it; a lesson listed with `blockedBy` cannot be deleted until that exercise is resolved. Say so.'
+          };
+        });
+      }
+    }),
+
+    /*
      * Borrar. Ver `deletion.ts` para por qué cada una pide el título.
      *
      * Son tres y no una genérica a propósito: una herramienta
@@ -4424,7 +4520,7 @@ export function buildAgentTools(
      */
     delete_lesson: tool({
       description:
-        'Delete a lesson from this course, permanently. This also destroys its content, any exercise attached to it, and any learner progress on it — there is no undo. Pass `confirmTitle` with the lesson’s exact current title from get_course_structure; the delete is refused if it does not match. Only delete when the teacher asked for it: emptying a lesson is update_lesson_content with new text, not this.',
+        'Delete a lesson from this course, permanently. This also destroys its content, any exercise attached to it, and any learner progress on it — there is no undo. It is refused when an attached exercise already has learner submissions: those go through delete_exercise and the teacher’s approval. Pass `confirmTitle` with the lesson’s exact current title from get_course_structure; the delete is refused if it does not match. Only delete when the teacher asked for it: emptying a lesson is update_lesson_content with new text, not this.',
       inputSchema: deleteLessonParam,
       execute: async (args) => {
         return executeAgentTool('delete_lesson', { orgId, userId, courseId, args }, async () => {
@@ -4459,6 +4555,7 @@ export function buildAgentTools(
             );
           }
 
+          await exigirPermisoParaBorrar(lessonId);
           await deleteLessonService(lessonId);
           // Borrar corre a las que venían detrás: la manija de cada una bajó uno.
           manijas.invalidar();
@@ -4517,6 +4614,7 @@ export function buildAgentTools(
 
           if (propuesta) return propuesta;
 
+          await exigirPermisoParaBorrar(exerciseId);
           await deleteExerciseForCourseService(courseId, exerciseId);
           manijas.invalidar();
           anotarCambio(registro, 'borro', exercise.title ?? exerciseId, { entidad: { tipo: 'Exercise', id: exerciseId } });
@@ -4583,6 +4681,7 @@ export function buildAgentTools(
             );
           }
 
+          await exigirPermisoParaBorrar(sectionId);
           await deleteCourseSectionService(sectionId);
           manijas.invalidar();
           anotarCambio(registro, 'borro', section.title, { entidad: { tipo: 'Section', id: sectionId } });
