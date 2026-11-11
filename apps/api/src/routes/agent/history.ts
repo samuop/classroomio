@@ -27,6 +27,13 @@ import { pickAnyConfiguredProvider } from '@cio/ai-assistant/providers';
 import { collectDocumentIds } from '@api/services/agent/chat-context';
 import { releaseDocumentCaches } from '@api/services/agent/document-cache';
 import { redis } from '@api/utils/redis/redis';
+import { cursaElCurso } from '@api/middlewares/course-member';
+import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
+
+/** Quién puede abrir una conversación del asistente sobre un curso: su equipo, o quien lo cursa. */
+export async function puedeConversarSobreElCurso(courseId: string, userId: string): Promise<boolean> {
+  return (await isCourseTeamMemberOrOrgAdmin(courseId, userId)) || (await cursaElCurso(courseId, userId));
+}
 
 export const agentHistoryRouter = new Hono()
   /**
@@ -81,6 +88,15 @@ export const agentHistoryRouter = new Hono()
     try {
       const user = c.get('user')!;
       const { courseId, title } = c.req.valid('json');
+
+      // La misma puerta que el chat: quien es del equipo del curso o lo cursa.
+      // Sin esto, cualquier miembro de cualquier empresa abría una conversación
+      // sobre un curso ajeno con sólo conocer su id (medido el 2026-11-11: 12
+      // de 12 cruces devolvieron 201). No leía nada del curso, pero dejaba
+      // filas colgadas de él.
+      if (!(await puedeConversarSobreElCurso(courseId, user.id))) {
+        throw new AppError('You do not have access to this course', 'COURSE_FORBIDDEN', 403);
+      }
 
       const conversation = await createChatConversation(courseId, user.id, title);
 

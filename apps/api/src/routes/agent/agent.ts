@@ -199,6 +199,11 @@ import { crearEscritorDePreguntas } from '@api/services/agent/question-writer';
 import { crearAnalistaDeCambios } from '@api/services/agent/cambios-de-fuente';
 import { atarPlanDeCambios, estadoDelContenido } from '@api/services/agent/plan-de-cambios';
 import { auditarCambiosDeLaRonda, type IdentidadDelPedido } from '@api/services/agent/auditoria-del-asistente';
+import {
+  dejarAuditoriaPendiente,
+  quitarAuditoriaPendiente,
+  recuperarAuditoriaPendiente
+} from '@api/services/agent/auditoria-pendiente';
 import { aplicarPropuesta, avisoDePropuestas } from '@api/services/agent/cambios-con-entregas';
 import { anotarAuditoria } from '@api/utils/audit-detail';
 import { z } from 'zod';
@@ -289,6 +294,11 @@ const agentCoreRouter = new Hono()
       // el stream espera a que su conversación deje de figurar acá para
       // recargarla: para entonces el servidor ya la guardó. Ver `ronda-viva.ts`.
       const activeRound = await leerRondaViva({ redis, courseId, userId: user.id, conversationId });
+
+      // El panel pregunta por una conversación que ya no tiene ronda viva: si
+      // la última murió sin cerrar (un reinicio), su auditoría se escribe ahora
+      // y no recién cuando alguien mande otro mensaje. Sin esperarla.
+      if (conversationId && !activeRound) void recuperarAuditoriaPendiente({ almacen: redis, conversationId });
 
       const status: AgentStatus = {
         enabled: true,
@@ -389,8 +399,14 @@ const agentCoreRouter = new Hono()
         // Ya estaba resuelta (otro clic, otra pestaña): se contesta cómo quedó.
         if (!tomada) {
           const ahora = await leerPropuesta({ id: proposalId, userId: user.id, courseId });
+          const estado = ahora?.estado ?? propuesta.estado;
 
-          return c.json({ success: true as const, data: { estado: ahora?.estado ?? propuesta.estado } });
+          // Este pedido no aprobó ni canceló nada: lo hizo el anterior. Con el
+          // nombre de arriba la auditoría contaba dos aprobaciones del mismo
+          // cambio (medido el 2026-11-10, con dos clics seguidos).
+          anotarAuditoria(c, { action: 'CAMBIO_DEL_ASISTENTE_YA_RESUELTO', metadata: { estado } });
+
+          return c.json({ success: true as const, data: { estado } });
         }
 
         if (decision === 'approve') {
@@ -936,6 +952,10 @@ const agentCoreRouter = new Hono()
         }
 
         candado = tomado;
+
+        // Con el candado en la mano no hay otra ronda viva de esta conversación:
+        // si quedó la auditoría de una que murió sin cerrar, se escribe ahora.
+        await recuperarAuditoriaPendiente({ almacen: redis, conversationId });
 
         // Releída con el candado en la mano: la ronda anterior guarda antes de
         // soltarlo, así que esto trae su respuesta entera.
@@ -1755,6 +1775,25 @@ const agentCoreRouter = new Hono()
       const registroDeRonda = registroVacio();
 
       /**
+       * Quién pidió la ronda, tomado AHORA: al cerrar, el request ya respondió.
+       * Lo que cambió va a la auditoría con su firma (`auditoria-del-asistente.ts`),
+       * y viaja con el resguardo de cada paso (`auditoria-pendiente.ts`).
+       */
+      const clienteDelPedido = clientInfoFromHeaders(c.req.raw.headers);
+      const identidadDelPedido: IdentidadDelPedido = {
+        orgId,
+        userId: user.id,
+        userLabel: user.email ?? null,
+        userRole: (user as { role?: string | null }).role ?? null,
+        orgRole: resolveOrgRole(c.get('orgRoles') as Record<string, number> | undefined, orgId),
+        sessionId: (c.get('session') as { id?: string } | undefined)?.id ?? null,
+        ip: clienteDelPedido.ip,
+        device: clienteDelPedido.device,
+        browser: clienteDelPedido.browser,
+        userAgent: clienteDelPedido.userAgent
+      };
+
+      /**
        * Lo mismo, pero para el MODELO y paso por paso: qué ya cambió, qué le
        * negaron y qué lecturas quedaron viejas. Lo lee `prepareStep`. Ver
        * `bitacora-de-la-ronda.ts` para el bucle que esto corta.
@@ -2569,6 +2608,17 @@ const agentCoreRouter = new Hono()
           sinCupo = true;
           console.warn(`[agent.chat] la empresa ${orgId} se quedó sin cupo al cerrar el tramo ${tramoActual}: no sigue otro`);
         }
+
+        // Lo que la ronda lleva cambiado, a resguardo: si el proceso muere
+        // antes del cierre, la auditoría no se pierde con él. Nunca tira.
+        if (conversationId) {
+          await dejarAuditoriaPendiente(redis, {
+            identidad: identidadDelPedido,
+            registro: registroDeRonda,
+            courseId,
+            conversationId
+          });
+        }
       }
 
       const correrTramo = (mensajesDelModelo: ModelMessage[]) => streamText({
@@ -2959,35 +3009,21 @@ const agentCoreRouter = new Hono()
        * antes, y las cabeceras las pone `createUIMessageStreamResponse` igual
        * que `toUIMessageStreamResponse`.
        */
-      /**
-       * Quién pidió la ronda, tomado AHORA: al cerrar, el request ya respondió.
-       * Lo que cambió va a la auditoría con su firma. Ver `auditoria-del-asistente.ts`.
-       */
-      const clienteDelPedido = clientInfoFromHeaders(c.req.raw.headers);
-      const identidadDelPedido: IdentidadDelPedido = {
-        orgId,
-        userId: user.id,
-        userLabel: user.email ?? null,
-        userRole: (user as { role?: string | null }).role ?? null,
-        orgRole: resolveOrgRole(c.get('orgRoles') as Record<string, number> | undefined, orgId),
-        sessionId: (c.get('session') as { id?: string } | undefined)?.id ?? null,
-        ip: clienteDelPedido.ip,
-        device: clienteDelPedido.device,
-        browser: clienteDelPedido.browser,
-        userAgent: clienteDelPedido.userAgent
-      };
-
       const respuesta = responderRonda({
         resultado: result,
         siguienteTramo,
         mensajesOriginales: messages as UIMessage[],
-        alTerminarLaRonda: () =>
-          auditarCambiosDeLaRonda({
+        alTerminarLaRonda: async () => {
+          await auditarCambiosDeLaRonda({
             identidad: identidadDelPedido,
             registro: registroDeRonda,
             courseId,
             conversationId
-          }),
+          });
+
+          // Auditada: lo que quedó a resguardo paso por paso ya no hace falta.
+          if (conversationId) await quitarAuditoriaPendiente(redis, conversationId);
+        },
         // Sin conversación (el primer mensaje de un chat nuevo) no hay dónde
         // guardar: la crea y la guarda el cliente, como siempre.
         guardar: conversationId
@@ -3173,6 +3209,16 @@ const agentCoreRouter = new Hono()
         orgId,
         userId: user?.id,
         errorMessage: error instanceof Error ? error.message : 'Unknown error'
+      });
+
+      // El detalle para la auditoría, como lo deja `handleError` en las demás
+      // rutas. Esta arma su respuesta a mano y no lo dejaba: los rechazos del
+      // chat quedaban como incidencias sin código (medido el 2026-11-11), y no
+      // se podía contar cuántos eran «curso de otra empresa» y cuántos otra cosa.
+      c.set('auditError', {
+        message: error instanceof Error ? error.message : String(error),
+        code: error instanceof AppError ? error.code : 'INTERNAL_ERROR',
+        stack: error instanceof Error ? error.stack : undefined
       });
 
       if (error instanceof AppError) {

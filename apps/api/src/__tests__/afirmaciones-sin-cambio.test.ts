@@ -42,6 +42,32 @@ describe('el relato contra el registro', () => {
     expect(hayAfirmacionesSinCambio(resultado)).toBe(false);
   });
 
+  // Medido el 2026-11-11 (forma real, otros nombres): la ronda borró el
+  // cuestionario, y al contrastar ya no estaba entre los títulos del curso.
+  it('una pieza que la ronda BORRÓ no se confunde con otra cuyo título está contenido en el suyo', () => {
+    const resultado = afirmacionesSinCambio({
+      texto: 'Eliminé las 2 lecciones de la sección, junto con el cuestionario Cuestionario: La reposición.',
+      cambiadas: ['Cuestionario: La reposición'],
+      cambioPreguntas: false,
+      // Leídos DESPUÉS de borrar: queda la sección «La reposición», no el cuestionario.
+      titulosDelCurso: [...TITULOS, 'La reposición']
+    });
+
+    expect(resultado.piezas).toEqual([]);
+    expect(hayAfirmacionesSinCambio(resultado)).toBe(false);
+  });
+
+  it('y si dice haber borrado la otra, la que sigue ahí, eso sí se advierte', () => {
+    const resultado = afirmacionesSinCambio({
+      texto: 'Eliminé la sección La reposición.',
+      cambiadas: ['Cuestionario: La reposición'],
+      cambioPreguntas: false,
+      titulosDelCurso: [...TITULOS, 'La reposición']
+    });
+
+    expect(resultado.piezas).toEqual(['La reposición']);
+  });
+
   it('una pieza nombrada por su título, sin enlace, también cuenta', () => {
     const resultado = afirmacionesSinCambio({
       texto: 'Corregí la lección Recibir mercadería para que diga el horario nuevo.',

@@ -290,7 +290,12 @@ export function afirmacionesSinCambio(params: {
   titulosDelCurso: readonly string[];
 }): AfirmacionesSinCambio {
   const cambiadas = new Set(params.cambiadas.map(normalizar));
-  const titulos = [...new Set(params.titulosDelCurso.map((titulo) => titulo.trim()))]
+  // Lo que la ronda cambió también es un nombre conocido, aunque ya no esté en
+  // el curso: una pieza BORRADA no figura entre los títulos que se leen después
+  // de borrarla. Medido el 2026-11-11: «Eliminé … Cuestionario: El cobro» —que
+  // sí se borró— quedó marcado como «El cobro», la sección que seguía ahí,
+  // porque sin el título largo a la vista ganaba el corto que contiene.
+  const titulos = [...new Set([...params.titulosDelCurso, ...params.cambiadas].map((titulo) => titulo.trim()))]
     .filter((titulo) => titulo.length >= LARGO_MINIMO_DE_TITULO)
     .sort((a, b) => b.length - a.length);
   const piezas = new Map<string, string>();

@@ -39,6 +39,17 @@ const ACCION_EN_LA_AUDITORIA: Record<CambioDeRonda['accion'], string> = {
 };
 
 /**
+ * El nombre de la acción. Editar una SECCIÓN (renombrarla, moverla) no es editar
+ * una lección: con el mismo nombre, quien filtra la auditoría por lecciones
+ * editadas se encontraba con secciones.
+ */
+function accionEnLaAuditoria(cambio: CambioDeRonda): string {
+  if (cambio.accion === 'edito' && cambio.entidad?.tipo === 'Section') return 'ASISTENTE_EDITO_SECCION';
+
+  return ACCION_EN_LA_AUDITORIA[cambio.accion];
+}
+
+/**
  * Una fila por cambio del registro. Nunca tira: la auditoría no rompe el flujo,
  * y a esta altura la ronda ya terminó y se guardó.
  */
@@ -47,6 +58,11 @@ export async function auditarCambiosDeLaRonda(params: {
   registro: RegistroDeRonda;
   courseId: string;
   conversationId?: string | null;
+  /**
+   * La ronda no llegó a cerrar (el proceso murió) y esto se audita después, de
+   * lo que había quedado a resguardo. Ver `auditoria-pendiente.ts`.
+   */
+  interrumpida?: boolean;
   /** Para escribir sin esperar la base en los tests. */
   registrar?: typeof recordEvent;
 }): Promise<void> {
@@ -57,12 +73,13 @@ export async function auditarCambiosDeLaRonda(params: {
     try {
       await registrar({
         ...params.identidad,
-        action: ACCION_EN_LA_AUDITORIA[cambio.accion],
+        action: accionEnLaAuditoria(cambio),
         entity: cambio.entidad?.tipo ?? 'Course',
         entityId: cambio.entidad?.id ?? params.courseId,
         metadata: {
           courseId: params.courseId,
           ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+          ...(params.interrumpida ? { rondaInterrumpida: true } : {}),
           objeto: cambio.objeto,
           veces: cambio.veces,
           // La misma línea que vio la docente en el resumen de la ronda.

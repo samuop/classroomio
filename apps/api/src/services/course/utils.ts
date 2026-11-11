@@ -81,6 +81,12 @@ function mapCourseContentItems(rows: CourseContentItemRow[]): CourseContentItem[
   }));
 }
 
+/** Cómo se llama, para quien lo lee, el grupo de las piezas que no están en ninguna sección. */
+export const TITULO_DE_LO_SIN_SECCION = 'Sin sección';
+
+/** Y una sección que alguien dejó sin título. */
+export const TITULO_DE_SECCION_SIN_TITULO = 'Sección sin título';
+
 export function buildCourseContent(rows: CourseContentItemRow[], isContentGroupingEnabled: boolean): CourseContent {
   const items = mapCourseContentItems(rows);
   const contentItems = items.filter((item) => item.type !== ContentType.Section);
@@ -113,7 +119,7 @@ export function buildCourseContent(rows: CourseContentItemRow[], isContentGroupi
   const sections = sortContentSections(
     sectionItems.map((section) => ({
       id: section.id,
-      title: section.title || 'Untitled section',
+      title: section.title || TITULO_DE_SECCION_SIN_TITULO,
       order: section.order ?? null,
       items: sortContentItems(sectionMap.get(section.id) ?? [])
     }))
@@ -121,8 +127,11 @@ export function buildCourseContent(rows: CourseContentItemRow[], isContentGroupi
 
   if (ungroupedItems.length > 0) {
     sections.push({
+      // El panel la reconoce por este id; el título es lo que lee la gente —y
+      // el asistente, que después lo repite—. Decía «Ungrouped», en inglés, en
+      // una aplicación que se usa en español (medido el 2026-11-11).
       id: 'ungrouped',
-      title: 'Ungrouped',
+      title: TITULO_DE_LO_SIN_SECCION,
       order: sections.length + 1,
       items: sortContentItems(ungroupedItems)
     });

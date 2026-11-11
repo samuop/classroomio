@@ -2623,6 +2623,12 @@ export function buildAgentTools(
           // son posicionales. Renombrarla no mueve a nadie.
           if (args.order !== undefined) manijas.invalidar();
 
+          // Faltaba: renombrar o mover una sección no dejaba renglón en el
+          // resumen de la ronda ni fila en la auditoría.
+          anotarCambio(registro, 'edito', section.title ?? args.title ?? '', {
+            entidad: { tipo: 'Section', id: section.id }
+          });
+
           return {
             id: section.id,
             title: section.title,

@@ -142,13 +142,20 @@ export async function proponerCambioConEntregas(params: {
     note:
       `NOTHING WAS SAVED. ${params.impacto.entregas} students already submitted this exercise, so this change would move their grades ` +
       `(${resumenDelImpacto(params.impacto)}). The teacher now sees a card with the exact effect and approves or cancels it there. ` +
-      'Tell her in one or two sentences what you propose and why. Do not retry this change, do not save it another way, and do not say it is done.'
+      'Tell her in one or two sentences what you propose and why. Do not retry this change, do not save it another way, and do not say it is done. ' +
+      // Medido el 2026-11-10: el modelo le pidió a la docente «que apruebes el
+      // recálculo». Aprobar no recalifica nada, y ella esperaba notas nuevas.
+      `${SIN_RECALIFICAR} Never call the approval a recalculation or a regrade.`
   };
 }
 
+/** Lo que aprobar una propuesta NO hace: se dice al proponer y al contar cómo quedó. */
+const SIN_RECALIFICAR =
+  'Approving changes the exercise only: answers already submitted are NOT graded again, and the scores already given stay as they are.';
+
 const COMO_QUEDO: Record<PropuestaGuardada['estado'], string> = {
   pendiente: 'WAITING for her decision — do not repeat it or save it another way; she decides from the card',
-  aplicada: 'APPROVED by her and APPLIED by the server — it is done: do not apply it again',
+  aplicada: `APPROVED by her and APPLIED by the server — it is done: do not apply it again. ${SIN_RECALIFICAR}`,
   cancelada: 'CANCELLED by her — do not make this change',
   fallida: 'approved by her but the server could NOT apply it — tell her, do not retry on your own'
 };

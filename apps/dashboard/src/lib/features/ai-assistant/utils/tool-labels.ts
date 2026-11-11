@@ -66,7 +66,11 @@ const TOOLS_WITH_PENDING_COPY = new Set([
   'write_lesson',
   'read_lessons',
   'analyze_source_changes',
-  'confirm_change_applied'
+  'confirm_change_applied',
+  // Sin su texto, el panel mostraba el nombre interno: «Ejecutando request_bulk_delete».
+  'request_bulk_delete',
+  'remember_teacher_rule',
+  'forget_teacher_rule'
 ]);
 
 /** i18n key for the running / pending description of `toolName` */

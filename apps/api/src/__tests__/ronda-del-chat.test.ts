@@ -252,7 +252,8 @@ const { redis } = await import('@api/utils/redis/redis');
 const { recordTokenUsage, enforceTokenBalance, cupoAgotado } = await import('@api/services/agent/usage');
 const { updateCourseSectionService } = await import('@api/services/course/section');
 const { MAX_TRAMOS } = await import('@api/services/agent/continuacion-del-servidor');
-const { saveChatMessages } = await import('@api/services/agent/chat-history');
+const { saveChatMessages, createChatConversation } = await import('@api/services/agent/chat-history');
+const { cursaElCurso } = await import('@api/middlewares/course-member');
 const { createModel } = await import('@cio/ai-assistant/providers');
 const { buildSourceIndex } = await import('@api/services/agent/source-index');
 const { listCourseSources } = await import('@cio/db/queries/agent/chat-document');
@@ -362,6 +363,13 @@ function modeloDeDosPasos(herramienta = 'get_course_structure', textoFinal = RES
   });
 }
 
+/**
+ * Lo que el último pedido le dejó al middleware de auditoría: con qué nombre
+ * queda registrado (`auditDetail`) y, si falló, con qué código (`auditError`).
+ */
+let paraLaAuditoria: { detalle?: { action?: string; metadata?: Record<string, unknown> }; error?: { code?: string } } =
+  {};
+
 /** Monta el router real detrás de una sesión armada a mano, como hace `app.ts`. */
 function app() {
   return new Hono()
@@ -370,6 +378,8 @@ function app() {
       c.set('session' as never, { id: 'sesion-1' } as never);
       c.set('orgRoles' as never, { [EMPRESA]: ROLE.ADMIN } as never);
       await next();
+      // Como el middleware de auditoría: lee después de que la ruta terminó.
+      paraLaAuditoria = { detalle: c.get('auditDetail' as never), error: c.get('auditError' as never) };
     })
     .route('/agent', agentRouter);
 }
@@ -1158,6 +1168,33 @@ describe('la construcción sigue sola, en tramos', () => {
     expect(guardado[3].parts.filter((parte) => parte.type === 'tool-update_section')).toHaveLength(MAX_TRAMOS);
   });
 
+  // Medido el 2026-11-11 matando el proceso a mitad de una construcción: de esa
+  // ronda no quedó ni una fila en la auditoría. Ver `auditoria-pendiente.ts`.
+  it('lo que la ronda cambia queda a resguardo paso por paso, y se borra cuando cierra y se audita', async () => {
+    const conversationId = conversacionNueva();
+    const clave = `agent:auditoria:pendiente:conversation:${conversationId}`;
+
+    vi.mocked(redis!.set).mockClear();
+    vi.mocked(auditarCambiosDeLaRonda).mockClear();
+
+    await leerPartes(await chat({ conversationId, messages: CONSTRUCCION }));
+
+    const resguardos = vi.mocked(redis!.set).mock.calls.filter(([cual]) => cual === clave);
+
+    // Uno por paso terminado desde el primer cambio, no uno solo al final.
+    expect(resguardos.length).toBeGreaterThan(1);
+    expect(JSON.parse(String(resguardos.at(-1)![1]))).toMatchObject({
+      courseId: CURSO,
+      identidad: { userId: DOCENTE.id, orgId: EMPRESA },
+      registro: { cambios: [expect.objectContaining({ objeto: 'Cobrar en la caja' })] }
+    });
+
+    // Cerró bien: auditada una vez, sin marca de interrumpida, y sin resguardo.
+    expect(auditarCambiosDeLaRonda).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(auditarCambiosDeLaRonda).mock.calls[0][0]).not.toHaveProperty('interrumpida');
+    expect(await redis!.get(clave)).toBeNull();
+  });
+
   it('si la docente se va en el primer tramo, los demás corren igual y se guardan', async () => {
     const conversationId = conversacionNueva();
     const { lector } = await leerPartes(
@@ -1568,6 +1605,21 @@ describe('las propuestas con entregas: la docente decide', () => {
     expect(aplicarPropuesta).not.toHaveBeenCalled();
   });
 
+  // Medido el 2026-11-10: dos clics seguidos dejaron dos filas «aprobó el
+  // cambio» en la auditoría, y el cambio se había aprobado una sola vez.
+  it('en la auditoría, sólo el clic que la resolvió figura como aprobación', async () => {
+    await resolver('approve');
+
+    expect(paraLaAuditoria.detalle?.action).toBe('APROBO_CAMBIO_DEL_ASISTENTE');
+
+    vi.mocked(tomarPropuesta).mockResolvedValueOnce(false);
+    vi.mocked(leerPropuesta).mockResolvedValueOnce(guardada() as never).mockResolvedValueOnce(guardada('aplicada') as never);
+    await resolver('approve');
+
+    expect(paraLaAuditoria.detalle?.action).toBe('CAMBIO_DEL_ASISTENTE_YA_RESUELTO');
+    expect(paraLaAuditoria.detalle?.metadata).toMatchObject({ estado: 'aplicada', propuesta: PROPUESTA });
+  });
+
   it('si no se pudo aplicar, queda marcada como fallida y responde el error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(aplicarPropuesta).mockRejectedValueOnce(new Error('la base no contesta'));
@@ -1727,6 +1779,120 @@ describe('alguien de la empresa que no cursa el curso', () => {
     expect(respuesta.status).toBe(403);
     expect(await respuesta.json()).toMatchObject({ code: 'NOT_ENROLLED_IN_COURSE' });
     expect(promptsRecibidos).toHaveLength(0);
+    // El rechazo queda en la auditoría con su código: antes la incidencia del
+    // chat salía sin él, y no se podía contar de qué tipo eran los rechazos.
+    expect(paraLaAuditoria.error?.code).toBe('NOT_ENROLLED_IN_COURSE');
+  });
+});
+
+/**
+ * Abrir una conversación sobre un curso pide lo mismo que hablarle al
+ * asistente. Medido el 2026-11-11: cualquier miembro de cualquier empresa creaba
+ * una conversación sobre un curso ajeno con sólo conocer su id (12 de 12).
+ */
+describe('abrir una conversación sobre un curso', () => {
+  const abrir = () =>
+    app().request('/agent/history', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cio-org-id': EMPRESA },
+      body: JSON.stringify({ courseId: CURSO, title: 'Curso de caja' })
+    });
+
+  beforeEach(() => {
+    vi.mocked(createChatConversation).mockClear();
+  });
+
+  it('quien no es del equipo ni lo cursa no la abre: 403 y no se crea nada', async () => {
+    vi.mocked(isCourseTeamMemberOrOrgAdmin).mockResolvedValueOnce(false);
+
+    const respuesta = await abrir();
+
+    expect(respuesta.status).toBe(403);
+    expect(await respuesta.json()).toMatchObject({ code: 'COURSE_FORBIDDEN' });
+    expect(createChatConversation).not.toHaveBeenCalled();
+  });
+
+  it('el equipo del curso sí', async () => {
+    const respuesta = await abrir();
+
+    expect(respuesta.status).toBe(201);
+    expect(createChatConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('y quien lo cursa también (el tutor del alumno)', async () => {
+    vi.mocked(isCourseTeamMemberOrOrgAdmin).mockResolvedValueOnce(false);
+    vi.mocked(cursaElCurso).mockResolvedValueOnce(true);
+
+    expect((await abrir()).status).toBe(201);
+  });
+});
+
+/**
+ * La auditoría de lo que cambió una ronda se escribe al cerrarla. Medido el
+ * 2026-11-11 matando el proceso a mitad de una construcción: de esa ronda no
+ * quedó ni una fila. Ver `auditoria-pendiente.ts`.
+ */
+describe('la auditoría de una ronda que puede morir antes de cerrar', () => {
+  const claveDe = (conversationId: string) => `agent:auditoria:pendiente:conversation:${conversationId}`;
+  const resguardoDeOtraRonda = () =>
+    JSON.stringify({
+      identidad: { orgId: EMPRESA, userId: DOCENTE.id, userLabel: 'docente@ejemplo.com.ar' },
+      courseId: CURSO,
+      registro: { cambios: [{ accion: 'escribio', objeto: 'Recibir mercadería', veces: 1 }] }
+    });
+
+  beforeEach(() => {
+    vi.mocked(auditarCambiosDeLaRonda).mockClear();
+    vi.mocked(redis!.set).mockClear();
+    vi.mocked(redis!.del).mockClear();
+  });
+
+  it('al empezar otra ronda de esa conversación, lo que dejó la que murió se audita primero', async () => {
+    const conversationId = conversacionNueva();
+
+    await redis!.set(claveDe(conversationId), resguardoDeOtraRonda());
+    await leerPartes(await chat({ conversationId }));
+
+    expect(auditarCambiosDeLaRonda).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interrumpida: true,
+        conversationId,
+        courseId: CURSO,
+        registro: { cambios: [expect.objectContaining({ objeto: 'Recibir mercadería' })] }
+      })
+    );
+    expect(await redis!.get(claveDe(conversationId))).toBeNull();
+  });
+
+  it('y también cuando el panel pregunta por la conversación y ya no hay ronda viva', async () => {
+    const conversationId = conversacionNueva();
+
+    await redis!.set(claveDe(conversationId), resguardoDeOtraRonda());
+
+    const respuesta = await app().request(`/agent/status?courseId=${CURSO}&conversationId=${conversationId}`, {
+      headers: { 'cio-org-id': EMPRESA }
+    });
+
+    expect(respuesta.status).toBe(200);
+    await vi.waitFor(() =>
+      expect(auditarCambiosDeLaRonda).toHaveBeenCalledWith(expect.objectContaining({ interrumpida: true, conversationId }))
+    );
+  });
+
+  it('con una ronda viva en esa conversación, la pregunta del panel NO toca su resguardo', async () => {
+    const conversationId = conversacionNueva();
+    const candado = await tomarCandadoDeRonda({ redis, conversationId, courseId: CURSO, userId: DOCENTE.id });
+
+    await redis!.set(claveDe(conversationId), resguardoDeOtraRonda());
+    await app().request(`/agent/status?courseId=${CURSO}&conversationId=${conversationId}`, {
+      headers: { 'cio-org-id': EMPRESA }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(auditarCambiosDeLaRonda).not.toHaveBeenCalled();
+    expect(await redis!.get(claveDe(conversationId))).not.toBeNull();
+
+    if (candado) await candado.soltar();
   });
 });
 

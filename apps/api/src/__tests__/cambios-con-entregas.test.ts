@@ -161,6 +161,10 @@ describe('con entregas, nada que mueva notas se escribe solo', () => {
       impact: { tipo: 'agregar', entregas: 50, maximoAntes: 12, maximoDespues: 13, promedioAntes: 87, promedioDespues: 80 }
     });
     expect(String(resultado.note)).toContain('NOTHING WAS SAVED');
+    // Medido el 2026-11-10: el modelo le pidió a la docente «que apruebes el
+    // recálculo». Aprobar no recalifica: se le dice, para que no lo prometa.
+    expect(String(resultado.note)).toContain('NOT graded again');
+    expect(String(resultado.note)).toContain('Never call the approval a recalculation');
     expect(guardarPropuesta).toHaveBeenCalledWith(
       expect.objectContaining({ herramienta: 'add_questions', cuerpo: expect.objectContaining({ tipo: 'agregar' }) })
     );
@@ -373,6 +377,8 @@ describe('la ronda siguiente se entera', () => {
 
     expect(aviso).toContain('WAITING for her decision');
     expect(aviso).toContain('APPROVED by her and APPLIED by the server');
+    // Lo aplicado no recalificó a nadie: que no cuente que las notas se recalcularon.
+    expect(aviso).toContain('answers already submitted are NOT graded again');
     expect(aviso).toContain('CANCELLED by her');
     expect(aviso).toContain('12 preguntas nuevas (13 puntos); 50 entregas: el máximo pasaría de 12 a 25 y el promedio de 87 % a 42 %');
   });
