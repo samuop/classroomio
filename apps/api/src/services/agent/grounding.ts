@@ -380,6 +380,21 @@ function modeloVerificador(config: AIProviderConfig): string {
  * en cada una sería pagar dieciséis veces por los mismos bytes, y además los
  * cambiaría, que es justo lo que rompe la caché del proveedor.
  */
+/** Las correcciones de la docente, como las lee el juez: a continuación de las fuentes. */
+export function correccionesParaElJuez(correcciones: readonly string[]): string {
+  if (correcciones.length === 0) return '';
+
+  return [
+    '',
+    '',
+    '## Corrections dictated by the teacher',
+    '',
+    'The teacher of this course dictated these statements. They OVERRIDE the documents above: a claim in the lesson that matches one of them is SUPPORTED, and the older version of that fact in a document is the one that is out of date. Never report a claim as unsupported because it follows one of these corrections.',
+    '',
+    ...correcciones.map((correccion) => `- ${correccion}`)
+  ].join('\n');
+}
+
 export function crearVerificadorDeFundamento(params: {
   orgId: string;
   userId: string;
@@ -388,6 +403,12 @@ export function crearVerificadorDeFundamento(params: {
   providerConfig: AIProviderConfig;
   /** Cuánto esperar al juez. Ver `TIEMPO_MAXIMO_JUEZ_MS`; los tests lo acortan. */
   tiempoMaximoMs?: number;
+  /**
+   * Los datos que la docente corrigió para este curso. Van al juez junto a las
+   * fuentes: sin ellos marcaba la corrección como invento —«el manual dice 48
+   * horas y no 7 días»— y le pedía al escritor volver a lo viejo (2026-11-11).
+   */
+  correcciones?: readonly string[];
 }): Verificador | undefined {
   if (!chequeoHabilitado()) return undefined;
 
@@ -440,7 +461,7 @@ export function crearVerificadorDeFundamento(params: {
         model,
         schema: Resultado,
         system: INSTRUCCION,
-        prompt: `${material}\n\n--- Lesson: ${lessonTitle} ---\n${texto}`,
+        prompt: `${material}${correccionesParaElJuez(params.correcciones ?? [])}\n\n--- Lesson: ${lessonTitle} ---\n${texto}`,
         maxRetries: 0,
         // Con tope: ver `TIEMPO_MAXIMO_JUEZ_MS`.
         abortSignal: AbortSignal.timeout(tiempoMaximoMs)

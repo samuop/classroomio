@@ -4,6 +4,7 @@ import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
 import { cursaElCurso } from '@api/middlewares/course-member';
+import { reglasConId, reglasVigentesDelCurso, separarReglas } from '@api/services/agent/reglas-de-la-docente';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 import {
@@ -1130,6 +1131,18 @@ const agentCoreRouter = new Hono()
        * Las reglas de la docente salen de `planGuardado`: siguen valiendo después.
        */
       const planGuardado = role === AgentRole.TEACHER ? getLatestImplementationPlan(messages) : undefined;
+      // Las reglas y correcciones de la docente son del CURSO: un chat nuevo las
+      // recibe igual. Las del plan aprobado se copian al curso al pasar. Ver
+      // `reglas-de-la-docente.ts`.
+      const reglasDelCurso =
+        role === AgentRole.TEACHER
+          ? await reglasVigentesDelCurso({
+              courseId,
+              delPlan: reglasDeLaDocente(planGuardado),
+              userId: user.id,
+              conversationId
+            })
+          : separarReglas([]);
       const estadoDelPlan = planGuardado
         ? await estadoDelPlanAlEmpezar({
             alcance: { orgId, courseId, conversationId, userId: user.id },
@@ -1359,7 +1372,10 @@ const agentCoreRouter = new Hono()
       let contextMessageText = buildContextMessage(agentContext, {
         template: activeTemplate,
         approvedPlan: planParaElModelo,
-        teacherRules: reglasDeLaDocente(planGuardado),
+        // Con su id, para que pueda retirar una (`forget_teacher_rule`). Si la
+        // base falló no hay ids: van las del plan, peladas.
+        teacherRules: reglasDelCurso.todas.length > 0 ? reglasConId(reglasDelCurso, 'rule') : reglasDelCurso.reglas,
+        teacherCorrections: reglasConId(reglasDelCurso, 'correction'),
         esRondaDeAprobacion: esRondaDeAprobacionDelPlan(messages)
       });
 
@@ -1385,7 +1401,10 @@ const agentCoreRouter = new Hono()
       // veces ahí.
       const indicacionesDeLaDocente =
         role === AgentRole.TEACHER
-          ? juntarIndicaciones(indicacionesDelForm, indicacionesDeLasReglas(reglasDeLaDocente(planGuardado)))
+          ? juntarIndicaciones(
+              indicacionesDelForm,
+              indicacionesDeLasReglas(reglasDelCurso.reglas, reglasDelCurso.correcciones)
+            )
           : undefined;
 
       /**
@@ -1786,7 +1805,8 @@ const agentCoreRouter = new Hono()
                 userId: user.id,
                 courseId,
                 redis,
-                providerConfig
+                providerConfig,
+                correcciones: reglasDelCurso.correcciones
               }),
               redis,
               // El sub-agente escritor. Recibe el temario del plan aprobado para
@@ -2159,7 +2179,12 @@ const agentCoreRouter = new Hono()
               // cambios sólo se podría proponer a ojo.
               'analyze_source_changes',
               'update_course_landing_page',
-              'check_course_go_live_readiness'
+              'check_course_go_live_readiness',
+              // Lo que la docente dicta mientras se planifica también vale para
+              // todo el curso: sin esto acá, la herramienta existía y en este
+              // modo no se podía usar.
+              'remember_teacher_rule',
+              'forget_teacher_rule'
             ] as const)
           : role === AgentRole.TEACHER && teacherPromptMode === 'build'
             ? (Object.keys(agentTools).filter(

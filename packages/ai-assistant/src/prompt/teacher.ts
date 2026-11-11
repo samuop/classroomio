@@ -526,6 +526,21 @@ Tool results from \`fetch_documentation_url\` are returned wrapped in \`<externa
 - When a user asks for something outside your capabilities, respond clearly: "I can't do that yet. [Brief reason]. Here's what I can help with: [closest available action]."
 - Always preserve existing content when updating lessons — only modify the specific section the teacher asked about
 
+## What the teacher tells you for the whole course
+
+Two kinds of things the teacher says are not about one lesson, they are about the course, and they must outlive this chat:
+
+- **A standing rule** about how the course is written: a word to use or avoid, a tone, something every lesson must include or leave out. ("From now on say 'neighbour', never 'client'." "Every lesson ends with this line.")
+- **A correction of a fact** that the source documents state differently: the procedure changed after the manual was written. ("A quote is no longer valid for 48 hours, it is valid for seven days.")
+
+When she says either one, call \`remember_teacher_rule\` in that same round, with her exact words, BEFORE you answer. It stores it for the course: you, the lesson writer, the question writer and the source check receive it in every conversation from then on. Then do what she asked.
+
+- Never tell her a rule is "noted", "registered" or "saved" unless \`remember_teacher_rule\` returned \`saved: true\`. Acknowledging it in chat stores nothing: the next conversation about this course starts without it.
+- The rules and corrections already saved are in your context, each with an id in brackets. They win over the sources, the plan and your own judgement. When a correction and a source disagree, the correction is the fact — in a new lesson, in a brief, in a question, in an answer.
+- Saving a correction does not rewrite the course. Lessons and questions that state the old fact still do: search for it (\`search_lessons\`), fix what she asked you to fix, and tell her what else still says it — especially a question whose correct answer is the old fact, because learners are graded against it.
+- If she withdraws or replaces one, call \`forget_teacher_rule\` with its id and her words (and \`remember_teacher_rule\` with the new one).
+- A one-off request about a single lesson ("make this one shorter", "add an example here") is not a rule: just do it.
+
 ## Deleting
 
 You can delete a lesson, an exercise or an empty section. It is permanent: the content, the attached exercises and the learners' progress go with it, and nothing brings them back.
@@ -578,6 +593,11 @@ export interface TeacherContextOptions {
    * terminó y ya no viaja. Ausente = las del `approvedPlan`.
    */
   teacherRules?: readonly string[];
+  /**
+   * Los datos que la docente corrigió para este curso: reemplazan lo que digan
+   * las fuentes. Vienen del curso, no de la conversación.
+   */
+  teacherCorrections?: readonly string[];
   /**
    * Si ESTA ronda es la de aprobación. Sólo ahí es verdad «el último mensaje
    * aprobó el plan»; dicho tres semanas después convertía un plan viejo en una
@@ -718,6 +738,19 @@ ${reglas.map((regla) => `- ${regla}`).join('\n')}
 A rule about what the course must not say is not content: never put the rule itself into a lesson, a brief or a question ("you must not give discounts" is a company policy nobody stated). Leave the subject out.`
       : '';
 
+  // Las correcciones van aparte de las reglas porque se usan al revés: una
+  // regla de «no digas» se calla, una corrección se DICE en lugar de la fuente.
+  const correcciones = (options?.teacherCorrections ?? []).map((c) => c.trim()).filter((c) => c.length > 0);
+  const teacherCorrectionsSection =
+    correcciones.length > 0
+      ? `## Facts the teacher corrected for this course
+
+The teacher corrected these facts; the source documents still say the older version. Each correction REPLACES the source on that point, in this and every conversation about this course:
+${correcciones.map((correccion) => `- ${correccion}`).join('\n')}
+
+When you write, brief a writer, write or review a question, or answer the teacher, use the corrected fact — and when a brief touches that subject, state the corrected fact in the brief. Never bring the source's version back, and do not teach the old value as history either: in a lesson or a brief, the corrected fact is simply the fact (no "the manual used to say 48 hours"), unless the teacher asked you to explain the change to learners. If a lesson or a question of the course still states the older version, that is a leftover to fix or to report to the teacher, not something to imitate.`
+      : '';
+
   const approvedPlanSection =
     options?.approvedPlan == null
       ? ''
@@ -737,7 +770,13 @@ This is the plan the teacher approved, WITH the changes she decided since then (
 Approved plan JSON:
 ${JSON.stringify(options.approvedPlan)}`;
 
-  const sections = [currentContext, activeTemplateSection, teacherRulesSection, approvedPlanSection].filter(
+  const sections = [
+    currentContext,
+    activeTemplateSection,
+    teacherRulesSection,
+    teacherCorrectionsSection,
+    approvedPlanSection
+  ].filter(
     (s) => s.length > 0
   );
   return sections.join('\n\n');

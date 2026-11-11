@@ -13,7 +13,10 @@ import {
   enmendarItemDelPlan,
   entregasDelEjercicio,
   getChatConversation,
+  guardarReglasDelCurso,
   loQueSeVaConLaLeccion,
+  reglasDelCurso,
+  retirarReglaDelCurso,
   readPlanRegistry,
   resolvePlanBinding
 } from '@cio/db/queries/agent';
@@ -154,6 +157,8 @@ import {
   askDiscoveryQuestionsParam,
   confirmChangeAppliedParam,
   updatePlanParam,
+  rememberTeacherRuleParam,
+  forgetTeacherRuleParam,
   coursePlanParam,
   createExerciseParam,
   createExerciseSectionParam,
@@ -5038,6 +5043,99 @@ export function buildAgentTools(
      * esto sería un botón de «dar por hecho» sin editar nada, que es peor que
      * el bucle: primero hay que haber hecho el cambio.
      */
+    /**
+     * Una regla o una corrección de la docente, guardada para todo el curso.
+     *
+     * ── Por qué ──────────────────────────────────────────────────────────────
+     *
+     * Las reglas vivían en el plan aprobado de una conversación, y las dichas
+     * después del plan en ningún lado: el asistente contestaba «Regla
+     * registrada» y el chat siguiente escribía contra ella (2026-11-11). Ver
+     * `reglas-del-curso.ts` en `@cio/db`.
+     *
+     * Exige las palabras de la docente por lo mismo que `update_plan`: una
+     * regla que gana sobre las fuentes en todo el curso no puede ser algo que
+     * el modelo dedujo. Se midió un plan con dos «reglas de la docente» que la
+     * docente nunca había dicho.
+     */
+    remember_teacher_rule: tool({
+      description:
+        'Save, for THIS COURSE and every future conversation about it, something the teacher told you: a standing rule about how the course is written (kind "rule"), or a fact she corrected that the source documents state differently (kind "correction"). Call it in the same round she says it, BEFORE you tell her it is noted — a rule you only acknowledge in chat is lost when she opens another chat. Pass her exact words in teacherWords: the server checks them against her messages and refuses otherwise. Not for one-off requests about a single lesson ("make this one shorter").',
+      inputSchema: rememberTeacherRuleParam,
+      execute: async (args) => {
+        return executeAgentTool('remember_teacher_rule', { orgId, userId, courseId, args }, async () => {
+          if (!lasEscribioLaDocente(args.teacherWords, textosDeLaDocenteDeLaRonda)) {
+            throw new Error(
+              "Those words are not in any of the teacher's messages in this conversation. Copy her EXACT words — the sentence where she states this rule or corrects this fact. If she did not say it, do not save it."
+            );
+          }
+
+          const guardadas = await guardarReglasDelCurso({
+            courseId,
+            reglas: [{ kind: args.kind, rule: args.rule, teacherWords: args.teacherWords }],
+            createdBy: userId,
+            conversationId
+          });
+
+          if (guardadas.length === 0) {
+            return {
+              saved: false,
+              alreadyKnown: true,
+              note: 'This course already has that rule (or the teacher withdrew it before). Nothing changed.'
+            };
+          }
+
+          anotarCambio(registro, 'guardo_regla', args.rule);
+
+          return {
+            saved: true,
+            id: guardadas[0].id.slice(0, 8),
+            kind: args.kind,
+            rule: args.rule,
+            note:
+              args.kind === 'correction'
+                ? 'Saved for the whole course: from the next round on, you, the writers and the source check all receive it. It does NOT change what is already written: lessons or questions that state the older version still do. Fix the ones the teacher asked about, and tell her which other lessons or questions still state the old fact (search for it) — a question whose correct answer is the old fact will grade learners wrong.'
+                : 'Saved for the whole course: from the next round on, you and the writers receive it in every conversation. In THIS round the writers do not have it yet: put it in every brief you send. It does not change what is already written.'
+          };
+        });
+      }
+    }),
+
+    forget_teacher_rule: tool({
+      description:
+        'Withdraw a rule or correction saved for this course, because the TEACHER said it no longer applies or replaced it. Pass the id shown in brackets beside it in your context, and her exact words. If she replaced it, call remember_teacher_rule with the new one too.',
+      inputSchema: forgetTeacherRuleParam,
+      execute: async (args) => {
+        return executeAgentTool('forget_teacher_rule', { orgId, userId, courseId, args }, async () => {
+          if (!lasEscribioLaDocente(args.teacherWords, textosDeLaDocenteDeLaRonda)) {
+            throw new Error(
+              "Those words are not in any of the teacher's messages in this conversation. Copy her EXACT words — the sentence where she withdraws this rule. If she did not ask for it, leave the rule."
+            );
+          }
+
+          const pedida = args.id.trim().toLowerCase();
+          const vigentes = (await reglasDelCurso(courseId)).filter((regla) => regla.id.startsWith(pedida));
+
+          if (vigentes.length !== 1) {
+            throw new Error(
+              vigentes.length === 0
+                ? `No rule of this course has an id starting with "${args.id}". Copy the id in brackets beside the rule in your context.`
+                : `More than one rule matches "${args.id}". Copy the whole id shown in brackets.`
+            );
+          }
+
+          await retirarReglaDelCurso(courseId, vigentes[0].id);
+          anotarCambio(registro, 'retiro_regla', vigentes[0].rule);
+
+          return {
+            withdrawn: true,
+            rule: vigentes[0].rule,
+            note: 'It no longer applies to this course. What was written while it applied is unchanged.'
+          };
+        });
+      }
+    }),
+
     /**
      * La docente cambia de idea a mitad de la construcción, y el plan se entera.
      *

@@ -33,6 +33,8 @@ const ACCION_EN_LA_AUDITORIA: Record<CambioDeRonda['accion'], string> = {
   pregunto: 'ASISTENTE_CAMBIO_PREGUNTAS',
   saco_del_plan: 'ASISTENTE_SACO_DEL_PLAN',
   cambio_el_plan: 'ASISTENTE_CAMBIO_EL_PLAN',
+  guardo_regla: 'ASISTENTE_GUARDO_REGLA_DEL_CURSO',
+  retiro_regla: 'ASISTENTE_RETIRO_REGLA_DEL_CURSO',
   propuso: 'ASISTENTE_PROPUSO_CAMBIO_CON_ENTREGAS'
 };
 

@@ -235,6 +235,39 @@ export const deleteSectionParam = z.object({
   confirmTitle: confirmTitleParam
 });
 
+/**
+ * Una regla o corrección de la docente que vale para todo el curso. Ver
+ * `reglas-del-curso.ts` en `@cio/db`. Como `update_plan`, exige sus palabras: el
+ * servidor las comprueba contra sus mensajes, y así una «regla» no puede ser
+ * algo que el modelo dedujo por su cuenta.
+ */
+export const rememberTeacherRuleParam = z.object({
+  kind: z
+    .enum(['rule', 'correction'])
+    .describe(
+      '"rule": how the course must be written from now on (wording, tone, what to include or leave out, a closing line). "correction": a FACT the teacher corrected and that the source documents state differently (a deadline, a price, a step of a procedure).'
+    ),
+  rule: z
+    .string()
+    .min(8)
+    .max(400)
+    .describe(
+      'The rule or the corrected fact, in the course language, complete enough to be understood with no other context. For a correction, say the new fact AND what it replaces: "A quote is valid for seven days (not 48 hours, as the manual says)".'
+    ),
+  teacherWords: z
+    .string()
+    .min(8)
+    .describe('The teacher’s exact words, copied from her message, where she states this rule or correction.')
+});
+
+export const forgetTeacherRuleParam = z.object({
+  id: z.string().min(6).describe('The id shown in brackets beside the rule in your context, for example "3f9a1c2e".'),
+  teacherWords: z
+    .string()
+    .min(8)
+    .describe('The teacher’s exact words, copied from her message, where she withdraws or replaces this rule.')
+});
+
 /** La lista entera de un borrado grande. Ver `borrado-en-lote.ts`. */
 export const requestBulkDeleteParam = z.object({
   items: z

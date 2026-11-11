@@ -53,6 +53,9 @@ export interface CambioDeRonda {
     | 'pregunto'
     | 'saco_del_plan'
     | 'cambio_el_plan'
+    /** Una regla o corrección de la docente guardada para todo el curso (o retirada). `objeto` es la regla. */
+    | 'guardo_regla'
+    | 'retiro_regla'
     /** Un cambio que toca notas, guardado como propuesta: NO se aplicó. Ver `cambios-con-entregas.ts`. */
     | 'propuso';
   objeto: string;
@@ -147,6 +150,8 @@ const COMO_SE_DICE: Record<CambioDeRonda['accion'], string> = {
   pregunto: 'Cambió las preguntas de',
   saco_del_plan: 'Sacó del plan',
   cambio_el_plan: 'Cambió en el plan',
+  guardo_regla: 'Guardó para todo el curso',
+  retiro_regla: 'Retiró de las reglas del curso',
   propuso: 'Propuso, para tu aprobación, un cambio en'
 };
 

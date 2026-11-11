@@ -118,17 +118,43 @@ export function indicacionesDelFormulario(respuestas: readonly RespuestaDelFormu
  * enseñes la matriz de descuentos como vigente») no le llegó a nadie, y la
  * lección la enseñó como vigente.
  */
-export function indicacionesDeLasReglas(reglas: readonly string[]): string | undefined {
-  if (reglas.length === 0) return undefined;
+export function indicacionesDeLasReglas(
+  reglas: readonly string[],
+  correcciones: readonly string[] = []
+): string | undefined {
+  const bloques: string[] = [];
 
-  return [
-    "## The teacher's rules for this course (from the approved plan)",
-    '',
-    'The teacher stated these rules in the conversation. They bind every lesson, exercise and question of this course, and they win over the sources, the plan and any brief. If following the source would break one, follow the rule and leave that part out.',
-    'A rule about what the course must not say is NOT content: never turn it into a sentence of the lesson. If the sources say nothing about discounts, the lesson says nothing about discounts — not "you must not give discounts", which is a company policy nobody stated.',
-    '',
-    ...reglas.map((regla) => `- ${regla}`)
-  ].join('\n');
+  if (reglas.length > 0) {
+    bloques.push(
+      [
+        "## The teacher's rules for this course",
+        '',
+        'The teacher stated these rules. They bind every lesson, exercise and question of this course, and they win over the sources, the plan and any brief. If following the source would break one, follow the rule and leave that part out.',
+        'A rule about what the course must not say is NOT content: never turn it into a sentence of the lesson. If the sources say nothing about discounts, the lesson says nothing about discounts — not "you must not give discounts", which is a company policy nobody stated.',
+        '',
+        ...reglas.map((regla) => `- ${regla}`)
+      ].join('\n')
+    );
+  }
+
+  // Una corrección es lo contrario de una prohibición: ES contenido. La fuente
+  // dice lo viejo, y sin esto el escritor —que trata la fuente como la verdad—
+  // lo traía de vuelta en cada lección nueva (medido el 2026-11-11, 2 de 2).
+  if (correcciones.length > 0) {
+    bloques.push(
+      [
+        '## Facts the teacher corrected (they replace what the sources say)',
+        '',
+        'The teacher corrected these facts after the source documents were written. Each one REPLACES the source on that point: wherever this lesson or these questions touch the subject, state the corrected fact, and never write the source’s older version — not as the rule, not in an example, not in a dialogue, not as the correct answer of a question.',
+        'State the corrected fact simply as the fact. Do not mention the older value at all, nor that the manual used to say something else, nor that the rule changed — a learner who never knew the old value should not learn it here. (Each correction names what it replaces only so that you know which statement of the source is out of date.)',
+        'The teacher is the source for these: a sentence that follows a correction is supported. Do not mark it as lacking a source.',
+        '',
+        ...correcciones.map((correccion) => `- ${correccion}`)
+      ].join('\n')
+    );
+  }
+
+  return bloques.length > 0 ? bloques.join('\n\n') : undefined;
 }
 
 /** Junta los bloques de indicaciones que haya; ninguno es nada. */

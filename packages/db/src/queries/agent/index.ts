@@ -6,6 +6,7 @@ export * from './run-state';
 export * from './chat-run';
 export * from './plan-registry';
 export * from './propuestas';
+export * from './reglas-del-curso';
 export * from './source-analysis';
 export * from './credit-purchase';
 export * from './token-usage';

@@ -3411,6 +3411,45 @@ export const aiChatConversation = pgTable(
   ]
 );
 
+/**
+ * Lo que la docente le dictó al asistente y vale para todo el curso: reglas de
+ * estilo («decí "vecino", nunca "cliente"») y correcciones de un dato que las
+ * fuentes dicen distinto («el presupuesto vale siete días, no 48 horas»).
+ *
+ * Vivían en el plan aprobado de UNA conversación —o en ningún lado, si se
+ * dijeron después del plan—, y un chat nuevo sobre el mismo curso escribía
+ * contra ellas sin enterarse (medido el 2026-11-11). Ver
+ * `queries/agent/reglas-del-curso.ts`.
+ */
+export const aiCourseTeacherRule = pgTable(
+  'ai_course_teacher_rule',
+  {
+    id: uuid()
+      .default(sql`gen_random_uuid()`)
+      .primaryKey(),
+    courseId: uuid('course_id').notNull(),
+    /** `rule`: cómo se escribe el curso. `correction`: un dato que gana sobre las fuentes. */
+    kind: text().notNull().default('rule'),
+    /** La regla como la leen el asistente y los escritores. */
+    rule: text().notNull(),
+    /** Las palabras de la docente de donde salió, para poder mostrárselas. */
+    teacherWords: text('teacher_words'),
+    createdBy: uuid('created_by'),
+    conversationId: uuid('conversation_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    /** Retirada por la docente: no se borra, deja de valer. */
+    retiredAt: timestamp('retired_at', { withTimezone: true, mode: 'string' })
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.courseId],
+      foreignColumns: [course.id],
+      name: 'ai_course_teacher_rule_course_id_fkey'
+    }).onDelete('cascade'),
+    index('idx_ai_course_teacher_rule_course').on(table.courseId)
+  ]
+);
+
 export const aiChatModelContext = pgTable(
   'ai_chat_model_context',
   {

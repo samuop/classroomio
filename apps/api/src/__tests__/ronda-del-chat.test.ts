@@ -118,8 +118,39 @@ vi.mock('@cio/db/queries/agent', async (original) => ({
   entregasDelEjercicio: vi.fn(async () => ({ cantidad: 0, promedio: null })),
   leerPropuesta: vi.fn(async () => null),
   tomarPropuesta: vi.fn(async () => true),
-  marcarPropuestaFallida: vi.fn(async () => {})
+  marcarPropuestaFallida: vi.fn(async () => {}),
+  // Las reglas de la docente para el curso (ver `reglas-del-curso.ts`): sin base,
+  // pero guardando de verdad —lo que una ronda guarda, la misma ronda lo lee—,
+  // que es justo el camino por el que las reglas del plan llegan al modelo.
+  reglasDelCurso: vi.fn(async () => [...reglasGuardadas]),
+  guardarReglasDelCurso: vi.fn(async (params: { reglas: Array<{ kind: 'rule' | 'correction'; rule: string }> }) => {
+    const nuevas = params.reglas
+      .filter((regla) => !reglasGuardadas.some((guardada) => guardada.rule === regla.rule))
+      .map((regla, i) => ({
+        id: `${String(reglasGuardadas.length + i).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        kind: regla.kind,
+        rule: regla.rule,
+        teacherWords: null,
+        createdAt: '2026-11-11T10:00:00Z'
+      }));
+
+    reglasGuardadas.push(...nuevas);
+
+    return nuevas;
+  })
 }));
+
+/** Las reglas del curso «en la base» de estos tests. */
+const reglasGuardadas = vi.hoisted(
+  () =>
+    [] as Array<{ id: string; kind: 'rule' | 'correction'; rule: string; teacherWords: string | null; createdAt: string }>
+);
+
+// Cada test arranca con el curso sin reglas: todos usan el mismo curso, y las
+// que un plan dejó guardadas le llegarían —correctamente— al test siguiente.
+beforeEach(() => {
+  reglasGuardadas.length = 0;
+});
 
 vi.mock('@api/services/agent/cambios-con-entregas', async (original) => ({
   ...(await original<typeof import('@api/services/agent/cambios-con-entregas')>()),
@@ -203,6 +234,11 @@ vi.mock('@api/services/agent/question-writer', async (original) => {
   const real = await original<typeof import('@api/services/agent/question-writer')>();
   return { ...real, crearEscritorDePreguntas: vi.fn(real.crearEscritorDePreguntas) };
 });
+// Y el juez de fundamento, igual: con qué correcciones lo arma la ronda.
+vi.mock('@api/services/agent/grounding', async (original) => {
+  const real = await original<typeof import('@api/services/agent/grounding')>();
+  return { ...real, crearVerificadorDeFundamento: vi.fn(real.crearVerificadorDeFundamento) };
+});
 
 // Lo que el chequeo de publicación dice del curso en sí: listo. Lo que agrega
 // del plan es lo que se prueba.
@@ -224,13 +260,20 @@ const { getCourseContentItems } = await import('@cio/db/queries/course/content')
 const { tomarCandadoDeRonda } = await import('@api/services/agent/ronda-viva');
 const { crearEscritorDeLecciones } = await import('@api/services/agent/lesson-writer');
 const { crearEscritorDePreguntas } = await import('@api/services/agent/question-writer');
+const { crearVerificadorDeFundamento } = await import('@api/services/agent/grounding');
 const { AppError } = await import('@api/utils/errors');
 const { hasta, leerPartes } = await import('./ayuda/sse');
 const { leerCierreDelPlan, cerrarPlan, abrirPlan } = await import('@cio/db/queries/agent');
 const { huellaDelPlan } = await import('@api/services/agent/plan-vivo');
 const { auditarCambiosDeLaRonda } = await import('@api/services/agent/auditoria-del-asistente');
-const { leerPropuesta, tomarPropuesta, marcarPropuestaFallida, propuestasParaLaRonda, marcarPropuestasInformadas } =
-  await import('@cio/db/queries/agent');
+const {
+  leerPropuesta,
+  tomarPropuesta,
+  marcarPropuestaFallida,
+  propuestasParaLaRonda,
+  marcarPropuestasInformadas,
+  reglasDelCurso
+} = await import('@cio/db/queries/agent');
 const { aplicarPropuesta } = await import('@api/services/agent/cambios-con-entregas');
 const { isCourseTeamMemberOrOrgAdmin } = await import('@cio/db/queries/group');
 const { getLesson } = await import('@api/services/lesson/lesson');
@@ -1684,5 +1727,64 @@ describe('alguien de la empresa que no cursa el curso', () => {
     expect(respuesta.status).toBe(403);
     expect(await respuesta.json()).toMatchObject({ code: 'NOT_ENROLLED_IN_COURSE' });
     expect(promptsRecibidos).toHaveLength(0);
+  });
+});
+
+/**
+ * Lo que la docente dictó vale para el curso. Una conversación NUEVA no tiene
+ * plan ni historia, y escribía contra las reglas sin enterarse: «cliente» 11 y
+ * 16 veces en un curso que debía decir «vecino», y «48 horas» en una lección
+ * nueva después de corregirlo a siete días (medido el 2026-11-11, 2 de 2).
+ */
+describe('una conversación nueva sobre un curso con reglas de la docente', () => {
+  const VECINO = 'Decir siempre «vecino», nunca «cliente».';
+  const SIETE_DIAS = 'El presupuesto vale siete días (no 48 horas, como dice el manual).';
+
+  beforeEach(() => {
+    reglasGuardadas.length = 0;
+  });
+
+  it('el modelo las recibe desde el primer pedido, aunque en esta conversación nadie las dijo', async () => {
+    reglasGuardadas.push(
+      { id: 'aaaaaaaa-1111-4111-8111-111111111111', kind: 'rule', rule: VECINO, teacherWords: null, createdAt: '2026-11-11T10:00:00Z' },
+      { id: 'bbbbbbbb-2222-4222-8222-222222222222', kind: 'correction', rule: SIETE_DIAS, teacherWords: null, createdAt: '2026-11-11T11:00:00Z' }
+    );
+    promptsRecibidos = [];
+
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(promptsRecibidos.length).toBeGreaterThan(0);
+    expect(promptsRecibidos[0]).toContain(VECINO);
+    expect(promptsRecibidos[0]).toContain(SIETE_DIAS);
+    expect(promptsRecibidos[0]).toContain('Facts the teacher corrected for this course');
+    expect(reglasDelCurso).toHaveBeenCalledWith(CURSO);
+  });
+
+  it('y les llegan a los dos escritores y al juez de fundamento', async () => {
+    reglasGuardadas.push(
+      { id: 'aaaaaaaa-1111-4111-8111-111111111111', kind: 'rule', rule: VECINO, teacherWords: null, createdAt: '2026-11-11T10:00:00Z' },
+      { id: 'bbbbbbbb-2222-4222-8222-222222222222', kind: 'correction', rule: SIETE_DIAS, teacherWords: null, createdAt: '2026-11-11T11:00:00Z' }
+    );
+
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    for (const escritor of [crearEscritorDeLecciones, crearEscritorDePreguntas]) {
+      const { indicaciones } = vi.mocked(escritor).mock.calls.at(-1)![0];
+
+      expect(indicaciones).toContain(VECINO);
+      expect(indicaciones).toContain(SIETE_DIAS);
+    }
+
+    // Al juez sólo las correcciones: una regla de estilo no es un dato que contrastar.
+    expect(vi.mocked(crearVerificadorDeFundamento).mock.calls.at(-1)![0].correcciones).toEqual([SIETE_DIAS]);
+  });
+
+  it('un curso sin reglas no agrega ninguna sección', async () => {
+    promptsRecibidos = [];
+
+    await leerPartes(await chat({ conversationId: conversacionNueva() }));
+
+    expect(promptsRecibidos[0]).not.toContain('Facts the teacher corrected for this course');
+    expect(promptsRecibidos[0]).not.toContain("The teacher's rules for this course");
   });
 });
