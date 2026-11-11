@@ -240,5 +240,14 @@
     {/if}
   </Sidebar.Inset>
 
-  <SidePanelRail />
+  <!--
+    El panel del asistente pide su estado (el cupo, la ronda viva) apenas se
+    monta. Mientras el curso carga todavía no se sabe de qué empresa es, y la
+    activa puede ser otra: recién con el curso cargado quedó la suya (ver
+    `empresa-del-curso.ts`). Antes de eso, ese pedido salía con la empresa
+    equivocada.
+  -->
+  {#if courseScreenState !== 'loading'}
+    <SidePanelRail />
+  {/if}
 </Sidebar.Provider>

@@ -4085,6 +4085,9 @@
     "error_timeout": "Trwa to dłużej niż zwykle. Żądanie jest nadal przetwarzane: spróbuj ponownie za kilka sekund.",
     "error_stream_cut": "Połączenie z asystentem zostało przerwane. To, co już zostało utworzone, jest zapisane.",
     "error_round_in_progress": "Asystent nadal pracuje w tym czacie. Poczekaj, aż skończy.",
+    "error_course_other_company": "Ten kurs należy do innej firmy. Odśwież stronę, aby asystent pracował z firmą tego kursu.",
+    "error_not_enrolled": "Nie jesteś zapisany na ten kurs, więc tutor nie jest tutaj dostępny.",
+    "error_forbidden": "Nie masz uprawnień do korzystania z asystenta w tym kursie.",
     "round_in_progress_notice": "Asystent pracuje nad tym kursem. Widok odświeży się sam.",
     "tool_interrupted": "Przerwano przed zakończeniem. Sprawdź kurs: to, co zdążyło się zapisać, jest zapisane.",
     "control_message": {

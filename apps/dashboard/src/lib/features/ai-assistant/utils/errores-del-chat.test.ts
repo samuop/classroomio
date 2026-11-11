@@ -88,6 +88,28 @@ describe('el mensaje de la banda del chat', () => {
     expect(mensajeDelErrorDelChat(new Error('prompt is too long'))).toEqual({ clave: 'ai_assistant.error_context_too_long' });
   });
 
+  // Medido el 2026-11-11: la consultora, con su empresa activa, en el curso de
+  // un cliente veía «Course does not belong to this organization».
+  it('un rechazo por permiso dice qué pasa y qué hacer, no el texto del servidor', () => {
+    expect(
+      mensajeDelErrorDelChat(
+        new ApiError(cuerpo('COURSE_ORG_MISMATCH', 'Course does not belong to this organization'), 403)
+      )
+    ).toEqual({ clave: 'ai_assistant.error_course_other_company' });
+    expect(
+      mensajeDelErrorDelChat(new ApiError(cuerpo('NOT_ENROLLED_IN_COURSE', 'You are not enrolled in this course'), 403))
+    ).toEqual({ clave: 'ai_assistant.error_not_enrolled' });
+    expect(mensajeDelErrorDelChat(new ApiError(cuerpo('UNAUTHORIZED', 'UNAUTHORIZED'), 403))).toEqual({
+      clave: 'ai_assistant.error_forbidden'
+    });
+  });
+
+  it('un 403 con otro código conserva el texto del servidor', () => {
+    expect(mensajeDelErrorDelChat(new ApiError(cuerpo('OTRO', 'Motivo propio'), 403))).toEqual({
+      texto: 'Motivo propio'
+    });
+  });
+
   it('cualquier otro error del servidor muestra su texto, no el JSON entero', () => {
     expect(mensajeDelErrorDelChat(new ApiError(cuerpo('ALGO', 'Algo salió mal'), 400))).toEqual({
       texto: 'Algo salió mal'

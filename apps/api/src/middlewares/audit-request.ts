@@ -27,6 +27,7 @@ import {
 } from '@api/utils/audit-map';
 import type { AuditDetail } from '@api/types/auth';
 import { clientInfoFromHeaders } from '@api/utils/client-info';
+import { empresaDelCursoDeLaRuta } from '@api/services/audit-empresa-del-curso';
 import { recordEvent, recordIncident } from '@api/services/audit';
 
 /**
@@ -99,7 +100,16 @@ async function persistAudit(c: Context, durationMs: number): Promise<void> {
   // `orgMemberMiddleware` cuando la ruta lo exige, y si no, el header que manda
   // el dashboard. En las rutas de plataforma no hay empresa activa: son
   // cross-empresa a propósito.
-  const orgId = detail?.orgId ?? c.get('orgId') ?? c.req.header('cio-org-id') ?? null;
+  //
+  // En una ruta de curso manda la empresa DEL CURSO: esas rutas autorizan por el
+  // equipo del curso y no miran el encabezado, que puede nombrar cualquier otra
+  // empresa de la persona (ver `audit-empresa-del-curso.ts`).
+  const orgId =
+    detail?.orgId ??
+    (await empresaDelCursoDeLaRuta(path)) ??
+    c.get('orgId') ??
+    c.req.header('cio-org-id') ??
+    null;
   const userId = user?.id ?? null;
   const sessionId = session?.id ?? null;
 

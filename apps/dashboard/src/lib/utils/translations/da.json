@@ -4085,6 +4085,9 @@
     "error_timeout": "Det tager længere tid end normalt. Forespørgslen kører stadig: prøv igen om et par sekunder.",
     "error_stream_cut": "Forbindelsen til assistenten blev afbrudt. Det, der allerede er oprettet, er gemt.",
     "error_round_in_progress": "Assistenten arbejder stadig i denne chat. Vent, til den er færdig.",
+    "error_course_other_company": "Dette kursus tilhører en anden virksomhed. Genindlæs siden, så assistenten arbejder med kursets virksomhed.",
+    "error_not_enrolled": "Du er ikke tilmeldt dette kursus, så tutoren er ikke tilgængelig her.",
+    "error_forbidden": "Du har ikke tilladelse til at bruge assistenten i dette kursus.",
     "round_in_progress_notice": "Assistenten arbejder på dette kursus. Visningen opdateres af sig selv.",
     "tool_interrupted": "Afbrudt før den blev færdig. Tjek kurset: det, der nåede at blive gemt, er gemt.",
     "control_message": {

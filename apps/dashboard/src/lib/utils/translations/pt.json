@@ -4085,6 +4085,9 @@
     "error_timeout": "Está demorando mais que o normal. O pedido continua em andamento: tente de novo em alguns segundos.",
     "error_stream_cut": "A conexão com o assistente caiu. O que já foi criado ficou salvo.",
     "error_round_in_progress": "O assistente ainda está trabalhando neste chat. Aguarde até terminar.",
+    "error_course_other_company": "Este curso pertence a outra empresa. Recarregue a página para que o assistente trabalhe com a empresa do curso.",
+    "error_not_enrolled": "Você não está inscrito neste curso, então o tutor não está disponível aqui.",
+    "error_forbidden": "Você não tem permissão para usar o assistente neste curso.",
     "round_in_progress_notice": "O assistente está trabalhando neste curso. A tela se atualiza sozinha.",
     "tool_interrupted": "Interrompido antes de terminar. Confira o curso: o que chegou a ser salvo ficou salvo.",
     "control_message": {

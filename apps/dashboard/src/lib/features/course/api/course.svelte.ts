@@ -19,6 +19,7 @@ import type {
 import type { TCourseType } from '@cio/db/types';
 import { ZCourseCreate, ZCourseUpdate, type TCourseUpdate } from '@cio/utils/validation/course/course';
 import { DEFAULT_COMPLIANCE_SETTINGS } from '../utils/compliance-utils';
+import { entrarALaEmpresaDelCurso } from '../utils/empresa-del-curso';
 import { capturePosthogEvent } from '$lib/utils/services/posthog';
 import { currentOrg } from '$lib/utils/store/org';
 import { get } from 'svelte/store';
@@ -225,6 +226,11 @@ export class CourseApi extends BaseApiWithErrors {
       onSuccess: (response) => {
         console.log('response', response.data);
         if (response.data) {
+          // Antes de que el curso esté a la vista: la pantalla se dibuja en
+          // cuanto `course` cambia, y lo que pide al dibujarse tiene que salir
+          // con la empresa del curso. Ver `empresa-del-curso.ts`.
+          entrarALaEmpresaDelCurso(response.data.group?.organizationId);
+
           this.course = response.data;
           this.success = true;
           this.errors = {};
@@ -657,6 +663,10 @@ export class CourseApi extends BaseApiWithErrors {
    */
   setCourse(data: Course, profileId: string) {
     if (!data || !(Object.values(data) && Object.values(data).length)) return;
+
+    // Antes de dar el curso por cargado: lo que la pantalla pide al dibujarse
+    // tiene que salir ya con la empresa del curso. Ver `empresa-del-curso.ts`.
+    entrarALaEmpresaDelCurso(data.group?.organizationId);
 
     // Process group data
     if (data.group) {

@@ -4085,6 +4085,9 @@
     "error_timeout": "Việc này mất nhiều thời gian hơn bình thường. Yêu cầu vẫn đang được xử lý: vui lòng thử lại sau vài giây.",
     "error_stream_cut": "Kết nối với trợ lý đã bị ngắt. Những gì đã tạo đều đã được lưu.",
     "error_round_in_progress": "Trợ lý vẫn đang làm việc trong cuộc trò chuyện này. Vui lòng đợi đến khi xong.",
+    "error_course_other_company": "Khóa học này thuộc về một công ty khác. Hãy tải lại trang để trợ lý làm việc với công ty của khóa học.",
+    "error_not_enrolled": "Bạn chưa ghi danh vào khóa học này, nên trợ giảng không khả dụng ở đây.",
+    "error_forbidden": "Bạn không có quyền sử dụng trợ lý trong khóa học này.",
     "round_in_progress_notice": "Trợ lý đang làm việc với khóa học này. Màn hình sẽ tự cập nhật.",
     "tool_interrupted": "Bị ngắt trước khi hoàn tất. Hãy kiểm tra khóa học: những gì kịp lưu đều đã được lưu.",
     "control_message": {

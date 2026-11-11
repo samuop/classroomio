@@ -4085,6 +4085,9 @@
     "error_timeout": "Cela prend plus de temps que d'habitude. La demande est toujours en cours : réessayez dans quelques secondes.",
     "error_stream_cut": "La connexion avec l'assistant a été coupée. Ce qui a déjà été créé est enregistré.",
     "error_round_in_progress": "L'assistant travaille encore dans ce chat. Attendez qu'il ait terminé.",
+    "error_course_other_company": "Ce cours appartient à une autre entreprise. Rechargez la page pour que l'assistant travaille avec l'entreprise du cours.",
+    "error_not_enrolled": "Vous n'êtes pas inscrit à ce cours, le tuteur n'est donc pas disponible ici.",
+    "error_forbidden": "Vous n'avez pas la permission d'utiliser l'assistant dans ce cours.",
     "round_in_progress_notice": "L'assistant travaille sur ce cours. L'affichage se met à jour tout seul.",
     "tool_interrupted": "Interrompu avant la fin. Vérifiez le cours : ce qui a pu être enregistré l'est.",
     "control_message": {

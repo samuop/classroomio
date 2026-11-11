@@ -83,7 +83,15 @@ export function mensajeDelErrorDelChat(error: unknown, opciones: { corte?: boole
   // nuevo en unos segundos» contradecía lo que la pantalla estaba haciendo.
   if (esTiempoAgotado(error)) return { clave: 'ai_assistant.error_timeout_chat' };
 
-  const { detalle } = leerErrorDeApi(error);
+  const { detalle, code, status } = leerErrorDeApi(error);
+
+  // Los rechazos por permiso. El texto del servidor es para un registro: en
+  // inglés y sin decir qué hacer («Course does not belong to this
+  // organization», o un «UNAUTHORIZED» pelado), y así llegaba a la pantalla.
+  if (code === 'COURSE_ORG_MISMATCH') return { clave: 'ai_assistant.error_course_other_company' };
+  if (code === 'NOT_ENROLLED_IN_COURSE') return { clave: 'ai_assistant.error_not_enrolled' };
+  if (status === 403 && code === 'UNAUTHORIZED') return { clave: 'ai_assistant.error_forbidden' };
+
   const crudo = (error as { message?: unknown }).message;
   const mensaje = detalle ?? (typeof crudo === 'string' ? crudo : String(error));
   const minusculas = mensaje.toLowerCase();

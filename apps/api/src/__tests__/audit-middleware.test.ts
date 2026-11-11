@@ -38,6 +38,13 @@ vi.mock('@api/services/audit', () => ({
   recordIncident: (...args: unknown[]) => recordIncident(...(args as []))
 }));
 
+/** De qué empresa es cada curso, según la base. */
+const getCourseOrganizationId = vi.fn(async (_courseId: string): Promise<string | null> => null);
+
+vi.mock('@cio/db/queries/tag', () => ({
+  getCourseOrganizationId: (courseId: string) => getCourseOrganizationId(courseId)
+}));
+
 const { auditRequest } = await import('@api/middlewares/audit-request');
 const { anotarAuditoria } = await import('@api/utils/audit-detail');
 
@@ -46,6 +53,10 @@ const USER = 'a1b2c3d4-e5f6-4789-8abc-def012345678';
 const SESSION = '9c8b7a65-4321-4fed-8cba-0987654321fe';
 /** La empresa a la que la plataforma le carga crédito: no es la del header. */
 const OTRA_EMPRESA = '7d2e4f60-1a3b-4c5d-8e9f-0a1b2c3d4e5f';
+/** Un curso de una empresa cliente, abierto con la consultora (`ORG`) como activa. */
+const CURSO = '5b0e7c1a-9d2f-4e3b-a6c8-1f4d7e9a2b30';
+const LECCION = 'c4a8e2f6-0b1d-4a3c-9e5f-7d6b8a0c2e41';
+const EMPRESA_DEL_CURSO = 'e9f1a3c5-7b2d-4f6e-8a0c-3d5b7f9e1a24';
 
 const CHROME_WINDOWS =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36';
@@ -91,6 +102,8 @@ function buildApp() {
       })
       .get('/organization/tracking/overview', (c) => c.json({ ok: true }))
       .get('/course/c1/lesson', (c) => c.json({ ok: true }))
+      .put(`/course/${CURSO}/lesson/${LECCION}`, (c) => c.json({ ok: true }))
+      .delete(`/course/${CURSO}/lesson/${LECCION}`, (c) => c.json({ error: 'no es del equipo' }, 403))
       .post('/course/c1/section', (c) => c.json({ ok: true }, 201))
       .put('/organization', (c) => c.json({ ok: true }))
       .delete('/organization/team/m1', (c) => c.json({ ok: true }))
@@ -133,6 +146,7 @@ const incidentRow = () => recordIncident.mock.calls[0]![0] as Record<string, unk
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getCourseOrganizationId.mockImplementation(async () => null);
   currentUser = { id: USER, email: 'ana@consultora-ejemplo.com.ar', role: null };
   app = buildApp();
 });
@@ -325,6 +339,54 @@ describe('lo que declara el handler', () => {
       orgId: OTRA_EMPRESA,
       metadata: { antes: { cupoDeFichas: 15_000_000 } }
     });
+  });
+});
+
+/**
+ * Las rutas de un curso autorizan por el equipo del curso y no miran la empresa
+ * activa. Medido el 2026-11-11: una edición hecha con otra empresa activa quedó
+ * registrada en esa otra empresa (9 de 16), y la del curso no la veía.
+ */
+describe('lo que se hace sobre un curso se registra en la empresa del curso', () => {
+  const editar = () => call(`/course/${CURSO}/lesson/${LECCION}`, { method: 'PUT' });
+
+  it('una edición con otra empresa activa queda en la empresa del curso', async () => {
+    getCourseOrganizationId.mockImplementation(async (courseId) => (courseId === CURSO ? EMPRESA_DEL_CURSO : null));
+
+    await editar();
+    await flushAudit();
+
+    expect(getCourseOrganizationId).toHaveBeenCalledWith(CURSO);
+    expect(eventRow()).toMatchObject({ action: 'EDITO_LECCION', entityId: CURSO, orgId: EMPRESA_DEL_CURSO });
+  });
+
+  it('un rechazo sobre el curso también: la incidencia es de la empresa del curso', async () => {
+    getCourseOrganizationId.mockImplementation(async () => EMPRESA_DEL_CURSO);
+
+    await call(`/course/${CURSO}/lesson/${LECCION}`, { method: 'DELETE' });
+    await flushAudit();
+
+    expect(recordEvent).not.toHaveBeenCalled();
+    expect(incidentRow()).toMatchObject({ status: 403, orgId: EMPRESA_DEL_CURSO });
+  });
+
+  it('si no se puede saber de quién es el curso, vale la empresa del pedido y nada se rompe', async () => {
+    getCourseOrganizationId.mockRejectedValue(new Error('Postgres caído'));
+
+    const respuesta = await editar();
+    await flushAudit();
+
+    expect(respuesta.status).toBe(200);
+    expect(eventRow()).toMatchObject({ action: 'EDITO_LECCION', orgId: ORG });
+  });
+
+  it('una ruta que no nombra un curso no pregunta por ninguno', async () => {
+    await call('/organization', { method: 'PUT' });
+    await call('/course/c1/section', { method: 'POST' });
+    await flushAudit();
+
+    expect(getCourseOrganizationId).not.toHaveBeenCalled();
+    expect(eventRow()).toMatchObject({ orgId: ORG });
   });
 });
 

@@ -5488,6 +5488,9 @@
     "error_timeout": "This is taking longer than usual. Your request is still running: try again in a few seconds.",
     "error_stream_cut": "The connection to the assistant was cut. Everything already created was saved.",
     "error_round_in_progress": "The assistant is still working in this chat. Wait for it to finish.",
+    "error_course_other_company": "This course belongs to another company. Reload the page so the assistant works with the course's company.",
+    "error_not_enrolled": "You are not enrolled in this course, so the tutor is not available here.",
+    "error_forbidden": "You don't have permission to use the assistant in this course.",
     "round_in_progress_notice": "The assistant is working on this course. This updates on its own.",
     "tool_interrupted": "Cut off before finishing. Check the course: whatever got saved is there.",
     "control_message": {

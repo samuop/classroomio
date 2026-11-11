@@ -4085,6 +4085,9 @@
     "error_timeout": "Das dauert länger als üblich. Die Anfrage läuft noch: Versuchen Sie es in ein paar Sekunden erneut.",
     "error_stream_cut": "Die Verbindung zum Assistenten wurde unterbrochen. Was bereits erstellt wurde, ist gespeichert.",
     "error_round_in_progress": "Der Assistent arbeitet noch in diesem Chat. Warten Sie, bis er fertig ist.",
+    "error_course_other_company": "Dieser Kurs gehört zu einem anderen Unternehmen. Laden Sie die Seite neu, damit der Assistent mit dem Unternehmen des Kurses arbeitet.",
+    "error_not_enrolled": "Sie sind nicht in diesen Kurs eingeschrieben, daher ist der Tutor hier nicht verfügbar.",
+    "error_forbidden": "Sie haben keine Berechtigung, den Assistenten in diesem Kurs zu verwenden.",
     "round_in_progress_notice": "Der Assistent arbeitet an diesem Kurs. Die Ansicht aktualisiert sich von selbst.",
     "tool_interrupted": "Vor dem Ende abgebrochen. Prüfen Sie den Kurs: Was gespeichert werden konnte, ist gespeichert.",
     "control_message": {
