@@ -69,6 +69,23 @@ globalThis.IntersectionObserver ??= ObservadorNulo as unknown as typeof Intersec
 Element.prototype.scrollIntoView ??= () => {};
 
 /**
+ * Un respiro al terminar cada archivo, antes de que se desarme su entorno.
+ *
+ * Al cerrarse o desmontarse un diálogo, bits-ui deja un temporizador de 24 ms
+ * para devolverle el estilo al `body`. Si el último test del archivo desmonta
+ * un diálogo y jsdom se desarma dentro de esos 24 ms, el temporizador corre sin
+ * `document`: «ReferenceError: document is not defined», fuera de todo test.
+ * Vitest lo cuenta como error de la corrida y sale con 1 aunque los 529 tests
+ * hayan pasado — y el deploy, que corre esta suite, se frena (run 43071759313,
+ * 2026-11-11; en los tres anteriores no había pasado).
+ *
+ * Esperar acá deja que esos temporizadores corran con el entorno todavía vivo.
+ */
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 80));
+});
+
+/**
  * Traducciones de verdad, en español.
  *
  * Cargar las mismas que usa la app es lo que permite que un test note que
