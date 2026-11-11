@@ -78,7 +78,8 @@ vi.mock('@cio/db/queries/agent/chat-document', async (original) => ({
 vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
   bindPlanItem: vi.fn(),
-  resolvePlanBinding: vi.fn().mockResolvedValue(null)
+  resolvePlanBinding: vi.fn().mockResolvedValue(null),
+  loQueSeVaConLaLeccion: vi.fn(async () => ({ ejerciciosConEntregas: [], alumnosQueLaCompletaron: 0 }))
 }));
 
 vi.mock('@api/services/agent/chat-context', async (original) => ({

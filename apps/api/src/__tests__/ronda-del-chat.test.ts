@@ -86,6 +86,11 @@ vi.mock('@cio/db/queries/group', async (original) => ({
   isCourseTeamMemberOrOrgAdmin: vi.fn(async () => true)
 }));
 
+vi.mock('@api/middlewares/course-member', async (original) => ({
+  ...(await original<typeof import('@api/middlewares/course-member')>()),
+  cursaElCurso: vi.fn(async () => false)
+}));
+
 /**
  * Lo que el servidor tiene guardado de cada conversación. Desde 2026-11 el
  * servidor arma la historia con esto y el panel manda sólo el mensaje nuevo:
@@ -1661,5 +1666,23 @@ describe('un modelo que relee la misma lección sin parar', () => {
     // Y la nota le dice que lo tiene, no que lo vuelva a leer.
     expect(ultimo).toContain('Current texts you ALREADY have');
     expect(ultimo).not.toContain('Outdated reads');
+  });
+});
+
+/**
+ * El tutor es para quien cursa. Quien no es del equipo entraba como alumno sin
+ * que nadie mirara si estaba inscripto, y el tutor le leía las lecciones de un
+ * curso que no le habían asignado (medido el 2026-11-11).
+ */
+describe('alguien de la empresa que no cursa el curso', () => {
+  it('no recibe al tutor: 403, y el modelo no llega a correr', async () => {
+    vi.mocked(isCourseTeamMemberOrOrgAdmin).mockResolvedValueOnce(false);
+    promptsRecibidos = [];
+
+    const respuesta = await chat({ conversationId: conversacionNueva() });
+
+    expect(respuesta.status).toBe(403);
+    expect(await respuesta.json()).toMatchObject({ code: 'NOT_ENROLLED_IN_COURSE' });
+    expect(promptsRecibidos).toHaveLength(0);
   });
 });

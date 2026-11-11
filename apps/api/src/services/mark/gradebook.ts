@@ -2,6 +2,7 @@ import { ContentType, ROLE } from '@cio/utils/constants';
 import { getMarksByCourseId, type Mark } from '@cio/db/queries/mark';
 import { getCourseMembers } from '@cio/db/queries/course/people';
 import { getCourseWithRelations } from '@cio/db/queries/course';
+import { isCourseTeamMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { buildCourseContent, type CourseContentItem } from '@api/services/course/utils';
 import { AppError, ErrorCodes } from '@api/utils/errors';
 
@@ -73,7 +74,40 @@ function buildExercises(marks: Mark[], contentItems: CourseContentItem[], course
 }
 
 /**
+ * La libreta según quién la pide.
+ *
+ * El equipo del curso la ve entera. Un alumno ve su fila y nada más: la ruta
+ * sólo exige ser miembro del curso, y devolvía los nombres, correos y notas de
+ * todos los compañeros (medido el 2026-11-11; el panel los escondía en pantalla,
+ * pero ya habían viajado). Lo que el alumno necesita para ver sus notas —las
+ * columnas y su fila— sigue llegando.
+ */
+export async function getGradebookFor(courseId: string, viewerId: string): Promise<GradebookResponse> {
+  const [libreta, esDelEquipo] = await Promise.all([
+    getGradebook(courseId),
+    isCourseTeamMemberOrOrgAdmin(courseId, viewerId)
+  ]);
+
+  return esDelEquipo ? libreta : soloLoPropio(libreta, viewerId);
+}
+
+/** La libreta recortada a las filas de una persona. */
+export function soloLoPropio(libreta: GradebookResponse, profileId: string): GradebookResponse {
+  const students = libreta.students.filter((alumno) => alumno.profileId === profileId);
+  const propias = new Set(students.map((alumno) => alumno.id));
+
+  return {
+    ...libreta,
+    students,
+    studentMarksByExerciseId: Object.fromEntries(
+      Object.entries(libreta.studentMarksByExerciseId).filter(([miembro]) => propias.has(miembro))
+    )
+  };
+}
+
+/**
  * Returns all data needed to render the marks gradebook: students, exercises in order, and marks per student per exercise.
+ * Trae a TODOS los alumnos: para contestarle a una persona, usar `getGradebookFor`.
  */
 export async function getGradebook(courseId: string): Promise<GradebookResponse> {
   try {

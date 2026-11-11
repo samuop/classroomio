@@ -38,6 +38,9 @@ type CourseReadinessInput = {
   organization?: Pick<TOrganization, 'customDomain' | 'isCustomDomainVerified' | 'siteName'> | null;
 };
 
+/** El aviso de que hay contenido que el alumno no va a poder abrir. */
+export const LOCKED_FOR_LEARNERS = 'CONTENT_LOCKED_FOR_LEARNERS';
+
 const PLACEHOLDER_PATTERNS = [
   /\[edit me\]/i,
   /^untitled\b/i,
@@ -167,6 +170,26 @@ export function evaluateCourseGoLiveReadiness(input: CourseReadinessInput): Cour
         )
       );
     }
+  }
+
+  // Una lección nace bloqueada: un curso recién armado se publica con todas
+  // cerradas, el alumno ve la lista y no puede abrir ninguna. No bloquea la
+  // publicación —habilitar por etapas es un uso legítimo—, pero no puede pasar
+  // callado: el asistente publicaba y decía «ya está disponible para los
+  // alumnos» con cuatro de cuatro lecciones cerradas (medido el 2026-11-10).
+  const bloqueadas = learningItems.filter((item) => item.isUnlocked === false);
+
+  if (bloqueadas.length > 0) {
+    const lecciones = bloqueadas.filter((item) => item.type === ContentType.Lesson).length;
+    const ejercicios = bloqueadas.length - lecciones;
+
+    warnings.push(
+      buildIssue(
+        LOCKED_FOR_LEARNERS,
+        `${bloqueadas.length} of ${learningItems.length} items are LOCKED for learners (${lecciones} lesson(s), ${ejercicios} exercise(s)): once published, learners see them listed but cannot open them. Unlock them with update_lesson / update_exercise { isUnlocked: true } if the teacher wants them available now; if the teacher is releasing the course in stages, leave them and say which ones stay locked.`,
+        'course.content'
+      )
+    );
   }
 
   if (!hasMeaningfulText(course.metadata?.instructor?.name)) {

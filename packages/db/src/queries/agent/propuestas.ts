@@ -225,6 +225,40 @@ export async function marcarPropuestasInformadas(ids: string[]): Promise<void> {
   }
 }
 
+/**
+ * Lo que se va con una lección si se la borra: los ejercicios adjuntos que ya
+ * tienen entregas, y cuántos alumnos la habían completado.
+ *
+ * Las claves foráneas borran en cascada (`exercise.lesson_id`,
+ * `submission.exercise_id`, `lesson_completion.lesson_id`), así que borrar la
+ * lección destruye las entregas calificadas de un ejercicio adjunto sin pasar
+ * por ninguna aprobación. Medido el 2026-11-11: una entrega con su nota se fue
+ * con un «borrá la lección», y la respuesta ofrecía revisar el cuestionario que
+ * ya no existía.
+ */
+export async function loQueSeVaConLaLeccion(lessonId: string): Promise<{
+  ejerciciosConEntregas: Array<{ id: string; title: string | null; entregas: number }>;
+  alumnosQueLaCompletaron: number;
+}> {
+  const [ejercicios, [completadas]] = await Promise.all([
+    db
+      .select({ id: schema.exercise.id, title: schema.exercise.title, entregas: count(schema.submission.id) })
+      .from(schema.exercise)
+      .innerJoin(schema.submission, eq(schema.submission.exerciseId, schema.exercise.id))
+      .where(eq(schema.exercise.lessonId, lessonId))
+      .groupBy(schema.exercise.id, schema.exercise.title),
+    db
+      .select({ cantidad: count() })
+      .from(schema.lessonCompletion)
+      .where(and(eq(schema.lessonCompletion.lessonId, lessonId), eq(schema.lessonCompletion.isComplete, true)))
+  ]);
+
+  return {
+    ejerciciosConEntregas: ejercicios.map((e) => ({ id: e.id, title: e.title, entregas: Number(e.entregas) })),
+    alumnosQueLaCompletaron: Number(completadas?.cantidad ?? 0)
+  };
+}
+
 /** Cuántos alumnos entregaron este ejercicio y con qué nota promedio. */
 export async function entregasDelEjercicio(exerciseId: string): Promise<{ cantidad: number; promedio: number | null }> {
   const [fila] = await db

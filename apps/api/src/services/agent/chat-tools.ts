@@ -13,6 +13,7 @@ import {
   enmendarItemDelPlan,
   entregasDelEjercicio,
   getChatConversation,
+  loQueSeVaConLaLeccion,
   readPlanRegistry,
   resolvePlanBinding
 } from '@cio/db/queries/agent';
@@ -128,7 +129,11 @@ import {
 import { getOrgAiImageSettingsService } from '@api/services/organization/ai-images';
 import { buildUpdatedQuestions } from '@api/services/agent/question-update';
 import { updateCourseLandingPageService } from '@api/services/course/landing-page';
-import { getCourseGoLiveReadiness, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
+import {
+  getCourseGoLiveReadiness,
+  LOCKED_FOR_LEARNERS,
+  publishCourseWhenReady
+} from '@api/services/course/go-live-readiness';
 import {
   assertValidUuid,
   verifyExerciseBelongsToCourse,
@@ -4390,12 +4395,20 @@ export function buildAgentTools(
       execute: async (args) => {
         return executeAgentTool('go_live_course', { orgId, userId, courseId, args }, async () => {
           const result = await publishCourseWhenReady(courseId);
+          // Publicado no es disponible: lo bloqueado el alumno no lo abre.
+          const bloqueado = result.readiness.warnings.find((aviso) => aviso.code === LOCKED_FOR_LEARNERS);
 
           return {
             courseId: result.course.id,
             title: result.course.title,
             slug: result.course.slug,
             isPublished: result.course.isPublished,
+            ...(bloqueado
+              ? {
+                  lockedForLearners: bloqueado.message,
+                  note: 'The course is published, but NOT fully available: do not tell the teacher learners can take it without also telling them how many items are locked, and ask whether to unlock them now.'
+                }
+              : {}),
             readiness: result.readiness
           };
         });
@@ -4430,15 +4443,42 @@ export function buildAgentTools(
             );
           }
 
+          // La base borra en cascada los ejercicios adjuntos y sus entregas. Un
+          // ejercicio con entregas sólo se borra con la aprobación de la docente
+          // (`delete_exercise`), y borrar la lección no puede ser el atajo que la
+          // saltea. Ver `loQueSeVaConLaLeccion`.
+          const seVa = await loQueSeVaConLaLeccion(lessonId);
+
+          if (seVa.ejerciciosConEntregas.length > 0) {
+            const lista = seVa.ejerciciosConEntregas
+              .map((e) => `"${e.title ?? '(sin título)'}" (id: ${e.id}, ${e.entregas} graded submission(s))`)
+              .join(', ');
+
+            throw new Error(
+              `Refusing to delete lesson "${lesson.title}": deleting it would also destroy ${lista}, attached to this lesson, together with the learners' grades. Nothing was deleted. Call delete_exercise on each one first — it will not delete either: it leaves the change waiting for the teacher's approval — and tell the teacher the lesson stays until they decide. Do NOT say the lesson was deleted.`
+            );
+          }
+
           await deleteLessonService(lessonId);
           // Borrar corre a las que venían detrás: la manija de cada una bajó uno.
           manijas.invalidar();
-          anotarCambio(registro, 'borro', lesson.title ?? lessonId, { entidad: { tipo: 'Lesson', id: lessonId } });
+          anotarCambio(registro, 'borro', lesson.title ?? lessonId, {
+            entidad: { tipo: 'Lesson', id: lessonId },
+            ...(seVa.alumnosQueLaCompletaron > 0
+              ? { cambios: [`se perdió el avance de ${seVa.alumnosQueLaCompletaron} alumno(s) en esta lección`] }
+              : {})
+          });
 
           return {
             deleted: true,
             id: lessonId,
             title: lesson.title,
+            ...(seVa.alumnosQueLaCompletaron > 0
+              ? {
+                  learnersWhoHadCompletedIt: seVa.alumnosQueLaCompletaron,
+                  progressNote: `${seVa.alumnosQueLaCompletaron} learner(s) had completed this lesson; that progress is gone and their completion percentage for the course changed. Tell the teacher, with the number.`
+                }
+              : {}),
             note: 'The lesson is gone, and the handles after it have shifted: call get_course_structure before using one. If it was part of an approved plan, the Plan Progress block will now show it as removed (🗑️) and you must NOT rebuild it — tell the teacher it is out of the plan too.'
           };
         });

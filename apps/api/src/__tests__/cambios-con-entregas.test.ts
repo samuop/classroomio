@@ -49,7 +49,19 @@ vi.mock('@cio/db/queries/lesson/language', () => ({
 vi.mock('@cio/db/queries/agent', async (original) => ({
   ...(await original<typeof import('@cio/db/queries/agent')>()),
   entregasDelEjercicio: vi.fn(),
+  loQueSeVaConLaLeccion: vi.fn(),
   guardarPropuesta: vi.fn(async () => {})
+}));
+
+vi.mock('@api/services/course/go-live-readiness', async (original) => ({
+  ...(await original<typeof import('@api/services/course/go-live-readiness')>()),
+  publishCourseWhenReady: vi.fn()
+}));
+
+vi.mock('@api/services/lesson/lesson', async (original) => ({
+  ...(await original<typeof import('@api/services/lesson/lesson')>()),
+  getLesson: vi.fn(),
+  deleteLessonService: vi.fn()
 }));
 
 vi.mock('@api/services/agent/chat-context', async (original) => ({
@@ -66,7 +78,14 @@ import {
   updateExerciseService
 } from '@api/services/exercise/exercise';
 import { getCourseLessonContents } from '@cio/db/queries/lesson/language';
-import { entregasDelEjercicio, guardarPropuesta, type PropuestaGuardada } from '@cio/db/queries/agent';
+import {
+  entregasDelEjercicio,
+  guardarPropuesta,
+  loQueSeVaConLaLeccion,
+  type PropuestaGuardada
+} from '@cio/db/queries/agent';
+import { deleteLessonService, getLesson } from '@api/services/lesson/lesson';
+import { LOCKED_FOR_LEARNERS, publishCourseWhenReady } from '@api/services/course/go-live-readiness';
 import { buildAgentTools } from '@api/services/agent/chat-tools';
 import { lineasDelRegistro, registroVacio } from '@api/services/agent/round-ledger';
 import { aplicarPropuesta, avisoDePropuestas, calcularImpacto } from '@api/services/agent/cambios-con-entregas';
@@ -189,6 +208,98 @@ describe('con entregas, nada que mueva notas se escribe solo', () => {
     expect(updateExerciseService).toHaveBeenCalledTimes(1);
     expect(guardarPropuesta).not.toHaveBeenCalled();
     expect(resultado).toMatchObject({ addedCount: 1 });
+  });
+});
+
+/**
+ * Borrar una lección no puede ser el atajo que saltea la aprobación: la base
+ * borra en cascada el ejercicio adjunto y sus entregas. Medido el 2026-11-11:
+ * «borrá la lección» se llevó una entrega calificada, sin tarjeta.
+ */
+describe('borrar una lección no se lleva entregas', () => {
+  const LECCION = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  beforeEach(() => {
+    vi.mocked(getLesson).mockResolvedValue({ id: LECCION, title: 'Recibir mercadería' } as never);
+  });
+
+  it('con un ejercicio adjunto que tiene entregas, se niega y nombra el ejercicio', async () => {
+    vi.mocked(loQueSeVaConLaLeccion).mockResolvedValue({
+      ejerciciosConEntregas: [{ id: EXAMEN, title: 'Examen final', entregas: 50 }],
+      alumnosQueLaCompletaron: 12
+    });
+    const registro = registroVacio();
+
+    const resultado = await herramientas(registro).delete_lesson.execute(
+      { lessonId: LECCION, confirmTitle: 'Recibir mercadería' },
+      OPCIONES
+    );
+
+    expect(deleteLessonService).not.toHaveBeenCalled();
+    expect(resultado.ok).toBe(false);
+    expect(String(resultado.error)).toContain('"Examen final"');
+    expect(String(resultado.error)).toContain('50 graded submission(s)');
+    expect(String(resultado.error)).toContain('Nothing was deleted');
+    // Nada que la docente lea como «se borró».
+    expect(lineasDelRegistro(registro)).toEqual([]);
+  });
+
+  it('sin entregas en juego, borra, y cuenta el avance que se pierde', async () => {
+    vi.mocked(loQueSeVaConLaLeccion).mockResolvedValue({ ejerciciosConEntregas: [], alumnosQueLaCompletaron: 12 });
+
+    const resultado = await herramientas().delete_lesson.execute(
+      { lessonId: LECCION, confirmTitle: 'Recibir mercadería' },
+      OPCIONES
+    );
+
+    expect(deleteLessonService).toHaveBeenCalledWith(LECCION);
+    expect(resultado).toMatchObject({ deleted: true, learnersWhoHadCompletedIt: 12 });
+    expect(String(resultado.progressNote)).toContain('12 learner(s)');
+  });
+
+  it('sin alumnos que la hayan completado, no inventa un aviso de avance', async () => {
+    vi.mocked(loQueSeVaConLaLeccion).mockResolvedValue({ ejerciciosConEntregas: [], alumnosQueLaCompletaron: 0 });
+
+    const resultado = await herramientas().delete_lesson.execute(
+      { lessonId: LECCION, confirmTitle: 'Recibir mercadería' },
+      OPCIONES
+    );
+
+    expect(deleteLessonService).toHaveBeenCalledWith(LECCION);
+    expect(resultado).not.toHaveProperty('progressNote');
+  });
+});
+
+/**
+ * Publicado no es disponible: si quedan piezas bloqueadas, la herramienta se lo
+ * dice al modelo arriba de todo, no perdido entre los avisos del chequeo.
+ */
+describe('publicar un curso con lecciones bloqueadas', () => {
+  const publicado = (warnings: Array<{ code: string; message: string }>) =>
+    ({
+      course: { id: CURSO, title: 'Mostrador', slug: 'mostrador', isPublished: true },
+      readiness: { ready: true, blockers: [], warnings, suggestedFixes: {} }
+    }) as never;
+
+  it('la respuesta dice cuántas quedan cerradas y que no está disponible del todo', async () => {
+    vi.mocked(publishCourseWhenReady).mockResolvedValue(
+      publicado([{ code: LOCKED_FOR_LEARNERS, message: '4 of 4 items are LOCKED for learners' }])
+    );
+
+    const resultado = await herramientas().go_live_course.execute({}, OPCIONES);
+
+    expect(resultado).toMatchObject({ isPublished: true, lockedForLearners: '4 of 4 items are LOCKED for learners' });
+    expect(String(resultado.note)).toContain('NOT fully available');
+  });
+
+  it('con todo habilitado no agrega nada', async () => {
+    vi.mocked(publishCourseWhenReady).mockResolvedValue(publicado([]));
+
+    const resultado = await herramientas().go_live_course.execute({}, OPCIONES);
+
+    expect(resultado).toMatchObject({ isPublished: true });
+    expect(resultado).not.toHaveProperty('lockedForLearners');
+    expect(resultado).not.toHaveProperty('note');
   });
 });
 

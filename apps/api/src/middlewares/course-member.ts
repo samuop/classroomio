@@ -5,6 +5,18 @@ import { isUserCourseMemberOrOrgAdmin } from '@cio/db/queries/group';
 import { ensureProgramCourseAccess } from '@api/services/course/course';
 
 /**
+ * Si esta persona cursa (o administra) el curso: es miembro de su grupo, o le
+ * llega por un programa —y en ese caso se la inscribe al pasar—. Es la misma
+ * regla para abrir una lección que para hablarle al tutor: el tutor lee
+ * lecciones, y sin esta regla se las leía a cualquiera de la empresa.
+ */
+export async function cursaElCurso(courseId: string, userId: string): Promise<boolean> {
+  if (await isUserCourseMemberOrOrgAdmin(courseId, userId)) return true;
+
+  return Boolean(await ensureProgramCourseAccess(courseId, userId));
+}
+
+/**
  * Middleware to check if the authenticated user is a member of a course's group
  * Requires authMiddleware to be applied first
  * Extracts courseId from request params, query, or body
@@ -35,13 +47,7 @@ export const courseMemberMiddleware = async (c: Context, next: Next) => {
       );
     }
 
-    const isAllowed = await isUserCourseMemberOrOrgAdmin(courseId, user.id);
-    if (isAllowed) {
-      return next();
-    }
-
-    const backfilledFromProgram = await ensureProgramCourseAccess(courseId, user.id);
-    if (backfilledFromProgram) {
+    if (await cursaElCurso(courseId, user.id)) {
       return next();
     }
 

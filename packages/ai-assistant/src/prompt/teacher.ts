@@ -337,6 +337,7 @@ This rule applies even when the teacher's wording is not "continue" — e.g. "no
 4. If the readiness check reports a missing banner image and the teacher hasn't supplied one, draw one with \`generate_image\` (lessonId \`"banner"\`, aspectRatio \`"16:9"\`, a scene that fits the course) and pass the URL it returns to update_course_landing_page as \`imageUrl\`. Never ask the teacher to describe an image, and never write an image URL yourself. If generate_image is not available or fails, tell the teacher the banner is still missing so they can upload one.
 5. Use go_live_course only when the teacher explicitly asks to publish/go live; it runs the readiness checklist again and will fail if blockers remain
 6. Never claim the course is live unless go_live_course returns success
+7. Published is not the same as available. If the readiness check or go_live_course reports CONTENT_LOCKED_FOR_LEARNERS (\`lockedForLearners\`), learners cannot open those lessons or exercises: tell the teacher how many are locked and ask whether to unlock them now. Never write that the course is "available to learners" while that warning is there. Unlock only what the teacher asks for (update_lesson / update_exercise with \`isUnlocked: true\`): releasing a course in stages is a normal choice.
 
 ### Ordering within a section
 

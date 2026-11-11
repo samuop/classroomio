@@ -3,6 +3,7 @@ import { authMiddleware } from '@api/middlewares/auth';
 import { orgMemberMiddleware } from '@api/middlewares/org-member';
 import { orgAdminMiddleware } from '@api/middlewares/org-admin';
 import { agentContentTypeRewrite } from '@api/middlewares/agent-content-type';
+import { cursaElCurso } from '@api/middlewares/course-member';
 import { handleError, AppError } from '@api/utils/errors';
 import { zValidator } from '@hono/zod-validator';
 import {
@@ -894,6 +895,14 @@ const agentCoreRouter = new Hono()
 
       if (courseRow.organizationId !== orgId) {
         throw new AppError('Course does not belong to this organization', 'COURSE_ORG_MISMATCH', 403);
+      }
+
+      // El tutor es para quien cursa. Quien no es del equipo entraba como alumno
+      // sin que nadie mirara si estaba inscripto: cualquier miembro de la empresa
+      // le pedía al tutor las lecciones de un curso que no le asignaron, aunque
+      // la ruta de la lección le contestara 403 (medido el 2026-11-11).
+      if (role === AgentRole.STUDENT && !(await cursaElCurso(courseId, user.id))) {
+        throw new AppError('You are not enrolled in this course', 'NOT_ENROLLED_IN_COURSE', 403);
       }
 
       if (conversationId) {

@@ -9,6 +9,7 @@ import { ensureCourseSlug, generateUniqueCourseSlug } from '../services/course/l
 import {
   evaluateCourseGoLiveReadiness,
   getCourseGoLiveReadiness,
+  LOCKED_FOR_LEARNERS,
   publishCourseWhenReady
 } from '../services/course/go-live-readiness';
 
@@ -173,6 +174,39 @@ describe('evaluateCourseGoLiveReadiness', () => {
     expect(readiness.ready).toBe(true);
     expect(readiness.blockers).toEqual([]);
     expect(readiness.courseUrl).toBe('https://school.example.com/course/workplace-safety-essentials');
+  });
+
+  /**
+   * Publicado no es disponible. Una lección nace bloqueada, y el asistente
+   * publicaba un curso recién armado diciendo «ya está disponible para los
+   * alumnos» con las cuatro lecciones cerradas (medido el 2026-11-10).
+   */
+  describe('contenido bloqueado para el alumno', () => {
+    const bloqueada = (id: string) => buildContentItem({ id, isUnlocked: false });
+    const cuestionario = (id: string, isUnlocked: boolean) =>
+      buildContentItem({ id, type: ContentType.Exercise, questionCount: 3, isUnlocked });
+    const avisoDe = (contentItems: CourseContentItemRow[]) =>
+      evaluateCourseGoLiveReadiness({ course: buildCourse() as never, contentItems }).warnings.find(
+        (aviso) => aviso.code === LOCKED_FOR_LEARNERS
+      );
+
+    it('avisa cuántas piezas quedan cerradas, sin frenar la publicación', () => {
+      const contentItems = [bloqueada('l1'), bloqueada('l2'), buildContentItem({ id: 'l3' }), cuestionario('e1', false)];
+      const readiness = evaluateCourseGoLiveReadiness({ course: buildCourse() as never, contentItems });
+
+      // Habilitar por etapas es un uso legítimo: avisa, no bloquea.
+      expect(readiness.ready).toBe(true);
+      expect(avisoDe(contentItems)?.message).toContain('3 of 4 items are LOCKED');
+      expect(avisoDe(contentItems)?.message).toContain('2 lesson(s), 1 exercise(s)');
+    });
+
+    it('con todo habilitado no avisa nada', () => {
+      expect(avisoDe([buildContentItem(), cuestionario('e1', true)])).toBeUndefined();
+    });
+
+    it('lo que no dice si está bloqueado (null) cuenta como habilitado, igual que para el alumno', () => {
+      expect(avisoDe([buildContentItem({ isUnlocked: null })])).toBeUndefined();
+    });
   });
 });
 

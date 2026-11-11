@@ -2,8 +2,8 @@ import { Hono } from '@api/utils/hono';
 import { authMiddleware } from '@api/middlewares/auth';
 import { courseMemberMiddleware } from '@api/middlewares/course-member';
 import { courseTeamMemberMiddleware } from '@api/middlewares/course-team-member';
-import { getGradebook } from '@api/services/mark/gradebook';
-import { getMarks } from '@api/services/mark';
+import { getGradebookFor } from '@api/services/mark/gradebook';
+import { getMarksFor } from '@api/services/mark';
 import { generateCourseReport } from '@api/services/course/course-report';
 import { handleError } from '@api/utils/errors';
 import { isRenderConfigured, RENDER_UNCONFIGURED_MESSAGE } from '@api/utils/render';
@@ -31,7 +31,8 @@ export const markRouter = new Hono()
   .get('/gradebook', authMiddleware, courseMemberMiddleware, async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
-      const gradebook = await getGradebook(courseId);
+      // Un alumno recibe sólo su fila. Ver `getGradebookFor`.
+      const gradebook = await getGradebookFor(courseId, c.get('user')!.id);
       return c.json({ success: true, data: gradebook }, 200);
     } catch (error) {
       return handleError(c, error, 'Failed to get gradebook');
@@ -74,7 +75,7 @@ export const markRouter = new Hono()
   .get('/', authMiddleware, courseMemberMiddleware, async (c) => {
     try {
       const courseId = c.req.param('courseId')!;
-      const marks = await getMarks(courseId);
+      const marks = await getMarksFor(courseId, c.get('user')!.id);
 
       return c.json({ success: true, data: marks }, 200);
     } catch (error) {
