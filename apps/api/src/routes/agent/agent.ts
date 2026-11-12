@@ -3021,7 +3021,9 @@ const agentCoreRouter = new Hono()
             identidad: identidadDelPedido,
             registro: registroDeRonda,
             courseId,
-            conversationId
+            conversationId,
+            // El chat ya no las muestra: quedan acá. Ver `auditoria-del-asistente.ts`.
+            preguntasARevisar: preguntasQueQuedaronARevisar
           });
 
           // Auditada: lo que quedó a resguardo paso por paso ya no hace falta.

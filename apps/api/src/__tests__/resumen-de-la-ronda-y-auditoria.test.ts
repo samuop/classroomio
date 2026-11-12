@@ -156,6 +156,46 @@ describe('la auditoría de lo que cambió el asistente', () => {
     expect(registrar).not.toHaveBeenCalled();
   });
 
+  it('las preguntas que la ronda dejó a revisar quedan en la auditoría, una fila por pregunta', async () => {
+    const registrar = vi.fn(async () => {});
+
+    await auditarCambiosDeLaRonda({
+      identidad: IDENTIDAD,
+      registro: registroVacio(),
+      courseId: CURSO,
+      conversationId: 'conv-2',
+      preguntasARevisar: [
+        {
+          exerciseId: EXAMEN,
+          exerciseTitle: 'Examen final',
+          questionId: '41',
+          questionTitle: '¿Cada cuánto se cuenta la caja?',
+          evidence: 'La caja se cuenta al cierre de cada turno.'
+        }
+      ],
+      registrar
+    });
+
+    expect(registrar).toHaveBeenCalledTimes(1);
+    expect(registrar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...IDENTIDAD,
+        action: 'ASISTENTE_DEJO_PREGUNTA_A_REVISAR',
+        entity: 'Exercise',
+        entityId: EXAMEN,
+        always: true,
+        metadata: {
+          courseId: CURSO,
+          conversationId: 'conv-2',
+          ejercicio: 'Examen final',
+          preguntaId: '41',
+          pregunta: '¿Cada cuánto se cuenta la caja?',
+          seBasabaEn: 'La caja se cuenta al cierre de cada turno.'
+        }
+      })
+    );
+  });
+
   it('si la base falla en una fila, sigue con las otras y no rompe nada', async () => {
     const registro = registroVacio();
     const registrar = vi.fn().mockRejectedValueOnce(new Error('la base no contesta')).mockResolvedValue(undefined);

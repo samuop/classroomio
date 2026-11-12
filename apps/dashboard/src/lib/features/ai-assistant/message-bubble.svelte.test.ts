@@ -155,6 +155,24 @@ describe('lo que el mensaje dice haber cambiado y no cambió', () => {
     expect(screen.getByText(texto('ai_assistant.unverified_claims.nothing_changed'))).toBeInTheDocument();
   });
 
+  /**
+   * La lista de lo que cambió y la de preguntas a revisar son control interno:
+   * quedan en la metadata del mensaje y en la auditoría, no en el chat.
+   */
+  it('lo que el servidor registró de la ronda no se dibuja en el chat', () => {
+    const mensaje = conAfirmaciones({
+      roundChanges: ['Editó «Controlar precios»', 'Editó «Recibir mercadería» (5 veces)'],
+      questionsToReview: [{ exercise: 'Examen final', question: '¿Cada cuánto se cuenta la caja?' }]
+    });
+    const { container } = dibujar(mensaje, [pedido, mensaje]);
+
+    expect(container.textContent).toContain('Listo, se actualizaron las preguntas del cuestionario.');
+    expect(container.textContent).not.toContain('Editó «Controlar precios»');
+    expect(container.textContent).not.toContain('Recibir mercadería');
+    expect(container.textContent).not.toContain('¿Cada cuánto se cuenta la caja?');
+    expect(screen.queryByText(texto('course.navItem.lessons.build_report.round_changes'))).toBeNull();
+  });
+
   it('sin diferencias, no hay advertencia', () => {
     const mensaje = conAfirmaciones({ roundChanges: ['Cambió las preguntas de «Cuestionario de precios»'] });
 

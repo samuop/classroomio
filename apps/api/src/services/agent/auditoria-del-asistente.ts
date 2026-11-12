@@ -38,6 +38,17 @@ const ACCION_EN_LA_AUDITORIA: Record<CambioDeRonda['accion'], string> = {
   propuso: 'ASISTENTE_PROPUSO_CAMBIO_CON_ENTREGAS'
 };
 
+/** Una pregunta cuya lección cambió en la ronda y quedó sin la frase que la respaldaba. */
+export const ACCION_PREGUNTA_A_REVISAR = 'ASISTENTE_DEJO_PREGUNTA_A_REVISAR';
+
+export interface PreguntaARevisarAuditada {
+  exerciseId: string;
+  exerciseTitle: string;
+  questionId: string;
+  questionTitle: string;
+  evidence: string;
+}
+
 /**
  * El nombre de la acción. Editar una SECCIÓN (renombrarla, moverla) no es editar
  * una lección: con el mismo nombre, quien filtra la auditoría por lecciones
@@ -63,11 +74,43 @@ export async function auditarCambiosDeLaRonda(params: {
    * lo que había quedado a resguardo. Ver `auditoria-pendiente.ts`.
    */
   interrumpida?: boolean;
+  /**
+   * Las preguntas que esta ronda dejó a revisar: su lección cambió y la frase
+   * en la que se basaban ya no está. El chat dejó de mostrarlas (2026-11-12),
+   * así que la auditoría es donde quedan, junto con los cambios.
+   */
+  preguntasARevisar?: ReadonlyArray<PreguntaARevisarAuditada>;
   /** Para escribir sin esperar la base en los tests. */
   registrar?: typeof recordEvent;
 }): Promise<void> {
   const registrar = params.registrar ?? recordEvent;
   const lineas = lineasDelRegistro(params.registro);
+
+  for (const pregunta of params.preguntasARevisar ?? []) {
+    try {
+      await registrar({
+        ...params.identidad,
+        action: ACCION_PREGUNTA_A_REVISAR,
+        entity: 'Exercise',
+        entityId: pregunta.exerciseId,
+        metadata: {
+          courseId: params.courseId,
+          ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+          ejercicio: pregunta.exerciseTitle,
+          preguntaId: pregunta.questionId,
+          pregunta: pregunta.questionTitle,
+          seBasabaEn: pregunta.evidence
+        },
+        method: 'POST',
+        route: '/agent/chat',
+        status: 200,
+        durationMs: null,
+        always: true
+      });
+    } catch (error) {
+      console.error('[agent.chat] no se pudo auditar una pregunta a revisar:', error);
+    }
+  }
 
   for (const [indice, cambio] of params.registro.cambios.entries()) {
     try {
