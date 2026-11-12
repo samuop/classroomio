@@ -6,6 +6,7 @@ import { esCortePorTiempo, type FuenteVista } from '@api/services/agent/groundin
 import { crearMarcadorDeTokens, type MarcadorDeTokens } from '@api/services/agent/marcas-del-rebote';
 import { buscarFuente } from '@api/services/agent/plan-coverage';
 import { RECORDATORIO_DE_LA_DOCENTE } from '@api/services/agent/respuestas-del-formulario';
+import { buscarEnFuentes, type FuenteParaBuscar } from '@api/services/agent/source-search';
 import { recordTokenUsage } from '@api/services/agent/usage';
 import type { RedisClient } from '@api/utils/redis/redis';
 
@@ -72,6 +73,74 @@ export const TIEMPO_MAXIMO_ESCRITOR_MS = 90_000;
  */
 export const SIN_MATERIAL_ASIGNADO =
   'None. No source material is assigned to this lesson: write it from general professional knowledge, keep it generic, and mark with data-sin-fuente anything specific to one organisation (its own policy, structure, product, figures or procedure).';
+
+/**
+ * Lo que lee el escritor cuando la lección no tiene material asignado PERO el
+ * curso tiene fuentes: los documentos de la empresa, como marco.
+ *
+ * ── Qué se midió ─────────────────────────────────────────────────────────────
+ *
+ * Producción, 2026-11-11. El plan marcó dos lecciones como «la fuente apenas
+ * las toca» y la docente pidió desarrollarlas desde buenas prácticas. El
+ * escritor recibió `SIN_MATERIAL_ASIGNADO` y NADA del documento, y escribió
+ * contra él sin saberlo:
+ *
+ *   - puso entre los productos críticos una categoría que la tabla de
+ *     prioridades del documento deja última;
+ *   - enseñó que reportar por un canal privado es un error, cuando el documento
+ *     lo permite con todas las letras;
+ *   - inventó dos cargos donde el documento nombra otro.
+ *
+ * Que una fuente no alcance para ENSEÑAR un tema no la vuelve irrelevante: sigue
+ * diciendo cómo trabaja esa empresa. Sin verla, «práctica general» y «lo
+ * contrario de lo que hacen acá» son indistinguibles para quien escribe.
+ */
+export const SIN_MATERIAL_CON_MARCO =
+  'None assigned: this lesson is written from general professional practice — for THIS organisation, whose own documents follow. Read them before you write.';
+
+export const REGLAS_DEL_MARCO = `## What this organisation's own documents say
+
+None of this was assigned as this lesson's material, because it does not cover the topic in depth. It is still how this organisation works, and the people taking the course work there:
+
+1. Where these documents say something about this lesson's topic — a priority, a role, a channel, a deadline, who must be told what — the lesson says the SAME and starts from it. General practice goes around what they say, never instead of it.
+2. Never contradict them. Where general practice and these documents disagree, the documents win and that piece of general practice is left out.
+3. General practice stays general. Do not present it as this organisation's rule, role, tool or procedure ("the official channel is…", "the shift supervisor authorises…"): word it as common practice, and mark with data-sin-fuente anything specific to this organisation that the documents do not state.`;
+
+/** Hasta dónde el marco va entero. Pasado esto, sólo los pasajes que tocan el tema. */
+export const MARCO_MAXIMO_CHARS = 60_000;
+
+/** Cuántos pasajes del tema se muestran cuando las fuentes no entran enteras. */
+const PASAJES_DEL_MARCO = 12;
+
+/**
+ * El marco de una lección sin material: qué dicen las fuentes del curso.
+ *
+ * Enteras si son cortas —es el caso que se midió: un informe de unas pocas
+ * páginas—; si no, los pasajes que nombran el tema de la lección, buscados
+ * con la misma búsqueda que usa el agente (`buscarEnFuentes`). Devuelve
+ * `undefined` cuando no hay nada que mostrar: el escritor queda como antes.
+ */
+export function armarMarcoDeLaOrganizacion(fuentes: FuenteParaBuscar[], tema: string): string | undefined {
+  const conTexto = fuentes.filter((fuente) => fuente.text.trim().length > 0);
+
+  if (conTexto.length === 0) return undefined;
+
+  if (conTexto.reduce((suma, fuente) => suma + fuente.text.length, 0) <= MARCO_MAXIMO_CHARS) {
+    return conTexto.map((fuente) => `--- ${fuente.fileName} (complete) ---\n${fuente.text}`).join('\n\n');
+  }
+
+  const { passages } = buscarEnFuentes({ fuentes: conTexto, consulta: tema, maxPasajes: PASAJES_DEL_MARCO });
+
+  if (passages.length === 0) return undefined;
+
+  return passages
+    .map((pasaje) => {
+      const lugar = pasaje.locations[0];
+
+      return `--- ${lugar.fileName}, lines ${lugar.fromLine}–${lugar.toLine} (an excerpt: the rest of the document was not shown to you) ---\n${pasaje.passage}`;
+    })
+    .join('\n\n');
+}
 
 export interface MaterialDeLeccion {
   texto: string;
@@ -289,7 +358,9 @@ export function crearEscritorDeLecciones(params: {
     sources,
     contenidoActual
   }: Parameters<EscritorDeLecciones>[0]): Promise<ResultadoEscritor> => {
-    const documentos = sources.length > 0 ? await listCourseSources(params.courseId) : [];
+    // Siempre, también sin fuentes asignadas: una lección «desde buenas
+    // prácticas» necesita saber qué dice la empresa. Ver `REGLAS_DEL_MARCO`.
+    const documentos = await listCourseSources(params.courseId);
 
     const material: FuenteVista[] = [];
     const fuentesUsadas: string[] = [];
@@ -325,6 +396,24 @@ export function crearEscritorDeLecciones(params: {
 
     const armado = armarMaterial(material);
 
+    // Sin material asignado, las fuentes del curso van como MARCO: no para
+    // enseñar desde ellas, sino para no escribir contra ellas. No entran en
+    // `material` —que es contra lo que el juez mide «salió de acá»—: esta
+    // lección no salió de ahí, y decir que sí sería el sello falso de antes.
+    let marco: string | undefined;
+
+    if (sources.length === 0 && documentos.length > 0) {
+      const conTexto = await Promise.all(
+        documentos.map(async (doc) => ({
+          id: doc.id,
+          fileName: doc.fileName,
+          text: (await getCourseSourceText(doc.id, params.courseId, params.redis)) ?? doc.text ?? ''
+        }))
+      );
+
+      marco = armarMarcoDeLaOrganizacion(conTexto, `${lessonTitle} ${brief}`);
+    }
+
     // Lo que es igual para todas las lecciones va primero y lo propio de cada una
     // al final: la caché del proveedor es por prefijo, así que el temario se
     // reutiliza en todas y el material en las que comparten fuente.
@@ -333,7 +422,9 @@ export function crearEscritorDeLecciones(params: {
         (params.temario ? `\n\nOutline — the whole course, so you know what the other lessons cover:\n${params.temario}` : ''),
       armado.texto
         ? `## Source material for this lesson\n\n${armado.texto}`
-        : `## Source material for this lesson\n\n${SIN_MATERIAL_ASIGNADO}`,
+        : marco
+          ? `## Source material for this lesson\n\n${SIN_MATERIAL_CON_MARCO}\n\n${REGLAS_DEL_MARCO}\n\n${marco}`
+          : `## Source material for this lesson\n\n${SIN_MATERIAL_ASIGNADO}`,
       `## This lesson\n\nTitle: ${lessonTitle}\nWrite it in this language: ${locale}\n\nBrief:\n${brief}` +
         (params.indicaciones ? `\n\n${RECORDATORIO_DE_LA_DOCENTE}` : ''),
       contenidoActual ? `## Current content of this lesson (you are rewriting it)\n\n${contenidoActual}` : ''

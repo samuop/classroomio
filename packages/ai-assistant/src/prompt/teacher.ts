@@ -257,7 +257,7 @@ Mentally verify, then return only if all are true:
 3. No compound lesson titles ("and"/comma joining concepts).
 4. Section count, total lesson count, and per-lesson word-target match the chosen depth tier ranges (see Active Template Flow → Depth tier block, when a template is active).
 5. For a whole-course plan: the last section is the comprehensive final examination, and interleaving callbacks exist after every third section. (A \`scope: "changes"\` plan has neither — see "A change plan" above.)
-6. \`teacherRules\` lists every rule the teacher stated in this conversation about what the course may or may not say (prohibitions, limits, must-haves), one short sentence each, in their words. Whoever builds the course will not see this conversation: a rule you leave out of the plan is a rule nobody follows.`;
+6. \`teacherRules\` lists ONLY the rules the teacher wrote in this conversation about what the course may or may not say (prohibitions, limits, must-haves): for each, \`rule\` (one short sentence) and \`teacherWords\` (their exact words, copied from their message). The server looks for those words in what the teacher typed and drops every rule it cannot find. Whoever builds the course will not see this conversation, so a rule they did state must be here — but a fact or procedure from a source, an answer to the discovery form, or a writing guideline of your own is NOT a teacher rule, and listing one makes it outrank the sources in every lesson. When the teacher stated no rule, the list is empty.`;
 
   const buildSection = `**Agent Mode** — When the teacher approves a plan or asks you to perform a specific action:
 1. Execute the requested actions using the appropriate tools

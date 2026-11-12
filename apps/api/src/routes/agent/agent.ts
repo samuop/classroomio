@@ -219,6 +219,7 @@ import {
   SECCION_DEL_PLAN_TERMINADO,
   textosDeLaDocente
 } from '@api/services/agent/plan-vivo';
+import { textosEscritosPorLaDocente } from '@api/services/agent/reglas-del-plan';
 import { buildModelContextMessages } from '@api/services/agent/model-context';
 import {
   descargarComoDataUrl,
@@ -1835,6 +1836,8 @@ const agentCoreRouter = new Hono()
               // `update_plan`: sólo con un plan abierto, y citando a la docente.
               planEnConstruccion: !!approvedPlan,
               textosDeLaDocente: textosDeLaDocente(messages),
+              // Las reglas de un plan se comprueban contra lo que ella tecleó.
+              textosEscritosPorLaDocente: textosEscritosPorLaDocente(messages),
               // El chequeo de fundamento. Lee las fuentes por su cuenta en vez
               // de mirar `sourcePack`: el paquete viaja o no según si hay una
               // pestaña de lección abierta (ver la nota de `useSourcePack`), y

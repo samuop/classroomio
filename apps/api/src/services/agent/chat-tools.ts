@@ -21,6 +21,7 @@ import {
   resolvePlanBinding
 } from '@cio/db/queries/agent';
 import { lasEscribioLaDocente } from '@api/services/agent/plan-vivo';
+import { avisoDeReglasDescartadas, reglasQueDijoLaDocente } from '@api/services/agent/reglas-del-plan';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
 import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TLocale } from '@cio/db/types';
@@ -1207,6 +1208,12 @@ export function buildAgentTools(
      * palabras que cita `update_plan` son suyas.
      */
     textosDeLaDocente?: readonly string[];
+    /**
+     * Lo que ella TECLEÓ: sin las preguntas del formulario ni el texto de los
+     * botones. Es contra lo que se comprueban las reglas de un plan
+     * (`reglas-del-plan.ts`). Ausente = `textosDeLaDocente`.
+     */
+    textosEscritosPorLaDocente?: readonly string[];
   }
 ): ToolSet {
   const conversationId = _options?.conversationId ?? null;
@@ -1229,6 +1236,9 @@ export function buildAgentTools(
   const progresoDelPlan = _options?.progresoDelPlan;
   const planEnConstruccion = _options?.planEnConstruccion ?? false;
   const textosDeLaDocenteDeLaRonda = _options?.textosDeLaDocente ?? [];
+  // Para las reglas del plan, sólo lo que ella tecleó (sin las preguntas del
+  // formulario ni el texto de los botones). Ver `reglas-del-plan.ts`.
+  const textosEscritosDeLaRonda = _options?.textosEscritosPorLaDocente ?? textosDeLaDocenteDeLaRonda;
 
   /**
    * El riel: bajo una orden de EDICIÓN, la lección no se reescribe entera.
@@ -4714,7 +4724,13 @@ export function buildAgentTools(
       execute: async (args) => {
         return executeAgentTool('generate_course_plan', { orgId, userId, courseId, args }, async () => {
           const envelope = coursePlanParam.parse(args);
-          const plan = CoursePlanSchema.parse(envelope.plan);
+          // Las reglas «de la docente» que ella no escribió no entran al plan:
+          // ni se le muestran como suyas ni le llegan a un escritor. Ver
+          // `reglas-del-plan.ts`.
+          const { teacherRules: reglasDeclaradas, ...planDeclarado } = envelope.plan;
+          const reglasDelPlan = reglasQueDijoLaDocente(reglasDeclaradas, textosEscritosDeLaRonda);
+          const avisoDeReglas = avisoDeReglasDescartadas(reglasDelPlan.descartadas);
+          const plan = CoursePlanSchema.parse({ ...planDeclarado, teacherRules: reglasDelPlan.aceptadas });
           const sectionCount = plan.sections.length;
           const itemCount = plan.sections.reduce((sum, section) => sum + section.items.length, 0);
 
@@ -4866,7 +4882,12 @@ export function buildAgentTools(
             console.error('[agent-tool] no se pudo medir la cobertura del plan:', error);
           }
 
-          return { ...plan, ...(cobertura ? { coverage: cobertura } : {}), ...(atadura ?? {}) };
+          return {
+            ...plan,
+            ...(cobertura ? { coverage: cobertura } : {}),
+            ...(atadura ?? {}),
+            ...(avisoDeReglas ? { teacherRulesNote: avisoDeReglas } : {})
+          };
         });
       }
     }),

@@ -319,16 +319,45 @@ function refinarPlan(plan: z.infer<typeof CoursePlanFieldsSchema>, ctx: z.Refine
 
 export const CoursePlanSchema = CoursePlanFieldsSchema.superRefine(refinarPlan);
 
+const TEACHER_RULES_TOOL_DESCRIPTION =
+  'ONLY rules the TEACHER wrote in this conversation, in a message of their own, about what the course may or may not say: prohibitions ("do not teach the discount matrix as current"), limits ("no prices"), must-haves ("always name the shift supervisor"). For each one: `rule` = one short imperative sentence in their language; `teacherWords` = their EXACT words, copied from the message where they say it. The server checks every `teacherWords` against what the teacher typed and DROPS a rule it cannot find there. ' +
+  'These are NOT teacher rules, and must not be listed: a fact, deadline or procedure that comes from a source document (it belongs in the description of the lesson that teaches it); an answer to the discovery form (those travel to the writers on their own); a writing guideline of yours; something you inferred from one word. ' +
+  'A rule here outranks the sources in every lesson, so one the teacher never stated rewrites their company\'s procedures in their name. An empty list is the right answer when the teacher stated none.';
+
+/** Una regla como la declara el modelo: con las palabras de la docente que la sostienen. */
+export const ReglaDeclaradaDelPlanSchema = z.object({
+  rule: z.string().min(1).max(400),
+  teacherWords: z.string().min(1).max(600)
+});
+
+export type ReglaDeclaradaDelPlan = z.infer<typeof ReglaDeclaradaDelPlanSchema>;
+
 /**
- * El plan como lo pide la herramienta: con `teacherRules` OBLIGATORIO.
+ * El plan como lo pide la herramienta: con `teacherRules` OBLIGATORIO, y cada
+ * regla con las palabras de la docente.
  *
  * Gemini deja vacío lo que el esquema no exige, aunque el prompt lo pida (ver
  * la trampa medida con `sources`). Exigido, tiene que pensar qué dijo la
  * docente; `[]` sigue valiendo cuando no puso ninguna regla.
+ *
+ * ── Por qué con sus palabras ─────────────────────────────────────────────────
+ *
+ * Exigir el campo tuvo el efecto contrario al buscado: lo llenó. Medido el
+ * 2026-11-11 con un curso real: la docente escribió UNA palabra en el
+ * formulario (el nombre de una aplicación de mensajería) y nada más, y el plan
+ * salió con cinco «reglas de la docente» —«usar esa aplicación como canal
+ * oficial…», «escribir los roles en lugar de nombres», y tres datos copiados
+ * del documento—. Como una regla gana sobre
+ * la fuente en todas las lecciones, entre el 40 y el 50 % de los defectos del
+ * curso salieron de ahí. Es lo mismo que ya se exigía en `remember_teacher_rule`
+ * y en `update_plan`.
+ *
+ * Es la forma de ENTRADA: el servidor comprueba las palabras y lo que guarda y
+ * muestra sigue siendo `teacherRules: string[]` (`CoursePlanFieldsSchema`).
  */
 export const CoursePlanToolSchema = CoursePlanFieldsSchema.extend({
-  teacherRules: z.array(z.string().min(1).max(400)).max(30).describe(TEACHER_RULES_DESCRIPTION)
-}).superRefine(refinarPlan);
+  teacherRules: z.array(ReglaDeclaradaDelPlanSchema).max(30).describe(TEACHER_RULES_TOOL_DESCRIPTION)
+}).superRefine((plan, ctx) => refinarPlan({ ...plan, teacherRules: plan.teacherRules.map((regla) => regla.rule) }, ctx));
 
 /** Las reglas de la docente de un plan aprobado, limpias. Planes viejos: ninguna. */
 export function reglasDeLaDocente(plan: { teacherRules?: readonly string[] } | undefined): string[] {
