@@ -184,7 +184,7 @@ import {
   trabadaEnRelecturas
 } from '@api/services/agent/bitacora-de-la-ronda';
 import { pasoPudoCambiarElCurso } from '@api/services/agent/pasos-que-cambian';
-import { lecturasAConservar, podarHerramientas } from '@api/services/agent/poda-de-lecturas';
+import { lecturasAConservar, lecturasDeFuenteAConservar, podarHerramientas } from '@api/services/agent/poda-de-lecturas';
 import { transformarEnlacesDelChat } from '@api/services/agent/enlaces-del-chat';
 import { mapaDelCurso } from '@api/services/agent/manijas';
 import { crearVerificadorDeFundamento } from '@api/services/agent/grounding';
@@ -1928,9 +1928,19 @@ const agentCoreRouter = new Hono()
         basesPermitidas: [getStorageConfig().mediaPublicBaseUrl],
         descargar: (url, tipo) => descargarComoDataUrl(url, tipo, MAX_IMAGE_SIZE)
       });
+      //
+      // Lo que se leyó de los DOCUMENTOS del curso en rondas anteriores sí se
+      // queda: una fuente no cambia entre rondas, y sin esto el modelo la
+      // releía en cada ida y vuelta. Ver `lecturasDeFuenteAConservar`.
+      const historiaConvertida = sanitizeDanglingToolCalls(await convertToModelMessages(mensajesConImagenes as any));
       const convertedMessages = pruneMessages({
-        messages: sanitizeDanglingToolCalls(await convertToModelMessages(mensajesConImagenes as any)),
-        toolCalls: 'before-last-2-messages',
+        messages: podarHerramientas({
+          messages: historiaConvertida,
+          ultimos: 2,
+          conservar: lecturasDeFuenteAConservar(historiaConvertida)
+        }),
+        // Las herramientas ya las podó la función de arriba.
+        toolCalls: 'none',
         reasoning: 'before-last-message',
         emptyMessages: 'remove'
       });
@@ -2496,8 +2506,8 @@ const agentCoreRouter = new Hono()
               propuestasAnteriores: avisoDeLasPropuestas || undefined
             });
 
-        // El estudiante no se recorta: borraba la lección que acababa de leer. Ver recortarContextoDelPaso.
-        if (!recortarContextoDelPaso({ esEstudiante: isStudentRound, paso: pasoDeLaRonda })) {
+        // No se recorta lo que el modelo leyó, salvo con el contexto casi lleno. Ver recortarContextoDelPaso.
+        if (!recortarContextoDelPaso({ tokensDelPasoAnterior: lastStepInputTokens, presupuesto: resolveAgentContextBudget() })) {
           const conNota = isStudentRound ? stepMessages : conNotaDelPaso(stepMessages, nota);
 
           return ultimoPaso
@@ -2992,9 +3002,16 @@ const agentCoreRouter = new Hono()
         pasosDeTramosAnteriores = completedStepCount;
         tramoActual = numero + 1;
 
-        const { messages: podados } = podarParaElPaso(mensajesParaSeguir, undefined, undefined);
+        // Un tramo nuevo sigue con lo que el modelo ya leyó, igual que un paso
+        // nuevo: sólo se recorta con el contexto casi lleno.
+        const paraElTramo = recortarContextoDelPaso({
+          tokensDelPasoAnterior: lastStepInputTokens,
+          presupuesto: resolveAgentContextBudget()
+        })
+          ? podarParaElPaso(mensajesParaSeguir, undefined, undefined).messages
+          : mensajesParaSeguir;
 
-        return correrTramo([...podados, { role: 'user', content: textoDeContinuacion(planIncomplete!) }]);
+        return correrTramo([...paraElTramo, { role: 'user', content: textoDeContinuacion(planIncomplete!) }]);
       }
 
       /**

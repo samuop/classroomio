@@ -70,15 +70,22 @@ describe('avisoDeCierre', () => {
 });
 
 describe('recortarContextoDelPaso', () => {
-  it('nunca le recorta el contexto al estudiante: lo que leyó tiene que seguir ahí al contestar', () => {
-    for (const paso of [0, 5, 11]) {
-      expect(recortarContextoDelPaso({ esEstudiante: true, paso })).toBe(false);
+  const PRESUPUESTO = 500_000;
+
+  it('no recorta lo que el modelo leyó mientras haya lugar: ni en el primer paso ni con la ronda avanzada', () => {
+    for (const tokensDelPasoAnterior of [undefined, 0, 60_000, 300_000, 424_999]) {
+      expect(recortarContextoDelPaso({ tokensDelPasoAnterior, presupuesto: PRESUPUESTO })).toBe(false);
     }
   });
 
-  it('al docente le recorta desde el paso 5, como antes', () => {
-    expect(recortarContextoDelPaso({ esEstudiante: false, paso: 4 })).toBe(false);
-    expect(recortarContextoDelPaso({ esEstudiante: false, paso: 5 })).toBe(true);
+  it('recorta recién con el contexto casi lleno, para que el proveedor no rechace el pedido', () => {
+    expect(recortarContextoDelPaso({ tokensDelPasoAnterior: 425_000, presupuesto: PRESUPUESTO })).toBe(true);
+    expect(recortarContextoDelPaso({ tokensDelPasoAnterior: 600_000, presupuesto: PRESUPUESTO })).toBe(true);
+  });
+
+  it('el umbral sigue al presupuesto, no es un número fijo', () => {
+    expect(recortarContextoDelPaso({ tokensDelPasoAnterior: 180_000, presupuesto: 200_000 })).toBe(true);
+    expect(recortarContextoDelPaso({ tokensDelPasoAnterior: 180_000, presupuesto: PRESUPUESTO })).toBe(false);
   });
 });
 

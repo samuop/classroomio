@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
 import { getChatModelContext, upsertChatModelContext } from '@cio/db/queries/agent';
-import { trimMessageHistory } from '@api/services/agent/context-window';
+import { MAX_MENSAJES_AL_MODELO, MENSAJES_RECIENTES, trimMessageHistory } from '@api/services/agent/context-window';
 import { summarizeConversationDelta, type SummarizeOptions } from '@api/services/agent/summarize';
 
-const KEEP_RECENT_MESSAGES = 16;
-const MIN_MESSAGES_BEFORE_SUMMARY = KEEP_RECENT_MESSAGES + 4;
+// El resumen reemplaza lo anterior a los últimos mensajes: recién cuando la
+// conversación pasa de los que entran enteros. Ver `context-window.ts`.
+const KEEP_RECENT_MESSAGES = MENSAJES_RECIENTES;
+const MIN_MESSAGES_BEFORE_SUMMARY = MAX_MENSAJES_AL_MODELO;
 
 type AgentMessage = SummarizeOptions['messages'][number] & {
   id?: string;

@@ -1,6 +1,20 @@
-const MAX_MESSAGES = 20;
-const KEEP_RECENT = 16;
-const MAX_TOOL_OUTPUT_CHARS = 2000;
+/**
+ * Cuánto de la conversación vuelve al modelo en la ronda siguiente.
+ *
+ * Hasta 2026-11-13 eran 20 mensajes (el primero y los últimos 16) y 2.000
+ * caracteres por resultado de herramienta. Con eso una lección leída —unos
+ * 10.000 caracteres— volvía cortada a la quinta parte, y una conversación de
+ * diez idas y vueltas ya perdía el principio. El presupuesto de contexto pasó
+ * a 500.000 fichas (`DEFAULT_AGENT_CONTEXT_BUDGET`) y estos números lo siguen:
+ * 30.000 caracteres dejan entera cualquier lección, ejercicio o tramo de fuente.
+ */
+export const MAX_MENSAJES_AL_MODELO = 64;
+export const MENSAJES_RECIENTES = 60;
+export const MAX_SALIDA_DE_HERRAMIENTA_CHARS = 30_000;
+
+const MAX_MESSAGES = MAX_MENSAJES_AL_MODELO;
+const KEEP_RECENT = MENSAJES_RECIENTES;
+const MAX_TOOL_OUTPUT_CHARS = MAX_SALIDA_DE_HERRAMIENTA_CHARS;
 const APPROX_CHARS_PER_TOKEN = 4;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

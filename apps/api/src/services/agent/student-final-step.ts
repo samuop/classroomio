@@ -77,9 +77,33 @@ export function avisoDeCierre(esEstudiante: boolean): string {
  * o dijeron que el curso no trata un tema que tiene lección propia; sin recorte,
  * 0 de 9. La ronda del estudiante tiene 12 pasos como máximo, así que el
  * contexto no crece sin techo.
+ *
+ * ── Desde 2026-11-13 tampoco se le recorta al docente ────────────────────────
+ *
+ * Al docente se le recortaba desde el paso 5. Medido con un pedido real de
+ * verificación («¿esto es correcto?», cinco frases contra el documento), cinco
+ * corridas de cada lado: con recorte, 363 llamadas al modelo y hasta 8 minutos
+ * por corrida —el modelo releía la fuente más de 40 veces porque se la borraban
+ * antes de contestar— y citas del documento inventadas; sin recorte, 51
+ * llamadas, 48 a 85 segundos, la cuarta parte del costo y ninguna cita
+ * inventada. El recorte que se puso para ahorrar costaba más.
+ *
+ * Lo que queda es la red de abajo: si el paso anterior ya ocupó casi todo el
+ * presupuesto de contexto, se recorta igual, que es mejor que un pedido que el
+ * proveedor rechaza por tamaño.
  */
-export function recortarContextoDelPaso({ esEstudiante, paso }: { esEstudiante: boolean; paso: number }): boolean {
-  return !esEstudiante && paso >= 5;
+export const UMBRAL_DE_RECORTE = 0.85;
+
+export function recortarContextoDelPaso({
+  tokensDelPasoAnterior,
+  presupuesto
+}: {
+  /** Lo que ocupó la entrada del paso anterior, medido por el proveedor. */
+  tokensDelPasoAnterior: number | undefined;
+  /** El presupuesto de contexto de la ronda. Ver `resolveAgentContextBudget`. */
+  presupuesto: number;
+}): boolean {
+  return (tokensDelPasoAnterior ?? 0) >= presupuesto * UMBRAL_DE_RECORTE;
 }
 
 /**

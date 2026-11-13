@@ -118,6 +118,53 @@ export function lecturasAConservar(
 }
 
 /**
+ * Lo que el modelo leyó de los DOCUMENTOS del curso. A diferencia de una
+ * lección —que la docente o el propio asistente pueden haber cambiado desde
+ * entonces—, una fuente no cambia entre una ronda y la siguiente.
+ */
+export const LECTURAS_DE_FUENTE: ReadonlySet<string> = new Set(['read_source', 'search_document']);
+
+type ResultadoDeHerramienta = ParteDeHerramienta & { output?: { value?: unknown } };
+
+/**
+ * Los `toolCallId` de las lecturas de fuente de rondas ANTERIORES que siguen
+ * valiendo en ésta.
+ *
+ * Al empezar una ronda se sacan los resultados de herramienta viejos (ver el
+ * arranque de la ronda en `agent.ts`): lo que se leyó del curso pudo cambiar, y
+ * lo que se escribió ya está en el curso. Lo leído de los documentos es la
+ * excepción. Medido el 2026-11-12: en una conversación de cuatro idas y vueltas
+ * sobre las mismas cinco frases, el asistente releyó el documento en cada una.
+ *
+ * - Una lectura repetida (misma herramienta, mismos argumentos) cuenta una vez:
+ *   la última.
+ * - Una que quedó guardada recortada no se conserva: medio pasaje con cara de
+ *   pasaje entero es peor que volver a leerlo.
+ */
+export function lecturasDeFuenteAConservar(messages: readonly ModelMessage[]): Set<string> {
+  const recortadas = new Set<string>();
+  const ultimaPorPedido = new Map<string, string>();
+
+  for (const message of messages) {
+    for (const parte of partes(message)) {
+      if (!parte.toolCallId || !parte.toolName || !LECTURAS_DE_FUENTE.has(parte.toolName)) continue;
+
+      if (parte.type === 'tool-call') {
+        ultimaPorPedido.set(`${parte.toolName}:${JSON.stringify(parte.input ?? null)}`, parte.toolCallId);
+      } else if (parte.type === 'tool-result') {
+        const valor = (parte as ResultadoDeHerramienta).output?.value;
+
+        if (valor && typeof valor === 'object' && (valor as { truncated?: unknown }).truncated === true) {
+          recortadas.add(parte.toolCallId);
+        }
+      }
+    }
+  }
+
+  return new Set([...ultimaPorPedido.values()].filter((toolCallId) => !recortadas.has(toolCallId)));
+}
+
+/**
  * La poda de herramientas de `pruneMessages`, con exclusiones.
  *
  * Misma forma que `pruneMessages({ toolCalls: 'before-last-N-messages' })` del

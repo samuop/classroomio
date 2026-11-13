@@ -480,12 +480,15 @@ export interface AgentStatus {
 
 /**
  * Default operational context budget (tokens). Not the model's physical window —
- * a working ceiling for the UI's context guard. At ~90% (180k) the UI nudges the
- * teacher to compact; well under Gemini's 1M so we never actually hit the wall,
- * while keeping the indicator meaningful now that the context diet keeps typical
- * requests small. Override with AGENT_CONTEXT_BUDGET.
+ * a working ceiling for the UI's context guard. At ~90% the UI nudges the
+ * teacher to compact; well under Gemini's 1M so we never actually hit the wall.
+ * Override with AGENT_CONTEXT_BUDGET.
+ *
+ * 500k desde 2026-11-13 (antes 200k): una ronda ya no pierde lo que leyó a mitad
+ * de camino (ver `recortarContextoDelPaso`), así que ocupa más. Con un modelo
+ * de ventana menor a esto hay que bajarlo por la variable de entorno.
  */
-export const DEFAULT_AGENT_CONTEXT_BUDGET = 200_000;
+export const DEFAULT_AGENT_CONTEXT_BUDGET = 500_000;
 
 /** Resolve the operational context budget from env, falling back to the default. */
 export function resolveAgentContextBudget(): number {
