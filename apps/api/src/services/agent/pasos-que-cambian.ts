@@ -33,6 +33,7 @@ export const HERRAMIENTAS_DE_LECTURA: ReadonlySet<string> = new Set([
   'ask_template_questions',
   'check_course_go_live_readiness',
   'fetch_documentation_url',
+  'find_statements_in_course',
   'generate_course_plan',
   'get_course_structure',
   'get_exercise_details',

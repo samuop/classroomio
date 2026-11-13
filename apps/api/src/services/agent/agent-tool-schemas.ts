@@ -67,6 +67,23 @@ export const searchLessonsParam = z.object({
     .describe('The exact words to find inside the course lessons. Accents and case are ignored.')
 });
 
+/**
+ * Ubicar en el curso frases enteras, por significado.
+ *
+ * Una lista y no una frase por llamada: el caso es «la docente señaló cinco
+ * frases», y con cinco búsquedas sueltas el modelo se salteó una (medido el
+ * 2026-11-13). Ver `ubicar-frases.ts`.
+ */
+export const findStatementsParam = z.object({
+  statements: z
+    .array(z.string().min(8).max(400))
+    .min(1)
+    .max(12)
+    .describe(
+      'EVERY statement to locate, each one WHOLE and as a separate item — the full sentence the teacher wrote or showed you, not a keyword. When the teacher pointed at several statements, send all of them in this one call.'
+    )
+});
+
 export const searchDocumentParam = z.object({
   query: z
     .string()

@@ -31,11 +31,19 @@ import { listLessonBlocks, type LessonBlock } from '@api/services/agent/lesson-b
 /** Caracteres de contexto a cada lado del fragmento encontrado. */
 export const CONTEXTO = 90;
 
-/** Tope de coincidencias por lección, para que una palabra común no tape el resto. */
-export const MAX_POR_LECCION = 3;
+/**
+ * Tope de coincidencias por lección, para que una palabra común no tape el resto.
+ *
+ * Eran 3, y lo que quedaba afuera no se decía. Medido el 2026-11-13: el
+ * asistente buscó una palabra para ubicar una frase a corregir, la lección usa esa
+ * palabra en una veintena de párrafos, recibió los tres primeros —ninguno era
+ * el del error— y, sin nada que le dijera que había más, corrigió otra lección.
+ * Ahora son más, y las que no entran se cuentan (`buscarEnLeccionesConResto`).
+ */
+export const MAX_POR_LECCION = 8;
 
-/** Tope total: esto va al contexto del modelo y tiene que seguir siendo chico. */
-export const MAX_COINCIDENCIAS = 24;
+/** Tope total: lo que pasa de acá se cuenta por lección, no se muestra. */
+export const MAX_COINCIDENCIAS = 48;
 
 /** Con menos que esto, cualquier cosa coincide con todo. */
 export const MIN_LARGO_BUSQUEDA = 3;
@@ -227,17 +235,40 @@ export function buscarEnLecciones(params: {
   maxPorLeccion?: number;
   maxTotal?: number;
 }): CoincidenciaEnLeccion[] {
+  return buscarEnLeccionesConResto(params).coincidencias;
+}
+
+/** Las apariciones de una lección que la búsqueda encontró y no mostró. */
+export interface AparicionesSinMostrar {
+  lessonId: string;
+  title: string;
+  cantidad: number;
+}
+
+/**
+ * Lo mismo que `buscarEnLecciones`, más la cuenta de lo que quedó afuera de los
+ * topes, por lección.
+ *
+ * Un resultado recortado que no dice que está recortado se lee como «esto es
+ * todo»: quien busca da por revisada una lección de la que vio tres párrafos.
+ */
+export function buscarEnLeccionesConResto(params: {
+  lecciones: LeccionParaBuscar[];
+  texto: string;
+  maxPorLeccion?: number;
+  maxTotal?: number;
+}): { coincidencias: CoincidenciaEnLeccion[]; sinMostrar: AparicionesSinMostrar[] } {
   const buscado = params.texto.trim();
 
-  if (buscado.length < MIN_LARGO_BUSQUEDA) return [];
+  if (buscado.length < MIN_LARGO_BUSQUEDA) return { coincidencias: [], sinMostrar: [] };
 
   const { plegado: aguja } = plegar(buscado);
   const maxPorLeccion = params.maxPorLeccion ?? MAX_POR_LECCION;
   const maxTotal = params.maxTotal ?? MAX_COINCIDENCIAS;
   const coincidencias: CoincidenciaEnLeccion[] = [];
+  const sinMostrar: AparicionesSinMostrar[] = [];
 
   for (const leccion of params.lecciones) {
-    if (coincidencias.length >= maxTotal) break;
     if (!leccion.content) continue;
 
     const { texto: visible, indices: aHtml } = textoVisibleConMapa(leccion.content);
@@ -272,7 +303,16 @@ export function buscarEnLecciones(params: {
       enEstaLeccion += 1;
       desde = pos + aguja.length;
     }
+
+    // Lo que sigue apareciendo en esta lección después de cortar: se cuenta.
+    let resto = 0;
+
+    for (let pos = plegado.indexOf(aguja, desde); pos !== -1; pos = plegado.indexOf(aguja, pos + aguja.length)) {
+      resto += 1;
+    }
+
+    if (resto > 0) sinMostrar.push({ lessonId: leccion.id, title: leccion.title, cantidad: resto });
   }
 
-  return coincidencias;
+  return { coincidencias, sinMostrar };
 }

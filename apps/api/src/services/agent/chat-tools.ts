@@ -23,7 +23,7 @@ import {
 import { lasEscribioLaDocente } from '@api/services/agent/plan-vivo';
 import { avisoDeReglasDescartadas, reglasQueDijoLaDocente } from '@api/services/agent/reglas-del-plan';
 import { listCourseSources } from '@cio/db/queries/agent/chat-document';
-import { semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
+import { incrustarTextos, semanticSearchCourse, semanticSearchDocument } from '@api/services/agent/embeddings';
 import type { TLocale } from '@cio/db/types';
 import type { TCourseLandingPageUpdate } from '@cio/utils/validation/course';
 import {
@@ -126,7 +126,8 @@ import {
   conAvisoDePresupuesto,
   type PresupuestoDePasos
 } from '@api/services/agent/step-budget';
-import { buscarEnLecciones } from '@api/services/agent/lesson-search';
+import { buscarEnLeccionesConResto } from '@api/services/agent/lesson-search';
+import { frasesFueraDelPlan, ubicarFrases, type FraseUbicada } from '@api/services/agent/ubicar-frases';
 import { anotarCambio, registroVacio, type RegistroDeRonda } from '@api/services/agent/round-ledger';
 import { cambiosDePreguntas, resumenDeAgregadas } from '@api/services/agent/resumen-de-preguntas';
 import {
@@ -186,6 +187,7 @@ import {
   updateContentParam,
   updateCourseLandingPageParam,
   updateExerciseParam,
+  findStatementsParam,
   searchDocumentParam,
   searchLessonsParam,
   searchWebParam,
@@ -1231,6 +1233,16 @@ export function buildAgentTools(
   // Por ronda, igual que `registro` y por el mismo motivo: dos rondas
   // simultáneas se pisarían el contador. Ver `revision-tras-editar.ts`.
   const avisosDeFundamento = crearRegistroDeAvisos();
+  /**
+   * Las frases que `find_statements_in_course` ubicó en ESTA ronda, por frase.
+   *
+   * Por ronda y no por conversación a propósito. El plan de cambios que sale
+   * después tiene que nombrar la lección de cada una, y si esto viviera en la
+   * conversación, un «agregá una sección» pedido veinte mensajes más tarde se
+   * negaría por frases que nadie mencionó — el mismo tropiezo que ya tuvo el
+   * análisis de fuentes (ver `piezasSinCubrir`).
+   */
+  const frasesUbicadasEnLaRonda = new Map<string, FraseUbicada>();
   const leccionesBajoOrdenDeTrabajo = _options?.leccionesBajoOrdenDeTrabajo;
   const accionPorLeccion = _options?.accionPorLeccion;
   const progresoDelPlan = _options?.progresoDelPlan;
@@ -2354,7 +2366,7 @@ export function buildAgentTools(
       execute: async (args) => {
         return executeAgentTool('search_lessons', { orgId, userId, courseId, args }, async () => {
           const lecciones = await getCourseLessonContents(courseId, locale as TLocale);
-          const literal = buscarEnLecciones({
+          const { coincidencias: literal, sinMostrar } = buscarEnLeccionesConResto({
             lecciones: lecciones.map((l) => ({
               id: l.id,
               title: l.title ?? '(untitled)',
@@ -2364,7 +2376,23 @@ export function buildAgentTools(
           });
 
           if (literal.length > 0) {
-            return { query: args.query, matchedBy: 'exact text' as const, matches: literal };
+            return {
+              query: args.query,
+              matchedBy: 'exact text' as const,
+              matches: literal,
+              // Lo que no entró se dice: tres párrafos de veinte no son «la
+              // lección revisada». Ver `MAX_POR_LECCION`.
+              ...(sinMostrar.length > 0
+                ? {
+                    notShown: sinMostrar.map((resto) => ({
+                      lessonId: resto.lessonId,
+                      title: resto.title,
+                      moreMatches: resto.cantidad
+                    })),
+                    note: 'These are NOT all the matches: the lessons under `notShown` have more that did not fit. Do not conclude a lesson is fine from the matches shown — search a longer, more specific phrase, or locate the whole statement with find_statements_in_course.'
+                  }
+                : {})
+            };
           }
 
           // Nada literal: quizá lo que se busca está dicho con otras palabras.
@@ -2398,6 +2426,60 @@ export function buildAgentTools(
               title: titulos.get(s.lessonId) ?? '(untitled)',
               fragmento: s.content.slice(0, 240)
             }))
+          };
+        });
+      }
+    }),
+
+    /**
+     * Dónde dice el curso cada frase, buscada ENTERA y por significado.
+     *
+     * `search_lessons` busca las palabras exactas que el modelo elige, y elegir
+     * la palabra es justo lo que falla cuando la docente dice la frase con sus
+     * palabras y la lección con otras. Acá el servidor compara cada frase
+     * contra cada bloque de cada lección. Ver `ubicar-frases.ts`.
+     *
+     * Lo que ubica queda anotado para esta ronda: `generate_course_plan` niega
+     * un plan de cambios que no nombre la lección donde quedó cada frase.
+     */
+    find_statements_in_course: tool({
+      description:
+        'Find WHERE in this course each of several statements is said, comparing every statement WHOLE and by meaning against every paragraph, table and diagram of every lesson. Use it when the teacher points at things the course says (to check them or to have them corrected): send ALL the statements in ONE call, each one complete — never a keyword. For each statement you get the passages closest in meaning, most similar first, with the lesson handle and the blockId to edit. A passage is the CLOSEST one, not a proof: read it and decide whether it really says the statement. This searches the COURSE lessons; search_document searches the source material.',
+      inputSchema: findStatementsParam,
+      execute: async (args) => {
+        return executeAgentTool('find_statements_in_course', { orgId, userId, courseId, args }, async () => {
+          const [contenidos, mapa] = await Promise.all([
+            getCourseLessonContents(courseId, locale as TLocale),
+            manijas.mapa()
+          ]);
+          const ubicadas = await ubicarFrases({
+            frases: args.statements,
+            lecciones: contenidos.map((l) => ({ id: l.id, title: l.title ?? '(untitled)', content: l.content ?? '' })),
+            incrustar: incrustarTextos
+          });
+
+          // No poder buscar no es «el curso no lo dice»: se dice, con la salida.
+          if (!ubicadas) {
+            throw new Error(
+              'Searching the course by meaning is unavailable right now, so NOTHING was located. Do not tell the teacher the course does not say these statements. Use search_lessons with a distinctive phrase from each statement instead, one statement at a time, and check every one of them.'
+            );
+          }
+
+          for (const frase of ubicadas) frasesUbicadasEnLaRonda.set(frase.statement, frase);
+
+          return {
+            statements: ubicadas.map((frase) => ({
+              statement: frase.statement,
+              passages: frase.passages.map((pasaje) => ({
+                lesson: manijaDe(mapa, pasaje.lessonId),
+                lessonId: pasaje.lessonId,
+                title: pasaje.title,
+                ...(pasaje.blockId ? { blockId: pasaje.blockId } : {}),
+                text: pasaje.text,
+                similarity: pasaje.similarity
+              }))
+            })),
+            note: "For each statement, the first passage is the closest in the whole course. If you propose a change plan now, it needs one item for the lesson of EACH statement's first passage: an `edit` when the passage says what has to be corrected, or `skip: true` with the reason in `changes` when you read it and it does not actually say the statement (the teacher sees it as left as is). The server refuses a plan that leaves one out."
           };
         });
       }
@@ -4827,6 +4909,35 @@ export function buildAgentTools(
                   'The analysis found the old values in these pieces and your plan does not touch them, so the plan was NOT shown to the teacher: the course would teach the new value in one place and the old one in another. ' +
                   'Add an `edit` item for each (target = its handle) and call generate_course_plan again. ' +
                   'If the teacher explicitly asked to leave one of them alone, keep the item and set `skip: true` with the reason in `changes`.'
+              };
+            }
+
+            /**
+             * Y tampoco puede callar una FRASE que esta ronda ubicó.
+             *
+             * Medido el 2026-11-13: la docente señaló cinco frases y pidió
+             * corregirlas; en dos corridas de tres el plan dejó una afuera
+             * —en una, tocando otra lección del mismo tema— y el cierre dijo
+             * «implementé los ajustes». Ver `ubicar-frases.ts`.
+             */
+            const frasesSinLugar = frasesFueraDelPlan({
+              ubicadas: [...frasesUbicadasEnLaRonda.values()],
+              tocados: new Set(resolved.map((fila) => fila.id))
+            });
+
+            if (frasesSinLugar.length > 0) {
+              return {
+                ok: false as const,
+                statementsLeftOut: frasesSinLugar.map(({ statement, passage }) => ({
+                  statement,
+                  lesson: manijaDe(mapa, passage.lessonId),
+                  title: passage.title,
+                  ...(passage.blockId ? { blockId: passage.blockId } : {}),
+                  text: passage.text
+                })),
+                note:
+                  'You located these statements in the course and your plan has no item for the lesson where each one was found, so the plan was NOT shown to the teacher: she asked about all of them and would believe all were handled. ' +
+                  'Add one item per lesson listed here (target = its handle) and call generate_course_plan again: `edit` if the passage says what has to be corrected, or `skip: true` with the reason in `changes` if you read the passage and it does not actually say the statement, or the teacher asked to leave it.'
               };
             }
 

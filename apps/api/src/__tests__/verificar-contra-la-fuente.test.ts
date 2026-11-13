@@ -39,4 +39,18 @@ describe.each(['plan', 'build', 'full'] as const)('el asistente en modo %s, cuan
     expect(prompt).toMatch(/Quote only words you have just read in a tool result/);
     expect(prompt).toMatch(/Do not offer to save a statement as a rule or a correction/);
   });
+
+  // Medido el 2026-11-13: «corregí eso» sobre cinco frases dejó una sin tocar
+  // en dos corridas de tres, por buscar una palabra suelta o por no buscarla.
+  it('ubica las frases enteras y todas juntas, sin elegir una palabra', () => {
+    expect(prompt).toContain('### Finding and correcting the statements she pointed at');
+    expect(prompt).toMatch(/Call `find_statements_in_course` ONCE with EVERY statement, each one whole/);
+    expect(prompt).toMatch(/Do not guess a keyword/);
+  });
+
+  it('al corregir, el plan da cuenta de cada frase, y el cierre dice cuál quedó como estaba', () => {
+    expect(prompt).toMatch(/The plan needs one item for the lesson where each statement was found/);
+    expect(prompt).toMatch(/keep the item with `skip: true` and say why in `changes`/);
+    expect(prompt).toMatch(/say which statements were corrected and which were left as they are and why/);
+  });
 });

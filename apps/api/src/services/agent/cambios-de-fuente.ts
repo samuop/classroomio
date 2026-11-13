@@ -98,7 +98,7 @@ export interface OcurrenciaDeValor {
 /**
  * Tope de apariciones por lección.
  *
- * Bastante más alto que el de `search_lessons` (3) porque acá no se está
+ * Bastante más alto que el de `search_lessons` (8) porque acá no se está
  * buscando «dónde dice esto» para leerlo: se está armando la orden de trabajo, y
  * una aparición que no entra en la lista es una que nadie va a cambiar y que el
  * ancla va a seguir reclamando para siempre.

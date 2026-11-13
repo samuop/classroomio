@@ -208,6 +208,58 @@ export async function semanticSearchCourse(params: {
   }));
 }
 
+// ─── Vectores sueltos, sin índice guardado ───────────────────────────────────
+
+/** Lo que el proveedor acepta por pedido. */
+const TEXTOS_POR_TANDA = 90;
+
+/** Tope de la memoria de abajo: unas diez veces un curso grande. */
+const MAX_VECTORES_EN_MEMORIA = 4000;
+
+/**
+ * Los vectores ya calculados en este proceso, por texto.
+ *
+ * `find_statements_in_course` compara cada frase contra todos los bloques del
+ * curso, y una conversación lo llama varias veces sobre un curso que casi no
+ * cambió entre una y otra: sin esto se volvería a incrustar el curso entero en
+ * cada llamada. No se guarda en la base a propósito — un índice guardado es
+ * justo lo que queda viejo cuando una lección cambia; acá un bloque editado es
+ * otro texto y se calcula de nuevo.
+ */
+const vectoresEnMemoria = new Map<string, number[]>();
+
+/**
+ * Convierte textos en vectores, en el orden en que vinieron.
+ *
+ * `null` cuando no hay modelo de incrustaciones configurado: quien llama tiene
+ * que decir que no pudo buscar, no devolver una lista vacía que se lea como «el
+ * curso no dice eso».
+ */
+export async function incrustarTextos(textos: string[]): Promise<number[][] | null> {
+  const model = getEmbeddingModel();
+
+  if (!model) return null;
+
+  let faltan = [...new Set(textos.filter((texto) => !vectoresEnMemoria.has(texto)))];
+
+  // Al vaciar se pierden también los de este pedido que ya estaban: se piden todos.
+  if (vectoresEnMemoria.size + faltan.length > MAX_VECTORES_EN_MEMORIA) {
+    vectoresEnMemoria.clear();
+    faltan = [...new Set(textos)];
+  }
+
+  for (let i = 0; i < faltan.length; i += TEXTOS_POR_TANDA) {
+    const tanda = faltan.slice(i, i + TEXTOS_POR_TANDA);
+    const { embeddings } = await embedMany({ model, values: tanda, providerOptions: EMBEDDING_PROVIDER_OPTIONS });
+
+    tanda.forEach((texto, j) => vectoresEnMemoria.set(texto, embeddings[j]));
+  }
+
+  const vectores = textos.map((texto) => vectoresEnMemoria.get(texto));
+
+  return vectores.every((vector): vector is number[] => Array.isArray(vector)) ? vectores : null;
+}
+
 // ─── RAG for edits (step 6): index + search UPLOADED documents ───────────────
 
 /**

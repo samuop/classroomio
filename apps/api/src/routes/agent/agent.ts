@@ -2230,6 +2230,10 @@ const agentCoreRouter = new Hono()
               // del curso cambia la fuente nueva. Sin esto acá, el plan de
               // cambios sólo se podría proponer a ojo.
               'analyze_source_changes',
+              // El prompt la nombra en todos los modos (ver «Finding and
+              // correcting the statements she pointed at»): que exista acá
+              // también, aunque un curso sin secciones no tenga dónde buscar.
+              'find_statements_in_course',
               'update_course_landing_page',
               'check_course_go_live_readiness',
               // Lo que la docente dicta mientras se planifica también vale para
